@@ -11,6 +11,7 @@ import '../../domain/usecases/baja_persona_use_cases.dart';
 import '../providers/baja_persona_providers.dart';
 import '../textos_baja_persona.dart';
 import 'piezas_alta.dart';
+import 'piezas_lista_ubicaciones.dart' show textoGrande;
 
 /// Cómo se cerró la hoja de baja de una persona.
 sealed class SalidaHojaBajaPersona {
@@ -53,8 +54,9 @@ enum _Fase { revisando, errorRevision, sinSaldo, resumen, confirmar }
 /// - **Revisando**: «Revisando la cuenta de …»; si no se pudo leer, el aviso rojo con «Reintentar»
 ///   (no se da de baja a quien quizá debe: ante la duda se frena).
 /// - **32D·01** sin saldo: una confirmación, «Dar de baja».
-/// - **32D·02** con saldo: el resumen (cuánto debe, entregas pendientes, comprado, entregado, pagado
-///   y saldo) y «Dar de baja igual», que no escribe nada: lleva a la segunda confirmación.
+/// - **32D·02** con saldo o con entregas pendientes: el resumen (cuánto debe, entregas pendientes,
+///   comprado, entregado, pagado y saldo) y «Dar de baja igual», que no escribe nada: lleva a la
+///   segunda confirmación.
 /// - **32D·03**: «¿Seguro?», «Sí, dar de baja» escribe; «No, volver» vuelve al resumen.
 /// - Mientras la baja se escribe, «Dando de baja…» y nada se puede tocar ni cerrar; si falla, el aviso
 ///   rojo y el botón vuelve a quedar habilitado.
@@ -96,7 +98,7 @@ class _HojaBajaPersonaState extends ConsumerState<HojaBajaPersona> {
       _cuenta = cuenta;
       _fase = fallo
           ? _Fase.errorRevision
-          : (cuenta?.tieneSaldo ?? false)
+          : (cuenta?.pideConfirmarBaja ?? false)
           ? _Fase.resumen
           : _Fase.sinSaldo;
     });
@@ -123,7 +125,8 @@ class _HojaBajaPersonaState extends ConsumerState<HojaBajaPersona> {
       case PersonaDadaDeBaja(:final persona):
         Navigator.of(context).pop<SalidaHojaBajaPersona>(PersonaBajaRealizada(persona));
       case BajaPersonaRequiereConfirmacion(:final cuenta):
-        // Entre que se abrió la hoja y que se confirmó apareció una deuda: se muestra el resumen.
+        // Entre que se abrió la hoja y que se confirmó apareció una deuda o una entrega: se muestra el
+        // resumen.
         setState(() {
           _enviando = false;
           _cuenta = cuenta;
@@ -188,7 +191,7 @@ class _HojaBajaPersonaState extends ConsumerState<HojaBajaPersona> {
       ),
       _Fase.confirmar when cuenta != null => (
         TextosBajaPersona.seguro,
-        _cuerpo(TextosBajaPersona.deudaSigue(nombre, cuenta.saldoCentavos)),
+        _cuerpo(TextosBajaPersona.segundaConfirmacion(nombre, cuenta)),
         <Widget>[
           _principal(
             TextosBajaPersona.siDarDeBaja,
@@ -376,31 +379,58 @@ class _CuadroDeCuenta extends StatelessWidget {
             MergeSemantics(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        rotulo,
-                        style: const TextStyle(fontSize: 14, color: ColoresAlta.gris),
+                // Con el texto grande (desde 1,4×) no entran el rótulo y el valor lado a lado sin
+                // partir uno de los dos a mitad de palabra o de número: van uno sobre el otro.
+                child: textoGrande(context)
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            rotulo,
+                            style: const TextStyle(fontSize: 14, color: ColoresAlta.gris),
+                          ),
+                          Text(
+                            valor,
+                            textAlign: TextAlign.end,
+                            style: TextStyle(
+                              fontFamily: mono ? 'JetBrainsMono' : null,
+                              fontSize: 14,
+                              fontWeight: fuerte ? FontWeight.w700 : FontWeight.w500,
+                              color: ColoresAlta.tinta,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // El rótulo es una palabra y manda (3 partes contra 2): con el texto grande y un valor
+                          // ancho no se parte a mitad de palabra («Comprad» / «o»); el valor, que puede ser
+                          // ancho, se acomoda en el resto.
+                          Flexible(
+                            flex: 3,
+                            child: Text(
+                              rotulo,
+                              style: const TextStyle(fontSize: 14, color: ColoresAlta.gris),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Flexible(
+                            flex: 2,
+                            child: Text(
+                              valor,
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                fontFamily: mono ? 'JetBrainsMono' : null,
+                                fontSize: 14,
+                                fontWeight: fuerte ? FontWeight.w700 : FontWeight.w500,
+                                color: ColoresAlta.tinta,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: Text(
-                        valor,
-                        textAlign: TextAlign.end,
-                        style: TextStyle(
-                          fontFamily: mono ? 'JetBrainsMono' : null,
-                          fontSize: 14,
-                          fontWeight: fuerte ? FontWeight.w700 : FontWeight.w500,
-                          color: ColoresAlta.tinta,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ),
         ],

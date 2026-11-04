@@ -27,7 +27,12 @@ class DiaDeAgenda extends Equatable {
 
 /// Lo que la pantalla de la agenda dibuja: las atrasadas y, debajo, los días con agendas, agrupados.
 class VistaAgenda extends Equatable {
-  const VistaAgenda({required this.dias, this.atrasadas = const []});
+  const VistaAgenda({
+    required this.dias,
+    this.atrasadas = const [],
+    this.deCampania = false,
+    this.hayMas = false,
+  });
 
   static const vacia = VistaAgenda(dias: []);
 
@@ -37,10 +42,18 @@ class VistaAgenda extends Equatable {
 
   final List<DiaDeAgenda> dias;
 
+  /// Es la lista de **la campaña en curso** (un estado cerrado o «Todas»): los días van del más nuevo
+  /// al más viejo y, como se pagina con «Ver más», sin el conteo de cada día (el último quedaría a
+  /// medias).
+  final bool deCampania;
+
+  /// Quedan agendas de la campaña por mostrar: la pantalla ofrece «Ver más».
+  final bool hayMas;
+
   bool get estaVacia => dias.isEmpty && atrasadas.isEmpty;
 
   int get total => atrasadas.length + dias.fold(0, (suma, d) => suma + d.cantidad);
 
   @override
-  List<Object?> get props => [dias, atrasadas];
+  List<Object?> get props => [dias, atrasadas, deCampania, hayMas];
 }

@@ -1,3 +1,4 @@
+import '../../../mapa/domain/entities/consulta_lista_ubicaciones.dart';
 import '../entities/estado_agenda.dart';
 import '../entities/filtros_agenda.dart';
 import '../entities/item_agenda.dart';
@@ -42,9 +43,48 @@ class VentanaAgenda {
 
 /// Arma la vista de la agenda (23B): filtra lo leído por la ventana, el tipo y el estado, lo ordena
 /// por hora y lo agrupa por día con su conteo. Las `PROGRAMADA` de días anteriores a hoy (una visita
-/// que pasó y nadie registró) no se pierden: van al grupo «ATRASADAS» arriba de «HOY». Es una función pura: la pantalla la vuelve a correr
-/// cada vez que cambia lo leído, un filtro o el minuto.
+/// que pasó y nadie registró) no se pierden: van al grupo «ATRASADAS» arriba de «HOY». Es una función
+/// pura: la pantalla la vuelve a correr cada vez que cambia lo leído, un filtro o el minuto.
 abstract final class ArmadorAgenda {
+  /// Cuántas agendas suma cada «Ver más»: las de siempre de las listas de la app (Supuesto S14, el
+  /// lazy loading de la lista de ubicaciones), sin un número nuevo.
+  static const tamanoPagina = ConsultaListaUbicaciones.tamanoPagina;
+
+  /// La lista de **la campaña en curso** (un estado cerrado o «Todas», HU-VIS-002): lo leído de toda la
+  /// campaña, filtrado por tipo y estado, de la más nueva a la más vieja, agrupado por día (también
+  /// del más nuevo al más viejo) y cortado en [limite] agendas; [VistaAgenda.hayMas] dice si quedan.
+  static VistaAgenda armarCampania(
+    List<ItemAgenda> items,
+    FiltrosAgenda filtros,
+    DateTime ahora, {
+    int limite = tamanoPagina,
+  }) {
+    final hoy = VentanaAgenda.de(ahora).inicioDeHoy;
+    final elegidos = [
+      for (final item in items)
+        if (!item.agenda.estaBorrada &&
+            filtros.estado.admite(item.agenda.estado) &&
+            (filtros.tipo == null || item.agenda.tipo == filtros.tipo))
+          item,
+    ]..sort((a, b) => _porHora(b, a));
+    final visibles = elegidos.take(limite).toList();
+
+    final dias = <DiaDeAgenda>[];
+    List<ItemAgenda>? delDia;
+    DateTime? diaActual;
+    for (final item in visibles) {
+      final local = item.agenda.fechaProgramada.toLocal();
+      final dia = DateTime(local.year, local.month, local.day);
+      if (diaActual == null || dia != diaActual) {
+        diaActual = dia;
+        delDia = <ItemAgenda>[];
+        dias.add(DiaDeAgenda(dia: dia, items: delDia, diasDesdeHoy: _diasEntre(hoy, dia)));
+      }
+      delDia!.add(item);
+    }
+    return VistaAgenda(dias: dias, deCampania: true, hayMas: elegidos.length > visibles.length);
+  }
+
   static VistaAgenda armar(List<ItemAgenda> items, FiltrosAgenda filtros, DateTime ahora) {
     final ventana = VentanaAgenda.de(ahora);
     final elegidos = <ItemAgenda>[];

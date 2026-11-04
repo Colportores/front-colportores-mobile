@@ -4,10 +4,12 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/error/failure.dart';
 import '../../domain/entities/espacio.dart';
 import '../../domain/entities/ubicacion.dart';
+import '../../domain/services/agrupador_espacios.dart';
 import '../../domain/usecases/agregar_espacio_use_case.dart';
 import '../../domain/usecases/dar_de_baja_espacio_use_case.dart';
 import '../../domain/usecases/listar_espacios_use_case.dart';
 import '../../domain/usecases/modificar_espacio_use_case.dart';
+import '../../domain/usecases/restaurar_espacio_use_case.dart';
 import 'alta_ubicacion_providers.dart';
 import 'personas_providers.dart';
 
@@ -44,6 +46,14 @@ final darDeBajaEspacioUseCaseProvider = Provider<DarDeBajaEspacioUseCase>(
   ),
 );
 
+/// Restaurar un depto dado de baja («Reactivar» de «Dados de baja», #473).
+final restaurarEspacioUseCaseProvider = Provider<RestaurarEspacioUseCase>(
+  (ref) => RestaurarEspacioUseCase(
+    ref.watch(espacioRepositoryProvider),
+    ahora: ref.watch(relojEspaciosProvider),
+  ),
+);
+
 final listarEspaciosUseCaseProvider = Provider<ListarEspaciosUseCase>(
   (ref) => ListarEspaciosUseCase(ref.watch(espacioRepositoryProvider)),
 );
@@ -63,6 +73,25 @@ final espaciosDeUbicacionProvider = FutureProvider.autoDispose.family<List<Espac
     ListarEspaciosParams(ubicacionId: ubicacionId),
   );
   return lectura.fold((Failure falla) => throw falla, (espacios) => espacios);
+}, retry: _sinReintentos);
+
+/// Los espacios dados de baja de [ubicacionId], en el orden de la lista (por piso y por número): lo que
+/// muestra «Dados de baja» al pie de la hoja del edificio (#473). Se invalida junto con
+/// [espaciosDeUbicacionProvider] cuando un depto pasa de un lado al otro.
+final espaciosDadosDeBajaProvider = FutureProvider.autoDispose.family<List<Espacio>, String>((
+  ref,
+  ubicacionId,
+) async {
+  final lectura = await ref.watch(listarEspaciosUseCaseProvider)(
+    ListarEspaciosParams(ubicacionId: ubicacionId, incluirBajas: true),
+  );
+  return lectura.fold((Failure falla) => throw falla, (todos) {
+    final bajas = [
+      for (final espacio in todos)
+        if (espacio.estaBorrada) espacio,
+    ];
+    return [for (final grupo in AgrupadorEspacios.porPiso(bajas)) ...grupo.espacios];
+  });
 }, retry: _sinReintentos);
 
 /// La ubicación [ubicacionId] (la dirección y el tipo que encabezan la hoja), o `null` si ya no está

@@ -28,6 +28,13 @@ void main() {
       expect(FormatoUbicaciones.distancia(1234), '1,2\u00A0km');
     });
 
+    test('en la frontera del kilómetro nunca dice «1000 m»: desde 999,5 ya es «1,0 km»', () {
+      expect(FormatoUbicaciones.distancia(999.4), '999 m');
+      expect(FormatoUbicaciones.distancia(999.5), '1,0 km');
+      expect(FormatoUbicaciones.distancia(999.99), '1,0 km');
+      expect(FormatoUbicaciones.distancia(1049), '1,0 km');
+    });
+
     test('el número y la unidad van unidos por un espacio duro: el renglón no los separa', () {
       for (final metros in [0.2, 12, 999, 1000, 5400]) {
         final texto = FormatoUbicaciones.distancia(metros.toDouble());

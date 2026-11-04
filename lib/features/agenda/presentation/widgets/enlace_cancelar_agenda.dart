@@ -22,6 +22,8 @@ import 'hoja_cancelar_agenda.dart';
 /// - Un doble toque abre una sola hoja.
 /// - Al cancelar, muestra el aviso (con la advertencia si el teléfono no pudo sacar el recordatorio)
 ///   y llama a [alCancelar]; sin [alCancelar] cierra el detalle y vuelve a la lista (23C·05).
+/// - Si la hoja se cierra sin cancelar llama a [alVolverSinCancelar]: la agenda pudo cambiar mientras
+///   estaba abierta (se cumplió, 23C·06) y quien la muestra la vuelve a leer.
 class EnlaceCancelarAgenda extends StatefulWidget {
   const EnlaceCancelarAgenda({
     super.key,
@@ -29,6 +31,7 @@ class EnlaceCancelarAgenda extends StatefulWidget {
     required this.tipo,
     required this.estado,
     this.alCancelar,
+    this.alVolverSinCancelar,
   });
 
   final String agendaId;
@@ -38,6 +41,10 @@ class EnlaceCancelarAgenda extends StatefulWidget {
   /// Se llama con lo que dejó la cancelación, después del aviso. Sin esto, se cierra la pantalla
   /// que lo muestra (`Navigator.maybePop`).
   final ValueChanged<ResultadoCancelarAgenda>? alCancelar;
+
+  /// Se llama cuando la hoja se cerró y no se canceló nada («Volver», atrás, o la agenda ya no se
+  /// podía cancelar).
+  final VoidCallback? alVolverSinCancelar;
 
   @override
   State<EnlaceCancelarAgenda> createState() => _EnlaceCancelarAgendaState();
@@ -62,7 +69,10 @@ class _EnlaceCancelarAgendaState extends State<EnlaceCancelarAgenda> {
     } finally {
       _abierta = false;
     }
-    if (resultado == null) return;
+    if (resultado == null) {
+      if (mounted) widget.alVolverSinCancelar?.call();
+      return;
+    }
     mensajero
       ?..clearSnackBars()
       ..showSnackBar(

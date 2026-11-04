@@ -4,6 +4,7 @@ import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.dart';
@@ -161,6 +162,22 @@ final class CiudadesFalsas implements CiudadesParaAlta {
   }
 }
 
+/// Unas ciudades que no se pueden leer (la base local ilegible, o el catálogo sin bajar): contesta
+/// la falla de lectura, nunca «la campaña no tiene ciudades».
+final class CiudadesQueNoSePuedenLeer implements CiudadesParaAlta {
+  const CiudadesQueNoSePuedenLeer();
+
+  @override
+  Future<Either<Failure, PropuestaCiudad>> proponer({
+    required String colportorId,
+    Coordenadas? punto,
+  }) async => const Left(FailureCiudadesNoDisponibles());
+
+  @override
+  Future<Either<Failure, List<CiudadCatalogo>>> deMiCampania(String colportorId) async =>
+      const Left(FailureCiudadesNoDisponibles());
+}
+
 /// El repositorio de ubicaciones, con el resultado de `registrar` a gusto del test.
 final class RepoAltaFalso with UbicacionRepositorySinModificar implements UbicacionRepository {
   /// Qué devuelve `registrar`. Por defecto, el alta hecha.
@@ -174,6 +191,7 @@ final class RepoAltaFalso with UbicacionRepositorySinModificar implements Ubicac
           Espacio? espacio,
           OrigenCoordenadas origen,
           CriterioDuplicadoUbicacion? duplicados,
+          String? justificacion,
         })
       >[];
 
@@ -185,8 +203,15 @@ final class RepoAltaFalso with UbicacionRepositorySinModificar implements Ubicac
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) async {
-    llamadas.add((ubicacion: ubicacion, espacio: espacio, origen: origen, duplicados: duplicados));
+    llamadas.add((
+      ubicacion: ubicacion,
+      espacio: espacio,
+      origen: origen,
+      duplicados: duplicados,
+      justificacion: justificacion,
+    ));
     final espera = bloqueo;
     if (espera != null) await espera.future;
     final f = comportamiento;
@@ -219,6 +244,8 @@ CandidataDuplicado candidata(
   TipoUbicacion tipo = TipoUbicacion.casa,
   String ciudadId = 'ciu-mvd',
   DateTime? actualizada,
+  EstadoCasa? estado,
+  int? espacios,
 }) {
   final cuando = actualizada ?? DateTime.utc(2026, 9, 29, 12);
   return CandidataDuplicado(
@@ -235,13 +262,14 @@ CandidataDuplicado candidata(
     motivo: motivo,
     distanciaMetros: metros,
     admiteConservarAmbos: admiteConservarAmbos,
+    estado: estado,
+    cantidadEspacios: espacios,
   );
 }
 
 /// Overrides de Riverpod para probar el alta sin plugins, red ni base de datos.
 ///
-/// [puertoCiudades] reemplaza a [ciudades] con otro puerto (por ejemplo `CiudadesParaAltaSinFuente`,
-/// el de producción hoy): un provider no se puede sobrescribir dos veces en el mismo contenedor.
+/// [puertoCiudades] reemplaza a [ciudades] con otro puerto (por ejemplo `CiudadesQueNoSePuedenLeer`): un provider no se puede sobrescribir dos veces en el mismo contenedor.
 /// [generadorId] reemplaza los ids secuenciales (`id-1`…) por otro generador, por ejemplo el UUID v7
 /// de producción.
 List<Override> overridesAlta({

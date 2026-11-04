@@ -36,8 +36,10 @@ class Jornada extends Equatable {
   /// FK opcional a `usuario.id` (esquema-datos.md: "acompañante_id (FK opcional)").
   final String? acompananteId;
 
-  /// TODO(#8): el esquema no define el catálogo de valores de `tipo_acompañamiento` — pendiente
-  /// de confirmar. Se modela como texto libre hasta que se defina.
+  /// Texto libre. DECISIÓN ABIERTA (#544, punto 4, a cargo de Cristian): ni el esquema ni las
+  /// HU de jornada definen el catálogo de valores de `tipo_acompañamiento`; si queda libre o
+  /// pasa a un catálogo cerrado (con migración local que preserve lo escrito y un `check` en el
+  /// backend) se resuelve ahí. Hasta entonces no se valida ni se normaliza este campo.
   final String? tipoAcompanamiento;
 
   /// Denormalizado al cerrar la jornada (esquema-datos.md).

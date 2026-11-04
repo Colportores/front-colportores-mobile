@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../agenda/presentation/formato_agenda.dart' show TextosAgenda;
 import '../../domain/entities/nota_del_lugar.dart';
 import '../../domain/entities/persona.dart';
 import '../formato_hoja_casa.dart';
@@ -23,6 +24,7 @@ abstract final class ClavesHojaCasa {
   static Key pestana(String id) => Key('hoja_casa_pestana_$id');
   static const nota = Key('hoja_casa_nota');
   static const registrarVisita = Key('hoja_casa_registrar_visita');
+  static const agendar = Key('hoja_casa_agendar');
   static const cerrar = Key('hoja_casa_cerrar');
 }
 
@@ -93,6 +95,9 @@ class FilaPersonaDeLaCasa extends StatelessWidget {
         decoration: const BoxDecoration(color: _navy, shape: BoxShape.circle),
         child: Text(
           FormatoPersonas.iniciales(persona),
+          // El círculo es fijo (34 dp) y las iniciales no llevan información que el nombre de al lado no
+          // diga: no escalan con el texto, o se partirían en dos renglones y el círculo las cortaría.
+          textScaler: TextScaler.noScaling,
           style: const TextStyle(
             fontFamily: 'Inter',
             fontSize: 12,
@@ -380,6 +385,33 @@ class BotonRegistrarVisita extends StatelessWidget {
           textAlign: TextAlign.center,
         ),
       ),
+    );
+  }
+}
+
+/// «+ Agendar» de la hoja de la casa (23B·10): la segunda acción, debajo de «Registrar visita». Mientras
+/// [ocupado] queda apagado (un doble toque no abre dos veces el formulario). Alto mínimo 48.
+class BotonAgendarDeLaCasa extends StatelessWidget {
+  const BotonAgendarDeLaCasa({super.key, required this.alPresionar, this.ocupado = false});
+
+  final VoidCallback alPresionar;
+  final bool ocupado;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      key: ClavesHojaCasa.agendar,
+      onPressed: ocupado ? null : alPresionar,
+      style: TextButton.styleFrom(
+        foregroundColor: const Color(0xFF13407A),
+        minimumSize: const Size.fromHeight(48),
+        textStyle: const TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 14.5,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      child: const Text(TextosAgenda.agendar),
     );
   }
 }

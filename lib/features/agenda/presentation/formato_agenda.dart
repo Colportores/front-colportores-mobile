@@ -11,6 +11,8 @@ abstract final class TextosAgenda {
   static const eyebrow = 'AGENDA';
   static const titulo = 'Agenda';
   static const subtitulo = 'Hoy y los próximos 7 días';
+  static const subtituloCampania = 'En esta campaña';
+  static const verMas = 'Ver más';
 
   static const chipTodas = 'Todas';
   static const chipEntrevistas = 'Entrevistas';
@@ -18,7 +20,16 @@ abstract final class TextosAgenda {
   static const filtroTipo = 'Filtrar por tipo';
 
   static const agendar = '+ Agendar';
+  static const visitasAgendadas = 'VISITAS AGENDADAS';
   static const registrar = 'Registrar';
+
+  /// La tarjeta de la cobranza recién agendada al registrar una venta (vista 39, R·08).
+  static const agendadaAlRegistrarLaVenta = 'Agendada al registrar la venta';
+  static const cambiarLaCita = 'Cambiar';
+
+  /// «Cobranza · Pedro», o «Cobranza» si no se sabe con quién es.
+  static String cobranzaDe(String persona) =>
+      persona.trim().isEmpty ? tagCobranza : '$tagCobranza · ${persona.trim()}';
   static const atrasadas = 'ATRASADAS';
   static const pasoLaHora = 'Pasó la hora · registrá qué pasó';
 
@@ -63,6 +74,20 @@ abstract final class FormatoAgenda {
     return '${_dos(l.day)}/${_dos(l.month)}';
   }
 
+  /// El año de [momento] si no es el de [ahora] («2025»), o `null` si es el actual: la lista de la
+  /// campaña puede juntar más de un año (campaña permanente, o sin campaña conocida) y «15/12» solo
+  /// no dice de cuál.
+  static String? anioSiEsOtro(DateTime momento, DateTime ahora) {
+    final anio = momento.toLocal().year;
+    return anio == ahora.toLocal().year ? null : anio.toString();
+  }
+
+  /// «22/10», o «22/10/2025» si el año no es el de [ahora].
+  static String diaMesConAnio(DateTime momento, DateTime ahora) {
+    final anio = anioSiEsOtro(momento, ahora);
+    return anio == null ? diaMes(momento) : '${diaMes(momento)}/$anio';
+  }
+
   static String _dos(int n) => n.toString().padLeft(2, '0');
 
   /// «HOY · MIÉRCOLES 23», «MAÑANA · JUEVES 24», «VIERNES 25».
@@ -71,6 +96,34 @@ abstract final class FormatoAgenda {
     if (dia.esHoy) return 'HOY · $nombre';
     if (dia.esManana) return 'MAÑANA · $nombre';
     return nombre;
+  }
+
+  /// El subtítulo de la pestaña: la ventana de siempre, o la campaña con un estado cerrado o «Todas».
+  static String subtituloDe(FiltrosAgenda filtros) =>
+      filtros.estado.miraLaCampania ? TextosAgenda.subtituloCampania : TextosAgenda.subtitulo;
+
+  static const _diasCortos = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
+
+  /// «JUE 24/10 · 14:30» (con el año si no es el de [ahora]): cuándo es una visita en la lista de la
+  /// hoja de la casa (23B·10).
+  static String cuandoCorto(DateTime momento, DateTime ahora) {
+    final l = momento.toLocal();
+    return '${_diasCortos[l.weekday - 1]} ${diaMesConAnio(momento, ahora)} · ${hora(momento)}';
+  }
+
+  /// La segunda línea de una visita en la hoja de la casa: con quién («María Fernández»), «en» la
+  /// dirección si la cobranza es en otra, o el depto si la casa es un edificio. `null` si no hay nada
+  /// que decir (la casa ya es el título de la hoja).
+  static String? subtituloDeVisitaDeLaCasa(ItemAgenda item) {
+    final alternativa = item.alternativa == null ? null : direccion(item);
+    final depto = item.numeroDepto?.trim() ?? '';
+    final partes = [
+      ?item.nombrePersona,
+      if (alternativa != null) 'en $alternativa',
+      if (alternativa == null && depto.isNotEmpty && item.casa?.tipo == TipoUbicacion.edificio)
+        'Depto $depto',
+    ];
+    return partes.isEmpty ? null : partes.join(' · ');
   }
 
   /// El rótulo con el conteo del día (HU-VIS-002: «Hoy (3)», «Mañana (5)»).
@@ -130,9 +183,17 @@ abstract final class FormatoAgenda {
   }
 
   /// Lo que dice el lector de pantalla de una fila.
-  static String etiquetaDeFila(ItemAgenda item, {required bool vencida, bool conFecha = false}) {
+  static String etiquetaDeFila(
+    ItemAgenda item, {
+    required bool vencida,
+    bool conFecha = false,
+    DateTime? ahora,
+  }) {
     final partes = [
-      if (conFecha) diaMes(item.agenda.fechaProgramada),
+      if (conFecha)
+        ahora == null
+            ? diaMes(item.agenda.fechaProgramada)
+            : diaMesConAnio(item.agenda.fechaProgramada, ahora),
       hora(item.agenda.fechaProgramada),
       tipo(item.agenda.tipo),
       titulo(item),

@@ -25,6 +25,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/personas
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../widget/mapa/hoja_con_quien_arnes.dart' show ObservadorDeRutas;
@@ -42,6 +43,8 @@ Agenda agendaDelDetalle({
   TipoAgenda tipo = TipoAgenda.entrevista,
   DateTime? cuando,
   String? slot = 'early_afternoon',
+  String? ventaId,
+  int? montoPrevistoCentavos,
 }) => Agenda(
   id: id,
   espacioId: 'esp-1',
@@ -51,6 +54,8 @@ Agenda agendaDelDetalle({
   slotCodigo: slot,
   estado: estado,
   colportorId: 'col-1',
+  ventaId: ventaId,
+  montoPrevistoCentavos: montoPrevistoCentavos,
   auditoria: Auditoria(
     createdAt: DateTime.utc(2026, 10, 23),
     updatedAt: DateTime.utc(2026, 10, 23),
@@ -81,8 +86,23 @@ final class AgendaRepositorioDetalle implements AgendaRepository {
   /// Si no es `null`, el próximo [modificar] lanza esto en vez de devolver un `Either`.
   Object? lanzar;
 
+  /// Cada [cancelar] toma la siguiente de [fallasAlCancelar] (`null` o sin más: éxito).
+  final fallasAlCancelar = <Failure?>[];
+
+  /// Si no es `null`, [cancelar] espera a que se complete (una cancelación «en curso»).
+  Completer<void>? compuertaAlCancelar;
+
+  /// Si no es `null`, el próximo [cancelar] lanza esto en vez de devolver un `Either`.
+  Object? lanzarAlCancelar;
+
+  /// Se llama con la agenda cuando una cancelación sale bien (para que una lista de prueba la vea).
+  void Function(Agenda cancelada)? alCancelarAgenda;
+
   var lecturas = 0;
   final recibidos = <CambiosDeAgenda>[];
+
+  /// Los `agendaId` que llegaron a [cancelar], en orden.
+  final canceladas = <String>[];
 
   @override
   Future<Either<Failure, DetalleDeAgenda?>> obtenerDetalle(String agendaId) async {
@@ -133,8 +153,32 @@ final class AgendaRepositorioDetalle implements AgendaRepository {
       throw UnimplementedError();
 
   @override
-  Future<Either<Failure, Agenda>> cancelar(String agendaId, {required DateTime ahora}) =>
-      throw UnimplementedError();
+  Future<Either<Failure, Agenda>> cancelar(String agendaId, {required DateTime ahora}) async {
+    canceladas.add(agendaId);
+    await compuertaAlCancelar?.future;
+    final error = lanzarAlCancelar;
+    if (error != null) {
+      lanzarAlCancelar = null;
+      throw error;
+    }
+    final falla = fallasAlCancelar.isEmpty ? null : fallasAlCancelar.removeAt(0);
+    if (falla != null) return Left(falla);
+    final actual = detalle!.agenda;
+    final cancelada = Agenda(
+      id: actual.id,
+      espacioId: actual.espacioId,
+      espacioPersonaId: actual.espacioPersonaId,
+      tipo: actual.tipo,
+      fechaProgramada: actual.fechaProgramada,
+      slotCodigo: actual.slotCodigo,
+      estado: EstadoAgenda.cancelada,
+      colportorId: actual.colportorId,
+      auditoria: actual.auditoria,
+    );
+    detalle = DetalleDeAgenda(agenda: cancelada, nota: detalle!.nota, visita: detalle!.visita);
+    alCancelarAgenda?.call(cancelada);
+    return Right(cancelada);
+  }
 
   @override
   Future<Either<Failure, VisitaGuardada>> registrarVisita(
@@ -192,6 +236,7 @@ Future<ArnesDetalle> montarDetalle(
   double escala = 1,
   Size tamano = const Size(390, 844),
   bool abrir = true,
+  List<Override> extras = const [],
 }) async {
   final arnes = ArnesDetalle(
     repo: repo ?? AgendaRepositorioDetalle(detalle ?? DetalleDeAgenda(agenda: agendaDelDetalle())),
@@ -216,6 +261,7 @@ Future<ArnesDetalle> montarDetalle(
         espacioRepositoryProvider.overrideWithValue(
           EspacioRepositorioParaPersonas(lugar, falla: fallaDeCasa),
         ),
+        ...extras,
         if (conRegistrar)
           registrarVisitaDesdeLaCasaProvider.overrideWithValue((c) {
             arnes.registros.add(c);

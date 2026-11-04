@@ -31,9 +31,11 @@ abstract interface class HistorialNotificacionesRepository {
   /// Marca como leídas todas las que siguen sin leer.
   Future<Either<Failure, Unit>> marcarTodasLeidas({required DateTime ahora});
 
-  /// Borra el historial. Con [hasta], solo lo recibido hasta ese instante (inclusive): lo que llegó
-  /// después, con la confirmación abierta, sobrevive. Sin [hasta], todo. Devuelve cuántos borró.
-  Future<Either<Failure, int>> borrarTodas({DateTime? hasta});
+  /// Borra el historial. Con [ids], solo esos avisos: los que la persona tenía a la vista al
+  /// confirmar; lo que llegó después (con el menú o la confirmación abiertos) sobrevive, aunque su
+  /// hora sea anterior (un recordatorio se guarda con la hora en que sonó). Sin [ids], todo.
+  /// Devuelve cuántos borró.
+  Future<Either<Failure, int>> borrarTodas({Set<String>? ids});
 
   /// Borra lo que pasó de los 90 días contados hasta [ahora]. Devuelve cuántos borró.
   Future<Either<Failure, int>> purgarVencidas({required DateTime ahora});

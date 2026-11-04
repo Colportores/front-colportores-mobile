@@ -1,4 +1,5 @@
 import '../domain/entities/tipo_agenda.dart';
+import 'textos_detalle_agenda.dart';
 
 /// Los textos de cancelar una agenda (vista 23, 23C·04 y 23C·05, HU-VIS-004). Los del canvas van tal
 /// cual; los que el canvas no dibuja (marcados «a confirmar») dicen qué pasa y qué hacer.
@@ -29,9 +30,9 @@ abstract final class TextosCancelarAgenda {
   static const cancelando = 'Cancelando…';
   static const reintentar = 'Reintentar';
 
-  /// Falla al escribir en el teléfono: la agenda sigue como estaba (como 23C·07).
-  static const noPudimosCancelar =
-      'No pudimos cancelar la agenda. Sigue como estaba. Probá de nuevo.';
+  /// Falla al escribir en el teléfono: el aviso de 23C·07, que el issue #455 pide para este error
+  /// («la agenda sigue como estaba»); «Reintentar» dice qué hacer.
+  static const noPudimosCancelar = TextosDetalleAgenda.noPudimosGuardar;
 
   /// La agenda se cumplió o se canceló mientras la hoja estaba abierta y la validación del
   /// repositorio no dijo más. Con un mensaje del repositorio se usa ese.

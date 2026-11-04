@@ -50,7 +50,7 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
   /// Lo que se registró, marcó y borró (para afirmar sobre las llamadas).
   final marcadas = <String>[];
   int llamadasMarcarTodas = 0;
-  final borrados = <DateTime?>[];
+  final borrados = <Set<String>?>[];
 
   /// Una falla para la próxima llamada de cada operación (y las siguientes, mientras valga).
   bool fallaAlMarcar = false;
@@ -170,13 +170,13 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
   }
 
   @override
-  Future<Either<Failure, int>> borrarTodas({DateTime? hasta}) async {
-    borrados.add(hasta);
+  Future<Either<Failure, int>> borrarTodas({Set<String>? ids}) async {
+    borrados.add(ids);
     final puerta = puertaAlBorrar;
     if (puerta != null) await puerta.future;
     if (fallaAlBorrar) return const Left(FailureInesperado());
     final antes = _filas.length;
-    _filas.removeWhere((f) => hasta == null || !f.recibidaEn.isAfter(hasta));
+    _filas.removeWhere((f) => ids == null || ids.contains(f.id));
     _cambios.add(null);
     return Right(antes - _filas.length);
   }

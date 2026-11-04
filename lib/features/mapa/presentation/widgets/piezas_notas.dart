@@ -5,6 +5,7 @@ import '../../domain/entities/nota_de_texto.dart';
 import '../textos_notas.dart';
 import 'aviso_con_deshacer.dart';
 import 'piezas_alta.dart';
+import 'piezas_lista_ubicaciones.dart' show textoGrande;
 import 'piezas_persona.dart';
 
 // Las piezas de las pantallas de notas (vista 32E): la cabecera, la tarjeta de una nota y la hoja de
@@ -16,6 +17,7 @@ abstract final class ClavesNotas {
   static const botonEditar = Key('notas_opcion_editar');
   static const botonBorrar = Key('notas_opcion_borrar');
   static const campo = Key('notas_campo');
+  static const seBorraEl = Key('notas_se_borra_el');
 }
 
 /// La fila de arriba: el botón de atrás o de cerrar y el rótulo «NOTAS».
@@ -127,6 +129,7 @@ class TarjetaNota extends StatelessWidget {
     this.conLapiz = false,
     this.margen = margenDeLaPantalla,
   }) : alRestaurar = null,
+       conPlazo = false,
        atenuada = false;
 
   const TarjetaNota.borrada({
@@ -135,6 +138,7 @@ class TarjetaNota extends StatelessWidget {
     required this.ahora,
     required this.alRestaurar,
     this.conLapiz = false,
+    this.conPlazo = false,
     this.margen = margenDeLaPantalla,
   }) : alAbrirOpciones = null,
        atenuada = true;
@@ -147,6 +151,7 @@ class TarjetaNota extends StatelessWidget {
     this.margen = margenDeLaPantalla,
   }) : alAbrirOpciones = null,
        alRestaurar = null,
+       conPlazo = false,
        atenuada = false;
 
   final NotaDeTexto nota;
@@ -155,6 +160,10 @@ class TarjetaNota extends StatelessWidget {
 
   /// Con el lápiz «✎» a la izquierda, como las notas del lugar de la hoja (vista 39, C·05).
   final bool conLapiz;
+
+  /// En una nota borrada: dice cuándo se va para siempre («Se borra el 25/01»). Solo las notas de una
+  /// persona tienen ese plazo de 90 días.
+  final bool conPlazo;
 
   /// El aire alrededor de la tarjeta: el de una pantalla entera, o el de la hoja (que ya trae el suyo).
   final EdgeInsets margen;
@@ -174,7 +183,70 @@ class TarjetaNota extends StatelessWidget {
     final colores = theme.extension<ColoresColportaje>();
     final gris = colores?.gris ?? ColoresAlta.gris;
     final fecha = FormatoNotas.fecha(nota, ahora);
-    final lector = '${FormatoNotas.fechaParaLector(nota, ahora)}. ${nota.texto}';
+    final dia = conPlazo ? FormatoNotas.diaDeBorrado(nota) : null;
+    final plazo = dia == null ? null : TextosNotas.seBorraEl(dia);
+    final lector =
+        '${FormatoNotas.fechaParaLector(nota, ahora)}. ${nota.texto}${plazo == null ? '' : '. $plazo.'}';
+    // Una nota borrada con «Restaurar» lleva el botón dentro de la tarjeta, a la derecha (canvas 32E·05):
+    // el lector dice la nota por un lado y el botón por el otro.
+    final conRestaurar = alAbrirOpciones == null && alRestaurar != null;
+    // Con el texto grande el botón no entra al lado de las notas: va dentro de la tarjeta, abajo a la
+    // derecha.
+    final restaurarAbajo = conRestaurar && textoGrande(context);
+
+    final botonRestaurar = !conRestaurar
+        ? null
+        : Semantics(
+            container: true,
+            button: true,
+            excludeSemantics: true,
+            label: TextosNotas.restaurarLaNota(FormatoNotas.fechaParaLector(nota, ahora)),
+            onTap: alRestaurar,
+            child: TextButton(
+              onPressed: alRestaurar,
+              style: TextButton.styleFrom(
+                foregroundColor: ColoresAlta.azul,
+                minimumSize: const Size(48, 48),
+                textStyle: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              child: const Text(TextosNotas.restaurar),
+            ),
+          );
+
+    final textos = Padding(
+      padding: const EdgeInsets.only(top: 2, right: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            fecha,
+            style: TextStyle(
+              fontFamily: 'JetBrainsMono',
+              fontSize: 10,
+              letterSpacing: 1.4,
+              color: gris,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            nota.texto,
+            style: TextStyle(fontSize: 15, height: 1.4, color: atenuada ? gris : ColoresAlta.tinta),
+          ),
+          if (plazo != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              plazo,
+              key: ClavesNotas.seBorraEl,
+              style: TextStyle(fontSize: 12.5, height: 1.3, color: gris),
+            ),
+          ],
+        ],
+      ),
+    );
 
     final contenido = Container(
       constraints: BoxConstraints(minHeight: conLapiz ? 56 : 60),
@@ -189,33 +261,24 @@ class TarjetaNota extends StatelessWidget {
         children: [
           if (conLapiz) ...[const _LapizDeLaNota(), const SizedBox(width: 12)],
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2, right: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    fecha,
-                    style: TextStyle(
-                      fontFamily: 'JetBrainsMono',
-                      fontSize: 10,
-                      letterSpacing: 1.4,
-                      color: gris,
-                    ),
+            child: !conRestaurar
+                ? textos
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Semantics(
+                        container: true,
+                        excludeSemantics: true,
+                        label: lector,
+                        child: textos,
+                      ),
+                      if (restaurarAbajo)
+                        Align(alignment: Alignment.centerRight, child: botonRestaurar),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    nota.texto,
-                    style: TextStyle(
-                      fontSize: 15,
-                      height: 1.4,
-                      color: atenuada ? gris : ColoresAlta.tinta,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
+          if (conRestaurar && !restaurarAbajo) ?botonRestaurar,
           if (alAbrirOpciones != null)
             ExcludeSemantics(
               child: SizedBox.square(
@@ -230,32 +293,9 @@ class TarjetaNota extends StatelessWidget {
     if (alAbrirOpciones == null) {
       return Padding(
         padding: margen,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Semantics(container: true, excludeSemantics: true, label: lector, child: contenido),
-            if (alRestaurar != null)
-              Align(
-                alignment: Alignment.centerRight,
-                child: Semantics(
-                  container: true,
-                  button: true,
-                  excludeSemantics: true,
-                  label: 'Restaurar la nota de ${FormatoNotas.fechaParaLector(nota, ahora)}',
-                  onTap: alRestaurar,
-                  child: TextButton(
-                    onPressed: alRestaurar,
-                    style: TextButton.styleFrom(
-                      foregroundColor: ColoresAlta.azul,
-                      minimumSize: const Size(48, 48),
-                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                    ),
-                    child: const Text(TextosNotas.restaurar),
-                  ),
-                ),
-              ),
-          ],
-        ),
+        child: conRestaurar
+            ? contenido
+            : Semantics(container: true, excludeSemantics: true, label: lector, child: contenido),
       );
     }
 

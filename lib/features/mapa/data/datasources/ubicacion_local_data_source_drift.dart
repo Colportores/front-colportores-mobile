@@ -3,13 +3,17 @@ import 'dart:math' as math;
 import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/database/fecha_utc_converter.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../../agenda/domain/entities/estado_agenda.dart';
+import '../../../agenda/domain/entities/tipo_agenda.dart';
 import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/espacio.dart';
 import '../../domain/entities/espacios_activos.dart';
+import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/motivo_baja.dart';
 import '../../domain/entities/motivo_rechazo_espacio.dart';
@@ -53,11 +57,16 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     required this._encolador,
     this._marcarDuplicado = const EncoladorMarcarDuplicadoSinMotor(),
     HouseStatusUpdater? estadoDeLasCasas,
-  }) : _estadoInyectado = estadoDeLasCasas;
+    DateTime Function()? ahora,
+  }) : _estadoInyectado = estadoDeLasCasas,
+       _ahora = ahora ?? DateTime.now;
 
   final EncoladorSync _encolador;
   final EncoladorMarcarDuplicado _marcarDuplicado;
   final HouseStatusUpdater? _estadoInyectado;
+
+  /// El reloj de «la próxima entrevista» de la lista: solo cuenta la que todavía no pasó.
+  final DateTime Function() _ahora;
 
   late final HouseStatusUpdater _estadoDeLasCasas =
       _estadoInyectado ?? HouseStatusUpdaterDrift(attachedDatabase, encolador: _encolador);
@@ -73,6 +82,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     UbicacionModel ubicacion, {
     EspacioModel? espacio,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) => transaction(() async {
     final existente = await (select(
       ubicaciones,
@@ -90,6 +100,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       await into(espacios).insert(_aFilaEspacio(espacio));
       await _encolador.encolar('espacio', OperacionSync.insert, espacio.toJson());
     }
+    await _guardarJustificacion(ubicacion.id, justificacion, ubicacion.auditoria.updatedAt);
     return (ubicacion: ubicacion, yaEstaba: false);
   });
 
@@ -133,6 +144,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
     EspacioModel? espacioSiNoTiene,
+    String? justificacion,
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(nueva.id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
@@ -193,8 +205,29 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       await into(espacios).insert(_aFilaEspacio(espacioSiNoTiene!));
       await _encolador.encolar('espacio', OperacionSync.insert, espacioSiNoTiene.toJson());
     }
+    await _guardarJustificacion(guardada.id, justificacion, guardada.auditoria.updatedAt);
     return guardada;
   });
+
+  /// La justificación de «Crear igual» (HU-UBI-001, #282) en la auditoría local, dentro de la
+  /// transacción que escribe la ubicación. Sin texto (o en blanco) no escribe nada. Nunca entra a
+  /// la cola de sync ni a una columna de `ubicacion`.
+  Future<void> _guardarJustificacion(
+    String ubicacionId,
+    String? justificacion,
+    DateTime cuando,
+  ) async {
+    final texto = justificacion?.trim();
+    if (texto == null || texto.isEmpty) return;
+    await into(auditLogLocal).insert(
+      AuditLogLocalCompanion.insert(
+        evento: EventoAuditoriaLocal.ubicacionCrearIgual,
+        uuid: ubicacionId,
+        motivo: Value(texto),
+        creadoEn: cuando,
+      ),
+    );
+  }
 
   @override
   Future<({UbicacionModel ubicacion, bool escribio})> cambiarBaja(
@@ -528,6 +561,12 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     // El motivo de la baja vigente: el evento de esta ubicación con la misma marca que su `deleted_at`.
     // Una baja anterior ya reactivada, o una que vino del sync, no tiene la misma marca: sin motivo.
     final motivo = auditLogLocal.motivo.max();
+    // La próxima entrevista agendada (#491): la `PROGRAMADA` de tipo `ENTREVISTA` más cercana de este
+    // colportor que todavía no pasó, en cualquier espacio sin baja de la ubicación. Al estar en la
+    // consulta, agendar, cancelar o registrar una visita hace que el stream emita de nuevo.
+    final agendas = attachedDatabase.agendas;
+    final proxima = agendas.fechaProgramada.min();
+    final desde = const FechaUtcConverter().toSql(_ahora());
     final consulta =
         select(ubicaciones).join([
             leftOuterJoin(
@@ -548,8 +587,17 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
               houseStatuses.ubicacionId.equalsExp(ubicaciones.id) &
                   houseStatuses.deletedAt.isNull(),
             ),
+            leftOuterJoin(
+              agendas,
+              agendas.espacioId.equalsExp(espacios.id) &
+                  agendas.colportorId.equals(colportorId) &
+                  agendas.estado.equals(EstadoAgenda.programada.codigo) &
+                  agendas.tipo.equals(TipoAgenda.entrevista.codigo) &
+                  agendas.deletedAt.isNull() &
+                  agendas.fechaProgramada.isBiggerOrEqualValue(desde),
+            ),
           ])
-          ..addColumns([cantidad, motivo])
+          ..addColumns([cantidad, motivo, proxima])
           ..where(ubicaciones.createdBy.equals(colportorId))
           ..groupBy([ubicaciones.id]);
     if (!incluirBajas) consulta.where(ubicaciones.deletedAt.isNull());
@@ -561,10 +609,13 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
             cantidadEspacios: fila.read(cantidad) ?? 0,
             color: _colorDe(fila.readTableOrNull(houseStatuses)),
             motivoBaja: fila.read(motivo),
+            proximaEntrevista: _fechaDe(fila.read(proxima)),
           ),
       ],
     );
   }
+
+  static DateTime? _fechaDe(int? ms) => ms == null ? null : const FechaUtcConverter().fromSql(ms);
 
   /// El color de la fila de `house_status`, o `null` si la ubicación no tiene (es «Sin visita»).
   static ColorHouseStatus? _colorDe(HouseStatusFila? fila) =>
@@ -664,9 +715,36 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
         return u.deletedAt.isNull() & u.id.equals(centro.id).not() & (cerca | mismaDireccion);
       });
     final filas = await consulta.get();
-    return criterio.candidatas(centro.toEntity(), [
+    final candidatas = criterio.candidatas(centro.toEntity(), [
       for (final fila in filas) _aModelo(fila).toEntity(),
     ]);
+    return candidatas.isEmpty ? candidatas : _conResumen(candidatas);
+  }
+
+  /// Le suma a cada candidata lo que la tarjeta de la vista 04 muestra de su casa (#273): el estado de
+  /// visita, que sale de `house_status` (sin fila vigente es «Sin visita», ADR-003), y cuántos
+  /// espacios sin baja tiene. Es el mismo criterio que la lista (`observarListaDelColportor`).
+  Future<List<CandidataDuplicado>> _conResumen(List<CandidataDuplicado> candidatas) async {
+    final ids = [for (final c in candidatas) c.ubicacion.id];
+    final cantidad = espacios.id.count();
+    final conteo = selectOnly(espacios)
+      ..addColumns([espacios.ubicacionId, cantidad])
+      ..where(espacios.ubicacionId.isIn(ids) & espacios.deletedAt.isNull())
+      ..groupBy([espacios.ubicacionId]);
+    final espaciosPorId = {
+      for (final f in await conteo.get()) f.read(espacios.ubicacionId)!: f.read(cantidad) ?? 0,
+    };
+    final colores = await (select(
+      houseStatuses,
+    )..where((h) => h.ubicacionId.isIn(ids) & h.deletedAt.isNull())).get();
+    final colorPorId = {for (final h in colores) h.ubicacionId: _colorDe(h)};
+    return [
+      for (final c in candidatas)
+        c.conResumen(
+          estado: EstadoCasa.desdeColor(colorPorId[c.ubicacion.id]),
+          cantidadEspacios: espaciosPorId[c.ubicacion.id] ?? 0,
+        ),
+    ];
   }
 
   static UbicacionesCompanion _aFila(UbicacionModel u) => UbicacionesCompanion.insert(

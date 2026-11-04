@@ -67,6 +67,8 @@ class DriveArchive implements ArchivePort {
     required List<int> payload,
     required String? parentId,
     required String watermark,
+    DateTime? exportedAt,
+    String? keyId,
   }) async {
     // El hash se calcula acá, sobre lo que se va a subir, y viaja como
     // metadato. Que lo calcule el cliente y no el servidor es lo que hace que
@@ -82,6 +84,8 @@ class DriveArchive implements ArchivePort {
         'parent_id': parentId ?? '',
         'watermark': watermark,
         'content_hash': hash,
+        if (exportedAt != null) 'exported_at': exportedAt.toUtc().toIso8601String(),
+        if (keyId != null) 'key_id': keyId,
       })
       ..files.add(http.MultipartFile.fromBytes(
         'file',
@@ -115,8 +119,7 @@ class DriveArchive implements ArchivePort {
     return resp.bodyBytes;
   }
 
-  /// Borra una entrada. Fuera del puerto: lo usa la poda de cadenas viejas y la
-  /// limpieza de los tests.
+  @override
   Future<void> delete(String id) async {
     final resp = await _client
         .delete(_base.resolve('files/$id'), headers: await _headers())
@@ -148,6 +151,8 @@ class DriveArchive implements ArchivePort {
       watermark: watermark,
       parentId: (padre == null || padre.isEmpty) ? null : padre,
       bytes: (a['bytes'] as num?)?.toInt() ?? 0,
+      exportedAt: DateTime.tryParse('${props['exported_at']}')?.toUtc(),
+      keyId: props['key_id'] as String?,
     );
   }
 

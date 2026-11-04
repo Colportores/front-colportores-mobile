@@ -272,6 +272,43 @@ void main() {
     );
 
     testWidgets(
+      'dada la hoja a las 23:55 de mañana, cuando se sube la hora, entonces pasa a 00:00 del día que '
+      'sigue y baja de nuevo al mismo día',
+      (tester) async {
+        final a = await montarAgendar(tester);
+        await _abrirHoja(tester);
+        await _repetir(tester, ClavesAgendarVisita.hojaMas, 167); // 10:00 -> 23:55
+        expect(find.text('23:55'), findsOneWidget);
+        await tester.tap(find.byKey(ClavesAgendarVisita.hojaMas));
+        await tester.pump();
+        expect(find.text('00:00'), findsOneWidget);
+        expect(tester.widget<ChoiceChip>(find.byKey(ClavesAgendarVisita.dia(2))).selected, isTrue);
+        await tester.tap(find.byKey(ClavesAgendarVisita.hojaMenos));
+        await tester.pump();
+        expect(find.text('23:55'), findsOneWidget);
+        await tester.tap(find.byKey(ClavesAgendarVisita.hojaMas));
+        await tester.pump();
+        await _listo(tester);
+        await _tocar(tester, _boton);
+        expect(a.repo.recibidas.single.agenda.fechaProgramada.toLocal(), DateTime(2026, 10, 25));
+      },
+    );
+
+    testWidgets(
+      'dada la hoja en hoy a las 00:00, cuando se baja la hora, entonces no pasa al día de ayer',
+      (tester) async {
+        await montarAgendar(tester);
+        await _abrirHoja(tester);
+        await _tocar(tester, find.byKey(ClavesAgendarVisita.dia(0)));
+        await _repetir(tester, ClavesAgendarVisita.hojaMenos, 120); // 10:00 -> 00:00
+        expect(find.text('00:00'), findsOneWidget);
+        await tester.tap(find.byKey(ClavesAgendarVisita.hojaMenos));
+        await tester.pump();
+        expect(find.text('00:00'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'dada una hora sin franja (21:00), cuando se mira la hoja, entonces no sugiere ninguna',
       (tester) async {
         await montarAgendar(tester);

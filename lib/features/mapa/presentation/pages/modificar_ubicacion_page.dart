@@ -361,30 +361,47 @@ class _ModificarUbicacionPageState extends ConsumerState<ModificarUbicacionPage>
       child: Scaffold(
         body: lista
             ? LayoutBuilder(
-                builder: (context, caja) => Column(
+                builder: (context, caja) => Stack(
+                  fit: StackFit.expand,
                   children: [
-                    Expanded(
-                      child: _ZonaMapa(
-                        parametros: widget.parametros,
-                        estado: estado,
-                        tecladoAbierto: tecladoAbierto,
-                        alCerrar: () => unawaited(_intentarSalir()),
-                        alMoverCentro: _notificador.moverPunto,
-                        alTocar: _notificador.marcarPunto,
-                        alMoverElPunto: _notificador.entrarAMoverPunto,
-                        alVolverAMiUbicacion: () => unawaited(_volverAMiUbicacion()),
-                      ),
+                    Column(
+                      children: [
+                        Expanded(
+                          child: _ZonaMapa(
+                            parametros: widget.parametros,
+                            estado: estado,
+                            tecladoAbierto: tecladoAbierto,
+                            alMoverCentro: _notificador.moverPunto,
+                            alTocar: _notificador.marcarPunto,
+                            alMoverElPunto: _notificador.entrarAMoverPunto,
+                            alVolverAMiUbicacion: () => unawaited(_volverAMiUbicacion()),
+                          ),
+                        ),
+                        _Hoja(
+                          parametros: widget.parametros,
+                          estado: estado,
+                          cuerpo: caja.maxHeight,
+                          alGuardar: () => unawaited(_guardar()),
+                          alElegirCiudad: () => unawaited(_elegirCiudad()),
+                          alDarDeBaja: estado.original?.estaBorrada == false
+                              ? () => unawaited(_darDeBaja())
+                              : null,
+                          tecladoAbierto: tecladoAbierto,
+                        ),
+                      ],
                     ),
-                    _Hoja(
-                      parametros: widget.parametros,
-                      estado: estado,
-                      cuerpo: caja.maxHeight,
-                      alGuardar: () => unawaited(_guardar()),
-                      alElegirCiudad: () => unawaited(_elegirCiudad()),
-                      alDarDeBaja: estado.original?.estaBorrada == false
-                          ? () => unawaited(_darDeBaja())
-                          : null,
-                      tecladoAbierto: tecladoAbierto,
+                    // «Cerrar» va encima de la hoja y no adentro de la zona del mapa: con el teclado
+                    // arriba y el texto grande (320×568) la hoja deja al mapa 54 dp, el centro de «Cerrar»
+                    // (32 a 80 dp) cae sobre la hoja y el toque se lo llevaba ella (QA #390).
+                    Positioned(
+                      left: 14,
+                      top: MediaQuery.paddingOf(context).top + 8,
+                      child: BotonRedondoMapa(
+                        tamano: 48,
+                        icono: Icons.close,
+                        etiqueta: TextosModificar.cerrar,
+                        alPresionar: estado.guardando ? null : () => unawaited(_intentarSalir()),
+                      ),
                     ),
                   ],
                 ),
@@ -442,14 +459,13 @@ class _Hoja extends StatelessWidget {
   }
 }
 
-/// El mapa y lo que flota encima: «Cerrar», el título, «Mover el punto» o, ya moviendo, cuánto se
-/// movió y «Volver a mi ubicación».
+/// El mapa y lo que flota encima: el título, «Mover el punto» o, ya moviendo, cuánto se movió y
+/// «Volver a mi ubicación». «Cerrar» va aparte, encima de la zona y de la hoja (ver `build`).
 class _ZonaMapa extends StatelessWidget {
   const _ZonaMapa({
     required this.parametros,
     required this.estado,
     required this.tecladoAbierto,
-    required this.alCerrar,
     required this.alMoverCentro,
     required this.alTocar,
     required this.alMoverElPunto,
@@ -463,7 +479,6 @@ class _ZonaMapa extends StatelessWidget {
   /// UBICACIÓN» se ocultan para no tapar el pin ni quedar a medio tapar bajo la hoja. El colportor
   /// está escribiendo, no moviendo el punto.
   final bool tecladoAbierto;
-  final VoidCallback alCerrar;
   final ValueChanged<Coordenadas> alMoverCentro;
   final ValueChanged<Coordenadas> alTocar;
   final VoidCallback alMoverElPunto;
@@ -507,16 +522,6 @@ class _ZonaMapa extends StatelessWidget {
               ),
             ),
           ],
-        ),
-        Positioned(
-          left: 14,
-          top: arriba + 8,
-          child: BotonRedondoMapa(
-            tamano: 48,
-            icono: Icons.close,
-            etiqueta: TextosModificar.cerrar,
-            alPresionar: estado.guardando ? null : alCerrar,
-          ),
         ),
         if (mover)
           Positioned(

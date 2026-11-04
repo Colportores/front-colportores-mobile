@@ -26,9 +26,6 @@ import '../../helpers/qa_vista39_445_arnes.dart';
 import '../../helpers/qa_vista39_445_aviso_arnes.dart';
 import 'personas_arnes.dart' show asentar;
 
-/// Los tests con `skip` documentan un hallazgo: `--dart-define=QA_HALLAZGOS=true` los corre.
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 const _nbsp = ' ';
 
 Finder get _agregar => find.byKey(ClavesHojaCasa.agregarPersona);
@@ -328,9 +325,9 @@ void main() {
     });
   });
 
-  group('Hallazgos (skip: QA #445)', () {
-    // skip: QA #445 — las iniciales del avatar de 34 dp se parten en dos renglones y se cortan con el
-    // texto al 200 % («P» arriba, «G» tapada abajo): FilaPersonaDeLaCasa fija 34×34 y el texto escala.
+  group('Hallazgos corregidos (QA #445)', () {
+    // QA #445 — las iniciales del avatar de 34 dp no se parten ni se cortan con el texto al 200 %:
+    // no escalan con el texto (el nombre de al lado sí).
     testWidgets('a texto 2,0 las iniciales del avatar caben en el círculo sin partirse', (
       tester,
     ) async {
@@ -345,11 +342,10 @@ void main() {
         reason: 'las iniciales «PG» miden $alto dp de alto en 34 dp de ancho',
       );
       expect(parrafo.getMaxIntrinsicWidth(double.infinity), lessThanOrEqualTo(34));
-    }, skip: !_verHallazgos);
+    });
 
-    // skip: QA #445 — con «No volver a mostrar» fallando, a 360×640 y texto 2,0 el aviso rojo queda debajo
-    // de la pantalla (fuera de la vista) y la persona no ve nada pasar: a diferencia de HojaCasa, el alta no
-    // lleva el aviso a la vista (`Scrollable.ensureVisible`).
+    // QA #445 — con «No volver a mostrar» fallando, a 360×640 y texto 2,0 el aviso rojo se lleva a la
+    // vista (`Scrollable.ensureVisible`, como la hoja de la casa): la persona ve que no se guardó.
     testWidgets(
       'si «No volver a mostrar» no se pudo guardar, el aviso de la falla queda a la vista a 360×640 y 2,0×',
       (tester) async {
@@ -362,7 +358,6 @@ void main() {
           reason: 'el aviso está en ${r.top}..${r.bottom}',
         );
       },
-      skip: !_verHallazgos,
     );
   });
 }

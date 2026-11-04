@@ -4,7 +4,10 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/entrevista_en_curso.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart'
+    show TipoResultadoVisita;
 import 'package:colportores_mobile/features/agenda/domain/services/destino_de_entrevista.dart';
+import 'package:colportores_mobile/features/agenda/domain/usecases/cerrar_entrevista_con_venta_use_case.dart';
 import 'package:colportores_mobile/features/agenda/domain/usecases/finalizar_entrevista_use_case.dart'
     show entrevistaSinLugar;
 import 'package:colportores_mobile/features/agenda/presentation/providers/entrevista_providers.dart';
@@ -440,5 +443,102 @@ void main() {
       expect(montaje.agenda.recibidas, isEmpty);
       expect(montaje.borrador.textos, isEmpty);
     });
+  });
+
+  group('«Sí, registrar la venta» (#428)', () {
+    Future<void> enCurso() async {
+      await notificador().esperarLectura();
+      await notificador().empezar(espacioId: 'esp-1', espacioPersonaId: 'ep-1');
+    }
+
+    Future<VentaDeLaEntrevista> preparar() async {
+      final r = await notificador().prepararVenta(
+        entrada: inicioEntrevista,
+        salida: ahoraEntrevista,
+      );
+      return r.getOrElse(() => throw StateError('debía poder prepararse'));
+    }
+
+    test('preparar no guarda la visita ni suelta la entrevista, que sigue en curso', () async {
+      await enCurso();
+
+      final venta = await preparar();
+
+      expect(venta.visita.resultado, TipoResultadoVisita.venta);
+      expect(montaje.agenda.recibidas, isEmpty);
+      expect(estado().entrevista, isNotNull);
+      expect(montaje.almacen.guardadas, hasLength(1));
+    });
+
+    test('preparar lleva la nota que está escrita', () async {
+      await enCurso();
+      notificador().escribirNota('volver con la esposa');
+
+      final venta = await preparar();
+
+      expect(venta.visita.nota, 'volver con la esposa');
+    });
+
+    test('sin entrevista en curso no hay venta que preparar', () async {
+      await notificador().esperarLectura();
+
+      final r = await notificador().prepararVenta(
+        entrada: inicioEntrevista,
+        salida: ahoraEntrevista,
+      );
+
+      expect(r.swap().getOrElse(() => throw StateError('debía fallar')), sinEntrevistaEnCurso);
+    });
+
+    test('si la casa ya no está, devuelve el aviso y la entrevista sigue en curso', () async {
+      await enCurso();
+      montaje.destino.sinDestino = true;
+
+      final r = await notificador().prepararVenta(
+        entrada: inicioEntrevista,
+        salida: ahoraEntrevista,
+      );
+
+      expect(r.swap().getOrElse(() => throw StateError('debía fallar')), ventaSinLugar);
+      expect(estado().entrevista, isNotNull);
+    });
+
+    test('guardar la visita de la venta la registra como VENTA', () async {
+      await enCurso();
+      final venta = await preparar();
+
+      await notificador().guardarVisitaDeLaVenta(venta);
+
+      expect(montaje.agenda.recibidas.single.visita.tipoResultado, TipoResultadoVisita.venta);
+      expect(estado().entrevista, isNotNull, reason: 'recién se suelta con la venta guardada');
+    });
+
+    test('soltar tras la venta deja el estado sin entrevista ni nota y borra el almacén', () async {
+      await enCurso();
+      notificador().escribirNota('una nota');
+      final venta = await preparar();
+
+      final r = await notificador().soltarTrasLaVenta(venta);
+
+      expect(r.isRight(), isTrue);
+      expect(estado().entrevista, isNull);
+      expect(estado().notaBorrador, '');
+      expect(estado().recuperada, isFalse);
+      expect(montaje.almacen.guardadas, isEmpty);
+    });
+
+    test(
+      'si el almacén falla al soltar, devuelve la falla y la entrevista sigue en curso',
+      () async {
+        await enCurso();
+        final venta = await preparar();
+        montaje.rota.fallaAlBorrar = true;
+
+        final r = await notificador().soltarTrasLaVenta(venta);
+
+        expect(r.isLeft(), isTrue);
+        expect(estado().entrevista, isNotNull);
+      },
+    );
   });
 }

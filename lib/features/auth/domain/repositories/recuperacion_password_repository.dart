@@ -22,6 +22,17 @@ abstract interface class RecuperacionPasswordRepository {
   /// Revoca todas las sesiones de la cuenta, en todos los dispositivos, incluida la de este.
   Future<Either<Failure, Unit>> cerrarTodasLasSesiones();
 
+  /// `true` si [cerrarTodasLasSesiones] no llegó a revocar (sin respuesta o con error): la
+  /// contraseña cambió pero los otros teléfonos pueden seguir con su sesión. Solo en memoria y atada
+  /// a la cuenta que cambió la contraseña; baja cuando [cerrarOtrasSesionesPendientes] lo logra.
+  bool get otrasSesionesSinCerrar;
+
+  /// Si quedó pendiente la revocación de las otras sesiones de la cuenta [usuarioId], la reintenta
+  /// (scope `others`, sin tocar la sesión de este teléfono: se llama con la sesión nueva ya
+  /// abierta). Sin pendiente, o si la pendiente es de otra cuenta, no hace nada y la marca queda
+  /// como está. Si falla, la marca sigue para el próximo login de esa cuenta.
+  Future<Either<Failure, Unit>> cerrarOtrasSesionesPendientes(String usuarioId);
+
   /// Suelta la sesión de recuperación sin cambiar nada (el usuario salió de la pantalla): el enlace
   /// no puede dejar la app con una sesión iniciada sin contraseña.
   Future<Either<Failure, Unit>> abandonar();

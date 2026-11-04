@@ -313,6 +313,7 @@ void main() {
     test(
       'sin agenda: guarda la visita, la encola entera y pinta la casa según el resultado',
       () async {
+        await sembrarJornada(db);
         final r = await local.registrarVisita(
           visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, jornadaId: 'jor-1'),
         );

@@ -291,6 +291,10 @@ final class CustodiaClaveDb {
     ClaveSegura.ultimaConciliacionRecordatorios,
     // La DB sigue y la entrevista apunta a sus filas: no se pierde la hora de inicio (#450).
     ClaveSegura.entrevistaEnCurso,
+    // La DB sigue y su respaldo también: recuperar los datos no desconecta Drive (HU-SYNC-004).
+    ClaveSegura.respaldoDrive,
+    // La DB sigue y el asistente de recuperación ya se resolvió: no se vuelve a ofrecer (HU-SYNC-006).
+    ClaveSegura.recuperacionResuelta,
   };
 
   /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
@@ -396,6 +400,10 @@ final class CustodiaClaveDb {
     ClaveSegura.avisoPrivacidadOculto,
     ClaveSegura.idInstalacion,
     ClaveSegura.entrevistaEnCurso,
+    // Sin los datos del teléfono no hay qué respaldar: el vínculo con Drive se olvida (HU-SYNC-004).
+    ClaveSegura.respaldoDrive,
+    // Sin datos en el teléfono, el asistente de recuperación vuelve a ofrecerse (HU-SYNC-006).
+    ClaveSegura.recuperacionResuelta,
     ClaveSegura.permisoNotificaciones,
     ClaveSegura.avisoNotificacionesCerrado,
     ClaveSegura.recordatoriosActivados,

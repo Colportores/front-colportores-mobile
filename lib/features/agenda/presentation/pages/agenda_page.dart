@@ -44,6 +44,11 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
   /// La visita que se está registrando: su «Registrar» queda deshabilitado hasta que vuelve.
   String? _registrandoId;
 
+  /// Cuántas agendas de la campaña se muestran (cada «Ver más» suma una página). Vuelve a la primera
+  /// al cambiar un filtro.
+  var _limite = ArmadorAgenda.tamanoPagina;
+  FiltrosAgenda? _filtrosDelLimite;
+
   @override
   void initState() {
     super.initState();
@@ -127,6 +132,13 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
     );
   }
 
+  /// Suma una página. [desde] es el límite con que se dibujó el botón: un segundo toque sobre el mismo
+  /// dibujo (doble toque) no suma dos páginas.
+  void _verMas(int desde) {
+    if (_limite != desde) return;
+    setState(() => _limite = desde + ArmadorAgenda.tamanoPagina);
+  }
+
   Future<void> _elegirEstado(FiltrosAgenda filtros) async {
     if (_abriendo) return;
     _abriendo = true;
@@ -143,8 +155,16 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
   Widget build(BuildContext context) {
     final inicioDeHoy = VentanaAgenda.de(_ahora).inicioDeHoy;
     final clave = (colportorId: widget.colportorId, inicioDeHoy: inicioDeHoy);
-    final leida = ref.watch(agendaLeidaProvider(clave));
     final filtros = ref.watch(filtrosAgendaProvider(widget.colportorId));
+    // Un estado cerrado o «Todas» mira la campaña; «Pendientes», la ventana de hoy y 7 días.
+    final deCampania = filtros.estado.miraLaCampania;
+    final leida = deCampania
+        ? ref.watch(agendaCampaniaLeidaProvider(clave))
+        : ref.watch(agendaLeidaProvider(clave));
+    if (_filtrosDelLimite != filtros) {
+      _filtrosDelLimite = filtros;
+      _limite = ArmadorAgenda.tamanoPagina;
+    }
     final notificador = ref.read(filtrosAgendaProvider(widget.colportorId).notifier);
     final agendar = ref.watch(agendarDesdeLaAgendaProvider);
     final detalle = ref.watch(abrirDetalleDeAgendaProvider);
@@ -159,13 +179,20 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
     if (conError) {
       cuerpo = [
         SliverToBoxAdapter(
-          child: BannerErrorAgenda(alReintentar: () => ref.invalidate(agendaLeidaProvider(clave))),
+          child: BannerErrorAgenda(
+            alReintentar: () => deCampania
+                ? ref.invalidate(agendaCampaniaLeidaProvider(clave))
+                : ref.invalidate(agendaLeidaProvider(clave)),
+          ),
         ),
       ];
     } else if (items == null) {
       cuerpo = const [SliverToBoxAdapter(child: EsqueletoAgenda())];
     } else {
-      final vista = ArmadorAgenda.armar(items, filtros, _ahora);
+      final limite = _limite;
+      final vista = deCampania
+          ? ArmadorAgenda.armarCampania(items, filtros, _ahora, limite: limite)
+          : ArmadorAgenda.armar(items, filtros, _ahora);
       if (vista.estaVacia) {
         cuerpo = [
           SliverFillRemaining(
@@ -191,7 +218,11 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
           _Dias(
             vista: vista,
             ahora: _ahora,
-            alAgendar: agendar == null ? null : () => unawaited(_sola(agendar)),
+            // «+ Agendar» junto al rótulo solo con los filtros de fábrica: el canvas no lo dibuja con
+            // otro tipo o estado (23B·03, 23B·05; decisión del 29/10, QA #508).
+            alAgendar: agendar == null || !filtros.esPorDefecto
+                ? null
+                : () => unawaited(_sola(agendar)),
             alAbrirDetalle: detalle == null
                 ? null
                 : (item) => unawaited(_sola(() => detalle(item.agenda.id))),
@@ -199,6 +230,7 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
                 ? null
                 : (item) => unawaited(_registrar(registrar, item)),
             registrando: _registrandoId != null,
+            alVerMas: vista.hayMas ? () => _verMas(limite) : null,
           ),
         ];
       }
@@ -209,7 +241,7 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
     return CustomScrollView(
       key: const Key('agenda_filas'),
       slivers: [
-        const SliverToBoxAdapter(child: CabeceraAgenda()),
+        SliverToBoxAdapter(child: CabeceraAgenda(subtitulo: FormatoAgenda.subtituloDe(filtros))),
         if (!conError)
           SliverToBoxAdapter(
             child: _FilaFiltros(
@@ -279,6 +311,7 @@ class _Dias extends StatelessWidget {
     required this.alAbrirDetalle,
     required this.alRegistrar,
     required this.registrando,
+    this.alVerMas,
   });
 
   final VistaAgenda vista;
@@ -290,6 +323,9 @@ class _Dias extends StatelessWidget {
   /// Hay un registro abierto: todos los «Registrar» quedan apagados hasta que vuelva.
   final bool registrando;
 
+  /// `null`: no hay más agendas de la campaña y «Ver más» no se muestra.
+  final VoidCallback? alVerMas;
+
   @override
   Widget build(BuildContext context) {
     final entradas = <Object>[
@@ -298,6 +334,7 @@ class _Dias extends StatelessWidget {
         for (final item in vista.atrasadas) _FilaAtrasada(item),
       ],
       for (final dia in vista.dias) ...[dia, ...dia.items],
+      if (alVerMas != null) const _VerMas(),
     ];
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -313,10 +350,14 @@ class _Dias extends StatelessWidget {
               alAgendar: vista.dias.isEmpty ? alAgendar : null,
             );
           }
+          if (entrada is _VerMas) return BotonVerMasAgenda(alPresionar: alVerMas!);
           if (entrada is DiaDeAgenda) {
             return RotuloDeDia(
               key: ValueKey('dia_${entrada.dia.millisecondsSinceEpoch}'),
-              texto: FormatoAgenda.rotuloConConteo(entrada),
+              // La lista de la campaña va sin conteo: se pagina y el último día quedaría a medias.
+              texto: vista.deCampania
+                  ? FormatoAgenda.rotuloDelDia(entrada)
+                  : FormatoAgenda.rotuloConConteo(entrada),
               // «+ Agendar» queda en el primer día de la lista (hoy, o el que siga), no en las atrasadas.
               alAgendar: identical(entrada, vista.dias.first) ? alAgendar : null,
             );
@@ -330,7 +371,8 @@ class _Dias extends StatelessWidget {
             key: ValueKey(item.agenda.id),
             item: item,
             ahora: ahora,
-            conFecha: atrasada,
+            // Las de la campaña son de meses distintos: el rótulo del día no trae el mes.
+            conFecha: atrasada || vista.deCampania,
             alTocar: alAbrirDetalle == null ? null : () => alAbrirDetalle!(item),
             // Solo una entrevista vencida se registra desde acá: el cobro tiene su propio flujo.
             alRegistrar:
@@ -345,6 +387,11 @@ class _Dias extends StatelessWidget {
       ),
     );
   }
+}
+
+/// El botón «Ver más» del final de la lista de la campaña.
+class _VerMas {
+  const _VerMas();
 }
 
 /// El rótulo «ATRASADAS (N)» del grupo de arriba.

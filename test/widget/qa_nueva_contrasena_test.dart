@@ -1,10 +1,11 @@
-﻿// QA de la vista 15 «Nueva contraseña» (HU-AUTH-005, #224), seguimiento del 02/10. Complementa
+// QA de la vista 15 «Nueva contraseña» (HU-AUTH-005, #224), seguimiento del 02/10. Complementa
 // `confirmar_recuperacion_password_page_test.dart` y `confirmar_recuperacion_password_qa_test.dart`:
 // recorre cada artboard del canvas (A01 a A09 más los estados nuevos de las decisiones del 02/10)
 // con las cuatro guías de accesibilidad en 360x640 (texto 1.0 y 2.0) y 412x915, prueba las entradas
 // límite (largo en caracteres visibles, espacios, pegado largo) y los casos límite de cada flujo.
 import 'dart:async';
-import 'dart:typed_data';
+import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
@@ -23,6 +24,8 @@ import 'package:colportores_mobile/features/auth/presentation/providers/db_local
 import 'package:colportores_mobile/features/auth/presentation/providers/recuperacion_password_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logger/logger.dart';
@@ -109,6 +112,19 @@ bool _habilitado(WidgetTester tester) => tester.widget<FilledButton>(_guardar).o
 
 String _texto(WidgetTester tester, String campo) =>
     tester.widget<TextField>(_k(campo)).controller!.text;
+
+/// El ícono de éxito y el titular están dentro de la pantalla de 360x640, sin desplazar.
+void _expectIconoYTitularVisibles(WidgetTester tester) {
+  final pantalla = Offset.zero & const Size(360, 640);
+  final icono = tester.getRect(find.byIcon(Icons.check));
+  final texto = tester.getRect(find.byKey(const Key('confirmar_recuperacion_exito')));
+  expect(
+    pantalla.topLeft <= icono.topLeft && icono.bottomRight <= pantalla.bottomRight,
+    isTrue,
+    reason: 'el ícono se ve sin desplazar: $icono',
+  );
+  expect(texto.top, greaterThanOrEqualTo(0), reason: 'el titular no empieza cortado: $texto');
+}
 
 void _pantalla(WidgetTester tester, Size tam, {double texto = 1.0}) {
   tester.view.physicalSize = tam;
@@ -833,27 +849,51 @@ void main() {
   });
 
   group('QA vista 15 — errores del servidor', () {
-    // QA #224: un error del servidor sin traducción propia llega a la pantalla con el texto del
-    // `Failure` tal cual: «No se pudo completar la operación (<código>).» (lo arma
-    // `AuthRemoteDataSourceSupabase._traducir`) o «El servidor no pudo procesar la solicitud»: ni
-    // dicen qué hacer ni son el aviso del canvas 15-A05 («No pudimos guardar la contraseña. Probá de
-    // nuevo.»); el primero muestra además un código técnico.
-    testWidgets(
-      'un error del servidor sin texto propio dice qué hacer y no muestra un código',
-      (tester) async {
-        await _montar(tester);
-        await _completar(tester, 'NuevaClave1');
-        _recuperacion.fallaAlActualizar = const ServidorException(
-          status: 500,
-          mensaje: 'No se pudo completar la operación (unexpected_failure).',
-        );
-        await _tocarGuardar(tester);
+    // QA #224: un error del servidor sin traducción propia llegaba a la pantalla con el texto del
+    // `Failure` tal cual: «No se pudo completar la operación (<código>).» o «El servidor no pudo
+    // procesar la solicitud»: ni decían qué hacer ni eran el aviso del canvas 15-A05 («No pudimos
+    // guardar la contraseña. Probá de nuevo.»). Desde el 29/10 (#542) el remoto ya no arma texto con
+    // el código (queda en el log); la pantalla igual lo traduce si le llegara.
+    testWidgets('un error del servidor sin texto propio dice qué hacer y no muestra un código', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      _recuperacion.fallaAlActualizar = const ServidorException(
+        status: 500,
+        mensaje: 'No se pudo completar la operación (unexpected_failure).',
+      );
+      await _tocarGuardar(tester);
 
-        expect(find.textContaining('unexpected_failure'), findsNothing);
-        expect(find.textContaining('Probá de nuevo'), findsOneWidget);
-      },
-      skip: true,
-    ); // skip: QA #224 — error del servidor sin traducción: sin «qué hacer» y con código.
+      expect(find.textContaining('unexpected_failure'), findsNothing);
+      expect(find.textContaining('Probá de nuevo'), findsOneWidget);
+    });
+
+    testWidgets('un error 4xx con código técnico tampoco lo muestra y deja reintentar', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      _recuperacion.fallaAlActualizar = const ServidorException(
+        status: 400,
+        mensaje: 'No se pudo completar la operación (validation_failed).',
+      );
+      await _tocarGuardar(tester);
+
+      expect(find.textContaining('validation_failed'), findsNothing);
+      expect(find.text(TextosConfirmacionRecuperacion.errorInesperado), findsOneWidget);
+      expect(_habilitado(tester), isTrue);
+    });
+
+    testWidgets('un error del servidor sin mensaje (el genérico) dice qué hacer', (tester) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      _recuperacion.fallaAlActualizar = const ServidorException(status: 503);
+      await _tocarGuardar(tester);
+
+      expect(find.textContaining('El servidor no pudo procesar'), findsNothing);
+      expect(find.text(TextosConfirmacionRecuperacion.errorInesperado), findsOneWidget);
+    });
 
     testWidgets('un 429 conserva su texto con qué hacer y deja reintentar', (tester) async {
       await _montar(tester);
@@ -885,7 +925,29 @@ void main() {
       await tester.pump(const Duration(minutes: 3));
       expect(_k('guardando'), findsNothing);
       expect(_habilitado(tester), isTrue);
-    }, skip: true); // skip: QA #224 — sin timeout: «Guardando…» eterno y atrás bloqueado.
+    });
+
+    testWidgets(
+      'si la respuesta nunca llega, el aviso es de sin conexión y reintentar con la misma '
+      'contraseña no la da por perdida',
+      (tester) async {
+        _recuperacion.demoraAlActualizar = Completer<void>();
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        await tester.ensureVisible(_guardar);
+        await tester.tap(_guardar);
+        await tester.pump();
+        await tester.pump(const Duration(minutes: 3));
+        expect(find.text('Sin conexión'), findsOneWidget);
+
+        // El servidor sí había aplicado el cambio (la respuesta llegó tarde): el reintento vuelve
+        // «igual a la anterior» y se da por bueno.
+        _recuperacion.demoraAlActualizar!.complete();
+        await tester.pump();
+        await _tocarGuardar(tester);
+        expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+      },
+    );
   });
 
   group('QA vista 15 — privacidad', () {
@@ -923,6 +985,344 @@ void main() {
         expect(resultado.isRight(), isTrue);
         expect(captura.lineas.join('\n'), isNot(contains(clave)));
         expect(captura.lineas.join('\n'), contains('password_reset_completed'));
+      },
+    );
+  });
+
+  // QA del PR #556 (deuda #542): el aviso 15-A05 con cada tipo de error del servidor, y los tiempos
+  // de espera de 15 s (decisión del 29/10).
+  group('QA vista 15 (#542) — 15-A05 con un error del servidor', () {
+    const a05 = TextosConfirmacionRecuperacion.errorInesperado;
+    const rateLimit = 'Demasiados intentos. Esperá unos minutos y volvé a probar.';
+
+    final casos = <(String, ServidorException, String)>[
+      ('4xx con código técnico', const ServidorException(status: 400), a05),
+      ('5xx sin mensaje', const ServidorException(status: 503), a05),
+      ('sin status', const ServidorException(), a05),
+      ('429 con su texto', const ServidorException(status: 429, mensaje: rateLimit), rateLimit),
+    ];
+    for (final (rotulo, falla, texto) in casos) {
+      for (final escala in [1.0, 2.0]) {
+        testWidgets('$rotulo a 360x640 (texto $escala): el aviso dice qué hacer, se anuncia y pasa '
+            'las cuatro guías', (tester) async {
+          _pantalla(tester, const Size(360, 640), texto: escala);
+          final handle = tester.ensureSemantics();
+          try {
+            await _montar(tester);
+            await _completar(tester, 'NuevaClave1');
+            _recuperacion.fallaAlActualizar = falla;
+            await _tocarGuardar(tester);
+
+            expect(find.text(texto), findsOneWidget);
+            expect(find.textContaining('No se pudo completar la operación'), findsNothing);
+            expect(find.textContaining('El servidor no pudo procesar'), findsNothing);
+            expect(_habilitado(tester), isTrue);
+            expect(tester.getSemantics(_k('error')), isSemantics(isLiveRegion: true));
+            await _guias(tester);
+          } finally {
+            handle.dispose();
+          }
+        });
+      }
+    }
+
+    // Capturas de revisión visual (solo con `--dart-define=QA_CAPTURAS=true`; no se commitean).
+    const capturar = bool.fromEnvironment('QA_CAPTURAS');
+    for (final (nombre, falla, escala) in [
+      ('4xx', const ServidorException(status: 400), 1.0),
+      ('4xx', const ServidorException(status: 400), 2.0),
+      ('429', const ServidorException(status: 429, mensaje: rateLimit), 2.0),
+    ]) {
+      testWidgets('captura de 15-A05 ($nombre, texto $escala)', (tester) async {
+        _pantalla(tester, const Size(360, 640), texto: escala);
+        await tester.runAsync(() async {
+          for (final f in ['Inter', 'SourceSerif4', 'JetBrainsMono']) {
+            final bytes = File('assets/fonts/$f.ttf').readAsBytesSync();
+            final c = FontLoader(f)..addFont(Future.value(ByteData.view(bytes.buffer)));
+            await c.load();
+          }
+          final raiz = Platform.environment['FLUTTER_ROOT'];
+          final iconos = File('$raiz/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
+          if (iconos.existsSync()) {
+            final c = FontLoader('MaterialIcons')
+              ..addFont(Future.value(ByteData.view(iconos.readAsBytesSync().buffer)));
+            await c.load();
+          }
+        });
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        _recuperacion.fallaAlActualizar = falla;
+        await _tocarGuardar(tester);
+        await tester.runAsync(() async {
+          final render = tester.renderObject<RenderRepaintBoundary>(
+            find.byType(RepaintBoundary).first,
+          );
+          final img = await render.toImage();
+          final bytes = (await img.toByteData(format: ui.ImageByteFormat.png))!;
+          final dir = Directory('.dart_tool/qa_capturas')..createSync(recursive: true);
+          File(
+            '${dir.path}/qa542_vista15_a05_${nombre}_${escala.toInt()}.png',
+          ).writeAsBytesSync(bytes.buffer.asUint8List());
+        });
+      }, skip: !capturar);
+    }
+
+    testWidgets('lo tipeado sigue tras el error y reintentar con éxito saca el aviso', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      _recuperacion.fallaAlActualizar = const ServidorException(status: 400);
+      await _tocarGuardar(tester);
+      expect(_k('error'), findsOneWidget);
+      expect(_texto(tester, 'nueva'), 'NuevaClave1');
+      expect(_texto(tester, 'repetida'), 'NuevaClave1');
+
+      _recuperacion.fallaAlActualizar = null;
+      await _tocarGuardar(tester);
+      expect(_k('error'), findsNothing);
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+    });
+
+    testWidgets('el tope es de 15 s: a los 14 s sigue «Guardando…», a los 16 s hay «Sin conexión» '
+        'con el botón habilitado y el atrás libre', (tester) async {
+      _recuperacion.demoraAlActualizar = Completer<void>();
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 14));
+      expect(_k('guardando'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      expect(_k('guardando'), findsNothing);
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(_habilitado(tester), isTrue);
+      expect(_texto(tester, 'nueva'), 'NuevaClave1');
+      await _soltar(tester);
+    });
+
+    testWidgets('si la contraseña ya cambió y revocar las sesiones no contesta, a los 15 s más la '
+        'pantalla sale de «Guardando…» con el éxito (nunca queda trabada)', (tester) async {
+      _recuperacion.demoraAlCerrarSesiones = Completer<void>();
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 14));
+      expect(_k('guardando'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(_k('guardando'), findsNothing);
+      // Decisión del 29/10: el éxito dice que las otras sesiones se cierran al volver a entrar.
+      expect(
+        find.text(TextosConfirmacionRecuperacion.exitoOtrasSesionesPendientes),
+        findsOneWidget,
+      );
+      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsNothing);
+      expect(_recuperacion.passwordActual, 'NuevaClave1');
+      _recuperacion.demoraAlCerrarSesiones!.complete();
+      await tester.pumpAndSettle();
+    });
+
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('si revocar las otras sesiones falla con un error, el éxito avisa que se cierran '
+          'al entrar (texto $escala) y las cuatro guías pasan', (tester) async {
+        _pantalla(tester, const Size(360, 640), texto: escala);
+        final handle = tester.ensureSemantics();
+        try {
+          _recuperacion.fallaAlCerrarSesiones = const ServidorException(status: 500);
+          await _montar(tester);
+          await _completar(tester, 'NuevaClave1');
+          await _tocarGuardar(tester);
+
+          expect(
+            find.text(TextosConfirmacionRecuperacion.exitoOtrasSesionesPendientes),
+            findsOneWidget,
+          );
+          expect(find.textContaining('otros teléfonos'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await _guias(tester);
+        } finally {
+          handle.dispose();
+        }
+      });
+    }
+
+    testWidgets('si revocar sale bien, el éxito es el de siempre, sin avisar de otras sesiones', (
+      tester,
+    ) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+
+      expect(find.text(TextosConfirmacionRecuperacion.exito), findsOneWidget);
+      expect(find.textContaining('otros teléfonos'), findsNothing);
+    });
+
+    // QA de #556 (29/10), P2: A varada pasado el tope, la persona corrige y guarda B.
+    testWidgets('A varada y B que entra después: la contraseña final es B, nunca la A tardía', (
+      tester,
+    ) async {
+      _recuperacion.demoraAlActualizar = Completer<void>();
+      await _montar(tester);
+      await _completar(tester, 'ClaveAaaa1');
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 16));
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(_habilitado(tester), isTrue);
+
+      await _completar(tester, 'ClaveBbbb1');
+      await tester.ensureVisible(_guardar);
+      await tester.tap(_guardar);
+      await tester.pump();
+      expect(_k('guardando'), findsOneWidget, reason: 'B espera a A, pero se ve que guarda');
+      expect(_recuperacion.actualizaciones, isEmpty);
+
+      _recuperacion.demoraAlActualizar!.complete();
+      await tester.pumpAndSettle();
+
+      expect(_recuperacion.actualizaciones, ['ClaveAaaa1', 'ClaveBbbb1']);
+      expect(_recuperacion.passwordActual, 'ClaveBbbb1');
+      expect(find.text(TextosConfirmacionRecuperacion.exito), findsOneWidget);
+    });
+
+    testWidgets('el éxito con otras sesiones pendientes pasa las guías en 412x915 con texto 2.0', (
+      tester,
+    ) async {
+      _pantalla(tester, const Size(412, 915), texto: 2.0);
+      final handle = tester.ensureSemantics();
+      try {
+        _recuperacion.fallaAlCerrarSesiones = const ServidorException(status: 500);
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        await _tocarGuardar(tester);
+        expect(
+          find.text(TextosConfirmacionRecuperacion.exitoOtrasSesionesPendientes),
+          findsOneWidget,
+        );
+        await _guias(tester);
+      } finally {
+        handle.dispose();
+      }
+    });
+
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('captura del éxito con otras sesiones pendientes (texto $escala)', (
+        tester,
+      ) async {
+        _pantalla(tester, const Size(360, 640), texto: escala);
+        await tester.runAsync(() async {
+          for (final f in ['Inter', 'SourceSerif4', 'JetBrainsMono']) {
+            final bytes = File('assets/fonts/$f.ttf').readAsBytesSync();
+            final c = FontLoader(f)..addFont(Future.value(ByteData.view(bytes.buffer)));
+            await c.load();
+          }
+        });
+        _recuperacion.fallaAlCerrarSesiones = const ServidorException(status: 500);
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        await _tocarGuardar(tester);
+        await tester.runAsync(() async {
+          final render = tester.renderObject<RenderRepaintBoundary>(
+            find.byType(RepaintBoundary).first,
+          );
+          final img = await render.toImage();
+          final bytes = (await img.toByteData(format: ui.ImageByteFormat.png))!;
+          final dir = Directory('.dart_tool/qa_capturas')..createSync(recursive: true);
+          File(
+            '${dir.path}/qa556_vista15_otras_pendientes_${escala.toInt()}.png',
+          ).writeAsBytesSync(bytes.buffer.asUint8List());
+        });
+      }, skip: !capturar);
+    }
+    // QA de #542 (PR #556), delta 5abee68..48489c2: el texto del éxito con revocación fallida,
+    // letra por letra, y que el ícono y el titular se vean al abrir sin tener que desplazar.
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('el éxito con la revocación fallida dice exactamente la frase fijada y se ve el '
+          'ícono y el titular al abrir (360x640, texto $escala)', (tester) async {
+        _pantalla(tester, const Size(360, 640), texto: escala);
+        final handle = tester.ensureSemantics();
+        try {
+          _recuperacion.fallaAlCerrarSesiones = const SinConexionException();
+          await _montar(tester);
+          await _completar(tester, 'NuevaClave1');
+          await _tocarGuardar(tester);
+
+          const literal =
+              'Contraseña actualizada. Iniciá sesión ahora: al entrar cerramos tus sesiones en '
+              'los otros teléfonos.';
+          expect(find.text(literal), findsOneWidget);
+          final titular = tester.widget<Text>(
+            find.byKey(const Key('confirmar_recuperacion_exito')),
+          );
+          expect(titular.data, literal, reason: 'ni un espacio ni un punto de más');
+          expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsNothing);
+
+          if (escala == 1.0) _expectIconoYTitularVisibles(tester);
+          expect(
+            tester.getSemantics(find.byKey(const Key('confirmar_recuperacion_exito'))),
+            matchesSemantics(
+              label: literal,
+              isHeader: true,
+              isLiveRegion: true,
+              hasEnabledState: false,
+            ),
+          );
+          await _guias(tester);
+        } finally {
+          handle.dispose();
+        }
+      });
+    }
+
+    testWidgets('con la revocación bien, el éxito sigue siendo la frase de siempre, letra por '
+        'letra', (tester) async {
+      await _montar(tester);
+      await _completar(tester, 'NuevaClave1');
+      await _tocarGuardar(tester);
+
+      final titular = tester.widget<Text>(find.byKey(const Key('confirmar_recuperacion_exito')));
+      expect(titular.data, 'Contraseña actualizada. Iniciá sesión.');
+    });
+    for (final revocaMal in [true, false]) {
+      testWidgets('al abrir el éxito con texto 2.0 (revocación ${revocaMal ? "fallida" : "ok"}) se '
+          've el ícono y el titular entero, aunque la persona haya desplazado el formulario para '
+          'guardar', (tester) async {
+        _pantalla(tester, const Size(360, 640), texto: 2.0);
+        if (revocaMal) _recuperacion.fallaAlCerrarSesiones = const SinConexionException();
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        await _tocarGuardar(tester);
+
+        expect(find.byKey(const Key('confirmar_recuperacion_exito')), findsOneWidget);
+        _expectIconoYTitularVisibles(tester);
+      });
+    }
+  });
+
+  group('QA vista 15 (#542) — el éxito abre arriba', () {
+    testWidgets(
+      'con el texto al 200 % en 360x640, el éxito no queda desplazado como el formulario',
+      (tester) async {
+        _pantalla(tester, const Size(360, 640), texto: 2.0);
+        await _montar(tester);
+        await _completar(tester, 'NuevaClave1');
+        await tester.ensureVisible(_guardar);
+        await tester.pumpAndSettle();
+        final scroll = tester.state<ScrollableState>(find.byType(Scrollable).first);
+        expect(scroll.position.pixels, greaterThan(0), reason: 'el formulario venía desplazado');
+
+        await tester.tap(_guardar);
+        await tester.pumpAndSettle();
+
+        expect(find.text(TextosConfirmacionRecuperacion.exito), findsOneWidget);
+        expect(scroll.position.pixels, 0, reason: 'el éxito abre desde el inicio');
       },
     );
   });

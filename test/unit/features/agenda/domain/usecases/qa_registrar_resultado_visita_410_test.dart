@@ -263,6 +263,7 @@ void main() {
     });
 
     test('la jornada abierta queda en la visita (opcional, como en el servidor)', () async {
+      await sembrarJornada(db);
       await registrar(_R.entrevista, jornadaId: ' jor-1 ');
 
       expect((await visitas()).single.jornadaId, 'jor-1');

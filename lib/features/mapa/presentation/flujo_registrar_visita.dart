@@ -9,6 +9,8 @@ import '../../agenda/domain/entities/visita.dart';
 import '../../agenda/domain/entities/visita_guardada.dart';
 import '../../agenda/domain/usecases/registrar_resultado_visita_use_case.dart';
 import '../../agenda/presentation/providers/agenda_providers.dart';
+import '../../jornada/domain/jornada_sin_cerrar.dart';
+import '../../jornada/domain/usecases/finalizar_jornada_use_case.dart';
 import '../../jornada/domain/usecases/obtener_jornada_activa_use_case.dart';
 import '../../jornada/presentation/providers/jornada_providers.dart';
 import '../domain/entities/eleccion_de_cita.dart';
@@ -34,7 +36,8 @@ import 'widgets/hoja_que_paso.dart';
 ///   [cobrarDesdeLaCasaProvider]); sin destino no se dibujan.
 ///
 /// Las visitas que guarda este flujo («No contestó», «Rechazo» y «Cobranza») llevan el `jornada_id` de
-/// la jornada abierta de la colportora, si tiene una (#475); si no, van sin jornada. La «Entrevista
+/// la jornada abierta de la colportora, si tiene una (#475) y es la de hoy; si no, van sin jornada
+/// (también cuando la abierta quedó de otro día: #524). La «Entrevista
 /// dada» la guarda su propio flujo (#450), que es quien completa el suyo.
 ///
 /// Los ids de la visita se generan una vez por opción y se repiten en los reintentos: un doble toque o
@@ -251,6 +254,12 @@ abstract final class FlujoRegistrarVisita {
   /// La jornada abierta de [colportorId] **en el momento de guardar** (no al abrir la hoja: la
   /// colportora pudo iniciarla o cerrarla mientras tanto), o `null` si no tiene ninguna.
   ///
+  /// Si la abierta quedó de otro día —con el mismo criterio de «quedó abierta» de #250/#326: ni la
+  /// hora más temprana del margen normal de ahora (ahora − 30 min) cae en el día de su inicio—, no
+  /// es la jornada de hoy: colgarle la visita la pondría fuera del rango que la colportora corrija
+  /// después. La visita va sin jornada, igual que cuando no hay ninguna; al cerrarla y empezar la de
+  /// hoy, las siguientes llevan la nueva (#524).
+  ///
   /// Mejor esfuerzo, como la agenda: si la lectura falla la visita se guarda igual, sin jornada (el
   /// campo es opcional en el servidor); nunca se inventa una ni se frena el guardado.
   static Future<String?> _jornadaAbierta(ProviderContainer contenedor, String colportorId) async {
@@ -258,7 +267,19 @@ abstract final class FlujoRegistrarVisita {
       final r = await contenedor.read(obtenerJornadaActivaUseCaseProvider)(
         ObtenerJornadaActivaParams(colportorId: colportorId),
       );
-      return r.fold((_) => null, (jornada) => jornada?.id);
+      final ahora = contenedor.read(relojVisitaProvider)();
+      return r.fold(
+        (_) => null,
+        (jornada) =>
+            jornada == null ||
+                JornadaSinCerrar.quedoAbierta(
+                  inicio: jornada.inicio,
+                  ahora: ahora,
+                  margen: FinalizarJornadaUseCase.margenHaciaAtras,
+                )
+            ? null
+            : jornada.id,
+      );
     } on Object {
       return null;
     }

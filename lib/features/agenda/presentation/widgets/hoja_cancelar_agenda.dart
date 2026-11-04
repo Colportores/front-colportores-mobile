@@ -153,14 +153,23 @@ class _HojaCancelarAgendaState extends ConsumerState<HojaCancelarAgenda> {
                           context,
                         ).textTheme.bodyMedium?.copyWith(color: ColoresAlta.tinta, height: 1.5),
                       ),
-                      if (_falla != null) ...[
-                        const SizedBox(height: 12),
-                        AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: _falla!),
-                      ],
                     ],
                   ),
                 ),
               ),
+              // El aviso va FIJO sobre los botones, fuera de lo que se desplaza: con texto grande en
+              // una pantalla chica quedaba bajo el cuerpo y se veía cortado (QA de #455).
+              if (_falla != null) ...[
+                const SizedBox(height: 12),
+                AvisoAlta(
+                  color: ColoresAlta.rojo,
+                  glyph: '!',
+                  texto: _falla!,
+                  // Tope: con texto enorme en una pantalla chica el aviso no deja sin lugar a los
+                  // botones; si no entra, se desplaza él solo.
+                  alturaMaxima: MediaQuery.sizeOf(context).height * .35,
+                ),
+              ],
               const SizedBox(height: 14),
               if (!_sinReintento) _principal(),
               const SizedBox(height: 4),
@@ -185,18 +194,24 @@ class _HojaCancelarAgendaState extends ConsumerState<HojaCancelarAgenda> {
         minimumSize: const Size.fromHeight(52),
       ),
       child: _enviando
-          ? const Row(
-              mainAxisSize: MainAxisSize.min,
-              spacing: 10,
-              children: [
-                ExcludeSemantics(
-                  child: SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          // Región viva: el lector anuncia «Cancelando…» cuando el botón cambia (QA #455).
+          ? Semantics(
+              liveRegion: true,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: 10,
+                children: [
+                  ExcludeSemantics(
+                    child: SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    ),
                   ),
-                ),
-                Flexible(child: Text(TextosCancelarAgenda.cancelando, textAlign: TextAlign.center)),
-              ],
+                  Flexible(
+                    child: Text(TextosCancelarAgenda.cancelando, textAlign: TextAlign.center),
+                  ),
+                ],
+              ),
             )
           : Text(etiqueta, textAlign: TextAlign.center),
     );

@@ -10,8 +10,8 @@
 //     el aviso de duplicado.
 //  6. Los casos límite de la acción: falla a mitad con el teclado, acciones superpuestas.
 //
-// Medidas con las fuentes reales del proyecto. Los hallazgos de QA van con `skip` y el motivo en un
-// comentario `// skip: QA #305 …`; el implementador les saca el `skip` cuando los arregla.
+// Medidas con las fuentes reales del proyecto. Los hallazgos de QA #305 ya están arreglados: no queda
+// ningún test con `skip` en este archivo.
 // Capturas: `flutter test --dart-define=QA_CAPTURAS=true …` las deja en `.dart_tool/qa_capturas/`.
 import 'dart:async';
 
