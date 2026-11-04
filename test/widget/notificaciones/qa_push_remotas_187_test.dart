@@ -400,6 +400,40 @@ void main() {
       );
     }
 
+    // skip: QA #187 r4 — decisión P1 del QA (03/11): el aviso «nunca tapa la fecha»; en Hoy la fecha
+    // (`jornada_fecha`) queda bajo el aviso (top = barra de estado + 56 + 8, y la fecha va justo abajo).
+    for (final (nombre, tam, escala) in [
+      ('390x844 ×1,0', const Size(390, 844), 1.0),
+      ('360x640 ×2,0', const Size(360, 640), 2.0),
+    ]) {
+      testWidgets(
+        'P1 del QA: con el aviso a la vista, la fecha de Hoy no queda tapada ($nombre)',
+        (tester) async {
+          tester.view
+            ..physicalSize = tam
+            ..devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          tester.platformDispatcher.textScaleFactorTestValue = escala;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await abrir(tester);
+          await llega(tester, {
+            'type': 'pedido_autorizado',
+            'pedido_id': _pedido,
+            'event_id': _evento,
+          });
+          expect(_banner, findsOneWidget);
+
+          final fecha = tester.getRect(find.byKey(const Key('jornada_fecha')));
+          expect(
+            fecha.overlaps(tester.getRect(_banner)),
+            isFalse,
+            reason: 'la fecha de Hoy queda tapada por el aviso',
+          );
+        },
+        skip: !verHallazgos,
+      );
+    }
+
     testWidgets('el toque de la notificación del sistema de un evento nuevo lo guarda ya leído', (
       tester,
     ) async {
