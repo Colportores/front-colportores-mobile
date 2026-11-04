@@ -888,6 +888,45 @@ void main() {
       expect(await personasDelNuevo(), ['per-9:Zoe'], reason: 'solo lo del otro teléfono');
     });
 
+    test(
+      'un respaldo cuya base no se descifra con su propia clave queda afuera y los demás entran',
+      () async {
+        // Un teléfono cuyo respaldo se cifró con otra clave que la que guarda su envoltorio: el hash
+        // coincide (el archivo está entero), pero la base no se descifra.
+        final otro = _Telefono('roto', await Directory('${carpeta.path}/roto').create(), 3);
+        addTearDown(otro.db.close);
+        await otro.envolver(_password);
+        await otro.persona('per-9', 'Zoe');
+        final ajena = CryptoConDek(() async => ClaveDb(Uint8List.fromList(List.filled(32, 8))));
+        await BackupService(
+          archive: drive,
+          crypto: ajena,
+          snapshot: otro.snapshot,
+          clock: () => ahora.add(const Duration(days: 2)),
+        ).backupNow(watermark: 'w-9');
+        await EnvoltorioEnDrive(
+          envoltorios: () async => sobres,
+          keyId: ajena.keyId,
+          envoltorioLocal: otro.custodia.leerEnvoltorioCodificado,
+          desactualizado: () async => false,
+          logger: loggerMudo(),
+        ).sincronizar();
+        final respaldos = await losRespaldos();
+        expect(respaldos, hasLength(2));
+
+        final r = await servicio.recuperar(respaldos: respaldos, password: _password);
+
+        final informe = (r as RecuperacionHecha).informe;
+        expect(informe.respaldosSinAbrir, 1);
+        expect(await personasDelNuevo(), ['per-1:Ana', 'per-2:Beto'], reason: 'entró el que abre');
+        expect(
+          clavesAbiertas.every((c) => c.destruida),
+          isTrue,
+          reason: 'ninguna clave vieja se queda',
+        );
+      },
+    );
+
     test('si la contraseña no abre ninguno, no se baja ni se toca nada', () async {
       await respaldarOtro('otra contraseña');
 
@@ -1015,6 +1054,34 @@ void main() {
         expect(r, isA<RespaldoDeVersionMasNueva>());
         expect((r as RespaldoDeVersionMasNueva).esquemaDelRespaldo, nuevo.db.schemaVersion + 5);
         expect(r.esquemaDeLaApp, nuevo.db.schemaVersion);
+        expect(await personasDelNuevo(), ['per-3:Carla']);
+      },
+    );
+
+    test(
+      'si la base de su único respaldo no se descifra, es ilegible y la DB queda igual',
+      () async {
+        await nuevo.persona('per-3', 'Carla');
+        final ajena = CryptoConDek(() async => ClaveDb(Uint8List.fromList(List.filled(32, 8))));
+        // El envoltorio de `viejo` (DEK 1) en la llave de una cadena cifrada con otra clave.
+        await viejo.envolver(_password);
+        await BackupService(
+          archive: drive,
+          crypto: ajena,
+          snapshot: viejo.snapshot,
+          clock: () => ahora,
+        ).backupNow(watermark: 'w-1');
+        await EnvoltorioEnDrive(
+          envoltorios: () async => sobres,
+          keyId: ajena.keyId,
+          envoltorioLocal: viejo.custodia.leerEnvoltorioCodificado,
+          desactualizado: () async => false,
+          logger: loggerMudo(),
+        ).sincronizar();
+
+        final r = await servicio.recuperar(respaldos: [await elRespaldo()], password: _password);
+
+        expect(r, isA<RespaldoIlegible>());
         expect(await personasDelNuevo(), ['per-3:Carla']);
       },
     );

@@ -22,6 +22,24 @@ import 'nivel_bateria_canal.dart';
 import 'servicio_google.dart';
 import 'servicio_respaldo_motor.dart';
 
+/// Los dos puertos que el respaldo de la noche le pide a Drive: la cadena de respaldos y la clave
+/// envuelta que viaja con ella.
+typedef DriveDelRespaldo = ({ArchivePort archivo, KeyEnvelopePort envoltorios});
+
+/// Cómo se arma el Drive del respaldo de la noche con el token y el hash del momento. El de la app es
+/// [driveDeGoogle]; los tests dan un Drive en memoria.
+typedef ArmadoDelDrive =
+    DriveDelRespaldo Function(Future<String?> Function() token, String Function(List<int>) digest);
+
+/// El Drive de la persona (`appDataFolder`): un solo cliente hace las dos cosas.
+DriveDelRespaldo driveDeGoogle(
+  Future<String?> Function() token,
+  String Function(List<int>) digest,
+) {
+  final google = GoogleDriveArchive(token: token, digest: digest);
+  return (archivo: google, envoltorios: google);
+}
+
 /// Arma, **sin pantalla**, lo que el respaldo de la noche necesita (HU-SYNC-005, ADR-009, #583): se
 /// ejecuta en el isolate que levanta el sistema con la app cerrada, donde no hay `ProviderScope`,
 /// ni sesión de Supabase levantada, ni canales nativos propios de la app.
@@ -53,6 +71,7 @@ final class ArmadorDeRespaldoNocturno {
     required this._drive,
     required this._google,
     required this._conectividad,
+    this._armarDrive = driveDeGoogle,
     AppLogger? logger,
   }) : _log = logger ?? AppLogger.instance;
 
@@ -62,6 +81,7 @@ final class ArmadorDeRespaldoNocturno {
   final RespaldoDriveRepository _drive;
   final ServicioGoogle _google;
   final MonitorConectividad _conectividad;
+  final ArmadoDelDrive _armarDrive;
   final AppLogger _log;
 
   Future<SesionDeRespaldoNocturno?> abrir() async {
@@ -91,19 +111,21 @@ final class ArmadorDeRespaldoNocturno {
     }
 
     try {
+      final cripto = CryptoConDek(_custodia.leerDek);
+      final driveDeLaNoche = _armarDrive(_token, cripto.digest);
       final motor = armarMotorDeSync(
         db: db,
         leerDek: _custodia.leerDek,
         tokenDrive: _token,
         transporte: const TransporteSinBackend(),
         conectividad: ConectividadDelMotor(_conectividad),
+        archivo: driveDeLaNoche.archivo,
       );
       final auditoria = AuditoriaBackupLocal(db);
       // La clave envuelta con la contraseña viaja con el respaldo (ADR-006, HU-SYNC-006): también el de
       // la noche la deja en Drive si no estaba. Nunca lanza.
-      final cripto = CryptoConDek(_custodia.leerDek);
       final envoltorio = EnvoltorioEnDrive(
-        envoltorios: () async => GoogleDriveArchive(token: _token, digest: cripto.digest),
+        envoltorios: () async => driveDeLaNoche.envoltorios,
         keyId: cripto.keyId,
         envoltorioLocal: _custodia.leerEnvoltorioCodificado,
         desactualizado: () async => await _custodia.envoltorioDesactualizadoPara() != null,
