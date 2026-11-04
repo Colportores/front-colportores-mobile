@@ -274,6 +274,9 @@ class _EleccionDeCobertura extends ConsumerWidget {
       children: [
         Expanded(
           child: ListView(
+            // Al aparecer (o cambiar) el aviso de «no hay lugar» la lista vuelve arriba: con el texto
+            // grande la opción elegida queda abajo y el aviso, arriba, fuera de la vista.
+            key: ValueKey(sinLugar ? vigente : null),
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
             children: [
               for (final aviso in avisos) ...[aviso, const SizedBox(height: 10)],

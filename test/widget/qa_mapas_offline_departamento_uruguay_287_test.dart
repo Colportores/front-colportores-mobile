@@ -4,8 +4,7 @@
 // 100 % y al 200 %: sin overflow y con tres de las cuatro guías de accesibilidad de Flutter (el
 // contraste va en `qa_mapas_offline_departamento_uruguay_287_contraste_test.dart`, sin fuentes
 // reales). Además: el aviso de «Te faltan X MB» a la vista, los bordes de singular y plural, la
-// normalización del departamento y los casos límite de acciones superpuestas. Los que documentan un
-// hallazgo van con `skip` y se corren con `--dart-define=QA_HALLAZGOS=true`; las capturas con
+// normalización del departamento y los casos límite de acciones superpuestas. Las capturas con
 // `--dart-define=QA_CAPTURAS=true` (a `.dart_tool/qa_capturas`, fuera del repo).
 import 'dart:async';
 import 'dart:io';
@@ -30,7 +29,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/mapa_descargas_arnes.dart';
 import '../helpers/tiles_falsos.dart';
 
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 const _capturar = bool.fromEnvironment('QA_CAPTURAS');
 
 /// Con las fuentes de prueba (Ahem) el contraste se mide bien; con las reales da falsos negativos.
@@ -413,9 +411,6 @@ void main() {
                 reason: 'la colportora eligió ${nivel.name} y el aviso con cuánto falta no se ve',
               );
             },
-            // skip: QA #287 — a 360x640 con texto al 200 % el aviso entra arriba de la lista, fuera de
-            // la vista, y lo único visible es «Descargar» apagado sin explicación.
-            skip: tam.key == '360x640' && escala == 2.0 && !_verHallazgos,
           );
         }
       }
@@ -616,8 +611,7 @@ void main() {
       await _elegir(tester, NivelCobertura.uruguay);
       arnes.servidor.retenerDespuesDe = 2000;
       await _tocar(tester, _clave('mapas_offline_descargar'));
-      // Desde «Cambiar cobertura» la pantalla sigue en la 01 (ver el hallazgo de abajo): atrás lleva a la lista.
-      await _tocar(tester, _clave('mapas_offline_atras'));
+      // Desde «Cambiar cobertura» la descarga en marcha se ve en la lista.
       expect(_clave('mapas_offline_tarjeta_uruguay'), findsOneWidget);
       expect(_clave('mapas_offline_tarjeta_depto-san-jose'), findsOneWidget);
 
@@ -650,7 +644,6 @@ void main() {
         expect(_clave('mapas_offline_tarjeta_uruguay'), findsOneWidget);
         expect(find.text('36 %'), findsOneWidget);
       },
-      skip: !_verHallazgos,
     );
 
     testWidgets(
