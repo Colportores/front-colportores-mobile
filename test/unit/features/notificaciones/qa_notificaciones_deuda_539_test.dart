@@ -2,8 +2,6 @@
 // pantalla: la marca de conciliación en el futuro (tolerancia del reloj, borde exacto, dos revisiones
 // seguidas, guardado que falla, log sin dirección) y «Borrar todas» por ids contra la tabla real
 // (vacío, ids que no existen, bordes de los lotes de 500, ids con caracteres especiales).
-//
-// Los tests con hallazgo corren con `--dart-define=QA_HALLAZGOS=true`.
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
@@ -25,8 +23,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:logger/logger.dart';
 
 import '../../../helpers/campo_falsos.dart';
-
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -96,8 +92,8 @@ void main() {
 
   group('la marca de conciliación en el futuro', () {
     test(
-      // QA #539 — decisión del 04/11 (agente de decisiones, R2): la marca se cree hasta 5 minutos
-      // por delante de «ahora»; más que eso se revisa desde los 90 días. Hoy la tolerancia es 1 h.
+      // Decisión del 04/11 (agente de decisiones, R2): la marca se cree hasta 5 minutos por delante
+      // de «ahora»; más que eso se revisa desde los 90 días.
       'dado una marca a +6 min (reloj adelantado y corregido), se descarta: se revisa desde el '
       'tope de 90 días y la marca vuelve a «ahora»',
       () async {
@@ -109,9 +105,6 @@ void main() {
         expect(r.getOrElse(() => -1), 1, reason: 'el recordatorio que sonó se guarda');
         expect(marca.marca, ahora);
       },
-      skip: _conHallazgos
-          ? false
-          : 'QA #539: toleranciaDelReloj es 1 h; la decisión del 04/11 pide 5 min (marca a +6 min)',
     );
 
     test('dado una marca a +4 min (dentro de los 5 min de la decisión del 04/11), se respeta: no '
