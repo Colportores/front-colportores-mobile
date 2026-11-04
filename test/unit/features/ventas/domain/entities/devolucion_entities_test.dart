@@ -37,17 +37,14 @@ VentaParaDevolver _venta({int cobrado = 520000, List<RenglonDeLaVenta>? renglone
       renglones: renglones ?? [_renglon()],
     );
 
-Devolucion _devolucion({String id = 'd-1', int retenido = 0, int? reembolsado, String? motivo}) =>
-    Devolucion(
-      id: id,
-      ventaId: 'v-1',
-      productos: const [ProductoDevuelto(productoId: 'p-1', ventaItemId: 'i-1', cantidad: 1)],
-      dineroRetenidoCentavos: retenido,
-      montoReembolsadoCentavos: reembolsado,
-      motivo: motivo,
-      fechaDevolucion: _t,
-      auditoria: Auditoria(createdAt: _t, updatedAt: _t, createdBy: 'col-1'),
-    );
+Devolucion _devolucion({String id = 'd-1', String? motivo}) => Devolucion(
+  id: id,
+  ventaId: 'v-1',
+  productos: const [ProductoDevuelto(productoId: 'p-1', ventaItemId: 'i-1', cantidad: 1)],
+  motivo: motivo,
+  fechaDevolucion: _t,
+  auditoria: Auditoria(createdAt: _t, updatedAt: _t, createdBy: 'col-1'),
+);
 
 void main() {
   group('RenglonDeLaVenta', () {
@@ -87,8 +84,6 @@ void main() {
         CuentaDeLaVenta(montoTotalCentavos: 101, cobradoCentavos: 50),
         CuentaDeLaVenta(montoTotalCentavos: 100, cobradoCentavos: 51),
         CuentaDeLaVenta(montoTotalCentavos: 100, cobradoCentavos: 50, devueltoCentavos: 1),
-        CuentaDeLaVenta(montoTotalCentavos: 100, cobradoCentavos: 50, reembolsadoCentavos: 1),
-        CuentaDeLaVenta(montoTotalCentavos: 100, cobradoCentavos: 50, retenidoCentavos: 1),
       ]) {
         expect(otra, isNot(base));
       }
@@ -111,6 +106,14 @@ void main() {
       expect(entera.devueltoCentavos, 520000);
       expect(entera.seQuedaConCentavos, 0);
     });
+
+    test('está saldada cuando pagó todo lo que se queda comprando', () {
+      expect(_venta(cobrado: 519999).estaSaldada, isFalse);
+      expect(_venta(cobrado: 520000).estaSaldada, isTrue);
+      expect(_venta(cobrado: 520000).saldoCentavos, 0);
+      expect(_venta(cobrado: 100000).saldoCentavos, 420000);
+      expect(_venta(cobrado: 100000).yaPagoCentavos, 100000);
+    });
   });
 
   group('CuentaDeLaDevolucion', () {
@@ -119,7 +122,7 @@ void main() {
       valorCentavos: 100,
       seQuedaConCentavos: 50,
       yaPagoCentavos: 70,
-      pagoDeMasCentavos: 20,
+      sinDevolverCentavos: 20,
       saldoNuevoCentavos: 0,
       esTotal: false,
     );
@@ -132,7 +135,7 @@ void main() {
           valorCentavos: 100,
           seQuedaConCentavos: 50,
           yaPagoCentavos: 70,
-          pagoDeMasCentavos: 20,
+          sinDevolverCentavos: 20,
           saldoNuevoCentavos: 0,
           esTotal: false,
         ),
@@ -145,7 +148,7 @@ void main() {
             valorCentavos: 100,
             seQuedaConCentavos: 50,
             yaPagoCentavos: 70,
-            pagoDeMasCentavos: 20,
+            sinDevolverCentavos: 20,
             saldoNuevoCentavos: 0,
             esTotal: true,
           ),
@@ -153,19 +156,19 @@ void main() {
       );
     });
 
-    test('hay que elegir solo si pagó de más y está vacía solo sin unidades', () {
-      expect(base.hayQueElegir, isTrue);
+    test('hay plata sin devolver solo si pagó de más y está vacía solo sin unidades', () {
+      expect(base.haySinDevolver, isTrue);
       expect(base.estaVacia, isFalse);
       const vacia = CuentaDeLaDevolucion(
         unidades: 0,
         valorCentavos: 0,
         seQuedaConCentavos: 50,
         yaPagoCentavos: 0,
-        pagoDeMasCentavos: 0,
+        sinDevolverCentavos: 0,
         saldoNuevoCentavos: 50,
         esTotal: false,
       );
-      expect(vacia.hayQueElegir, isFalse);
+      expect(vacia.haySinDevolver, isFalse);
       expect(vacia.estaVacia, isTrue);
     });
   });
@@ -173,12 +176,7 @@ void main() {
   group('Devolucion y ProductoDevuelto', () {
     test('igualdad por todos sus datos', () {
       expect(_devolucion(), _devolucion());
-      for (final otra in [
-        _devolucion(id: 'd-2'),
-        _devolucion(retenido: 1),
-        _devolucion(reembolsado: 1),
-        _devolucion(motivo: 'x'),
-      ]) {
+      for (final otra in [_devolucion(id: 'd-2'), _devolucion(motivo: 'x')]) {
         expect(otra, isNot(_devolucion()));
       }
       expect(
@@ -199,27 +197,25 @@ void main() {
   });
 
   group('PedidoDeDevolucion y DevolucionRegistrada', () {
-    PedidoDeDevolucion pedido({String id = 'd-1', QueHacerConLaDiferencia? queHacer}) =>
-        PedidoDeDevolucion(
-          id: id,
-          ventaId: 'v-1',
-          colportorId: 'col-1',
-          unidadesPorRenglon: const {'i-1': 1},
-          queHacer: queHacer,
-          ahora: _t,
-        );
+    PedidoDeDevolucion pedido({String id = 'd-1', String? motivo}) => PedidoDeDevolucion(
+      id: id,
+      ventaId: 'v-1',
+      colportorId: 'col-1',
+      unidadesPorRenglon: const {'i-1': 1},
+      motivo: motivo,
+      ahora: _t,
+    );
 
     test('el pedido es igual con los mismos datos', () {
       expect(pedido(), pedido());
       expect(pedido(id: 'd-2'), isNot(pedido()));
-      expect(pedido(queHacer: QueHacerConLaDiferencia.retener), isNot(pedido()));
+      expect(pedido(motivo: 'x'), isNot(pedido()));
     });
 
     DevolucionRegistrada registrada({int saldo = 0, bool yaEstaba = false}) => DevolucionRegistrada(
       devolucion: _devolucion(),
       totalCentavos: 100,
       saldoCentavos: saldo,
-      deboAlClienteCentavos: 0,
       eraTotal: false,
       yaEstaba: yaEstaba,
     );
@@ -238,7 +234,6 @@ void main() {
           ventaId: 'v-1',
           colportorId: 'col-1',
           unidadesPorRenglon: {'i-1': unidades},
-          queHacer: QueHacerConLaDiferencia.retener,
           motivo: motivo,
         );
 

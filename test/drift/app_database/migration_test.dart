@@ -30,6 +30,7 @@ import 'generated/schema_v22.dart' as v22;
 import 'generated/schema_v23.dart' as v23;
 import 'generated/schema_v24.dart' as v24;
 import 'generated/schema_v25.dart' as v25;
+import 'generated/schema_v26.dart' as v26;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1526,4 +1527,84 @@ void main() {
       );
     },
   );
+
+  test('dado devoluciones guardadas en la versión 25, cuando migra a la 26, no se pierde ninguna, '
+      'pierden las columnas de dinero y no se encola nada (#609)', () async {
+    // Nunca queda plata a favor del cliente: la devolución ya no guarda lo retenido ni lo
+    // reembolsado. Cada devolución sigue con sus libros, su motivo, su fecha y su auditoría.
+    const libros = '[{"producto_id":"p-1","cantidad":1,"venta_item_id":"i-1"}]';
+    const con = v25.DevolucionData(
+      id: 'd-1',
+      ventaId: 'v-1',
+      productosDevueltos: libros,
+      dineroRetenido: 190000,
+      montoReembolsado: 50000,
+      motivo: 'no le gustó',
+      fechaDevolucion: 5,
+      createdAt: 6,
+      updatedAt: 7,
+      createdBy: 'col-1',
+      syncVersion: 4,
+    );
+    const sin = v25.DevolucionData(
+      id: 'd-2',
+      ventaId: 'v-1',
+      productosDevueltos: libros,
+      dineroRetenido: 0,
+      fechaDevolucion: 8,
+      createdAt: 8,
+      updatedAt: 8,
+      deletedAt: 9,
+      syncVersion: 0,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 25,
+      newVersion: 26,
+      createOld: v25.DatabaseAtV25.new,
+      createNew: v26.DatabaseAtV26.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch.insert(viejo.devolucion, con);
+        batch.insert(viejo.devolucion, sin);
+      },
+      validateItems: (nuevo) async {
+        final filas = await (nuevo.select(
+          nuevo.devolucion,
+        )..orderBy([(d) => OrderingTerm.asc(d.id)])).get();
+        expect(filas.map((d) => d.id), ['d-1', 'd-2']);
+        expect(filas.first.ventaId, 'v-1');
+        expect(filas.first.productosDevueltos, libros);
+        expect(filas.first.motivo, 'no le gustó');
+        expect(filas.first.fechaDevolucion, 5);
+        expect(filas.first.createdAt, 6);
+        expect(filas.first.updatedAt, 7);
+        expect(filas.first.createdBy, 'col-1');
+        expect(filas.first.syncVersion, 4);
+        expect(filas.last.deletedAt, 9);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        final columnas = await nuevo.customSelect('PRAGMA table_info(devolucion)').get();
+        expect(
+          columnas.map((c) => c.read<String>('name')),
+          isNot(anyOf(contains('dinero_retenido'), contains('monto_reembolsado'))),
+        );
+        final indices = await nuevo.customSelect('PRAGMA index_list(devolucion)').get();
+        expect(indices.map((i) => i.read<String>('name')), contains('devolucion_venta_idx'));
+
+        // El CHECK del motivo sigue; las filas nuevas no llevan dinero.
+        const insertar =
+            'INSERT INTO devolucion (id, venta_id, productos_devueltos, motivo, fecha_devolucion, '
+            'created_at, updated_at) VALUES ';
+        await nuevo.customStatement("$insertar('d-3', 'v-1', '$libros', 'x', 1, 1, 1)");
+        for (final malo in [
+          "('d-4', 'v-1', '$libros', '', 1, 1, 1)",
+          "('d-5', 'v-1', '$libros', '${'a' * 501}', 1, 1, 1)",
+        ]) {
+          await expectLater(nuevo.customStatement('$insertar$malo'), throwsA(anything));
+        }
+        expect(await nuevo.select(nuevo.devolucion).get(), hasLength(3));
+      },
+    );
+  });
 }
