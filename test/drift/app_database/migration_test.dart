@@ -32,6 +32,7 @@ import 'generated/schema_v24.dart' as v24;
 import 'generated/schema_v25.dart' as v25;
 import 'generated/schema_v26.dart' as v26;
 import 'generated/schema_v27.dart' as v27;
+import 'generated/schema_v28.dart' as v28;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1609,11 +1610,60 @@ void main() {
     );
   });
 
-  test('dado cobros guardados en la versión 26, cuando migra a la 27, no se pierde ninguno, '
+  test(
+    'dado productos guardados en la versión 26, cuando migra a la 27, no se pierde nada, queda sin '
+    'categoría hasta el próximo pull y no se encola nada (#561)',
+    () async {
+      // La categoría baja del servidor (backend-supabase 0149): la fila de antes no se toca ni se deriva
+      // de su `tipo`; hasta que el pull la traiga de nuevo, el producto no se ofrece en Precios.
+      const producto = v26.ProductoData(
+        id: 'pro-1',
+        nombre: 'El Conflicto de los Siglos',
+        tipo: 'LIBRO',
+        esBonificable: 1,
+        esMisionero: 0,
+        precioBaseCompra: 18000,
+        casaEditora: 'ACES',
+        createdAt: 1758700000000,
+        updatedAt: 1758700000000,
+        syncVersion: 3,
+        codigoEditor: 'CS-01',
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 26,
+        newVersion: 27,
+        createOld: v26.DatabaseAtV26.new,
+        createNew: v27.DatabaseAtV27.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.producto, producto),
+        validateItems: (nuevo) async {
+          final guardado = await nuevo.select(nuevo.producto).getSingle();
+          expect(guardado.id, 'pro-1');
+          expect(guardado.nombre, 'El Conflicto de los Siglos');
+          expect(guardado.tipo, 'LIBRO');
+          expect(guardado.esBonificable, 1);
+          expect(guardado.precioBaseCompra, 18000);
+          expect(guardado.codigoEditor, 'CS-01');
+          expect(guardado.syncVersion, 3);
+          expect(guardado.categoria, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La columna acepta lo que baja del servidor.
+          await nuevo.customStatement(
+            "UPDATE producto SET categoria = 'ESPIRITUALES' WHERE id = 'pro-1'",
+          );
+          expect((await nuevo.select(nuevo.producto).getSingle()).categoria, 'ESPIRITUALES');
+        },
+      );
+    },
+  );
+
+  test('dado cobros guardados en la versión 27, cuando migra a la 28, no se pierde ninguno, '
       'pierden numero_cuota y no se encola nada (#608)', () async {
     // El cobro ya no guarda qué número de cuota paga: cada cobro sigue con su venta, su monto, su medio,
     // los datos de la tarjeta y de la transferencia y su auditoría; solo desaparece la columna.
-    const cuota = v26.CobranzaData(
+    const cuota = v27.CobranzaData(
       id: 'c-1',
       ventaId: 'v-1',
       monto: 50000,
@@ -1625,7 +1675,7 @@ void main() {
       createdBy: 'col-1',
       syncVersion: 4,
     );
-    const tarjeta = v26.CobranzaData(
+    const tarjeta = v27.CobranzaData(
       id: 'c-2',
       ventaId: 'v-1',
       monto: 30000,
@@ -1641,10 +1691,10 @@ void main() {
     );
 
     await verificador.testWithDataIntegrity(
-      oldVersion: 26,
-      newVersion: 27,
-      createOld: v26.DatabaseAtV26.new,
-      createNew: v27.DatabaseAtV27.new,
+      oldVersion: 27,
+      newVersion: 28,
+      createOld: v27.DatabaseAtV27.new,
+      createNew: v28.DatabaseAtV28.new,
       openTestedDatabase: _abrir,
       createItems: (batch, viejo) {
         batch.insert(viejo.cobranza, cuota);

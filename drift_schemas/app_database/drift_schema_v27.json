@@ -2507,6 +2507,16 @@
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
+          },
+          {
+            "name": "categoria",
+            "getter_name": "categoria",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
           }
         ],
         "is_virtual": false,
@@ -4063,6 +4073,16 @@
             }
           },
           {
+            "name": "numero_cuota",
+            "getter_name": "numeroCuota",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
             "name": "tarjeta_tipo",
             "getter_name": "tarjetaTipo",
             "moor_type": "string",
@@ -5592,7 +5612,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"producto\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"descripcion\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"es_bonificable\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_bonificable\" IN (0, 1)), \"es_misionero\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_misionero\" IN (0, 1)), \"precio_base_compra\" INTEGER NULL, \"casa_editora\" TEXT NULL, \"imagen_url\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, \"codigo_editor\" TEXT NULL, PRIMARY KEY (\"id\"), CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"producto\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"descripcion\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"es_bonificable\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_bonificable\" IN (0, 1)), \"es_misionero\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_misionero\" IN (0, 1)), \"precio_base_compra\" INTEGER NULL, \"casa_editora\" TEXT NULL, \"imagen_url\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, \"codigo_editor\" TEXT NULL, \"categoria\" TEXT NULL, PRIMARY KEY (\"id\"), CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0));"
         }
       ]
     },
@@ -5700,7 +5720,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"cobranza\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"medio\" TEXT NOT NULL, \"fecha\" INTEGER NOT NULL, \"tarjeta_tipo\" TEXT NULL, \"tarjeta_marca\" TEXT NULL, \"numero_aprobacion\" TEXT NULL, \"referencia_transferencia\" TEXT NULL, \"banco_origen\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (medio IN ('EFECTIVO','TARJETA','TRANSFERENCIA')));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"cobranza\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"medio\" TEXT NOT NULL, \"fecha\" INTEGER NOT NULL, \"numero_cuota\" INTEGER NULL, \"tarjeta_tipo\" TEXT NULL, \"tarjeta_marca\" TEXT NULL, \"numero_aprobacion\" TEXT NULL, \"referencia_transferencia\" TEXT NULL, \"banco_origen\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (medio IN ('EFECTIVO','TARJETA','TRANSFERENCIA')));"
         }
       ]
     },

@@ -12,6 +12,12 @@ abstract interface class RespaldoDriveRepository {
   /// leer: no se afirma «sin conectar» sobre algo que no se pudo mirar.
   Future<Either<Failure, EstadoRespaldoDrive>> estado(String usuarioId);
 
+  /// Desde cuándo está conectado el Drive de [usuarioId] (UTC), o `null` si no hay cuenta o el
+  /// almacén no se deja leer. Sin ningún respaldo, los días «sin respaldo» se cuentan desde acá
+  /// (HU-SYNC-005, #583): no se afirma lo que no se sabe, pero tampoco se esconde que pasaron días.
+  /// Una cuenta conectada antes de que se anotara la fecha queda anotada con la de hoy.
+  Future<DateTime?> conectadaDesde(String usuarioId);
+
   /// Abre la pantalla de Google, pide el permiso de Drive (solo `drive.appdata`) y deja guardada
   /// la cuenta. Después intenta el primer respaldo; que falle no desconecta.
   ///

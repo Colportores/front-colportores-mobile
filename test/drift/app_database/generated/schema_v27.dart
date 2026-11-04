@@ -9344,6 +9344,14 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<String> categoria = GeneratedColumn<String>(
+    'categoria',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -9361,6 +9369,7 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
     deletedAt,
     syncVersion,
     codigoEditor,
+    categoria,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -9433,6 +9442,10 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
         DriftSqlType.string,
         data['${effectivePrefix}codigo_editor'],
       ),
+      categoria: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}categoria'],
+      ),
     );
   }
 
@@ -9466,6 +9479,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
   final int? deletedAt;
   final int syncVersion;
   final String? codigoEditor;
+  final String? categoria;
   const ProductoData({
     required this.id,
     required this.nombre,
@@ -9482,6 +9496,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     this.deletedAt,
     required this.syncVersion,
     this.codigoEditor,
+    this.categoria,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -9514,6 +9529,9 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     map['sync_version'] = Variable<int>(syncVersion);
     if (!nullToAbsent || codigoEditor != null) {
       map['codigo_editor'] = Variable<String>(codigoEditor);
+    }
+    if (!nullToAbsent || categoria != null) {
+      map['categoria'] = Variable<String>(categoria);
     }
     return map;
   }
@@ -9549,6 +9567,9 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       codigoEditor: codigoEditor == null && nullToAbsent
           ? const Value.absent()
           : Value(codigoEditor),
+      categoria: categoria == null && nullToAbsent
+          ? const Value.absent()
+          : Value(categoria),
     );
   }
 
@@ -9573,6 +9594,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       syncVersion: serializer.fromJson<int>(json['syncVersion']),
       codigoEditor: serializer.fromJson<String?>(json['codigoEditor']),
+      categoria: serializer.fromJson<String?>(json['categoria']),
     );
   }
   @override
@@ -9594,6 +9616,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'syncVersion': serializer.toJson<int>(syncVersion),
       'codigoEditor': serializer.toJson<String?>(codigoEditor),
+      'categoria': serializer.toJson<String?>(categoria),
     };
   }
 
@@ -9613,6 +9636,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     Value<int?> deletedAt = const Value.absent(),
     int? syncVersion,
     Value<String?> codigoEditor = const Value.absent(),
+    Value<String?> categoria = const Value.absent(),
   }) => ProductoData(
     id: id ?? this.id,
     nombre: nombre ?? this.nombre,
@@ -9631,6 +9655,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     syncVersion: syncVersion ?? this.syncVersion,
     codigoEditor: codigoEditor.present ? codigoEditor.value : this.codigoEditor,
+    categoria: categoria.present ? categoria.value : this.categoria,
   );
   ProductoData copyWithCompanion(ProductoCompanion data) {
     return ProductoData(
@@ -9663,6 +9688,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       codigoEditor: data.codigoEditor.present
           ? data.codigoEditor.value
           : this.codigoEditor,
+      categoria: data.categoria.present ? data.categoria.value : this.categoria,
     );
   }
 
@@ -9683,7 +9709,8 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
           ..write('createdBy: $createdBy, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('syncVersion: $syncVersion, ')
-          ..write('codigoEditor: $codigoEditor')
+          ..write('codigoEditor: $codigoEditor, ')
+          ..write('categoria: $categoria')
           ..write(')'))
         .toString();
   }
@@ -9705,6 +9732,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     deletedAt,
     syncVersion,
     codigoEditor,
+    categoria,
   );
   @override
   bool operator ==(Object other) =>
@@ -9724,7 +9752,8 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
           other.createdBy == this.createdBy &&
           other.deletedAt == this.deletedAt &&
           other.syncVersion == this.syncVersion &&
-          other.codigoEditor == this.codigoEditor);
+          other.codigoEditor == this.codigoEditor &&
+          other.categoria == this.categoria);
 }
 
 class ProductoCompanion extends UpdateCompanion<ProductoData> {
@@ -9743,6 +9772,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
   final Value<int?> deletedAt;
   final Value<int> syncVersion;
   final Value<String?> codigoEditor;
+  final Value<String?> categoria;
   final Value<int> rowid;
   const ProductoCompanion({
     this.id = const Value.absent(),
@@ -9760,6 +9790,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     this.deletedAt = const Value.absent(),
     this.syncVersion = const Value.absent(),
     this.codigoEditor = const Value.absent(),
+    this.categoria = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProductoCompanion.insert({
@@ -9778,6 +9809,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     this.deletedAt = const Value.absent(),
     this.syncVersion = const Value.absent(),
     this.codigoEditor = const Value.absent(),
+    this.categoria = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        nombre = Value(nombre),
@@ -9800,6 +9832,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     Expression<int>? deletedAt,
     Expression<int>? syncVersion,
     Expression<String>? codigoEditor,
+    Expression<String>? categoria,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -9818,6 +9851,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (syncVersion != null) 'sync_version': syncVersion,
       if (codigoEditor != null) 'codigo_editor': codigoEditor,
+      if (categoria != null) 'categoria': categoria,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -9838,6 +9872,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     Value<int?>? deletedAt,
     Value<int>? syncVersion,
     Value<String?>? codigoEditor,
+    Value<String?>? categoria,
     Value<int>? rowid,
   }) {
     return ProductoCompanion(
@@ -9856,6 +9891,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
       deletedAt: deletedAt ?? this.deletedAt,
       syncVersion: syncVersion ?? this.syncVersion,
       codigoEditor: codigoEditor ?? this.codigoEditor,
+      categoria: categoria ?? this.categoria,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -9908,6 +9944,9 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     if (codigoEditor.present) {
       map['codigo_editor'] = Variable<String>(codigoEditor.value);
     }
+    if (categoria.present) {
+      map['categoria'] = Variable<String>(categoria.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -9932,6 +9971,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
           ..write('deletedAt: $deletedAt, ')
           ..write('syncVersion: $syncVersion, ')
           ..write('codigoEditor: $codigoEditor, ')
+          ..write('categoria: $categoria, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -15800,6 +15840,14 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
+  late final GeneratedColumn<int> numeroCuota = GeneratedColumn<int>(
+    'numero_cuota',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<String> tarjetaTipo = GeneratedColumn<String>(
     'tarjeta_tipo',
     aliasedName,
@@ -15889,6 +15937,7 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
     monto,
     medio,
     fecha,
+    numeroCuota,
     tarjetaTipo,
     tarjetaMarca,
     numeroAprobacion,
@@ -15931,6 +15980,10 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
         DriftSqlType.int,
         data['${effectivePrefix}fecha'],
       )!,
+      numeroCuota: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}numero_cuota'],
+      ),
       tarjetaTipo: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}tarjeta_tipo'],
@@ -15995,6 +16048,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
   final int monto;
   final String medio;
   final int fecha;
+  final int? numeroCuota;
   final String? tarjetaTipo;
   final String? tarjetaMarca;
   final String? numeroAprobacion;
@@ -16011,6 +16065,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     required this.monto,
     required this.medio,
     required this.fecha,
+    this.numeroCuota,
     this.tarjetaTipo,
     this.tarjetaMarca,
     this.numeroAprobacion,
@@ -16030,6 +16085,9 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     map['monto'] = Variable<int>(monto);
     map['medio'] = Variable<String>(medio);
     map['fecha'] = Variable<int>(fecha);
+    if (!nullToAbsent || numeroCuota != null) {
+      map['numero_cuota'] = Variable<int>(numeroCuota);
+    }
     if (!nullToAbsent || tarjetaTipo != null) {
       map['tarjeta_tipo'] = Variable<String>(tarjetaTipo);
     }
@@ -16066,6 +16124,9 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       monto: Value(monto),
       medio: Value(medio),
       fecha: Value(fecha),
+      numeroCuota: numeroCuota == null && nullToAbsent
+          ? const Value.absent()
+          : Value(numeroCuota),
       tarjetaTipo: tarjetaTipo == null && nullToAbsent
           ? const Value.absent()
           : Value(tarjetaTipo),
@@ -16104,6 +16165,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       monto: serializer.fromJson<int>(json['monto']),
       medio: serializer.fromJson<String>(json['medio']),
       fecha: serializer.fromJson<int>(json['fecha']),
+      numeroCuota: serializer.fromJson<int?>(json['numeroCuota']),
       tarjetaTipo: serializer.fromJson<String?>(json['tarjetaTipo']),
       tarjetaMarca: serializer.fromJson<String?>(json['tarjetaMarca']),
       numeroAprobacion: serializer.fromJson<String?>(json['numeroAprobacion']),
@@ -16127,6 +16189,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       'monto': serializer.toJson<int>(monto),
       'medio': serializer.toJson<String>(medio),
       'fecha': serializer.toJson<int>(fecha),
+      'numeroCuota': serializer.toJson<int?>(numeroCuota),
       'tarjetaTipo': serializer.toJson<String?>(tarjetaTipo),
       'tarjetaMarca': serializer.toJson<String?>(tarjetaMarca),
       'numeroAprobacion': serializer.toJson<String?>(numeroAprobacion),
@@ -16148,6 +16211,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     int? monto,
     String? medio,
     int? fecha,
+    Value<int?> numeroCuota = const Value.absent(),
     Value<String?> tarjetaTipo = const Value.absent(),
     Value<String?> tarjetaMarca = const Value.absent(),
     Value<String?> numeroAprobacion = const Value.absent(),
@@ -16164,6 +16228,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     monto: monto ?? this.monto,
     medio: medio ?? this.medio,
     fecha: fecha ?? this.fecha,
+    numeroCuota: numeroCuota.present ? numeroCuota.value : this.numeroCuota,
     tarjetaTipo: tarjetaTipo.present ? tarjetaTipo.value : this.tarjetaTipo,
     tarjetaMarca: tarjetaMarca.present ? tarjetaMarca.value : this.tarjetaMarca,
     numeroAprobacion: numeroAprobacion.present
@@ -16186,6 +16251,9 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       monto: data.monto.present ? data.monto.value : this.monto,
       medio: data.medio.present ? data.medio.value : this.medio,
       fecha: data.fecha.present ? data.fecha.value : this.fecha,
+      numeroCuota: data.numeroCuota.present
+          ? data.numeroCuota.value
+          : this.numeroCuota,
       tarjetaTipo: data.tarjetaTipo.present
           ? data.tarjetaTipo.value
           : this.tarjetaTipo,
@@ -16219,6 +16287,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
           ..write('monto: $monto, ')
           ..write('medio: $medio, ')
           ..write('fecha: $fecha, ')
+          ..write('numeroCuota: $numeroCuota, ')
           ..write('tarjetaTipo: $tarjetaTipo, ')
           ..write('tarjetaMarca: $tarjetaMarca, ')
           ..write('numeroAprobacion: $numeroAprobacion, ')
@@ -16240,6 +16309,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     monto,
     medio,
     fecha,
+    numeroCuota,
     tarjetaTipo,
     tarjetaMarca,
     numeroAprobacion,
@@ -16260,6 +16330,7 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
           other.monto == this.monto &&
           other.medio == this.medio &&
           other.fecha == this.fecha &&
+          other.numeroCuota == this.numeroCuota &&
           other.tarjetaTipo == this.tarjetaTipo &&
           other.tarjetaMarca == this.tarjetaMarca &&
           other.numeroAprobacion == this.numeroAprobacion &&
@@ -16278,6 +16349,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
   final Value<int> monto;
   final Value<String> medio;
   final Value<int> fecha;
+  final Value<int?> numeroCuota;
   final Value<String?> tarjetaTipo;
   final Value<String?> tarjetaMarca;
   final Value<String?> numeroAprobacion;
@@ -16295,6 +16367,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     this.monto = const Value.absent(),
     this.medio = const Value.absent(),
     this.fecha = const Value.absent(),
+    this.numeroCuota = const Value.absent(),
     this.tarjetaTipo = const Value.absent(),
     this.tarjetaMarca = const Value.absent(),
     this.numeroAprobacion = const Value.absent(),
@@ -16313,6 +16386,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     required int monto,
     required String medio,
     required int fecha,
+    this.numeroCuota = const Value.absent(),
     this.tarjetaTipo = const Value.absent(),
     this.tarjetaMarca = const Value.absent(),
     this.numeroAprobacion = const Value.absent(),
@@ -16337,6 +16411,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     Expression<int>? monto,
     Expression<String>? medio,
     Expression<int>? fecha,
+    Expression<int>? numeroCuota,
     Expression<String>? tarjetaTipo,
     Expression<String>? tarjetaMarca,
     Expression<String>? numeroAprobacion,
@@ -16355,6 +16430,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
       if (monto != null) 'monto': monto,
       if (medio != null) 'medio': medio,
       if (fecha != null) 'fecha': fecha,
+      if (numeroCuota != null) 'numero_cuota': numeroCuota,
       if (tarjetaTipo != null) 'tarjeta_tipo': tarjetaTipo,
       if (tarjetaMarca != null) 'tarjeta_marca': tarjetaMarca,
       if (numeroAprobacion != null) 'numero_aprobacion': numeroAprobacion,
@@ -16376,6 +16452,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     Value<int>? monto,
     Value<String>? medio,
     Value<int>? fecha,
+    Value<int?>? numeroCuota,
     Value<String?>? tarjetaTipo,
     Value<String?>? tarjetaMarca,
     Value<String?>? numeroAprobacion,
@@ -16394,6 +16471,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
       monto: monto ?? this.monto,
       medio: medio ?? this.medio,
       fecha: fecha ?? this.fecha,
+      numeroCuota: numeroCuota ?? this.numeroCuota,
       tarjetaTipo: tarjetaTipo ?? this.tarjetaTipo,
       tarjetaMarca: tarjetaMarca ?? this.tarjetaMarca,
       numeroAprobacion: numeroAprobacion ?? this.numeroAprobacion,
@@ -16426,6 +16504,9 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     }
     if (fecha.present) {
       map['fecha'] = Variable<int>(fecha.value);
+    }
+    if (numeroCuota.present) {
+      map['numero_cuota'] = Variable<int>(numeroCuota.value);
     }
     if (tarjetaTipo.present) {
       map['tarjeta_tipo'] = Variable<String>(tarjetaTipo.value);
@@ -16473,6 +16554,7 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
           ..write('monto: $monto, ')
           ..write('medio: $medio, ')
           ..write('fecha: $fecha, ')
+          ..write('numeroCuota: $numeroCuota, ')
           ..write('tarjetaTipo: $tarjetaTipo, ')
           ..write('tarjetaMarca: $tarjetaMarca, ')
           ..write('numeroAprobacion: $numeroAprobacion, ')
