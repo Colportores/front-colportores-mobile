@@ -5,6 +5,8 @@
 // cadena, cada uno apuntando a su padre. Verificarla es lo que evita descubrir
 // en el peor momento —un colportor sin celular— que falta un eslabón.
 
+import 'dart:convert';
+
 /// Una entrada del `appDataFolder` de Google Drive.
 class BackupEntry {
   const BackupEntry({
@@ -17,6 +19,7 @@ class BackupEntry {
     this.exportedAt,
     this.storedHash,
     this.keyId,
+    this.firma,
   });
 
   /// Identidad en Drive.
@@ -61,6 +64,21 @@ class BackupEntry {
   /// no trae identificador, no se toca nunca. `null` si el archivo no lo trae.
   final String? keyId;
 
+  /// La firma de las anotaciones de este archivo (`parent_id`, `content_hash`,
+  /// `exported_at`), hecha con una llave derivada de la de la usuaria
+  /// ([CryptoPort.sign]). Es lo que impide que alguien con acceso a la carpeta
+  /// de Drive reencadene archivos tocando sus anotaciones sin que se note.
+  /// `null` si el archivo no la trae (un respaldo de antes de la firma): ante
+  /// una verificación cuenta como cadena rota y se regenera.
+  final String? firma;
+
+  /// Lo que dice la firma de este archivo: [mensajeDeFirma] de sus anotaciones.
+  String get mensajeFirmado => mensajeDeFirma(
+        parentId: parentId,
+        contentHash: contentHash,
+        exportedAt: exportedAt,
+      );
+
   bool get isBase => parentId == null;
 
   /// Lo que se subió y lo que Drive guardó no es lo mismo.
@@ -88,7 +106,34 @@ enum ChainProblem {
   /// Una entrada existe pero lo que guarda el archivo remoto no es lo que se
   /// subió: rompe el restore igual que una que falta.
   corrupt,
+
+  /// Una entrada no trae la firma de sus anotaciones, o la que trae no
+  /// coincide con la que da la llave de la usuaria: las anotaciones (padre,
+  /// hash, instante) se tocaron o no las puso esta llave. Se trata como una
+  /// cadena rota: el próximo respaldo parte de una base nueva.
+  badSignature,
 }
+
+/// Lo que se firma de cada archivo del respaldo: el padre, el hash y el instante
+/// de exportación, en ese orden y en un arreglo JSON, para que ningún valor se
+/// pueda confundir con el borde del vecino (cualquier separador de texto
+/// plano permitiría mover un carácter de un campo al otro). Lleva una versión
+/// del esquema como primer elemento. Sin padre (la base) o sin instante, el
+/// campo va como cadena vacía, igual que en las anotaciones de Drive.
+///
+/// El instante va como lo escribe el archivo (UTC, ISO 8601): el mismo que
+/// vuelve al leerlo.
+String mensajeDeFirma({
+  required String? parentId,
+  required String contentHash,
+  required DateTime? exportedAt,
+}) =>
+    jsonEncode([
+      'colportores/backup/anotaciones/v1',
+      parentId ?? '',
+      contentHash,
+      exportedAt?.toUtc().toIso8601String() ?? '',
+    ]);
 
 class ChainStatus {
   const ChainStatus({

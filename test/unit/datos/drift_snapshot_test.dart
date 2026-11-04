@@ -259,12 +259,20 @@ void main() {
 
     setUp(() {
       ahora = DateTime.utc(2026, 11, 2, 22);
-      drive = FakeArchive(authorized: true, clock: () => ahora, informaHashRemoto: true);
+      final cripto = CryptoConDek(
+        () async => ClaveDb(Uint8List.fromList(List<int>.generate(32, (i) => i))),
+      );
+      // El archivo hashea con el mismo digest que el cifrado en juego (como en la app): la firma de las
+      // anotaciones firma el hash del cifrado y la verificación lo compara con el que quedó anotado.
+      drive = FakeArchive(
+        authorized: true,
+        clock: () => ahora,
+        informaHashRemoto: true,
+        digest: cripto.digest,
+      );
       servicio = BackupService(
         archive: drive,
-        crypto: CryptoConDek(
-          () async => ClaveDb(Uint8List.fromList(List<int>.generate(32, (i) => i))),
-        ),
+        crypto: cripto,
         snapshot: DriftSnapshot(db, tablas: entidadesDelBackup, clock: () => ahora),
         clock: () => ahora,
       );

@@ -119,6 +119,7 @@ class GoogleDriveArchive implements ArchivePort {
     required String watermark,
     DateTime? exportedAt,
     String? keyId,
+    String? firma,
   }) async {
     // El hash se calcula acá, sobre lo que se va a subir. Que lo calcule el
     // teléfono y que Drive calcule el suyo aparte es lo que hace que comparar los
@@ -136,6 +137,7 @@ class GoogleDriveArchive implements ArchivePort {
         'content_hash': hash,
         if (exportedAt != null) 'exported_at': exportedAt.toUtc().toIso8601String(),
         if (keyId != null) 'key_id': keyId,
+        if (firma != null) 'firma': firma,
       },
     });
 
@@ -213,6 +215,7 @@ class GoogleDriveArchive implements ArchivePort {
       exportedAt: DateTime.tryParse('${props['exported_at']}')?.toUtc(),
       storedHash: (a['sha256Checksum'] as String?)?.toLowerCase(),
       keyId: props['key_id'] as String?,
+      firma: props['firma'] as String?,
     );
   }
 
