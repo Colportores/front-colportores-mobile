@@ -35,8 +35,36 @@ abstract final class TextosCuenta {
   static const avisoSinConexion = 'Sin conexión';
 }
 
+/// Los textos de «Mi plata» (vista 33C, HU-CTA-003). Los del canvas van tal cual; los demás dicen «para
+/// confirmar».
+abstract final class TextosMiPlata {
+  static const eyebrow = 'MI CUENTA';
+  static const titulo = 'Mi plata';
+  static const volver = 'Volver';
+
+  static const enMano = 'En mano';
+  static const porCobrar = 'Por cobrar';
+
+  /// 33C·03.
+  static const sinEfectivoEnMano = 'No tenés efectivo sin depositar.';
+
+  /// Para confirmar: el canvas no dibuja «Por cobrar» en cero.
+  static const sinPorCobrar = 'No tenés nada por cobrar.';
+
+  static const desde = 'desde';
+
+  static const desplegado = 'desplegado';
+  static const plegado = 'plegado';
+}
+
 /// Cómo se escriben las cifras de Mi Cuenta.
 abstract final class FormatoCuenta {
+  /// «21/10», en la hora del teléfono.
+  static String fecha(DateTime fecha) {
+    final local = fecha.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}';
+  }
+
   /// «$ 18.400», o «$ 1.450,50» si no son pesos justos.
   static String monto(int centavos) => FormatoPrecios.monto(centavos);
 

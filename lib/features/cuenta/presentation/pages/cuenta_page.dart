@@ -7,6 +7,8 @@ import '../../domain/entities/resumen_de_cuenta.dart';
 import '../providers/cuenta_providers.dart';
 import '../textos_cuenta.dart';
 import '../widgets/piezas_cuenta.dart';
+import '../widgets/piezas_mi_plata.dart';
+import 'mi_plata_page.dart';
 
 /// La pestaña «Cuenta» (vista 33A, HU-CTA-001): las cifras de la plata del colportor con cuánto
 /// cambiaron contra la semana pasada.
@@ -20,8 +22,9 @@ import '../widgets/piezas_cuenta.dart';
 /// En V1 son tres tarjetas, Depositado, En mano y Por cobrar. «Depositado» suma solo lo que el
 /// coordinador validó y baja del servidor por el pull: mientras el teléfono no bajó nada no se dibuja
 /// (ni un cero), y sin conexión un aviso dice de cuándo es (33A·02). La deuda con la casa editora llega
-/// con los pedidos (V2), y el toque en cada tarjeta cuando exista su detalle (HU-CTA-003): hasta
-/// entonces no se dibuja lo que no lleva a ningún lado.
+/// con los pedidos (V2). «En mano» y «Por cobrar» se tocan y abren su detalle en «Mi plata»
+/// (HU-CTA-003, 33C); «Depositado» todavía no tiene detalle y no se toca: no se dibuja lo que no lleva
+/// a ningún lado.
 class CuentaPage extends ConsumerStatefulWidget {
   const CuentaPage({super.key, required this.colportorId, this.activa = true});
 
@@ -36,6 +39,23 @@ class CuentaPage extends ConsumerStatefulWidget {
 }
 
 class _CuentaPageState extends ConsumerState<CuentaPage> {
+  /// Ya se está abriendo «Mi plata»: un segundo toque antes de que termine no abre otra encima.
+  var _abriendo = false;
+
+  Future<void> _abrir(TipoDeCifra tipo) async {
+    if (_abriendo) return;
+    _abriendo = true;
+    try {
+      await MiPlataPage.abrir(
+        context,
+        colportorId: widget.colportorId,
+        abierta: CategoriaDeMiPlata.de(tipo)!,
+      );
+    } finally {
+      _abriendo = false;
+    }
+  }
+
   @override
   void didUpdateWidget(CuentaPage anterior) {
     super.didUpdateWidget(anterior);
@@ -84,7 +104,13 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                   ),
                 for (final tipo in TipoDeCifra.values)
                   if (_cifraDe(tipo, datos) case final cifra?)
-                    TarjetaDeCifra(key: Key('cuenta_${tipo.name}'), tipo: tipo, cifra: cifra),
+                    TarjetaDeCifra(
+                      key: Key('cuenta_${tipo.name}'),
+                      tipo: tipo,
+                      cifra: cifra,
+                      // «Depositado» no tiene detalle todavía: sin destino no hay toque.
+                      alAbrir: CategoriaDeMiPlata.de(tipo) == null ? null : () => _abrir(tipo),
+                    ),
               ],
             ),
           ),
