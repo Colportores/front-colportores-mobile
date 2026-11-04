@@ -1,5 +1,5 @@
-// «Mi plata» (vista 33C, HU-CTA-003, #172): un test por artboard (33C·01 a 33C·03), la fila de «Debo a
-// clientes» que aparece solo cuando hay algo, cargando y error (los de Mi Cuenta) y los casos límite
+// «Mi plata» (vista 33C, HU-CTA-003, #172): un test por artboard (33C·01 a 33C·03), cargando y error
+// (los de Mi Cuenta) y los casos límite
 // de cada flujo: doble toque, ir y volver, la falla a mitad, las listas largas y el texto al 200 %.
 import 'package:colportores_mobile/features/cuenta/domain/entities/detalle_de_mi_plata.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/widgets/piezas_mi_plata.dart';
@@ -31,27 +31,6 @@ Future<void> _verYTocar(WidgetTester tester, Key llave) async {
   }
   await _tocar(tester, llave);
 }
-
-DetalleDeMiPlata _conDevolucion() => DetalleDeMiPlata(
-  enManoCentavos: 50000,
-  enMano: [
-    MovimientoEnMano(cliente: 'Pedro Gómez', fecha: dia(20), centavos: 240000),
-    MovimientoEnMano(cliente: 'Pedro Gómez', fecha: dia(21), centavos: -190000, esDevolucion: true),
-  ],
-  porCobrarCentavos: 0,
-  porCobrar: const [],
-  deboCentavos: 0,
-  deboAClientes: const [],
-);
-
-DetalleDeMiPlata _conDeudaConClientes() => DetalleDeMiPlata(
-  enManoCentavos: 240000,
-  enMano: [MovimientoEnMano(cliente: 'Ana Rodríguez', fecha: dia(23), centavos: 240000)],
-  porCobrarCentavos: 0,
-  porCobrar: const [],
-  deboCentavos: 150000,
-  deboAClientes: [SaldoDeCliente(cliente: 'Pedro Gómez', desde: dia(22), centavos: 150000)],
-);
 
 void main() {
   group('33C·01 · En mano abierto', () {
@@ -89,17 +68,6 @@ void main() {
         expect(find.textContaining('Próximamente'), findsNothing);
       },
     );
-
-    testWidgets('una devolución de plata aparece restando, para que la lista sume lo que dice la '
-        'cifra', (tester) async {
-      await montarMiPlata(tester, RepositorioDeDetalleControlable(inicial: _conDevolucion()));
-
-      expect(find.text('Pedro Gómez · 20/10'), findsOneWidget);
-      expect(find.text(r'$ 2.400'), findsOneWidget);
-      expect(find.text('Devolución a Pedro Gómez · 21/10'), findsOneWidget);
-      expect(find.text(r'− $ 1.900'), findsOneWidget);
-      expect(find.text(r'$ 500  ▴'), findsOneWidget);
-    });
   });
 
   group('33C·02 · Por cobrar abierto', () {
@@ -152,8 +120,6 @@ void main() {
             enMano: const [],
             porCobrarCentavos: 970000,
             porCobrar: detalleDelCanvas.porCobrar,
-            deboCentavos: 0,
-            deboAClientes: const [],
           ),
         ),
       );
@@ -170,37 +136,6 @@ void main() {
       );
 
       expect(find.text('No tenés nada por cobrar.'), findsOneWidget);
-      expect(find.byKey(const Key('mi_plata_categoria_deboAClientes')), findsNothing);
-    });
-  });
-
-  group('«Debo a clientes»', () {
-    testWidgets('solo aparece cuando hay algo, con el detalle por cliente', (tester) async {
-      await montarMiPlata(tester, RepositorioDeDetalleControlable(inicial: detalleDelCanvas));
-      expect(find.text('Debo a clientes'), findsNothing);
-
-      await montarMiPlata(tester, RepositorioDeDetalleControlable(inicial: _conDeudaConClientes()));
-
-      expect(find.text('Debo a clientes'), findsOneWidget);
-      expect(find.text(r'$ 1.500  ▾'), findsOneWidget);
-      // Cerrada por defecto: la devolución es una opción secundaria y no invasiva.
-      expect(find.text('Pedro Gómez · desde 22/10'), findsNothing);
-
-      await _tocar(tester, const Key('mi_plata_categoria_deboAClientes'));
-
-      expect(find.text('Pedro Gómez · desde 22/10'), findsOneWidget);
-      expect(find.text(r'$ 1.500'), findsOneWidget);
-    });
-
-    testWidgets('si el compromiso se cumple, la fila se va sola', (tester) async {
-      final repo = RepositorioDeDetalleControlable(inicial: _conDeudaConClientes());
-      await montarMiPlata(tester, repo);
-      expect(find.text('Debo a clientes'), findsOneWidget);
-
-      repo.emitir(detalleDelCanvas);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Debo a clientes'), findsNothing);
     });
   });
 
@@ -345,8 +280,6 @@ void main() {
           ],
           porCobrarCentavos: detalleDelCanvas.porCobrarCentavos,
           porCobrar: detalleDelCanvas.porCobrar,
-          deboCentavos: 0,
-          deboAClientes: const [],
         ),
       );
       await tester.pumpAndSettle();
@@ -410,8 +343,6 @@ void main() {
             enMano: const [],
             porCobrarCentavos: muchos.fold<int>(0, (s, c) => s + c.centavos),
             porCobrar: muchos,
-            deboCentavos: 0,
-            deboAClientes: const [],
           ),
         ),
         abierta: CategoriaDeMiPlata.porCobrar,
@@ -443,8 +374,6 @@ void main() {
             ],
             porCobrarCentavos: 0,
             porCobrar: const [],
-            deboCentavos: 0,
-            deboAClientes: const [],
           ),
         ),
         escala: 2,
@@ -464,7 +393,7 @@ void main() {
       '412x915': Size(412, 915),
     }.entries) {
       for (final escala in [1.0, 2.0]) {
-        testWidgets('a ${tam.key}, texto $escala: sin overflow, las tres categorías y las filas se '
+        testWidgets('a ${tam.key}, texto $escala: sin overflow, las dos categorías y las filas se '
             'alcanzan, y los toques miden 48 dp', (tester) async {
           final manejador = tester.ensureSemantics();
           final detalle = DetalleDeMiPlata(
@@ -472,10 +401,6 @@ void main() {
             enMano: detalleDelCanvas.enMano,
             porCobrarCentavos: 970000,
             porCobrar: detalleDelCanvas.porCobrar,
-            deboCentavos: 150000,
-            deboAClientes: [
-              SaldoDeCliente(cliente: 'Pedro Gómez', desde: dia(22), centavos: 150000),
-            ],
           );
           await montarMiPlata(
             tester,
@@ -486,16 +411,15 @@ void main() {
           // Con el texto grande las últimas categorías quedan fuera de la pantalla: se llega
           // desplazando.
           await _verYTocar(tester, const Key('mi_plata_categoria_porCobrar'));
-          await _verYTocar(tester, const Key('mi_plata_categoria_deboAClientes'));
 
           await tester.dragUntilVisible(
-            find.byKey(const Key('mi_plata_fila_deboAClientes_0')),
+            find.byKey(const Key('mi_plata_fila_porCobrar_2')),
             find.byKey(const Key('mi_plata_lista')),
             const Offset(0, -200),
           );
 
           expect(tester.takeException(), isNull);
-          expect(find.text('Pedro Gómez · desde 22/10'), findsOneWidget);
+          expect(find.text('Raúl Castro · desde 01/10'), findsOneWidget);
           await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
           await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
           manejador.dispose();

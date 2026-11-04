@@ -14,6 +14,7 @@ import 'package:colportores_mobile/features/cuenta/presentation/providers/cuenta
 import 'package:colportores_mobile/features/cuenta/presentation/widgets/piezas_mi_plata.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 /// Una cifra con lo que hay y lo que cambió.
@@ -75,12 +76,20 @@ Future<void> montarCuenta(
   double escala = 1,
   bool activa = true,
   Key? boundary,
+  List<Override> overrides = const [],
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
-    _arbol(repo, tamano: tamano, escala: escala, activa: activa, boundary: boundary),
+    _arbol(
+      repo,
+      tamano: tamano,
+      escala: escala,
+      activa: activa,
+      boundary: boundary,
+      overrides: overrides,
+    ),
   );
   await tester.pump();
 }
@@ -91,8 +100,9 @@ Widget _arbol(
   required double escala,
   required bool activa,
   Key? boundary,
+  List<Override> overrides = const [],
 }) => ProviderScope(
-  overrides: [resumenDeCuentaRepositoryProvider.overrideWithValue(repo)],
+  overrides: [resumenDeCuentaRepositoryProvider.overrideWithValue(repo), ...overrides],
   child: RepaintBoundary(
     key: boundary,
     child: MaterialApp(
@@ -116,8 +126,11 @@ Future<void> cambiarActiva(
   required bool activa,
   Size tamano = const Size(390, 844),
   double escala = 1,
+  List<Override> overrides = const [],
 }) async {
-  await tester.pumpWidget(_arbol(repo, tamano: tamano, escala: escala, activa: activa));
+  await tester.pumpWidget(
+    _arbol(repo, tamano: tamano, escala: escala, activa: activa, overrides: overrides),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -141,8 +154,6 @@ final detalleDelCanvas = DetalleDeMiPlata(
     SaldoDeCliente(cliente: 'Laura Méndez', desde: dia(8), centavos: 360000),
     SaldoDeCliente(cliente: 'María Fernández', desde: dia(12), centavos: 120000),
   ],
-  deboCentavos: 0,
-  deboAClientes: const [],
 );
 
 /// Un repositorio de detalle que el test maneja, igual que [RepositorioDeCuentaControlable].

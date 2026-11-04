@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +18,7 @@ import 'core/dispositivo/orientacion_app.dart';
 import 'core/dispositivo/seguridad_dispositivo_canal.dart';
 import 'core/logging/app_logger.dart';
 import 'core/notificaciones/notificaciones_providers.dart';
+import 'core/notificaciones/permiso_alarmas_exactas.dart';
 import 'core/notificaciones/permiso_notificaciones_sistema.dart';
 import 'core/secure_storage/almacen_seguro_keystore.dart';
 import 'core/secure_storage/archivo_envoltorio_dek.dart';
@@ -51,13 +53,18 @@ import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
 import 'features/notificaciones/data/repositories/marca_conciliacion_recordatorios_impl.dart';
 import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
 import 'features/notificaciones/data/repositories/preferencias_recordatorios_repository_impl.dart';
+import 'features/notificaciones/presentation/enganches_push_remotas.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
+import 'features/respaldo/data/repositories/recuperacion_resuelta_repository_impl.dart';
 import 'features/respaldo/data/repositories/respaldo_drive_repository_impl.dart';
 import 'features/respaldo/data/services/nivel_bateria_canal.dart';
+import 'features/respaldo/data/services/programador_nocturno_del_sistema.dart';
 import 'features/respaldo/data/services/servicio_google.dart';
 import 'features/respaldo/data/services/servicio_google_sign_in.dart';
+import 'features/respaldo/domain/services/programador_respaldo_nocturno.dart';
+import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
@@ -67,6 +74,7 @@ import 'features/ventas/presentation/pages/devolucion_page.dart';
 import 'features/ventas/presentation/providers/ventas_providers.dart'
     show cobrarDespuesDeLaVentaProvider;
 import 'plataforma/identidad_instalacion.dart';
+import 'plataforma/respaldo_nocturno_workmanager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -140,16 +148,21 @@ Future<void> main() async {
   // Recordatorios locales de las visitas (HU-NOT-002): el plugin se prepara antes de la primera
   // pantalla para recoger el aviso que abrió la app, si lo hubo. Si no arranca, la app sigue.
   final permisoNotificaciones = PermisoNotificacionesCanal();
+  // «Alarmas y recordatorios» (HU-NOT-002, «Aviso exacto»): el motor programa exacto si está prendido
+  // y la vista 24 avisa si no lo está.
+  final permisoAlarmasExactas = PermisoAlarmasExactasCanal();
   // Las preferencias de los recordatorios (HU-NOT-004) viven en el almacén seguro; el mismo objeto
   // las lee al programar cada aviso (si están prendidos y con cuánta anticipación).
   final preferenciasRecordatorios = PreferenciasRecordatoriosRepositoryImpl(almacenSeguro);
   final recordatorios = RecordatoriosLocales(
-    motor: MotorDeAvisosPlugin(FlutterLocalNotificationsPlugin()),
+    motor: MotorDeAvisosPlugin(FlutterLocalNotificationsPlugin(), alarmas: permisoAlarmasExactas),
     permiso: permisoNotificaciones,
     anticipacion: preferenciasRecordatorios,
     activados: preferenciasRecordatorios,
   );
   await recordatorios.iniciar();
+
+  final respaldoNocturno = await _prepararRespaldoNocturno();
 
   runApp(
     ProviderScope(
@@ -190,6 +203,7 @@ Future<void> main() async {
         // El permiso de notificaciones (HU-NOT-001, vista 24): canal nativo propio (MainActivity.kt,
         // AppDelegate.swift) y, en el almacén seguro, si ya se le pidió y si cerró el aviso de Hoy.
         permisoNotificacionesSistemaProvider.overrideWithValue(permisoNotificaciones),
+        permisoAlarmasExactasProvider.overrideWithValue(permisoAlarmasExactas),
         // Los avisos de las visitas agendadas (HU-NOT-002), con el plugin del teléfono.
         recordatoriosProvider.overrideWithValue(recordatorios),
         toquesDeRecordatoriosProvider.overrideWithValue(recordatorios),
@@ -200,6 +214,11 @@ Future<void> main() async {
         ),
         permisoNotificacionesRepositoryProvider.overrideWithValue(
           PermisoNotificacionesRepositoryImpl(almacenSeguro),
+        ),
+        // HU-SYNC-006 (vista 34): el asistente de recuperación del primer arranque.
+        asistenteDeRecuperacionHabilitadoProvider.overrideWithValue(true),
+        recuperacionResueltaRepositoryProvider.overrideWithValue(
+          RecuperacionResueltaRepositoryImpl(almacenSeguro),
         ),
         // Qué cuentas escondieron el aviso de privacidad con «No volver a mostrar» (#445, #447): es
         // por cuenta y se vuelve a encender desde Configuración.
@@ -221,6 +240,9 @@ Future<void> main() async {
         // La batería para el respaldo automático (R-SY10): canal nativo propio (MainActivity.kt,
         // AppDelegate.swift).
         nivelBateriaProvider.overrideWithValue(NivelBateriaCanal()),
+        // El respaldo de la noche con la app cerrada (HU-SYNC-005, ADR-009, #583): WorkManager en
+        // Android y BGTaskScheduler en iOS. Se programa al conectar Drive y se saca al desconectar.
+        programadorDeRespaldoNocturnoProvider.overrideWithValue(respaldoNocturno),
         if (sesionPersistida != null)
           almacenSesionSupabaseProvider.overrideWithValue(sesionPersistida),
         // DEK envuelta con la contraseña (ADR-006): archivo común, fuera del almacén seguro, en
@@ -312,6 +334,11 @@ Future<void> main() async {
         // El detalle de una agenda (vista 23, 23C·01, #409): lo abren el recordatorio tocado, el aviso
         // del centro de notificaciones y la fila de la pestaña Agenda.
         ...FlujoDetalleAgenda.enganches(navigatorKeyColportores),
+        // HU-NOT-003: tocar el aviso de una push (el de arriba con la app abierta o el del sistema)
+        // lo marca como leído y lleva a su destino. El adaptador de `firebase_messaging` que las
+        // recibe de verdad va con el proyecto de Firebase (pendiente): `pushRemotasProvider` no
+        // recibe nada hasta entonces.
+        ...EnganchesPushRemotas.enganches(navigatorKeyColportores),
         // Pestaña Notas de la hoja de la casa (vista 39, C·05, #447): las notas del lugar, todas en
         // el teléfono. La pestaña Historial se engancha con su HU (#446).
         pestanaNotasDeLaCasaProvider.overrideWithValue(
@@ -342,4 +369,32 @@ Future<void> main() async {
       child: const ColportoresApp(),
     ),
   );
+}
+
+/// Deja listo el respaldo de la noche: registra el despachador del segundo plano ante el plugin y
+/// devuelve quien lo programa. Si el plugin no arranca (o no es Android ni iOS), la app sigue sin
+/// respaldo nocturno: el del cierre de jornada y el de la vuelta a la app con más de 24 horas sin uno
+/// (R30) siguen cubriendo.
+Future<ProgramadorDeRespaldoNocturno> _prepararRespaldoNocturno() async {
+  final plataforma = defaultTargetPlatform;
+  if (plataforma != TargetPlatform.android && plataforma != TargetPlatform.iOS) {
+    return const ProgramadorSinSegundoPlano();
+  }
+  try {
+    await TareasWorkmanager.iniciar();
+    return ProgramadorNocturnoDelSistema(
+      TareasWorkmanager(),
+      esIos: plataforma == TargetPlatform.iOS,
+    );
+  } on Object catch (e, st) {
+    AppLogger.instance.error(
+      LogModulo.backup,
+      'main',
+      'no se pudo preparar el respaldo de la noche',
+      const {},
+      e,
+      st,
+    );
+    return const ProgramadorSinSegundoPlano();
+  }
 }

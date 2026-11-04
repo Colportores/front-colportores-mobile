@@ -74,6 +74,45 @@ void main() {
       expect(TextosBajaPersona.entregas(_cuenta()), '1 de 2');
     });
 
+    test('sin deuda, el resumen dice solo las entregas pendientes (#509)', () {
+      expect(
+        TextosBajaPersona.resumenDeSaldo('Jorge', _cuenta(saldo: 0)),
+        'Jorge tiene 1 entrega pendiente.',
+      );
+      expect(
+        TextosBajaPersona.resumenDeSaldo('Jorge', _cuenta(saldo: 0, hechas: 0, total: 3)),
+        'Jorge tiene 3 entregas pendientes.',
+      );
+      expect(TextosBajaPersona.entregasPendientes(1), '1 entrega pendiente');
+      expect(TextosBajaPersona.entregasPendientes(2), '2 entregas pendientes');
+    });
+
+    test('la segunda confirmación solo con deuda es la del canvas, tal cual', () {
+      expect(
+        TextosBajaPersona.segundaConfirmacion('María', _cuenta(hechas: 2)),
+        'La deuda de \$\u00A01.200 sigue en tu cuenta aunque María esté de baja.',
+      );
+    });
+
+    test('la segunda confirmación solo con entregas dice que no se cancelan (#509 P2)', () {
+      expect(
+        TextosBajaPersona.segundaConfirmacion('Jorge', _cuenta(saldo: 0)),
+        'La entrega pendiente no se cancela: queda registrada aunque Jorge esté de baja.',
+      );
+      expect(
+        TextosBajaPersona.segundaConfirmacion('Jorge', _cuenta(saldo: 0, hechas: 0, total: 3)),
+        'Las 3 entregas pendientes no se cancelan: quedan registradas aunque Jorge esté de baja.',
+      );
+    });
+
+    test('la segunda confirmación con deuda y entregas dice las dos, la deuda primero', () {
+      expect(
+        TextosBajaPersona.segundaConfirmacion('María', _cuenta()),
+        'La deuda de \$\u00A01.200 sigue en tu cuenta aunque María esté de baja. '
+        'La entrega pendiente no se cancela: queda registrada aunque María esté de baja.',
+      );
+    });
+
     test('«Baja el 22/10» con el saldo solo si se conoce y es mayor que cero', () {
       final baja = DateTime.utc(2026, 10, 22, 15);
       final ahora = DateTime.utc(2026, 10, 26);

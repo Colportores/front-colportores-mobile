@@ -144,7 +144,16 @@ enum ClaveSegura {
   /// de esta. No es secreto: vive acá, junto a `zonasAvisadas`, para no sumar otro almacenamiento;
   /// se conserva al reconstruir el almacén (la DB sigue y su respaldo también) y se borra con el
   /// borrado de datos locales (HU-AUTH-010).
-  respaldoDrive('drive_backup_account');
+  respaldoDrive('drive_backup_account'),
+
+  /// Para qué usuario ya se resolvió el asistente de recuperación del primer arranque (HU-SYNC-006,
+  /// vista 34): el valor es el id (UUID) del usuario de la app, nada más. Con él, el asistente no
+  /// vuelve a ofrecerse en este teléfono a quien ya recuperó sus datos o eligió «Empezar sin
+  /// recuperar»; con otro usuario (o sin la clave) se ofrece de nuevo. No es secreto: vive acá, junto a
+  /// `respaldoDrive`, para no sumar otro almacenamiento; se conserva al reconstruir el almacén (la DB
+  /// sigue) y se borra con el borrado de datos locales (HU-AUTH-010): un teléfono sin datos vuelve a
+  /// ofrecer recuperarlos.
+  recuperacionResuelta('recovery_resolved');
 
   const ClaveSegura(this.id);
 

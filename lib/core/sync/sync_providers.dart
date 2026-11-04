@@ -6,14 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sync_engine/adapters.dart';
 import 'package:sync_engine/sync_engine.dart';
 
-import '../../catalogo.dart';
-import '../../datos/drift_job_store.dart';
-import '../../datos/drift_local_store.dart';
-import '../../datos/drift_snapshot.dart';
-import '../../datos/drift_sync_meta.dart';
 import '../../datos/encolador_sync_motor.dart';
 import '../../features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
-import '../../features/respaldo/data/services/crypto_con_dek.dart';
 import '../../features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import '../../plataforma/conectividad_del_motor.dart';
 import '../../plataforma/identidad_instalacion.dart';
@@ -23,7 +17,10 @@ import '../config/config_supabase.dart';
 import '../database/database_providers.dart';
 import '../logging/app_logger.dart';
 import '../secure_storage/secure_storage_providers.dart';
+import 'armado_del_motor.dart';
 import 'encolador_sync.dart';
+import 'hora_del_servidor.dart';
+import 'transporte_que_anota_la_hora.dart';
 
 // Cableado del motor de sync (contrato-sync-engine §3, #178). El motor es de Bruno (ADR-017,
 // `packages/sync_engine`, `lib/datos/`, `lib/plataforma/`); esto lo arma con lo que la app ya tiene:
@@ -47,16 +44,20 @@ final sobreSyncProvider = Provider<ClientEnvelope>(
 /// [cicloDeVidaSyncProvider] dispara un ciclo y el lote sube sin esperar al próximo trigger.
 final transporteSyncProvider = Provider<SyncTransport>((ref) {
   if (!ConfigSupabase.configurada) return const TransporteSinBackend();
-  return SupabaseRpcTransport(
-    projectUrl: Uri.parse(ConfigSupabase.url),
-    anonKey: ConfigSupabase.anonKey,
-    token: () async => Supabase.instance.client.auth.currentSession?.accessToken,
-    device: ref.watch(sobreSyncProvider),
+  // La `server_time` de cada respuesta se anota (la usa lo que borra por tiempo, HU-UBI-012).
+  return TransporteQueAnotaLaHora(
+    SupabaseRpcTransport(
+      projectUrl: Uri.parse(ConfigSupabase.url),
+      anonKey: ConfigSupabase.anonKey,
+      token: () async => Supabase.instance.client.auth.currentSession?.accessToken,
+      device: ref.watch(sobreSyncProvider),
+    ),
+    ref.read(horaDelServidorProvider),
   );
 });
 
-/// Realtime de los catálogos (§5.6, HU-SYNC-003): un timbre por cada cambio de `producto` o de
-/// `precio_por_ciudad`, para que el motor baje el delta sin esperar al próximo ciclo. Complementa al
+/// Realtime de los catálogos (§5.6, HU-SYNC-003): un timbre por cada cambio de `producto`, de
+/// `precio_por_ciudad` o de `precio_general`, para que el motor baje el delta sin esperar al próximo ciclo. Complementa al
 /// pull, no lo reemplaza. Sin Supabase configurado (tests, demo) no hay servidor que avise: `null`,
 /// y el motor sigue solo con los triggers del sistema.
 final realtimeSyncProvider = Provider<RealtimePort?>((ref) {
@@ -71,23 +72,14 @@ final realtimeSyncProvider = Provider<RealtimePort?>((ref) {
 final motorSyncProvider = Provider<SyncEngine?>((ref) {
   final db = ref.watch(dbLocalProvider);
   if (db == null) return null;
-  // El backup E2E en el Drive de la persona (HU-SYNC-005, ADR-006): la DB exportada, comprimida y
-  // cifrada con la DEK antes de salir, hacia el `appDataFolder`. La DEK se pide al almacén en cada
-  // cifrado (no se guarda acá) y el token de Drive, en cada pedido: sin Drive conectado el respaldo
-  // simplemente no corre (`ServicioRespaldo` lo mira antes), y armar esto no toca el almacén.
-  final cripto = CryptoConDek(() => ref.read(custodiaClaveDbProvider).leerDek());
-  final motor = SyncEngine(
-    specs: registroDeLaApp(db.allTables.map((t) => t.actualTableName)),
-    backup: BackupService(
-      archive: GoogleDriveArchive(token: ref.watch(tokenDriveProvider), digest: cripto.digest),
-      crypto: cripto,
-      snapshot: DriftSnapshot(db, tablas: entidadesDelBackup),
-    ),
-    transport: ref.watch(transporteSyncProvider),
-    jobs: DriftJobStore(db),
-    meta: DriftSyncMeta(db),
-    store: DriftLocalStore(db, entidades: entidadesQueEscribeElMotor),
-    connectivity: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
+  // El backup E2E en el Drive de la persona (HU-SYNC-005, ADR-006) se arma con la receta de
+  // `armarMotorDeSync`, la misma del respaldo nocturno.
+  final motor = armarMotorDeSync(
+    db: db,
+    leerDek: () => ref.read(custodiaClaveDbProvider).leerDek(),
+    tokenDrive: ref.watch(tokenDriveProvider),
+    transporte: ref.watch(transporteSyncProvider),
+    conectividad: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
     realtime: ref.watch(realtimeSyncProvider),
   );
   ref.onDispose(() => unawaited(motor.dispose()));

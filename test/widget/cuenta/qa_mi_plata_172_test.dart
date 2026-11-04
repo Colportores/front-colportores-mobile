@@ -68,18 +68,6 @@ Future<void> _capturar(WidgetTester tester, String nombre) async {
   });
 }
 
-final _conTodo = DetalleDeMiPlata(
-  enManoCentavos: 50000,
-  enMano: [
-    MovimientoEnMano(cliente: 'Pedro Gómez', fecha: dia(20), centavos: 240000),
-    MovimientoEnMano(cliente: 'Pedro Gómez', fecha: dia(21), centavos: -190000, esDevolucion: true),
-  ],
-  porCobrarCentavos: 970000,
-  porCobrar: detalleDelCanvas.porCobrar,
-  deboCentavos: 150000,
-  deboAClientes: [SaldoDeCliente(cliente: 'Lucía Pérez', desde: dia(22), centavos: 150000)],
-);
-
 /// Cada estado de «Mi plata» con lo que hace falta para llegar a él.
 final _estados = <String, (RepositorioDeDetalleControlable Function(), CategoriaDeMiPlata)>{
   '33C01_en_mano': (
@@ -93,10 +81,6 @@ final _estados = <String, (RepositorioDeDetalleControlable Function(), Categoria
   '33C03_nada_en_mano': (
     () => RepositorioDeDetalleControlable(inicial: DetalleDeMiPlata.vacio),
     CategoriaDeMiPlata.enMano,
-  ),
-  'devolucion_y_debo_abierto': (
-    () => RepositorioDeDetalleControlable(inicial: _conTodo),
-    CategoriaDeMiPlata.deboAClientes,
   ),
   'error': (
     () => RepositorioDeDetalleControlable()..fallaAlSuscribir = true,
@@ -194,26 +178,6 @@ void main() {
 
       expect(find.text('Pedro Gómez · 21/10'), findsNothing);
       expect(find.text('No tenés efectivo sin depositar.'), findsOneWidget);
-    });
-
-    testWidgets('si «Debo a clientes» estaba abierta y el compromiso se cumple, la pantalla no '
-        'queda en blanco ni con un error', (tester) async {
-      final repo = RepositorioDeDetalleControlable(inicial: _conTodo);
-      await _montar(
-        tester,
-        repo,
-        abierta: CategoriaDeMiPlata.deboAClientes,
-        tamano: const Size(360, 640),
-      );
-      expect(find.text('Lucía Pérez · desde 22/10'), findsOneWidget);
-
-      repo.emitir(detalleDelCanvas);
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('mi_plata_categoria_deboAClientes')), findsNothing);
-      expect(find.byKey(const Key('mi_plata_categoria_enMano')), findsOneWidget);
-      expect(find.byKey(const Key('mi_plata_categoria_porCobrar')), findsOneWidget);
-      expect(tester.takeException(), isNull);
     });
   });
 

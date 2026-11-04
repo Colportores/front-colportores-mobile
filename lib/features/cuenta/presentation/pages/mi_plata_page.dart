@@ -10,9 +10,9 @@ import '../widgets/piezas_mi_plata.dart';
 /// «Mi plata» (vista 33C, HU-CTA-003): el detalle de cada cifra de Mi Cuenta, con qué clientes, en qué
 /// fecha y por cuánto. Se abre al tocar una tarjeta de Mi Cuenta, con esa categoría desplegada.
 ///
-/// En V1 son **En mano**, **Por cobrar** y, solo cuando hay algo, **Debo a clientes**. «Depositado» llega
-/// cuando el teléfono sepa qué validó el coordinador (#596) y «Registrar depósito» con HU-CTA-004: hasta
-/// entonces no se dibuja lo que no se puede hacer. Todo sale del teléfono: sin conexión se ve igual.
+/// En V1 son **En mano** y **Por cobrar**. «Depositado» espera la decisión de qué lleva su detalle
+/// y «Registrar depósito» llega con HU-CTA-004 (#443): hasta entonces no se dibuja lo que no se puede
+/// hacer. Todo sale del teléfono: sin conexión se ve igual.
 /// Cargando y error son los de Mi Cuenta (33A·03, 33A·05).
 class MiPlataPage extends ConsumerStatefulWidget {
   const MiPlataPage({super.key, required this.colportorId, required this.abierta});
@@ -84,10 +84,7 @@ class _MiPlataPageState extends ConsumerState<MiPlataPage> {
         (i) => FilaDeMiPlata(
           key: Key('mi_plata_fila_enMano_$i'),
           detalle: FilasDeMiPlata.cobro(d.enMano[i]),
-          monto: d.enMano[i].esDevolucion
-              ? FormatoCuenta.montoQueBaja(d.enMano[i].centavos)
-              : FormatoCuenta.monto(d.enMano[i].centavos),
-          baja: d.enMano[i].esDevolucion,
+          monto: FormatoCuenta.monto(d.enMano[i].centavos),
         ),
       ),
       _categoria(
@@ -100,17 +97,6 @@ class _MiPlataPageState extends ConsumerState<MiPlataPage> {
           monto: FormatoCuenta.monto(d.porCobrar[i].centavos),
         ),
       ),
-      if (d.hayDeudaConClientes)
-        _categoria(
-          CategoriaDeMiPlata.deboAClientes,
-          d.deboCentavos,
-          d.deboAClientes.length,
-          (i) => FilaDeMiPlata(
-            key: Key('mi_plata_fila_deboAClientes_$i'),
-            detalle: FilasDeMiPlata.saldo(d.deboAClientes[i]),
-            monto: FormatoCuenta.monto(d.deboAClientes[i].centavos),
-          ),
-        ),
     ];
   }
 

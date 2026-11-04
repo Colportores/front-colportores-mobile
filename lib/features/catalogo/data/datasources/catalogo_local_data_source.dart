@@ -80,7 +80,7 @@ class CatalogoLocalDataSource {
             ProductoDelCatalogo(
               id: p.id,
               nombre: p.nombre,
-              tipo: TipoDeProducto.desdeCodigo(p.tipo),
+              categoria: CategoriaDeProducto.desdeCodigo(p.categoria),
               esBonificable: p.esBonificable,
               esMisionero: p.esMisionero,
               codigoEditor: p.codigoEditor,

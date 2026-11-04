@@ -13,6 +13,20 @@ enum MotivoRechazoAgenda {
   /// El vínculo persona ↔ espacio no está en el teléfono (o está dado de baja, o es de otra casa).
   personaInexistente('persona', 'No encontramos a esa persona en tu teléfono. Elegila de nuevo.'),
 
+  /// La ubicación alternativa de la agenda (`ubicacion_alt_id`) no está en el teléfono o está dada de
+  /// baja: el servidor rechaza una FK rota y la agenda no subiría.
+  ubicacionAltInexistente(
+    'ubicacion',
+    'No encontramos esa otra ubicación en tu teléfono. Elegila de nuevo o agendá sin ella.',
+  ),
+
+  /// La jornada de la visita (`jornada_id`) no está en el teléfono o está dada de baja.
+  jornadaInexistente(
+    'jornada',
+    'No encontramos la jornada de esta visita en tu teléfono. Volvé al mapa y registrá la visita de '
+        'nuevo.',
+  ),
+
   /// La visita no está en el teléfono.
   visitaInexistente('visita', 'Esa visita ya no está en tu teléfono.'),
 
@@ -23,7 +37,15 @@ enum MotivoRechazoAgenda {
   ),
 
   /// La agenda ya se cumplió o se canceló.
-  agendaCerrada('agenda', 'Esa agenda ya se cumplió o se canceló. Revisá la lista de agendados.');
+  agendaCerrada('agenda', 'Esa agenda ya se cumplió o se canceló. Revisá la lista de agendados.'),
+
+  /// La cobranza es una cuota del plan de una venta (HU-COB-004): se reprograma, pero no deja de ser
+  /// una cobranza.
+  cuotaDelPlan(
+    'agenda',
+    'Esta cobranza es una cuota del plan de la venta: podés cambiar el día y la hora, pero no el '
+        'tipo.',
+  );
 
   const MotivoRechazoAgenda(this.campo, this.mensaje);
 

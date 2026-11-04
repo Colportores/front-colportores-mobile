@@ -20,16 +20,6 @@ enum CategoriaDeMiPlata {
     fondo: ColoresCuenta.azulFondo,
     tinta: ColoresCuenta.azul,
     sinNada: TextosMiPlata.sinPorCobrar,
-  ),
-
-  /// Solo cuando hay algo (decisión de Cristian, 23/10, «Debo cliente»): la devolución es una opción
-  /// a mano y no tiene que ser invasiva, así que va en gris.
-  deboAClientes(
-    rotulo: TextosMiPlata.deboAClientes,
-    glifo: '↩',
-    fondo: ColoresCuenta.grisFondo,
-    tinta: ColoresCuenta.gris,
-    sinNada: TextosMiPlata.sinDeboAClientes,
   );
 
   const CategoriaDeMiPlata({
@@ -48,10 +38,12 @@ enum CategoriaDeMiPlata {
   /// Lo que dice la categoría abierta cuando no tiene filas (33C·03).
   final String sinNada;
 
-  /// La categoría de la tarjeta de Mi Cuenta que se tocó.
-  static CategoriaDeMiPlata de(TipoDeCifra tipo) => switch (tipo) {
+  /// La categoría de la tarjeta de Mi Cuenta que se tocó; `null` si esa tarjeta no tiene detalle
+  /// todavía («Depositado»).
+  static CategoriaDeMiPlata? de(TipoDeCifra tipo) => switch (tipo) {
     TipoDeCifra.enMano => enMano,
     TipoDeCifra.porCobrar => porCobrar,
+    TipoDeCifra.depositado => null,
   };
 }
 
@@ -214,16 +206,13 @@ class CategoriaDesplegable extends StatelessWidget {
 /// Una fila del detalle: quién y cuándo a la izquierda, cuánto a la derecha. Con el texto grande el
 /// monto baja a la línea siguiente en vez de apretar el nombre.
 class FilaDeMiPlata extends StatelessWidget {
-  const FilaDeMiPlata({super.key, required this.detalle, required this.monto, this.baja = false});
+  const FilaDeMiPlata({super.key, required this.detalle, required this.monto});
 
   /// «María Fernández · 20/10».
   final String detalle;
 
-  /// Ya escrito: «$ 1.200» o «− $ 1.900».
+  /// Ya escrito: «$ 1.200».
   final String monto;
-
-  /// Es plata que baja lo que hay (una devolución): va en el color de la baja.
-  final bool baja;
 
   @override
   Widget build(BuildContext context) {
@@ -245,10 +234,10 @@ class FilaDeMiPlata extends StatelessWidget {
             Text(detalle, style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5)),
             Text(
               monto,
-              style: TextStyle(
+              style: const TextStyle(
                 fontFamily: 'JetBrainsMono',
                 fontSize: 13.5,
-                color: baja ? ColoresCuenta.rojo : ColoresCuenta.tinta,
+                color: ColoresCuenta.tinta,
               ),
             ),
           ],
@@ -278,9 +267,7 @@ class TextoSinNada extends StatelessWidget {
 
 /// Las filas de cada categoría, con el texto que les toca.
 abstract final class FilasDeMiPlata {
-  static String cobro(MovimientoEnMano m) => m.esDevolucion
-      ? '${TextosMiPlata.devolucionA} ${m.cliente} · ${FormatoCuenta.fecha(m.fecha)}'
-      : '${m.cliente} · ${FormatoCuenta.fecha(m.fecha)}';
+  static String cobro(MovimientoEnMano m) => '${m.cliente} · ${FormatoCuenta.fecha(m.fecha)}';
 
   static String saldo(SaldoDeCliente s) =>
       '${s.cliente} · ${TextosMiPlata.desde} ${FormatoCuenta.fecha(s.desde)}';

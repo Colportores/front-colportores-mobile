@@ -16,8 +16,13 @@
 
     <!-- Recordatorios de las visitas (HU-NOT-002): al reiniciar el teléfono Android borra las
          alarmas, y con este permiso el plugin vuelve a programar los avisos que seguían pendientes.
-         No se pide la alarma exacta (SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM): ver el PR. -->
+         Los avisos a la hora justa usan «Alarmas y recordatorios» (SCHEDULE_EXACT_ALARM, no
+         USE_EXACT_ALARM: ese es solo para alarmas y calendarios, y la tienda lo audita). En Android
+         12 y 13 viene prendido; desde el 14 la persona lo prende en los ajustes, y la vista 24 se lo
+         dice y la lleva (decisión de Cristian del 27/10, «Aviso exacto»). Sin el permiso, el aviso
+         se programa inexacto. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <!-- Auto Backup deshabilitado a propósito. Dos motivos, ninguno negociable:
          1. flutter_secure_storage (README 10.3.1, "Disabling Auto Backup") lo exige: el plugin

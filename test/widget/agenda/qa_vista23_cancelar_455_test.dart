@@ -1,8 +1,7 @@
 // QA de «Cancelar una agenda» (vista 23 C, 23C·04 y 23C·05, HU-VIS-004, #455), encima de la
 // implementación: el flujo completo (lista real → detalle real → hoja → lista), los diez estados que
 // una persona puede alcanzar en 360x640 y 412x915 con texto 1,0 y 2,0, los casos límite de cada flujo
-// y lo que lee un lector de pantalla. Los hallazgos viven como tests con `skip` (se corren con
-// `--dart-define=QA_HALLAZGOS=true`); las capturas, con `--dart-define=QA_CAPTURAS=true`.
+// y lo que lee un lector de pantalla. Las capturas, con `--dart-define=QA_CAPTURAS=true`.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -15,8 +14,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/detalle_agenda_arnes.dart';
 import '../../helpers/qa_vista23_455_arnes.dart';
-
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 void main() {
   group('Matriz de estados × tamaños × texto', () {
@@ -393,8 +390,7 @@ void main() {
       await desmontar455(tester);
     });
 
-    // skip: QA #455 — mientras se cancela el botón cambia a «Cancelando…» pero no es una región viva:
-    // con TalkBack/VoiceOver no se anuncia que algo está pasando.
+    // Arreglado (QA #455): mientras se cancela, «Cancelando…» es una región viva.
     testWidgets('«Cancelando…» se anuncia (región viva)', (tester) async {
       final h = tester.ensureSemantics();
       await llegarA455(tester, Estado455.h04Cancelando);
@@ -409,6 +405,6 @@ void main() {
       expect(viva, isTrue);
       h.dispose();
       await desmontar455(tester);
-    }, skip: !_verHallazgos);
+    });
   });
 }

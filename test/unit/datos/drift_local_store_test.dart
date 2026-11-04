@@ -125,6 +125,8 @@ void main() {
           'estado': 'PROGRAMADA',
           'colportor_id': 'col-1',
           'visita_id': null,
+          'venta_id': null,
+          'monto_previsto': null,
           'created_at': '2026-10-23T13:45:10.123Z',
           'updated_at': '2026-10-23T13:45:10.123Z',
           'created_by': 'col-1',

@@ -11,6 +11,7 @@ import '../../features/catalogo/data/datasources/precios_por_ciudad_table.dart';
 import '../../features/catalogo/data/datasources/producto_colecciones_table.dart';
 import '../../features/catalogo/data/datasources/productos_table.dart';
 import '../../features/cobranzas/data/datasources/cobranzas_table.dart';
+import '../../features/depositos/data/datasources/depositos_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
@@ -91,6 +92,7 @@ part 'app_database.g.dart';
     Cobranzas,
     Entregas,
     Devoluciones,
+    Depositos,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -135,11 +137,23 @@ class AppDatabase extends _$AppDatabase {
   ///   suben con el cobro (backend-supabase 0072, HU-COB-002 y HU-COB-003, #396).
   /// - 21: `entrega`, lo entregado de cada venta, una fila por producto, que sube (HU-VEN-002, #430).
   /// - 22: `devolucion`, las devoluciones de una venta (qué libros vuelven y qué se hace con la plata de
-  ///   más), que sube (HU-VEN-004, #161; backend-supabase 0108, 0136 y 0142).
+  ///   más), que sube (HU-VEN-004, #161; backend-supabase 0108, 0136 y 0142). Desde la 26 sin dinero.
+  /// - 23: `deposito`, el efectivo que el colportor depositó, con su destino, su concepto y su ticket,
+  ///   que sube (HU-CTA-004, #442).
+  /// - 24: `agenda` suma `venta_id` y `monto_previsto` (backend-supabase 0068): una cuota del plan de
+  ///   una venta es una cita de cobranza con su venta y su monto (HU-COB-004, #166).
+  /// - 25: `deposito` suma `validado_en`, `validado_por`, `rechazado_en` y `motivo_rechazo`, que baja el
+  ///   pull (backend-supabase#231): con ellas el teléfono sabe si el depósito está por validar,
+  ///   validado o rechazado (#596).
+  /// - 26: `devolucion` pierde `dinero_retenido` y `monto_reembolsado` (backend-supabase 0157, decisión
+  ///   de Cristian, 03/11, «Devol. saldo»): nunca queda plata a favor del cliente, así que la
+  ///   devolución ya no guarda dinero (#609).
+  /// - 27: `producto` suma `categoria` (backend-supabase 0149, «Categorías» de Cristian, 28/10): la
+  ///   etiqueta de cada producto en Precios, en lugar del `tipo` heredado (#561).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 22;
+  static const int versionEsquema = 27;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -367,6 +381,48 @@ class AppDatabase extends _$AppDatabase {
     from21To22: (m, esquema) async {
       await m.createTable(esquema.devolucion);
       await m.createIndex(esquema.devolucionVentaIdx);
+    },
+    // Solo crea la tabla de los depósitos, vacía: nada de lo guardado cambia ni se encola al migrar.
+    from22To23: (m, esquema) async {
+      await m.createTable(esquema.deposito);
+      await m.createIndex(esquema.depositoTicketIdx);
+    },
+    // Suma a `agenda` la venta de la que sale la cita y el monto previsto (una cuota del plan de una
+    // venta, HU-COB-004): vacíos, ninguna cita que ya estaba cambia ni se vuelve a encolar al migrar.
+    // Se reescribe la tabla porque suma el `CHECK` del monto previsto, y `alterTable` no recrea el
+    // índice nuevo.
+    from23To24: (m, esquema) async {
+      await m.alterTable(
+        TableMigration(
+          esquema.agenda,
+          newColumns: [esquema.agenda.ventaId, esquema.agenda.montoPrevisto],
+        ),
+      );
+      await m.createIndex(esquema.agendaVentaIdx);
+    },
+    // Suma a `deposito` las cuatro columnas que pone el servidor y ahora bajan por el pull (la
+    // validación y el rechazo con su motivo, backend-supabase#231): vacías, ningún depósito que ya
+    // estaba cambia ni se vuelve a encolar al migrar; el próximo pull las completa.
+    from24To25: (m, esquema) async {
+      await m.addColumn(esquema.deposito, esquema.deposito.validadoEn);
+      await m.addColumn(esquema.deposito, esquema.deposito.validadoPor);
+      await m.addColumn(esquema.deposito, esquema.deposito.rechazadoEn);
+      await m.addColumn(esquema.deposito, esquema.deposito.motivoRechazo);
+    },
+    // Saca de `devolucion` las dos columnas de dinero (`dinero_retenido` y `monto_reembolsado`): nunca
+    // queda plata a favor del cliente (backend-supabase 0157). Se reescribe la tabla (SQLite no quita
+    // un CHECK) y se conserva cada devolución con sus libros, su motivo, su fecha y su auditoría; lo
+    // que valían las dos columnas se pierde (datos simulados hasta diciembre) y nada se vuelve a
+    // encolar al migrar. `alterTable` vuelve a crear los índices que ya tenía la tabla.
+    from25To26: (m, esquema) async {
+      await m.alterTable(TableMigration(esquema.devolucion));
+    },
+    // Suma a `producto` la categoría que ahora baja el pull (backend-supabase 0149): vacía, ningún
+    // producto que ya estaba cambia. El servidor subió la versión de cada producto al cargar la
+    // categoría, así que el próximo pull la trae; hasta entonces el producto no se ofrece en Precios
+    // (no se deriva de `tipo`: decisión de Cristian, 28/10).
+    from26To27: (m, esquema) async {
+      await m.addColumn(esquema.producto, esquema.producto.categoria);
     },
   );
 }

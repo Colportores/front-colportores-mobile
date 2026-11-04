@@ -29,10 +29,18 @@ import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import 'features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import 'features/inicio/presentation/pages/inicio_page.dart';
+import 'features/jornada/presentation/pages/jornadas_por_cerrar_page.dart';
+import 'features/jornada/presentation/providers/jornadas_por_cerrar_providers.dart';
+import 'features/mapa/presentation/providers/limpieza_notas_borradas_providers.dart';
 import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
+import 'features/notificaciones/presentation/providers/alarmas_exactas_providers.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
+import 'features/notificaciones/presentation/providers/push_remotas_providers.dart';
 import 'features/notificaciones/presentation/providers/recordatorios_por_baja_providers.dart';
+import 'features/notificaciones/presentation/widgets/aviso_push_en_app.dart';
+import 'features/respaldo/presentation/pages/recuperacion_page.dart';
+import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
@@ -108,6 +116,12 @@ class ColportoresApp extends ConsumerWidget {
         navigatorObservers: [routeObserverColportores],
         title: 'Colportores',
         theme: temaClaro(),
+        // HU-NOT-003 (24C·08): el aviso de una push que llega con la app abierta va arriba de
+        // cualquier pantalla, así que no puede ser parte de una.
+        builder: (context, child) => AvisoPushEnAppHost(
+          activo: sesion.value != null,
+          child: child ?? const SizedBox.shrink(),
+        ),
         // Solo la primera lectura de la sesión (arranque) pasa por la pantalla de carga. Un
         // «Entrar» en vuelo vuelve a poner `AsyncLoading`, pero con la sesión (nula) de antes: si
         // eso cambiara la pantalla, el login se desmontaba con la respuesta en camino y el aviso del
@@ -325,15 +339,40 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     );
     final preparacion = ref.watch(preparacionDbLocalProvider);
     if (preparacion is! DbLocalLista) return PreparacionDbLocalPage(estado: preparacion);
+    // HU-SYNC-006 (vista 34): en un teléfono sin datos, con la base ya abierta, se ofrece traer el
+    // respaldo de Drive antes de seguir; con datos o ya resuelto, no se ve. Va antes del motor de
+    // sync: una recuperación reemplaza la base y no puede haber nada escuchándola.
+    if (ref.watch(asistenteDeRecuperacionHabilitadoProvider)) {
+      final recuperacion = ref.watch(recuperacionPendienteProvider);
+      if (recuperacion.isLoading && !recuperacion.hasValue) return const _LeyendoElArranque();
+      if (recuperacion.value ?? false) return const RecuperacionPage();
+      // Después de recuperar puede haber jornadas abiertas con otra después: cada una pasa por «¿A qué
+      // hora terminaste?» antes de llegar a Hoy (HU-JOR-002), nunca cerradas con la hora de ahora.
+      final porCerrar = ref.watch(jornadasPorCerrarProvider(widget.sesion.usuarioId));
+      if (porCerrar.isLoading && !porCerrar.hasValue) return const _LeyendoElArranque();
+      if (porCerrar.value case final pendientes? when pendientes.isNotEmpty) {
+        return JornadasPorCerrarPage(sesion: widget.sesion, pendientes: pendientes);
+      }
+    }
     // Con la DB abierta, el motor de sync escucha el ciclo de vida (#178): sube al volver al frente
     // y vacía lo crítico al irse al fondo.
     ref.watch(cicloDeVidaSyncProvider);
     // El respaldo en Drive al volver a la app y la verificación semanal (HU-SYNC-005, HU-SYNC-009).
     ref.watch(respaldoAlVolverProvider);
+    // HU-SYNC-005 (#583): con Drive conectado queda programado el respaldo de la noche con la app
+    // cerrada (03:00, Wi-Fi y cargando); al desconectar se saca.
+    ref.watch(respaldoNocturnoProgramadoProvider);
     // HU-NOT-002: el recordatorio que se tocó (o que abrió la app) lleva al detalle de la visita.
     ref.watch(aperturasDesdeRecordatorioProvider);
     // HU-NOT-005: los recordatorios que sonaron con la app cerrada se guardan en el historial.
     ref.watch(conciliacionRecordatoriosProvider);
+    // HU-NOT-003: las push remotas se guardan en el historial y, con la app al frente, se avisan.
+    ref.watch(escuchaPushRemotasProvider);
+    // HU-NOT-002 («Aviso exacto»): el permiso «Alarmas y recordatorios» se lee al abrir y al volver a la
+    // app, y si cambió se reprograman los recordatorios (exactos o no).
+    ref.watch(reprogramacionPorAlarmasProvider);
+    // HU-UBI-012: las notas de persona borradas hace más de 90 días se borran para siempre.
+    ref.watch(limpiezaNotasBorradasProvider);
     // HU-VIS-002 («Agenda baja»): la agenda de una casa o un depto dados de baja no suena.
     ref.watch(recordatoriosPorBajaProvider);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
@@ -358,6 +397,22 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
       _ => const RevisandoCuentaPage(),
     };
   }
+}
+
+/// Mientras se lee lo que decide la primera pantalla (si hay un respaldo para ofrecer, si quedó una
+/// jornada abierta): un instante, con el círculo y el texto.
+class _LeyendoElArranque extends StatelessWidget {
+  const _LeyendoElArranque();
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(
+    body: Center(
+      child: CircularProgressIndicator(
+        key: Key('leyendo_arranque'),
+        semanticsLabel: 'Preparando tu espacio',
+      ),
+    ),
+  );
 }
 
 /// Lleva a la pantalla de la contraseña nueva (o de enlace vencido) desde la raíz de la pila.

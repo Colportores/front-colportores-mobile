@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
-import '../../domain/entities/devolucion.dart';
 import '../textos_devolucion.dart';
-import 'piezas_venta.dart';
 
 // Las piezas de la vista 31 (Devolución). Todas crecen con el texto (`textScaler` 2.0): nada tiene
 // alto fijo salvo el mínimo táctil de 48.
@@ -14,19 +12,16 @@ const _verdeTinta = Color(0xFF1F6E3A);
 
 /// Una fila de [TarjetaDeDatos]: lo que se cuenta y su valor.
 class DatoDeDevolucion {
-  const DatoDeDevolucion(this.rotulo, this.valor, {this.fuerte = false, this.alerta = false});
+  const DatoDeDevolucion(this.rotulo, this.valor, {this.fuerte = false});
 
   final String rotulo;
   final String valor;
 
-  /// El dato que importa de la tarjeta (el saldo, lo que pagó de más): va en negrita.
+  /// El dato que importa de la tarjeta (el saldo): va en negrita.
   final bool fuerte;
-
-  /// Va en rojo: lo que la colportora le debe al cliente.
-  final bool alerta;
 }
 
-/// La tarjeta de cuentas del canvas (`kv`): «Se queda con», «Ya pagó», «Pagó de más»…
+/// La tarjeta de cuentas del canvas (`kv`): «Se queda con», «Ya pagó», «Saldo nuevo»…
 class TarjetaDeDatos extends StatelessWidget {
   const TarjetaDeDatos({super.key, required this.datos});
 
@@ -72,10 +67,8 @@ class TarjetaDeDatos extends StatelessWidget {
                           style: TextStyle(
                             fontFamily: 'JetBrainsMono',
                             fontSize: dato.fuerte ? 16 : 14,
-                            fontWeight: dato.fuerte || dato.alerta
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                            color: dato.alerta ? ColoresAgenda.rojo : ColoresAgenda.tinta,
+                            fontWeight: dato.fuerte ? FontWeight.w600 : FontWeight.w400,
+                            color: ColoresAgenda.tinta,
                           ),
                         ),
                       ),
@@ -86,52 +79,6 @@ class TarjetaDeDatos extends StatelessWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-/// «¿QUÉ HACÉS CON $ 1.900?» y las tres salidas (31-02 a 31-04): se elige una, sin ninguna por
-/// defecto.
-class OpcionesDeLaDiferencia extends StatelessWidget {
-  const OpcionesDeLaDiferencia({
-    super.key,
-    required this.rotulo,
-    required this.elegida,
-    required this.alElegir,
-  });
-
-  final String rotulo;
-  final QueHacerConLaDiferencia? elegida;
-  final ValueChanged<QueHacerConLaDiferencia>? alElegir;
-
-  static const _textos = {
-    QueHacerConLaDiferencia.devolverAhora: (TextosDevolucion.ahora, TextosDevolucion.ahoraSub),
-    QueHacerConLaDiferencia.retener: (TextosDevolucion.retengo, TextosDevolucion.retengoSub),
-    QueHacerConLaDiferencia.devolverDespues: (
-      TextosDevolucion.despues,
-      TextosDevolucion.despuesSub,
-    ),
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      key: const Key('devolucion_opciones'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        RotuloDeSeccion(rotulo),
-        const SizedBox(height: 8),
-        for (final opcion in QueHacerConLaDiferencia.values) ...[
-          FilaElegible(
-            key: Key('devolucion_opcion_${opcion.name}'),
-            titulo: _textos[opcion]!.$1,
-            detalle: _textos[opcion]!.$2,
-            elegida: elegida == opcion,
-            alPresionar: () => alElegir?.call(opcion),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ],
     );
   }
 }

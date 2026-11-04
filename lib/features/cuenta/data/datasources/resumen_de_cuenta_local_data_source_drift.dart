@@ -1,17 +1,20 @@
 import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../datos/drift_sync_meta.dart';
 import '../../../cobranzas/data/datasources/cobranza_local_data_source_drift.dart';
 import '../../../cobranzas/data/datasources/cobro_valido.dart';
+import '../../../depositos/data/datasources/totales_de_depositos_drift.dart';
 import '../../domain/entities/resumen_de_cuenta.dart';
 
-/// Lee de las tablas `venta`, `cobranza` y `devolucion` de la DB cifrada las cifras de Mi Cuenta
-/// (HU-CTA-001): lo que el colportor tiene en mano y lo que le deben, con la diferencia contra la
-/// semana pasada.
+/// Lee de las tablas `venta`, `cobranza`, `devolucion` y `deposito` de la DB cifrada las cifras de Mi
+/// Cuenta (HU-CTA-001): lo que el colportor tiene en mano, lo que le deben y lo que el coordinador ya
+/// validó de sus depósitos, con la diferencia contra la semana pasada.
 ///
 /// Todo sale del teléfono y funciona sin conexión. Cada `Stream` emite el valor de ahora al
 /// suscribirse y uno nuevo **solo si cambió**, cuando se registra, se da de baja o llega por el pull
-/// cualquier venta, cobro o devolución (Drift avisa por tabla).
+/// cualquier venta, cobro, devolución o depósito (Drift avisa por tabla). «Depositado» es lo último
+/// que bajó del servidor: sin ninguna bajada todavía no hay cifra (`null`, ni un cero inventado).
 final class ResumenDeCuentaLocalDataSourceDrift {
   /// [_cobranzas] y [_ahora] se pasan como `cobranzas:` y `ahora:`: un test fija el reloj.
   ResumenDeCuentaLocalDataSourceDrift(this._db, {required this._cobranzas, required this._ahora});
@@ -19,6 +22,7 @@ final class ResumenDeCuentaLocalDataSourceDrift {
   final AppDatabase _db;
   final CobranzaLocalDataSourceDrift _cobranzas;
   final DateTime Function() _ahora;
+  late final _depositos = TotalesDeDepositosDrift(_db);
 
   /// Contra cuándo se compara: la semana pasada es «hace 7 días, a esta misma hora».
   static const unaSemana = Duration(days: 7);
@@ -30,6 +34,8 @@ final class ResumenDeCuentaLocalDataSourceDrift {
     _db.espacioPersonas,
     _db.espacios,
     _db.ventaItems,
+    _db.depositos,
+    _db.syncMetas,
   };
 
   /// El resumen del colportor [colportorId], de nuevo cada vez que cambia algo que lo afecta.
@@ -46,7 +52,21 @@ final class ResumenDeCuentaLocalDataSourceDrift {
     final hayDatosAnteriores = await _habiaMovimientos(colportorId, haceUnaSemana);
     final enMano = await _enMano(colportorId);
     final porCobrar = await _cobranzas.saldoTotalDe(colportorId);
+    final ultimaBajada = (await DriftSyncMeta(_db).read()).lastPullAt;
+    CifraDeCuenta? depositado;
+    if (ultimaBajada != null) {
+      // Solo lo validado (decisión «Acredita V1»); la semana pasada, lo que ya estaba validado entonces.
+      final validado = await _depositos.validado();
+      depositado = CifraDeCuenta(
+        totalCentavos: validado,
+        variacionCentavos: hayDatosAnteriores
+            ? validado - await _depositos.validado(hasta: haceUnaSemana)
+            : null,
+      );
+    }
     return ResumenDeCuenta(
+      depositado: depositado,
+      depositadoAl: depositado == null ? null : ultimaBajada,
       enMano: CifraDeCuenta(
         totalCentavos: enMano,
         variacionCentavos: hayDatosAnteriores
@@ -78,15 +98,16 @@ final class ResumenDeCuentaLocalDataSourceDrift {
   }
 
   /// El efectivo cobrado que todavía no se depositó: los cobros en efectivo vivos de las ventas del
-  /// colportor menos lo que reembolsó a los clientes en el momento al devolver (decisión del 30/10
-  /// en #431), nunca negativo. Con [hasta], como estaba entonces.
+  /// colportor. Una devolución no lo resta: no hay reembolsos, porque nunca queda plata a favor del
+  /// cliente (decisión de Cristian, 03/11, «Devol. saldo»; deja sin efecto la resta de #431). Con
+  /// [hasta], como estaba entonces.
   ///
   /// Una venta dada de baja no resta: el efectivo que se cobró sigue en la mano. Hasta que el
   /// depósito (HU-CTA-004, #442) exista en el teléfono no hay nada que depositar: cuando llegue, lo
   /// depositado se resta acá.
   Future<int> _enMano(String colportorId, {DateTime? hasta}) async {
     final ms = hasta?.toUtc().millisecondsSinceEpoch;
-    final cobrado = await _suma(
+    return _suma(
       'SELECT COALESCE(SUM(c.monto), 0) AS suma FROM cobranza c '
       'JOIN venta v ON v.id = c.venta_id '
       "WHERE v.colportor_id = ? AND c.medio = 'EFECTIVO' AND ${CobroValido.sql}"
@@ -94,16 +115,6 @@ final class ResumenDeCuentaLocalDataSourceDrift {
       colportorId,
       ms,
     );
-    final reembolsado = await _suma(
-      'SELECT COALESCE(SUM(d.monto_reembolsado), 0) AS suma FROM devolucion d '
-      'JOIN venta v ON v.id = d.venta_id '
-      'WHERE v.colportor_id = ? AND d.deleted_at IS NULL'
-      '${ms == null ? '' : ' AND d.fecha_devolucion <= ?'}',
-      colportorId,
-      ms,
-    );
-    final enMano = cobrado - reembolsado;
-    return enMano < 0 ? 0 : enMano;
   }
 
   Future<int> _suma(String sql, String colportorId, int? ms) async {

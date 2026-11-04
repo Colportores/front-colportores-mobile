@@ -6,8 +6,7 @@ import '../../../cobranzas/data/datasources/cobro_valido.dart';
 import '../../domain/entities/detalle_de_mi_plata.dart';
 
 /// Lee de las tablas `venta`, `cobranza`, `devolucion` y `persona` de la DB cifrada el detalle de «Mi
-/// plata» (HU-CTA-003): qué clientes, en qué fecha y por cuánto hay detrás de En mano, Por cobrar y
-/// Debo a clientes.
+/// plata» (HU-CTA-003): qué clientes, en qué fecha y por cuánto hay detrás de En mano y Por cobrar.
 ///
 /// Las cifras salen de las mismas cuentas que las de Mi Cuenta ([ResumenDeCuentaLocalDataSourceDrift]
 /// y [CobranzaLocalDataSourceDrift]), así que cada lista suma lo que dice su tarjeta. Cada `Stream`
@@ -45,23 +44,15 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
     String nombreDe(String espacioPersonaId) =>
         clientes[espacioPersonaId]?.nombre ?? clienteSinNombre;
 
-    // En mano: los cobros en efectivo vivos y, restando, la plata devuelta en el momento. Una venta
-    // dada de baja no resta: el efectivo que se cobró sigue en la mano.
+    // En mano: los cobros en efectivo vivos. Una venta dada de baja no resta: el efectivo que se cobró
+    // sigue en la mano. Las devoluciones no tocan «En mano»: nunca queda plata a favor del cliente
+    // (decisión de Cristian, 03/11, «Devol. saldo»).
     final cobros = await _db
         .customSelect(
           'SELECT c.monto AS monto, c.fecha AS fecha, v.espacio_persona_id AS ep FROM cobranza c '
           'JOIN venta v ON v.id = c.venta_id '
           "WHERE v.colportor_id = ? AND c.medio = 'EFECTIVO' AND ${CobroValido.sql} "
           'ORDER BY c.fecha, c.id',
-          variables: [Variable<String>(colportorId)],
-        )
-        .get();
-    final reembolsos = await _db
-        .customSelect(
-          'SELECT d.monto_reembolsado AS monto, d.fecha_devolucion AS fecha, '
-          'v.espacio_persona_id AS ep FROM devolucion d JOIN venta v ON v.id = d.venta_id '
-          'WHERE v.colportor_id = ? AND d.deleted_at IS NULL AND COALESCE(d.monto_reembolsado, 0) > 0 '
-          'ORDER BY d.fecha_devolucion, d.id',
           variables: [Variable<String>(colportorId)],
         )
         .get();
@@ -72,44 +63,25 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
           fecha: _fecha(f.read<int>('fecha')),
           centavos: f.read<int>('monto'),
         ),
-      for (final f in reembolsos)
-        MovimientoEnMano(
-          cliente: nombreDe(f.read<String>('ep')),
-          fecha: _fecha(f.read<int>('fecha')),
-          centavos: -f.read<int>('monto'),
-          esDevolucion: true,
-        ),
     ]..sort((a, b) => a.fecha.compareTo(b.fecha));
     final sumaEnMano = movimientos.fold<int>(0, (suma, m) => suma + m.centavos);
 
-    // Por cobrar y Debo a clientes: las cuentas de cada venta viva, sumadas por cliente.
+    // Por cobrar: las cuentas de cada venta viva, sumadas por cliente.
     final ventas = await _cobranzas.cuentasDeLasVentasDe(colportorId);
-    final primeraDevolucion = await _primeraDevolucionPorVenta(colportorId);
     final porCobrar = <String, _Acumulado>{};
-    final debo = <String, _Acumulado>{};
     for (final venta in ventas) {
       final saldo = venta.cuenta.saldoCentavos;
       if (saldo > 0) {
         (porCobrar[venta.espacioPersonaId] ??= _Acumulado()).sumar(saldo, venta.fecha);
       }
-      final deboAlCliente = venta.cuenta.deboAlClienteCentavos;
-      if (deboAlCliente > 0) {
-        (debo[venta.espacioPersonaId] ??= _Acumulado()).sumar(
-          deboAlCliente,
-          primeraDevolucion[venta.ventaId] ?? venta.fecha,
-        );
-      }
     }
     final saldosPorCobrar = _porCliente(porCobrar, clientes);
-    final saldosDebo = _porCliente(debo, clientes);
 
     return DetalleDeMiPlata(
-      enManoCentavos: sumaEnMano < 0 ? 0 : sumaEnMano,
+      enManoCentavos: sumaEnMano,
       enMano: movimientos,
       porCobrarCentavos: saldosPorCobrar.fold<int>(0, (suma, s) => suma + s.centavos),
       porCobrar: saldosPorCobrar,
-      deboCentavos: saldosDebo.fold<int>(0, (suma, s) => suma + s.centavos),
-      deboAClientes: saldosDebo,
     );
   }
 
@@ -151,25 +123,15 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
       for (final f in filas)
         f.read<String>('ep'): _Cliente(
           id: f.read<String>('persona'),
-          nombre: [
-            f.read<String>('nombre'),
-            f.read<String>('apellido'),
-          ].where((p) => p.trim().isNotEmpty).join(' '),
+          nombre: _nombreDe(f.read<String>('nombre'), f.read<String>('apellido')),
         ),
     };
   }
 
-  /// Cuándo se registró la primera devolución viva de cada venta del colportor.
-  Future<Map<String, DateTime>> _primeraDevolucionPorVenta(String colportorId) async {
-    final filas = await _db
-        .customSelect(
-          'SELECT d.venta_id AS venta, MIN(d.fecha_devolucion) AS desde FROM devolucion d '
-          'JOIN venta v ON v.id = d.venta_id '
-          'WHERE v.colportor_id = ? AND d.deleted_at IS NULL GROUP BY d.venta_id',
-          variables: [Variable<String>(colportorId)],
-        )
-        .get();
-    return {for (final f in filas) f.read<String>('venta'): _fecha(f.read<int>('desde'))};
+  /// Nombre y apellido juntos; «Cliente sin nombre» si los dos están en blanco.
+  static String _nombreDe(String nombre, String apellido) {
+    final completo = [nombre, apellido].where((p) => p.trim().isNotEmpty).join(' ');
+    return completo.isEmpty ? clienteSinNombre : completo;
   }
 
   DateTime _fecha(int ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);

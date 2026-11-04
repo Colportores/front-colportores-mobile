@@ -189,7 +189,16 @@ abstract final class FlujoEntrevista {
             nota: ref.read(entrevistaEnCursoProvider(colportorId)).notaBorrador,
           ),
         );
-        return guardado.fold<Failure?>((falla) => falla, (_) => null);
+        // Sin entrevista en curso no hay nada que «se cierre»: lo que no se guardó es la visita.
+        return guardado.fold<Failure?>(
+          (falla) => falla == entrevistaSinLugar
+              ? const FailureValidacion(
+                  campos: {'espacio': TextosEntrevista.sinLugarSinInicio},
+                  mensaje: TextosEntrevista.sinLugarSinInicio,
+                )
+              : falla,
+          (_) => null,
+        );
       },
     );
     if (resultado is EntrevistaGuardada) {

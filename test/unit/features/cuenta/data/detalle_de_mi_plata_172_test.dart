@@ -1,7 +1,6 @@
 // El detalle de «Mi plata» (HU-CTA-003, #172) contra las tablas reales: AppDatabase en memoria. Cada
 // lista tiene que sumar lo que dice su tarjeta de Mi Cuenta (HU-CTA-001): En mano (cobros en efectivo
-// menos lo devuelto en el momento), Por cobrar (el saldo de cada venta viva, por cliente) y Debo a
-// clientes (el compromiso de «Se lo devuelvo después»).
+// vivos) y Por cobrar (el saldo de cada venta viva, por cliente).
 import 'dart:async';
 
 import 'package:colportores_mobile/core/database/app_database.dart';
@@ -111,19 +110,13 @@ void main() {
     );
   }
 
-  Future<void> devolver(
-    String id,
-    DateTime fecha, {
-    String venta = 'v-1',
-    QueHacerConLaDiferencia queHacer = QueHacerConLaDiferencia.devolverAhora,
-  }) async {
+  Future<void> devolver(String id, DateTime fecha, {String venta = 'v-1'}) async {
     await devoluciones.registrar(
       PedidoDeDevolucion(
         id: id,
         ventaId: venta,
         colportorId: 'col-1',
         unidadesPorRenglon: {'i-$venta': 1},
-        queHacer: queHacer,
         ahora: fecha,
       ),
     );
@@ -146,7 +139,6 @@ void main() {
   group('una cuenta sin movimientos (33C·03)', () {
     test('dado que no vendió nada, el detalle está vacío', () async {
       expect(await leer(), DetalleDeMiPlata.vacio);
-      expect((await leer()).hayDeudaConClientes, isFalse);
     });
   });
 
@@ -192,40 +184,18 @@ void main() {
       expect((await leer()).enMano, isEmpty);
     });
 
-    test('dado que devolvió plata al cliente en el momento, la devolución sale restando y la lista '
-        'sigue sumando lo que dice la cifra', () async {
+    test('una devolución no saca plata de la mano: nunca hay reembolsos', () async {
       await vender('v-1', 150000, _dia20);
-      await cobrar('c-1', 150000, _dia20);
+      await cobrar('c-1', 50000, _dia20);
       await devolver('d-1', DateTime.utc(2026, 10, 22, 10));
 
       final d = await leer();
 
       expect(d.enMano, [
-        MovimientoEnMano(cliente: 'María Fernández', fecha: _dia20, centavos: 150000),
-        MovimientoEnMano(
-          cliente: 'María Fernández',
-          fecha: DateTime.utc(2026, 10, 22, 10),
-          centavos: -150000,
-          esDevolucion: true,
-        ),
+        MovimientoEnMano(cliente: 'María Fernández', fecha: _dia20, centavos: 50000),
       ]);
-      expect(d.enManoCentavos, 0);
+      expect(d.enManoCentavos, 50000);
       await esperarQueCoincidaConMiCuenta(d);
-    });
-
-    test('«Se lo devuelvo después» no saca plata de la mano', () async {
-      await vender('v-1', 150000, _dia20);
-      await cobrar('c-1', 150000, _dia20);
-      await devolver(
-        'd-1',
-        DateTime.utc(2026, 10, 22, 10),
-        queHacer: QueHacerConLaDiferencia.devolverDespues,
-      );
-
-      final d = await leer();
-
-      expect(d.enMano.where((m) => m.esDevolucion), isEmpty);
-      expect(d.enManoCentavos, 150000);
     });
 
     test('una venta dada de baja no se lleva el efectivo que ya se cobró', () async {
@@ -335,40 +305,6 @@ void main() {
 
       expect((await leer()).porCobrar.single.cliente, 'María');
     });
-  });
-
-  group('«Debo a clientes»', () {
-    test('dado que eligió «Se lo devuelvo después», aparece lo que debe, por cliente, desde la '
-        'devolución', () async {
-      await vender('v-1', 150000, _dia20);
-      await cobrar('c-1', 150000, _dia20);
-      final devuelta = DateTime.utc(2026, 10, 22, 10);
-      await devolver('d-1', devuelta, queHacer: QueHacerConLaDiferencia.devolverDespues);
-
-      final d = await leer();
-
-      expect(d.hayDeudaConClientes, isTrue);
-      expect(d.deboAClientes, [
-        SaldoDeCliente(cliente: 'María Fernández', desde: devuelta, centavos: 150000),
-      ]);
-      expect(d.deboCentavos, 150000);
-      // No es plata que le deban a ella: no entra en «Por cobrar».
-      expect(d.porCobrar, isEmpty);
-    });
-
-    test(
-      'sin compromisos no hay fila: solo cuando hay algo (decisión de Cristian, 23/10)',
-      () async {
-        await vender('v-1', 150000, _dia20);
-        await cobrar('c-1', 150000, _dia20);
-        await devolver('d-1', DateTime.utc(2026, 10, 22, 10));
-
-        final d = await leer();
-
-        expect(d.hayDeudaConClientes, isFalse);
-        expect(d.deboAClientes, isEmpty);
-      },
-    );
   });
 
   group('al día solo', () {

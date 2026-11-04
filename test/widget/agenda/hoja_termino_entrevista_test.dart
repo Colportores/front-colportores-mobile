@@ -293,7 +293,8 @@ void main() {
       );
       expect(find.text('14:10  ✎'), findsOneWidget);
       expect(find.text('14:41  ✎'), findsOneWidget);
-      expect(find.text('31 min'), findsOneWidget);
+      // El canvas de R·07 no dibuja «Duración»: la entrada es una suposición (QA #450).
+      expect(find.text('31 min'), findsNothing);
       expect(habilitado(tester, ClavesEntrevista.guardarYVolver), isTrue);
     });
 

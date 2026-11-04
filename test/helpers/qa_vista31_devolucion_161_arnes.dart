@@ -1,6 +1,7 @@
 // Arnés del QA de la vista 31 «Devolución» (HU-VEN-004, #161, PR #589): monta la pantalla real con el
 // tema de la app (`temaClaro`) y un repositorio falso, y lleva la pantalla a cada estado del canvas
-// (31-01 a 31-10) y a los que el canvas no dibuja. Las capturas van a `.dart_tool/qa_capturas/` con
+// (31-01, 31-04 a 31-10; 31-02 y 31-03 ya no existen: nunca queda plata a favor del cliente, #609) y a
+// los que el canvas no dibuja. Las capturas van a `.dart_tool/qa_capturas/` con
 // `--dart-define=QA_CAPTURAS=true` (nunca se commitean).
 import 'dart:async';
 import 'dart:io';
@@ -8,9 +9,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:colportores_mobile/core/error/failure.dart';
-import 'package:colportores_mobile/core/notificaciones/permiso_notificaciones_sistema.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
-import 'package:colportores_mobile/features/agenda/presentation/providers/agenda_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/devolucion.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/venta_para_devolver.dart';
@@ -26,8 +25,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
-import 'agendar_visita_arnes.dart' show AgendaRepositorioQueAgenda, casaMataojo, mariaFernandez;
-import 'notificaciones_arnes.dart' show Telefono;
 import 'persona_falsos.dart';
 import 'venta_ui_falsos.dart';
 
@@ -79,9 +76,10 @@ RenglonDeLaVenta renglon161(
   unidadesDevueltas: devueltas,
 );
 
-/// La venta del canvas 31: «Salud y Hogar» $ 2.600 y «Nuestros Hijos» $ 1.900, $ 4.500 en total.
+/// La venta del canvas 31: «Salud y Hogar» $ 2.600 y «Nuestros Hijos» $ 1.900, $ 4.500 en total. Por
+/// defecto pagó $ 1.000 (debe $ 3.500): una venta saldada no acepta devoluciones.
 VentaParaDevolver ventaCanvas161({
-  int cobrado = 450000,
+  int cobrado = 100000,
   int salud = 0,
   int hijos = 0,
   List<RenglonDeLaVenta>? renglones,
@@ -99,7 +97,6 @@ VentaParaDevolver ventaCanvas161({
     fecha: fecha ?? fechaDeLaVenta161,
     montoTotalCentavos: lista.fold(0, (s, r) => s + r.cantidad * r.precioUnitarioCentavos),
     cobradoCentavos: cobrado,
-    reembolsadoCentavos: 0,
     renglones: lista,
   );
 }
@@ -134,9 +131,6 @@ class RepoFalso161 implements DevolucionRepository {
   DevolucionRegistrada registrada(PedidoDeDevolucion pedido) {
     final v = venta!;
     final cuenta = ReglasDeDevolucion.cuenta(v, pedido.unidadesPorRenglon);
-    final debo = pedido.queHacer == QueHacerConLaDiferencia.devolverDespues
-        ? cuenta.pagoDeMasCentavos
-        : 0;
     return DevolucionRegistrada(
       devolucion: Devolucion(
         id: pedido.id,
@@ -147,7 +141,6 @@ class RepoFalso161 implements DevolucionRepository {
       ),
       totalCentavos: cuenta.seQuedaConCentavos,
       saldoCentavos: cuenta.saldoNuevoCentavos,
-      deboAlClienteCentavos: debo,
       eraTotal: cuenta.esTotal,
     );
   }
@@ -254,15 +247,14 @@ Future<void> confirmarEnLaHoja161(WidgetTester tester) async {
 enum Estado161 {
   a01Elegir('31-01 elegir qué devuelve'),
   a09NadaElegido('31-09 nada elegido'),
-  a02PagoDeMas('31-02 pagó de más, sin elegir'),
-  a03SeLoDevuelvoAhora('31-03 se lo devuelvo ahora'),
-  a04HojaConfirmar('31-04 hoja de confirmar'),
-  a05Registrada('31-05 registrada con deuda'),
-  a05bRegistradaSinDeuda('31-05b registrada sin deuda'),
   a06ConSaldo('31-06 debía más'),
+  a06bPasaDelSaldo('31-06b lo devuelto pasa del saldo'),
+  a04HojaConfirmar('31-04 hoja de confirmar'),
+  a05Registrada('31-05 registrada'),
   a07Total('31-07 devolución total'),
   a08FueraDePlazo('31-08 fuera de plazo'),
   a10ErrorAlGuardar('31-10 error al guardar'),
+  ventaSaldada('venta saldada'),
   cargando('cargando la venta'),
   registrando('registrando'),
   ausente('venta ausente'),
@@ -294,41 +286,30 @@ Future<Montaje161> llegar161(
       return m;
     case Estado161.a09NadaElegido:
       return con(RepoFalso161(ventaCanvas161()));
-    case Estado161.a02PagoDeMas:
+    case Estado161.a06ConSaldo:
       final m = await con(RepoFalso161(ventaCanvas161()));
       await elegir(m, 'Nuestros Hijos');
       await tocar(tester, cta161);
       return m;
-    case Estado161.a03SeLoDevuelvoAhora:
-      final m = await llegar161(tester, Estado161.a02PagoDeMas, tamano: tamano, escala: escala);
-      await tocar(tester, find.byKey(const Key('devolucion_opcion_devolverAhora')));
+    case Estado161.a06bPasaDelSaldo:
+      // Debe $ 1.200 (pagó $ 3.300) y devuelve un libro de $ 1.900: $ 700 no se devuelven.
+      final m = await con(RepoFalso161(ventaCanvas161(cobrado: 330000)));
+      await elegir(m, 'Nuestros Hijos');
+      await tocar(tester, cta161);
       return m;
     case Estado161.a04HojaConfirmar:
-      final m = await llegar161(tester, Estado161.a02PagoDeMas, tamano: tamano, escala: escala);
-      await tocar(tester, find.byKey(const Key('devolucion_opcion_devolverDespues')));
+      final m = await llegar161(tester, Estado161.a06ConSaldo, tamano: tamano, escala: escala);
       await tocar(tester, cta161);
       return m;
     case Estado161.a05Registrada:
-      final m = await llegar161(tester, Estado161.a02PagoDeMas, tamano: tamano, escala: escala);
-      await tocar(tester, find.byKey(const Key('devolucion_opcion_devolverDespues')));
+      final m = await llegar161(tester, Estado161.a06ConSaldo, tamano: tamano, escala: escala);
       await confirmarEnLaHoja161(tester);
-      return m;
-    case Estado161.a05bRegistradaSinDeuda:
-      final m = await llegar161(tester, Estado161.a02PagoDeMas, tamano: tamano, escala: escala);
-      await tocar(tester, find.byKey(const Key('devolucion_opcion_retener')));
-      await confirmarEnLaHoja161(tester);
-      return m;
-    case Estado161.a06ConSaldo:
-      final m = await con(RepoFalso161(ventaCanvas161(cobrado: 100000)));
-      await elegir(m, 'Nuestros Hijos');
-      await tocar(tester, cta161);
       return m;
     case Estado161.a07Total:
       final m = await con(RepoFalso161(ventaCanvas161()));
       await elegir(m, 'Salud y Hogar');
       await elegir(m, 'Nuestros Hijos');
       await tocar(tester, cta161);
-      await tocar(tester, find.byKey(const Key('devolucion_opcion_devolverAhora')));
       return m;
     case Estado161.a08FueraDePlazo:
       return montar161(
@@ -344,9 +325,10 @@ Future<Montaje161> llegar161(
       final m = await con(repo);
       await elegir(m, 'Nuestros Hijos');
       await tocar(tester, cta161);
-      await tocar(tester, find.byKey(const Key('devolucion_opcion_retener')));
       await confirmarEnLaHoja161(tester);
       return m;
+    case Estado161.ventaSaldada:
+      return con(RepoFalso161(ventaCanvas161(cobrado: 450000)));
     case Estado161.cargando:
       final repo = RepoFalso161(ventaCanvas161())..lecturaDetenida = Completer<void>();
       final m = await con(repo, asentar: false);
@@ -360,7 +342,6 @@ Future<Montaje161> llegar161(
       final m = await con(repo);
       await elegir(m, 'Nuestros Hijos');
       await tocar(tester, cta161);
-      await tocar(tester, find.byKey(const Key('devolucion_opcion_retener')));
       await confirmarEnLaHoja161(tester);
       addTearDown(() {
         if (!compuerta.isCompleted) {
@@ -377,8 +358,7 @@ Future<Montaje161> llegar161(
     case Estado161.yaDevuelta:
       return con(RepoFalso161(ventaCanvas161(salud: 1, hijos: 1)));
     case Estado161.motivoLargo:
-      final m = await llegar161(tester, Estado161.a02PagoDeMas, tamano: tamano, escala: escala);
-      await tocar(tester, find.byKey(const Key('devolucion_opcion_retener')));
+      final m = await llegar161(tester, Estado161.a06ConSaldo, tamano: tamano, escala: escala);
       await escribir(tester, motivo161, 'Quiso cambiar el libro por otro más barato. ' * 14);
       return m;
   }
@@ -404,22 +384,4 @@ void sinTextoCortado161(WidgetTester tester) {
     final p = e.renderObject! as RenderParagraph;
     expect(p.didExceedMaxLines, isFalse, reason: 'texto cortado: ${p.text.toPlainText()}');
   }
-}
-
-/// Lo que necesita «Agendar la devolución del dinero» (la pantalla de agendar del canvas 23A) para abrirse.
-List<Override> agendarOverrides161() {
-  final telefono = Telefono(estado: EstadoSistemaNotificaciones.activadas)
-    ..recordatorios.permisoConcedido = true;
-  var n = 0;
-  final personas = PersonaRepositorioFalso()..sembrar([mariaFernandez]);
-  return [
-    agendaRepositoryProvider.overrideWithValue(AgendaRepositorioQueAgenda()),
-    generadorIdVisitaProvider.overrideWithValue(() => 'id-${++n}'),
-    relojVisitaProvider.overrideWithValue(() => DateTime(2026, 10, 23, 14, 35)),
-    ...telefono.overrides,
-    personaRepositoryProvider.overrideWithValue(personas),
-    espacioRepositoryProvider.overrideWithValue(
-      EspacioRepositorioParaPersonas(casaMataojo(), falla: null),
-    ),
-  ];
 }

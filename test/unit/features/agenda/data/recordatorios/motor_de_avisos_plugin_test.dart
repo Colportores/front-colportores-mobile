@@ -1,6 +1,9 @@
 // HU-NOT-002 / issue #453 — `MotorDeAvisosPlugin` le habla a `flutter_local_notifications` como
 // corresponde: la hora va en UTC, el plugin no pide el permiso solo, y un toque reenvía el payload.
+import 'package:colportores_mobile/core/notificaciones/fakes/permiso_alarmas_exactas_en_memoria.dart';
+import 'package:colportores_mobile/core/notificaciones/permiso_alarmas_exactas.dart';
 import 'package:colportores_mobile/features/agenda/data/recordatorios/motor_de_avisos_plugin.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:test/test.dart';
@@ -122,7 +125,7 @@ void main() {
 
   group('programar y cancelar', () {
     test('dado un aviso, cuando se programa, el plugin recibe el instante en UTC, el canal de los '
-        'recordatorios y el modo sin alarma exacta', () async {
+        'recordatorios y, sin saber nada de las alarmas exactas, el modo inexacto', () async {
       when(
         () => plugin.zonedSchedule(
           id: any(named: 'id'),
@@ -163,7 +166,7 @@ void main() {
       expect(detalles.android!.channelId, MotorDeAvisosPlugin.canalId);
       expect(detalles.android!.importance, Importance.high);
       expect(captura[3], AndroidScheduleMode.inexactAllowWhileIdle);
-      expect(captura[3], MotorDeAvisosPlugin.modoAndroid);
+      expect(captura[3], MotorDeAvisosPlugin.modoInexacto);
       expect(captura[4], 'Recordatorio de visita');
       expect(captura[5], 'Entrevista en Av. Italia 1234 a las 14:00');
       expect(captura[6], 'agenda:ag-1');
@@ -208,6 +211,143 @@ void main() {
       await motor.cancelar(77);
 
       verify(() => plugin.cancel(id: 77)).called(1);
+    });
+  });
+  group('modo del aviso en Android (#510, «Aviso exacto»)', () {
+    late PermisoAlarmasExactasEnMemoria alarmas;
+    late List<AndroidScheduleMode> modos;
+
+    void programarEnElPlugin({Object? Function(AndroidScheduleMode modo)? falla}) {
+      when(
+        () => plugin.zonedSchedule(
+          id: any(named: 'id'),
+          scheduledDate: any(named: 'scheduledDate'),
+          notificationDetails: any(named: 'notificationDetails'),
+          androidScheduleMode: any(named: 'androidScheduleMode'),
+          title: any(named: 'title'),
+          body: any(named: 'body'),
+          payload: any(named: 'payload'),
+        ),
+      ).thenAnswer((invocacion) async {
+        final modo = invocacion.namedArguments[#androidScheduleMode] as AndroidScheduleMode;
+        modos.add(modo);
+        final error = falla?.call(modo);
+        if (error != null) throw error;
+      });
+    }
+
+    Future<void> programar() => motor.programar(
+      id: 1,
+      titulo: 'Recordatorio de visita',
+      cuerpo: 'Entrevista en Av. Italia 1234 a las 14:00',
+      instante: DateTime.utc(2026, 10, 27, 16, 30),
+      payload: 'agenda:ag-1',
+    );
+
+    setUp(() {
+      alarmas = PermisoAlarmasExactasEnMemoria();
+      modos = [];
+      motor = MotorDeAvisosPlugin(plugin, alarmas: alarmas);
+    });
+
+    test(
+      'dado «Alarmas y recordatorios» prendido, cuando se programa, el aviso es exacto',
+      () async {
+        alarmas.estado = EstadoAlarmasExactas.permitidas;
+        programarEnElPlugin();
+
+        await programar();
+
+        expect(modos, [AndroidScheduleMode.exactAllowWhileIdle]);
+        expect(MotorDeAvisosPlugin.modoExacto, AndroidScheduleMode.exactAllowWhileIdle);
+      },
+    );
+
+    test(
+      'dado «Alarmas y recordatorios» apagado, cuando se programa, el aviso es inexacto',
+      () async {
+        alarmas.estado = EstadoAlarmasExactas.apagadas;
+        programarEnElPlugin();
+
+        await programar();
+
+        expect(modos, [AndroidScheduleMode.inexactAllowWhileIdle]);
+      },
+    );
+
+    test('dado un sistema sin ese permiso (iOS), cuando se programa, no pide exacto', () async {
+      alarmas.estado = EstadoAlarmasExactas.noAplica;
+      programarEnElPlugin();
+
+      await programar();
+
+      expect(modos, [AndroidScheduleMode.inexactAllowWhileIdle]);
+    });
+
+    test(
+      'dado que el permiso cambia entre un aviso y el siguiente, cada uno usa el de ahora',
+      () async {
+        programarEnElPlugin();
+        alarmas.estado = EstadoAlarmasExactas.apagadas;
+        await programar();
+        alarmas.estado = EstadoAlarmasExactas.permitidas;
+        await programar();
+        alarmas.estado = EstadoAlarmasExactas.apagadas;
+        await programar();
+
+        expect(modos, [
+          AndroidScheduleMode.inexactAllowWhileIdle,
+          AndroidScheduleMode.exactAllowWhileIdle,
+          AndroidScheduleMode.inexactAllowWhileIdle,
+        ]);
+      },
+    );
+
+    test(
+      'dado que el sistema no contesta el permiso, el aviso se programa inexacto y no falla',
+      () async {
+        alarmas.fallaAlLeer = true;
+        programarEnElPlugin();
+
+        await programar();
+
+        expect(modos, [AndroidScheduleMode.inexactAllowWhileIdle]);
+      },
+    );
+
+    test(
+      'dado que Android quitó el permiso justo antes del aviso, se reintenta inexacto',
+      () async {
+        alarmas.estado = EstadoAlarmasExactas.permitidas;
+        programarEnElPlugin(
+          falla: (modo) => modo == AndroidScheduleMode.exactAllowWhileIdle
+              ? PlatformException(code: 'exact_alarms_not_permitted')
+              : null,
+        );
+
+        await programar();
+
+        expect(modos, [
+          AndroidScheduleMode.exactAllowWhileIdle,
+          AndroidScheduleMode.inexactAllowWhileIdle,
+        ]);
+      },
+    );
+
+    test('dado otra falla del plugin con el aviso exacto, se propaga sin reintentar', () async {
+      alarmas.estado = EstadoAlarmasExactas.permitidas;
+      programarEnElPlugin(falla: (_) => PlatformException(code: 'otra'));
+
+      await expectLater(programar(), throwsA(isA<PlatformException>()));
+      expect(modos, [AndroidScheduleMode.exactAllowWhileIdle]);
+    });
+
+    test('dado que el aviso inexacto falla, se propaga sin reintentar', () async {
+      alarmas.estado = EstadoAlarmasExactas.apagadas;
+      programarEnElPlugin(falla: (_) => PlatformException(code: 'exact_alarms_not_permitted'));
+
+      await expectLater(programar(), throwsA(isA<PlatformException>()));
+      expect(modos, [AndroidScheduleMode.inexactAllowWhileIdle]);
     });
   });
 }

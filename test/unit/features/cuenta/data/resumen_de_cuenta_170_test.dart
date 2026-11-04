@@ -1,5 +1,5 @@
 // El resumen de Mi Cuenta (HU-CTA-001, #170) contra las tablas reales: AppDatabase en memoria, con
-// «En mano» (efectivo cobrado menos lo reembolsado al devolver), «Por cobrar» (el saldo de las
+// «En mano» (el efectivo cobrado: una devolución no lo resta, nunca hay reembolsos), «Por cobrar» (el saldo de las
 // ventas vivas) y la diferencia contra la semana pasada, que sale de lo que ya había hace 7 días.
 import 'dart:async';
 
@@ -7,6 +7,7 @@ import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
+import 'package:colportores_mobile/datos/drift_sync_meta.dart';
 import 'package:colportores_mobile/features/cobranzas/data/datasources/cobranza_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart';
 import 'package:colportores_mobile/features/cuenta/data/datasources/resumen_de_cuenta_local_data_source_drift.dart';
@@ -16,7 +17,7 @@ import 'package:colportores_mobile/features/mapa/data/services/house_status_upda
 import 'package:colportores_mobile/features/ventas/data/datasources/devolucion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/venta_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/devolucion.dart';
-import 'package:drift/drift.dart' show Variable, driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, Variable, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:test/test.dart';
 
@@ -103,19 +104,13 @@ void main() {
     );
   }
 
-  Future<void> devolver(
-    String id,
-    DateTime fecha, {
-    String venta = 'v-1',
-    QueHacerConLaDiferencia queHacer = QueHacerConLaDiferencia.devolverAhora,
-  }) async {
+  Future<void> devolver(String id, DateTime fecha, {String venta = 'v-1'}) async {
     await devoluciones.registrar(
       PedidoDeDevolucion(
         id: id,
         ventaId: venta,
         colportorId: 'col-1',
         unidadesPorRenglon: {'i-$venta': 1},
-        queHacer: queHacer,
         ahora: fecha,
       ),
     );
@@ -252,41 +247,32 @@ void main() {
       expect(r.porCobrar.totalCentavos, 150000);
     });
 
-    test('dado que devolvió plata al cliente en el momento, se resta de «En mano» (decisión del '
-        '30/10)', () async {
+    test('dado que devolvió un libro de una venta con saldo, «En mano» no cambia: no hay reembolso '
+        '(decisión del 03/11)', () async {
       await vender('v-1', 150000, _ventaReciente);
-      await cobrar('c-1', 150000, _ventaReciente);
+      await cobrar('c-1', 50000, _ventaReciente);
       await devolver('d-1', _devolucion);
 
       final r = await leer();
 
-      // Devolvió el único libro de la venta: los $ 1.500 que le había cobrado en efectivo vuelven al
-      // cliente.
-      expect(r.enMano.totalCentavos, 0);
+      // Lo devuelto se descuenta de la deuda, no del efectivo: los $ 500 siguen en la mano.
+      expect(r.enMano.totalCentavos, 50000);
+      expect(r.porCobrar.totalCentavos, 0);
     });
 
-    test('la devolución de esta semana no cambia cómo estaba «En mano» hace 7 días', () async {
+    test('la devolución de esta semana no cambia «En mano» ni contra hace 7 días', () async {
       await vender('v-1', 150000, _ventaReciente);
-      await cobrar('c-1', 150000, _ventaReciente);
+      await cobrar('c-1', 50000, _ventaReciente);
       await devolver('d-1', _devolucion);
 
       final r = await leer();
 
-      // Hace 7 días tenía $ 1.500 en mano; ahora 0: bajó $ 1.500.
-      expect(r.enMano.variacionCentavos, -150000);
+      // Hace 7 días tenía $ 500 en mano y ahora también: la diferencia es 0.
+      expect(r.enMano.variacionCentavos, 0);
     });
 
-    test('«Se lo devuelvo después» no saca plata de la mano: todavía no se devolvió', () async {
-      await vender('v-1', 150000, _ventaReciente);
-      await cobrar('c-1', 150000, _ventaReciente);
-      await devolver('d-1', _devolucion, queHacer: QueHacerConLaDiferencia.devolverDespues);
-
-      final r = await leer();
-
-      expect(r.enMano.totalCentavos, 150000);
-    });
-
-    test('nunca queda negativa: un reembolso mayor al efectivo cobrado deja cero', () async {
+    test('dado que lo cobrado fue con tarjeta y lo demás efectivo, la devolución no toca el '
+        'efectivo', () async {
       await vender('v-1', 150000, _ventaReciente);
       await cobrar('c-1', 50000, _ventaReciente, medio: MedioCobranza.tarjeta);
       await cobrar('c-2', 20000, _ventaReciente);
@@ -294,7 +280,7 @@ void main() {
 
       final r = await leer();
 
-      expect(r.enMano.totalCentavos, 0);
+      expect(r.enMano.totalCentavos, 20000);
     });
 
     test('una venta dada de baja no se lleva el efectivo ya cobrado: sigue en mano', () async {
@@ -395,6 +381,162 @@ void main() {
         const ResumenDeCuentaSinBase().observar('col-1'),
         emitsError(isA<FailureCuentaNoDisponible>()),
       );
+    });
+  });
+
+  group('«Depositado» (#596): solo lo que el coordinador validó, de lo último que bajó', () {
+    Future<void> bajada(DateTime cuando) => DriftSyncMeta(db).write(lastPullAt: cuando);
+
+    Future<void> deposito(
+      String id,
+      int monto, {
+      DateTime? validadoEn,
+      DateTime? rechazadoEn,
+      DateTime? baja,
+    }) => db.customStatement(
+      'INSERT INTO deposito (id, monto, fecha, destino, concepto, ticket_id, validado_en, '
+      'rechazado_en, motivo_rechazo, created_at, updated_at, deleted_at) '
+      "VALUES ('$id', $monto, 1, 'BANCO', 'CASA_EDITORA', 't-$id', "
+      '${validadoEn == null ? 'NULL' : validadoEn.millisecondsSinceEpoch}, '
+      '${rechazadoEn == null ? 'NULL' : rechazadoEn.millisecondsSinceEpoch}, '
+      "${rechazadoEn == null ? 'NULL' : "'no coincide'"}, 1, 1, "
+      '${baja == null ? 'NULL' : baja.millisecondsSinceEpoch})',
+    );
+
+    test('dado que el teléfono todavía no bajó nada del servidor, cuando abre Mi Cuenta, no hay '
+        'cifra de «Depositado»: ni un cero inventado', () async {
+      await vender('v-1', 150000, _antes);
+      await deposito('d-1', 100000);
+
+      final r = await leer();
+
+      expect(r.depositado, isNull);
+      expect(r.depositadoAl, isNull);
+    });
+
+    test(
+      'dado que ya bajó, y sin depósitos, «Depositado» es cero, de la hora de la bajada',
+      () async {
+        await bajada(_ahora.subtract(const Duration(hours: 15)));
+
+        final r = await leer();
+
+        expect(r.depositado, const CifraDeCuenta(totalCentavos: 0));
+        expect(r.depositadoAl, _ahora.subtract(const Duration(hours: 15)));
+      },
+    );
+
+    test(
+      'suma solo lo validado: lo por validar, lo rechazado y lo dado de baja no entran',
+      () async {
+        await vender('v-1', 150000, _antes);
+        await bajada(_ahora);
+        await deposito('d-1', 100000, validadoEn: _despues);
+        await deposito('d-2', 40000, validadoEn: _antes);
+        await deposito('d-3', 30000);
+        await deposito('d-4', 600000, rechazadoEn: _despues);
+        await deposito('d-5', 70000, validadoEn: _despues, baja: _despues);
+
+        final r = await leer();
+
+        expect(r.depositado!.totalCentavos, 140000);
+      },
+    );
+
+    test('«contra la semana pasada»: compara con lo que ya estaba validado hace 7 días', () async {
+      await vender('v-1', 150000, _antes);
+      await bajada(_ahora);
+      await deposito('d-1', 40000, validadoEn: _antes);
+      await deposito('d-2', 100000, validadoEn: _despues);
+
+      final r = await leer();
+
+      expect(r.depositado, const CifraDeCuenta(totalCentavos: 140000, variacionCentavos: 100000));
+    });
+
+    test(
+      'sin ventas de la semana anterior la diferencia no se inventa, igual que las otras dos',
+      () async {
+        await vender('v-1', 150000, _despues);
+        await bajada(_ahora);
+        await deposito('d-1', 100000, validadoEn: _despues);
+
+        final r = await leer();
+
+        expect(r.depositado!.totalCentavos, 100000);
+        expect(r.depositado!.variacionCentavos, isNull);
+      },
+    );
+
+    test('lo que se validó justo hace 7 días a esa hora ya estaba (borde inclusivo)', () async {
+      await vender('v-1', 150000, _antes);
+      await bajada(_ahora);
+      await deposito('d-1', 25000, validadoEn: _haceUnaSemana);
+
+      final r = await leer();
+
+      expect(r.depositado, const CifraDeCuenta(totalCentavos: 25000, variacionCentavos: 0));
+    });
+
+    test('«En mano» y «Por cobrar» no cambian por los depósitos (los calcula #431)', () async {
+      await vender('v-1', 150000, _antes);
+      await cobrar('c-1', 50000, _antes);
+      await bajada(_ahora);
+      await deposito('d-1', 50000, validadoEn: _despues);
+
+      final r = await leer();
+
+      expect(r.enMano.totalCentavos, 50000);
+      expect(r.porCobrar.totalCentavos, 100000);
+    });
+
+    test(
+      'al día solo: cuando baja la validación de un depósito, el resumen se actualiza',
+      () async {
+        await vender('v-1', 150000, _antes);
+        await bajada(_ahora);
+        await deposito('d-1', 100000);
+        final vistos = <ResumenDeCuenta>[];
+        final sub = local.observar('col-1').listen(vistos.add);
+        Future<void> hasta(bool Function() condicion) async {
+          for (var i = 0; i < 400 && !condicion(); i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 5));
+          }
+          expect(condicion(), isTrue, reason: 'no llegó lo esperado: $vistos');
+        }
+
+        await hasta(() => vistos.isNotEmpty);
+        expect(vistos.last.depositado!.totalCentavos, 0);
+
+        // Lo que hace el pull: la misma fila con su validación.
+        await (db.update(
+          db.depositos,
+        )..where((d) => d.id.equals('d-1'))).write(DepositosCompanion(validadoEn: Value(_despues)));
+
+        await hasta(() => vistos.last.depositado!.totalCentavos == 100000);
+        await sub.cancel();
+      },
+    );
+
+    test('la primera bajada hace aparecer la cifra y cada bajada nueva mueve la hora', () async {
+      await vender('v-1', 150000, _antes);
+      final vistos = <ResumenDeCuenta>[];
+      final sub = local.observar('col-1').listen(vistos.add);
+      Future<void> hasta(bool Function() condicion) async {
+        for (var i = 0; i < 400 && !condicion(); i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+        expect(condicion(), isTrue, reason: 'no llegó lo esperado: $vistos');
+      }
+
+      await hasta(() => vistos.isNotEmpty);
+      expect(vistos.last.depositado, isNull);
+
+      await bajada(_ahora.subtract(const Duration(hours: 3)));
+      await hasta(() => vistos.last.depositado != null);
+      await bajada(_ahora);
+      await hasta(() => vistos.last.depositadoAl == _ahora);
+      await sub.cancel();
     });
   });
 }

@@ -1,5 +1,6 @@
 // Las reglas puras de una devolución (HU-VEN-004, ADR-002): la ventana de 72 h, qué libros salen de lo
-// elegido, cuánto vale lo devuelto y qué se hace con la plata de más. Los números son los del canvas
+// elegido, cuánto vale lo devuelto y que una venta saldada no acepta devoluciones (nunca queda plata a
+// favor del cliente, decisión de Cristian del 03/11). Los números son los del canvas
 // 31: una venta de $ 4.500 con «Salud y Hogar» ($ 2.600) y «Nuestros Hijos» ($ 1.900).
 import 'package:colportores_mobile/features/ventas/domain/entities/componente_vendido.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/devolucion.dart';
@@ -24,8 +25,6 @@ const _hijos = RenglonDeLaVenta(
 
 VentaParaDevolver _venta({
   int cobrado = 450000,
-  int reembolsado = 0,
-  int retenido = 0,
   List<RenglonDeLaVenta> renglones = const [_salud, _hijos],
 }) => VentaParaDevolver(
   ventaId: 'v-1',
@@ -33,8 +32,6 @@ VentaParaDevolver _venta({
   fecha: DateTime.utc(2026, 10, 12, 21, 20),
   montoTotalCentavos: 450000,
   cobradoCentavos: cobrado,
-  reembolsadoCentavos: reembolsado,
-  retenidoCentavos: retenido,
   renglones: renglones,
 );
 
@@ -90,75 +87,102 @@ void main() {
   });
 
   group('las cuentas de la devolución (canvas 31)', () {
-    test('31-02: dado que pagó todo y devuelve Nuestros Hijos, pagó de más 1.900', () {
-      final c = ReglasDeDevolucion.cuenta(_venta(), {'i-hijos': 1});
+    test(
+      'dado que pagó todo y devuelve Nuestros Hijos, no se le devuelve plata: 1.900 sin devolver',
+      () {
+        final c = ReglasDeDevolucion.cuenta(_venta(), {'i-hijos': 1});
 
-      expect(c.valorCentavos, 190000);
-      expect(c.seQuedaConCentavos, 260000);
-      expect(c.yaPagoCentavos, 450000);
-      expect(c.pagoDeMasCentavos, 190000);
-      expect(c.saldoNuevoCentavos, 0);
-      expect(c.hayQueElegir, isTrue);
-      expect(c.esTotal, isFalse);
-    });
+        expect(c.valorCentavos, 190000);
+        expect(c.seQuedaConCentavos, 260000);
+        expect(c.yaPagoCentavos, 450000);
+        expect(c.sinDevolverCentavos, 190000);
+        expect(c.haySinDevolver, isTrue);
+        expect(c.saldoNuevoCentavos, 0);
+        expect(c.esTotal, isFalse);
+      },
+    );
 
     test('31-06: dado que pagó 1.000 y devuelve Nuestros Hijos, queda un saldo de 1.600', () {
       final c = ReglasDeDevolucion.cuenta(_venta(cobrado: 100000), {'i-hijos': 1});
 
       expect(c.seQuedaConCentavos, 260000);
       expect(c.saldoNuevoCentavos, 160000);
-      expect(c.pagoDeMasCentavos, 0);
-      expect(c.hayQueElegir, isFalse);
+      expect(c.sinDevolverCentavos, 0);
+      expect(c.haySinDevolver, isFalse);
     });
 
-    test('31-07: dado que devuelve todo, se queda con 0 y pagó de más 4.500', () {
+    test(
+      'dado que lo devuelto vale más que el saldo, el saldo queda en 0 y la diferencia no se devuelve',
+      () {
+        // Debe 1.200 (pagó 3.300 de 4.500) y devuelve un libro de 1.900: se descuenta hasta el saldo.
+        final c = ReglasDeDevolucion.cuenta(_venta(cobrado: 330000), {'i-hijos': 1});
+
+        expect(c.valorCentavos, 190000);
+        expect(c.seQuedaConCentavos, 260000);
+        expect(c.saldoNuevoCentavos, 0);
+        expect(c.sinDevolverCentavos, 70000);
+      },
+    );
+
+    test('dado que lo devuelto cabe justo en el saldo, la venta queda saldada sin diferencia', () {
+      // Debe 1.900 (pagó 2.600) y devuelve el libro de 1.900.
+      final c = ReglasDeDevolucion.cuenta(_venta(cobrado: 260000), {'i-hijos': 1});
+
+      expect(c.saldoNuevoCentavos, 0);
+      expect(c.sinDevolverCentavos, 0);
+    });
+
+    test('31-07: dado que devuelve todo, se queda con 0 y los 4.500 pagados no se devuelven', () {
       final c = ReglasDeDevolucion.cuenta(_venta(), {'i-salud': 1, 'i-hijos': 1});
 
       expect(c.seQuedaConCentavos, 0);
-      expect(c.pagoDeMasCentavos, 450000);
-      expect(c.esTotal, isTrue);
-    });
-
-    test('dado que no pagó nada y devuelve todo, no hay plata de más ni saldo', () {
-      final c = ReglasDeDevolucion.cuenta(_venta(cobrado: 0), {'i-salud': 1, 'i-hijos': 1});
-
-      expect(c.pagoDeMasCentavos, 0);
+      expect(c.sinDevolverCentavos, 450000);
       expect(c.saldoNuevoCentavos, 0);
       expect(c.esTotal, isTrue);
     });
 
-    test('dado que nada elegido, la cuenta está vacía y no hay nada que elegir', () {
+    test('dado que no pagó nada y devuelve todo, no hay plata sin devolver ni saldo', () {
+      final c = ReglasDeDevolucion.cuenta(_venta(cobrado: 0), {'i-salud': 1, 'i-hijos': 1});
+
+      expect(c.sinDevolverCentavos, 0);
+      expect(c.saldoNuevoCentavos, 0);
+      expect(c.esTotal, isTrue);
+    });
+
+    test('dado que nada elegido, la cuenta está vacía', () {
       final c = ReglasDeDevolucion.cuenta(_venta(), const {});
 
       expect(c.estaVacia, isTrue);
-      expect(c.hayQueElegir, isFalse);
+      expect(c.haySinDevolver, isFalse);
       expect(c.esTotal, isFalse);
     });
 
-    test('dado que ya se retuvo plata en una devolución anterior, no se vuelve a ofrecer', () {
-      // Pagó 4.500, ya devolvió Salud y Hogar y retuvo los 2.600: devolver lo que queda no suma plata
-      // de más sobre lo ya retenido.
-      final c = ReglasDeDevolucion.cuenta(
-        _venta(
-          renglones: const [
-            RenglonDeLaVenta(
-              ventaItemId: 'i-salud',
-              titulo: 'Salud y Hogar',
-              productoId: 'p-salud',
-              cantidad: 1,
-              precioUnitarioCentavos: 260000,
-              unidadesDevueltas: 1,
-            ),
-            _hijos,
-          ],
-          retenido: 260000,
-        ),
-        {'i-hijos': 1},
-      );
+    test(
+      'dado que ya devolvió Salud y Hogar y pagó 1.000, devolver lo que queda deja el saldo en 0',
+      () {
+        final c = ReglasDeDevolucion.cuenta(
+          _venta(
+            cobrado: 100000,
+            renglones: const [
+              RenglonDeLaVenta(
+                ventaItemId: 'i-salud',
+                titulo: 'Salud y Hogar',
+                productoId: 'p-salud',
+                cantidad: 1,
+                precioUnitarioCentavos: 260000,
+                unidadesDevueltas: 1,
+              ),
+              _hijos,
+            ],
+          ),
+          {'i-hijos': 1},
+        );
 
-      expect(c.seQuedaConCentavos, 0);
-      expect(c.pagoDeMasCentavos, 190000);
-    });
+        expect(c.seQuedaConCentavos, 0);
+        expect(c.saldoNuevoCentavos, 0);
+        expect(c.sinDevolverCentavos, 100000);
+      },
+    );
 
     test('dado más unidades que las disponibles, la cuenta las recorta a lo que queda', () {
       final c = ReglasDeDevolucion.cuenta(_venta(), {'i-hijos': 5});
@@ -186,40 +210,7 @@ void main() {
       final c = ReglasDeDevolucion.cuenta(venta, {'i-salud': 1, 'i-hijos': 1});
 
       expect(c.seQuedaConCentavos, 0);
-      expect(c.pagoDeMasCentavos, 300000);
-    });
-  });
-
-  group('qué se hace con la plata de más', () {
-    test('dado que no pagó de más, cuando hay opción, no se guarda nada', () {
-      final d = ReglasDeDevolucion.destinoDeLaDiferencia(0, QueHacerConLaDiferencia.devolverAhora);
-
-      expect(d, (retenido: 0, reembolsado: null));
-    });
-
-    test('dado que pagó de más y no eligió, no hay destino', () {
-      expect(ReglasDeDevolucion.destinoDeLaDiferencia(190000, null), isNull);
-    });
-
-    test('dado «Se lo devuelvo ahora», la diferencia queda como reembolsada', () {
-      expect(
-        ReglasDeDevolucion.destinoDeLaDiferencia(190000, QueHacerConLaDiferencia.devolverAhora),
-        (retenido: 0, reembolsado: 190000),
-      );
-    });
-
-    test('dado «Lo retengo», la diferencia queda como dinero retenido', () {
-      expect(ReglasDeDevolucion.destinoDeLaDiferencia(190000, QueHacerConLaDiferencia.retener), (
-        retenido: 190000,
-        reembolsado: null,
-      ));
-    });
-
-    test('dado «Se lo devuelvo después», no se guarda monto: queda como «Debo al cliente»', () {
-      expect(
-        ReglasDeDevolucion.destinoDeLaDiferencia(190000, QueHacerConLaDiferencia.devolverDespues),
-        (retenido: 0, reembolsado: null),
-      );
+      expect(c.sinDevolverCentavos, 300000);
     });
   });
 
@@ -228,8 +219,9 @@ void main() {
       const c = CuentaDeLaVenta(montoTotalCentavos: 450000, cobradoCentavos: 100000);
 
       expect(c.seQuedaConCentavos, 450000);
+      expect(c.yaPagoCentavos, 100000);
       expect(c.saldoCentavos, 350000);
-      expect(c.deboAlClienteCentavos, 0);
+      expect(c.estaSaldada, isFalse);
     });
 
     test('dado una devolución, lo devuelto baja lo que se queda y con él el saldo', () {
@@ -241,9 +233,24 @@ void main() {
 
       expect(c.seQuedaConCentavos, 260000);
       expect(c.saldoCentavos, 160000);
+      expect(c.estaSaldada, isFalse);
     });
 
-    test('dado plata de más sin destino, es «Debo al cliente»', () {
+    test('dado que pagó todo lo que se queda, el saldo es 0 y la venta está saldada', () {
+      const pagada = CuentaDeLaVenta(montoTotalCentavos: 450000, cobradoCentavos: 450000);
+      const conDevolucion = CuentaDeLaVenta(
+        montoTotalCentavos: 450000,
+        cobradoCentavos: 260000,
+        devueltoCentavos: 190000,
+      );
+
+      expect(pagada.saldoCentavos, 0);
+      expect(pagada.estaSaldada, isTrue);
+      expect(conDevolucion.saldoCentavos, 0);
+      expect(conDevolucion.estaSaldada, isTrue);
+    });
+
+    test('dado más devuelto de lo que debía, nunca queda plata a favor: el saldo no baja de 0', () {
       const c = CuentaDeLaVenta(
         montoTotalCentavos: 450000,
         cobradoCentavos: 450000,
@@ -251,27 +258,13 @@ void main() {
       );
 
       expect(c.saldoCentavos, 0);
-      expect(c.deboAlClienteCentavos, 190000);
+      expect(c.yaPagoCentavos, 450000);
     });
 
-    test('dado que se reembolsó o se retuvo la diferencia, no se debe nada', () {
-      const reembolsada = CuentaDeLaVenta(
-        montoTotalCentavos: 450000,
-        cobradoCentavos: 450000,
-        devueltoCentavos: 190000,
-        reembolsadoCentavos: 190000,
-      );
-      const retenida = CuentaDeLaVenta(
-        montoTotalCentavos: 450000,
-        cobradoCentavos: 450000,
-        devueltoCentavos: 190000,
-        retenidoCentavos: 190000,
-      );
+    test('dado una venta de \$ 0, está saldada (el servidor tampoco le acepta devoluciones)', () {
+      const c = CuentaDeLaVenta(montoTotalCentavos: 0, cobradoCentavos: 0);
 
-      expect(reembolsada.deboAlClienteCentavos, 0);
-      expect(reembolsada.yaPagoCentavos, 260000);
-      expect(retenida.deboAlClienteCentavos, 0);
-      expect(retenida.saldoCentavos, 0);
+      expect(c.estaSaldada, isTrue);
     });
 
     test('dado más devuelto que vendido, lo que se queda no baja de cero', () {
@@ -283,6 +276,13 @@ void main() {
 
       expect(c.seQuedaConCentavos, 0);
       expect(c.saldoCentavos, 0);
+    });
+
+    test('dado una venta para devolver, su cuenta y su saldada salen de la misma fórmula', () {
+      expect(_venta(cobrado: 100000).estaSaldada, isFalse);
+      expect(_venta(cobrado: 100000).saldoCentavos, 350000);
+      expect(_venta().estaSaldada, isTrue);
+      expect(_venta().yaPagoCentavos, 450000);
     });
   });
 

@@ -55,6 +55,102 @@ void main() {
     });
   });
 
+  group('conectadaDesde (#583)', () {
+    test('al conectar anota cuándo, y ese día no cambia con los cambios de estado', () async {
+      var ahora = DateTime.utc(2026, 11, 3, 15);
+      final con = RespaldoDriveArmado(ahora: () => ahora);
+      await con.repo.conectar('u-1');
+      ahora = DateTime.utc(2026, 11, 20, 9);
+
+      expect(await con.repo.conectadaDesde('u-1'), DateTime.utc(2026, 11, 3, 15));
+      await con.repo.marcarSinEspacio('u-1');
+      await con.repo.marcarRespaldoGuardado('u-1');
+      await con.repo.marcarPermisoRevocado('u-1');
+      expect(await con.repo.conectadaDesde('u-1'), DateTime.utc(2026, 11, 3, 15));
+    });
+
+    test('al volver a conectar, la fecha es la de la nueva conexión', () async {
+      var ahora = DateTime.utc(2026, 11, 3, 15);
+      final con = RespaldoDriveArmado(ahora: () => ahora);
+      await con.repo.conectar('u-1');
+      await con.repo.desconectar('u-1');
+      ahora = DateTime.utc(2026, 11, 9, 8);
+      await con.repo.conectar('u-1');
+
+      expect(await con.repo.conectadaDesde('u-1'), DateTime.utc(2026, 11, 9, 8));
+    });
+
+    test('es por usuario: otra persona del teléfono no hereda la fecha', () async {
+      final con = RespaldoDriveArmado(ahora: () => DateTime.utc(2026, 11, 3, 15));
+      await con.repo.conectar('u-1');
+
+      expect(await con.repo.conectadaDesde('u-2'), isNull);
+    });
+
+    test('sin cuenta conectada es null y no escribe nada', () async {
+      expect(await a.repo.conectadaDesde('u-1'), isNull);
+      expect(a.guardado, isNull);
+    });
+
+    test(
+      'una cuenta conectada antes de que se anotara la fecha queda anotada con la de hoy',
+      () async {
+        final ahora = DateTime.utc(2026, 11, 3, 15);
+        final con = RespaldoDriveArmado(ahora: () => ahora);
+        await con.almacen.escribir(
+          ClaveSegura.respaldoDrive,
+          jsonEncode({
+            'u-1': {'email': 'ana@example.com', 'id': 'g-1', 'estado': 'conectada'},
+          }),
+        );
+
+        expect(await con.repo.conectadaDesde('u-1'), ahora);
+        final json = jsonDecode(con.guardado!) as Map<String, dynamic>;
+        expect((json['u-1'] as Map<String, dynamic>)['conectado_en'], ahora.toIso8601String());
+        expect(
+          _estado(await con.repo.estado('u-1')),
+          isA<DriveConectada>(),
+          reason: 'el estado sigue igual',
+        );
+      },
+    );
+
+    test('una fecha ilegible se vuelve a anotar con la de hoy', () async {
+      final ahora = DateTime.utc(2026, 11, 3, 15);
+      final con = RespaldoDriveArmado(ahora: () => ahora);
+      await con.almacen.escribir(
+        ClaveSegura.respaldoDrive,
+        jsonEncode({
+          'u-1': {
+            'email': 'ana@example.com',
+            'id': 'g-1',
+            'estado': 'conectada',
+            'conectado_en': 'ayer',
+          },
+        }),
+      );
+
+      expect(await con.repo.conectadaDesde('u-1'), ahora);
+    });
+
+    test('si el almacén no se deja leer o escribir, null y no lanza', () async {
+      final roto = RespaldoDriveArmado();
+      await roto.repo.conectar('u-1');
+      roto.almacen.alLeer = true;
+      expect(await roto.repo.conectadaDesde('u-1'), isNull);
+
+      final sinEscritura = RespaldoDriveArmado();
+      await sinEscritura.almacen.escribir(
+        ClaveSegura.respaldoDrive,
+        jsonEncode({
+          'u-1': {'email': 'ana@example.com', 'id': 'g-1', 'estado': 'conectada'},
+        }),
+      );
+      sinEscritura.almacen.alEscribir = true;
+      expect(await sinEscritura.repo.conectadaDesde('u-1'), isNull);
+    });
+  });
+
   group('conectar', () {
     test('Escenario: Autorización exitosa — guarda la cuenta, sin ningún token', () async {
       final r = await a.repo.conectar('u-1');
