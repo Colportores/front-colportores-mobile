@@ -25,13 +25,27 @@ enum DestinoDeDeposito {
 /// depósito tiene un solo concepto; para pagar los dos se registran dos depósitos.
 enum ConceptoDeDeposito { casaEditora, alquiler }
 
+/// En qué quedó un depósito para el coordinador (decisión «Acredita V1», 23/10; «Rechazo ret.», 28/10).
+enum EstadoDeDeposito {
+  /// Registrado y todavía sin respuesta: no suma a «Depositado» ni baja la deuda.
+  porValidar,
+
+  /// El coordinador lo validó: suma a «Depositado» y baja la deuda.
+  validado,
+
+  /// El coordinador lo rechazó (hoy, un retiro sin ticket) y dejó su motivo: no suma a nada, la plata
+  /// vuelve a estar «en mano» y el colportor carga uno corregido.
+  rechazado,
+}
+
 /// Un depósito de efectivo del colportor (esquema-datos.md §deposito, HU-CTA-004).
 ///
 /// Se da de alta desde el teléfono y no se edita ni se borra. Nace **«por validar»**: no suma a
 /// «Depositado» ni baja la deuda hasta que lo valida el coordinador (decisión «Acredita V1»). Esa
 /// validación (`validado_en`, `validado_por`) y el rechazo de un retiro (`rechazado_en`,
-/// `motivo_rechazo`) los pone el servidor y todavía no bajan al teléfono (contrato §2), así que no
-/// están acá. **No marca qué cobros incluye** (decisión del 28/10, «Cobro en dep.»): lleva el monto.
+/// `motivo_rechazo`) los pone el servidor y bajan al teléfono por el pull (`deposito` es `push` con
+/// `alsoPull`, backend-supabase#231): el teléfono nunca los escribe ni los sube, y [estado] se calcula
+/// con ellos. **No marca qué cobros incluye** (decisión del 28/10, «Cobro en dep.»): lleva el monto.
 ///
 /// El dinero va en **centavos**. El colportor sale de la sesión y no viaja en el sync (el servidor
 /// lo toma del JWT): acá es el `created_by` de la [auditoria].
@@ -44,8 +58,14 @@ class Deposito extends Equatable {
     required this.concepto,
     this.campaniaId,
     this.ticketId,
+    DateTime? validadoEn,
+    this.validadoPor,
+    DateTime? rechazadoEn,
+    this.motivoRechazo,
     required this.auditoria,
-  }) : fecha = instanteMs(fecha);
+  }) : fecha = instanteMs(fecha),
+       validadoEn = validadoEn == null ? null : instanteMs(validadoEn),
+       rechazadoEn = rechazadoEn == null ? null : instanteMs(rechazadoEn);
 
   final String id;
 
@@ -65,9 +85,36 @@ class Deposito extends Equatable {
   /// El ticket del banco que respalda el depósito; solo con [DestinoDeDeposito.llevaTicket].
   final String? ticketId;
 
+  /// Cuándo lo validó el coordinador (UTC); `null` si todavía no. Lo pone el servidor.
+  final DateTime? validadoEn;
+
+  /// Quién lo validó (id opaco). Lo pone el servidor.
+  final String? validadoPor;
+
+  /// Cuándo lo rechazó el coordinador (UTC); `null` si no lo rechazó. Lo pone el servidor.
+  final DateTime? rechazadoEn;
+
+  /// Por qué lo rechazó, con las palabras del coordinador. Texto libre: nunca va a un log.
+  final String? motivoRechazo;
+
   final Auditoria auditoria;
 
   bool get estaBorrado => auditoria.estaBorrada;
+
+  /// `EquatableConfig.stringify` arranca en `true` en debug: `'$deposito'` imprimiría [props], y entre
+  /// ellos el [motivoRechazo], que es texto libre del coordinador (puede nombrar a una persona).
+  /// convenciones-desarrollo.md §7.5 ("sin PII en logs: solo IDs"): se apaga acá y no queda a criterio
+  /// de cada call site (QA #596).
+  @override
+  bool? get stringify => false;
+
+  /// Por validar, validado o rechazado, según lo que bajó del servidor. **Rechazado gana**: si por un
+  /// error llegaran las dos marcas, no se acredita (ante la duda no se suma plata que no está).
+  EstadoDeDeposito get estado {
+    if (rechazadoEn != null) return EstadoDeDeposito.rechazado;
+    if (validadoEn != null) return EstadoDeDeposito.validado;
+    return EstadoDeDeposito.porValidar;
+  }
 
   @override
   List<Object?> get props => [
@@ -78,6 +125,10 @@ class Deposito extends Equatable {
     concepto,
     campaniaId,
     ticketId,
+    validadoEn,
+    validadoPor,
+    rechazadoEn,
+    motivoRechazo,
     auditoria,
   ];
 }

@@ -507,7 +507,7 @@ void main() {
 
         expect(find.byType(ConfiguracionPage), findsOneWidget);
         expect(find.byKey(const Key('inicio_barra')), findsOneWidget);
-        expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+        expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
         expect(find.byKey(const Key('configuracion_cerrar_sesion')), findsOneWidget);
       });
 

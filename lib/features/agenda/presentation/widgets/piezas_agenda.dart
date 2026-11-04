@@ -596,6 +596,8 @@ class HeroAgenda extends StatelessWidget {
                 onPressed: alAccion,
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(48, 48),
+                  // Con el relleno del tema el texto tocaba el borde (QA #148).
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   foregroundColor: ColoresAgenda.navy,
                   side: const BorderSide(color: ColoresAgenda.navy, width: 1.5),
                   textStyle: const TextStyle(

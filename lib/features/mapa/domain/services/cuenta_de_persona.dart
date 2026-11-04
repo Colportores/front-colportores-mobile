@@ -25,12 +25,17 @@ final class ResumenCuentaPersona extends Equatable {
   final int entregasHechas;
   final int entregasTotales;
 
-  /// Debe algo: la baja pide la doble confirmación (HU-UBI-011).
+  /// Debe algo.
   bool get tieneSaldo => saldoCentavos > 0;
 
   /// Las unidades que todavía no se entregaron (nunca negativo).
   int get entregasPendientes =>
       entregasTotales > entregasHechas ? entregasTotales - entregasHechas : 0;
+
+  /// Dar de baja a la persona pide la doble confirmación (HU-UBI-011): debe algo o tiene entregas
+  /// pendientes (decisión de Cristian, 27/10). Quien no debe nada ni espera nada se da de baja con una
+  /// sola confirmación.
+  bool get pideConfirmarBaja => tieneSaldo || entregasPendientes > 0;
 
   @override
   List<Object?> get props => [

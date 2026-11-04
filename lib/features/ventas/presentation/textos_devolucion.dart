@@ -5,6 +5,10 @@ import 'formato_venta.dart';
 
 /// Los textos de la vista 31 (Devolución de una venta, HU-VEN-004): los del canvas tal cual, y los que
 /// el canvas no dibuja marcados «A confirmar» (mapa §2: texto).
+///
+/// Desde el 03/11 («Devol. saldo», decisión de Cristian) nunca queda plata a favor del cliente: no
+/// están «Lo retengo», «Se lo devuelvo ahora», «Se lo devuelvo después», «Pagó de más», «Debo al
+/// cliente» ni «Agendar la devolución del dinero» (31-02, 31-03, y la parte de 31-04 y 31-05).
 abstract final class TextosDevolucion {
   // --- Del canvas (31-01 a 31-10) ---
   static const titulo = '¿Qué te devuelve?';
@@ -16,20 +20,11 @@ abstract final class TextosDevolucion {
   static const reintentar = 'Reintentar';
   static const listo = 'Listo';
   static const volver = 'Volver';
-  static const agendarElDinero = 'Agendar la devolución del dinero';
   static const seQuedaCon = 'Se queda con';
   static const yaPago = 'Ya pagó';
-  static const pagoDeMas = 'Pagó de más';
   static const saldoNuevo = 'Saldo nuevo';
   static const totalDeLaVenta = 'Total de la venta';
   static const saldo = 'Saldo';
-  static const deboAlCliente = 'Debo al cliente';
-  static const ahora = 'Se lo devuelvo ahora';
-  static const ahoraSub = 'Se resta de tu dinero en mano';
-  static const retengo = 'Lo retengo';
-  static const retengoSub = 'Como compensación; el saldo queda en cero';
-  static const despues = 'Se lo devuelvo después';
-  static const despuesSub = 'Queda como «Debo al cliente»';
   static const elegiAlMenosUno = 'Elegí al menos un producto.';
   static const hojaTitulo = '¿Registrar la devolución?';
   static const laVentaNoSeBorra = 'La venta original no se borra: queda con la devolución anotada.';
@@ -51,9 +46,14 @@ abstract final class TextosDevolucion {
   static const errorDeLectura = 'No pudimos leer la venta guardada en tu teléfono.';
   static const sinLaVenta = 'Esta venta ya no está en tu teléfono. Volvé atrás y elegí otra.';
   static const yaDevuelta = 'Esta venta ya se devolvió por completo. No queda nada para devolver.';
+
+  /// Decisión de Cristian, 03/11, «Devol. saldo»: «si la compra está cerrada (pagó toda la deuda) no se
+  /// aceptan devoluciones». Es el texto del servidor (migración 0157, `23514`): la pantalla dice por qué
+  /// en vez de dejar empezar.
+  static const ventaSaldada =
+      'Esta venta ya está saldada: el cliente pagó todo lo que se queda comprando, así que no se '
+      'puede devolver nada. Si hay un error, pedile a tu coordinador que lo revise.';
   static const devuelve = 'Devuelve';
-  static const leDevolves = 'Le devolvés ahora';
-  static const retenes = 'Retenés';
   static const eligeAhora = 'Registrá la devolución para ver cómo queda.';
 
   /// «DEVOLUCIÓN · VENTA 0042».
@@ -62,8 +62,11 @@ abstract final class TextosDevolucion {
   /// «VENTA 0042» (la pantalla de fuera de plazo).
   static String eyebrowSolo(String talonario) => 'VENTA $talonario';
 
-  /// «¿QUÉ HACÉS CON $ 1.900?».
-  static String queHaces(int centavos) => '¿QUÉ HACÉS CON ${FormatoVenta.monto(centavos)}?';
+  /// «Ya pagó $ 3.300, más de lo que se queda. Ese dinero no se devuelve: la venta queda saldada y
+  /// nada queda a favor del cliente.» Va cuando lo devuelto vale más que lo que el cliente debía.
+  static String sinDevolver(int centavos) =>
+      'Ya pagó ${FormatoVenta.monto(centavos)} más de lo que se queda. Ese dinero no se devuelve: '
+      'la venta queda saldada y nada queda a favor del cliente.';
 
   /// «Vendidos 1 · $ 2.600»; con lo que ya volvió: «Vendidos 3 · ya devolvió 1 · $ 2.600».
   static String vendidos(int cantidad, int devueltos, int precioCentavos) {

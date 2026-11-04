@@ -12,8 +12,6 @@ final class ResumenDeDevoluciones {
   const ResumenDeDevoluciones({
     this.productos = const [],
     this.valorCentavos = 0,
-    this.reembolsadoCentavos = 0,
-    this.retenidoCentavos = 0,
     this.ultimaFecha,
     this.todoDevuelto = false,
   });
@@ -26,12 +24,6 @@ final class ResumenDeDevoluciones {
 
   /// Lo que valen las unidades devueltas, en centavos.
   final int valorCentavos;
-
-  /// Lo que ya se le devolvió al cliente en el momento.
-  final int reembolsadoCentavos;
-
-  /// Lo que la colportora retuvo.
-  final int retenidoCentavos;
 
   /// Cuándo se registró la última devolución viva; `null` si no hay ninguna.
   final DateTime? ultimaFecha;
@@ -52,8 +44,6 @@ final class ResumenDeDevoluciones {
         montoTotalCentavos: montoTotalCentavos,
         cobradoCentavos: cobradoCentavos,
         devueltoCentavos: todoDevuelto ? montoTotalCentavos : valorCentavos,
-        reembolsadoCentavos: reembolsadoCentavos,
-        retenidoCentavos: retenidoCentavos,
       );
 }
 
@@ -70,17 +60,30 @@ abstract final class EstadoDeDevolucion {
 
   /// El resumen de cada venta de [ventaIds] que tiene alguna devolución viva. Las que no tienen no
   /// aparecen en el mapa (usar [ResumenDeDevoluciones.ninguna]).
+  ///
+  /// Con [hasta], solo cuentan las devoluciones hechas hasta ese momento: cómo estaba la venta
+  /// entonces (la comparación de Mi Cuenta contra la semana pasada, HU-CTA-001).
   static Future<Map<String, ResumenDeDevoluciones>> resumenesDe(
     AppDatabase db,
-    Iterable<String> ventaIds,
-  ) async {
+    Iterable<String> ventaIds, {
+    DateTime? hasta,
+  }) async {
     final ids = ventaIds.toSet().toList();
     final salida = <String, ResumenDeDevoluciones>{};
     for (var desde = 0; desde < ids.length; desde += _porConsulta) {
       final lote = ids.sublist(desde, (desde + _porConsulta).clamp(0, ids.length));
       final filas =
           await (db.select(db.devoluciones)
-                ..where((d) => d.ventaId.isIn(lote) & d.deletedAt.isNull())
+                ..where(
+                  (d) =>
+                      d.ventaId.isIn(lote) &
+                      d.deletedAt.isNull() &
+                      (hasta == null
+                          ? const Constant(true)
+                          : d.fechaDevolucion.isSmallerOrEqualValue(
+                              hasta.toUtc().millisecondsSinceEpoch,
+                            )),
+                )
                 ..orderBy([(d) => OrderingTerm.asc(d.createdAt), (d) => OrderingTerm.asc(d.id)]))
               .get();
       if (filas.isEmpty) continue;
@@ -143,8 +146,6 @@ abstract final class EstadoDeDevolucion {
     return ResumenDeDevoluciones(
       productos: productos,
       valorCentavos: valor,
-      reembolsadoCentavos: devoluciones.fold(0, (s, d) => s + (d.montoReembolsado ?? 0)),
-      retenidoCentavos: devoluciones.fold(0, (s, d) => s + d.dineroRetenido),
       ultimaFecha: devoluciones
           .map((d) => d.fechaDevolucion)
           .reduce((a, b) => b.isAfter(a) ? b : a),

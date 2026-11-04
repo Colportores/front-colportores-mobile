@@ -1,6 +1,9 @@
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../../../core/logging/app_logger.dart';
+import '../../../../core/notificaciones/permiso_alarmas_exactas.dart';
 import 'motor_de_avisos.dart';
 
 /// [MotorDeAvisos] sobre `flutter_local_notifications`.
@@ -10,27 +13,42 @@ import 'motor_de_avisos.dart';
 ///   o de horario de verano no lo corre.
 /// - **El permiso no lo pide el plugin** (`request…Permission: false`): lo pide la vista 24
 ///   (`PermisoNotificacionesCanal`).
-/// - **Android, modo del aviso**: [modoAndroid]. Es el único lugar donde se decide si el aviso es
-///   exacto; hoy es el que no necesita permisos especiales (pendiente de decisión, ver el PR).
+/// - **Android, modo del aviso** («Aviso exacto», decisión de Cristian del 27/10): exacto
+///   ([modoExacto]) si el permiso «Alarmas y recordatorios» está prendido (o el Android es anterior
+///   al 12, que no lo pide); si no, inexacto ([modoInexacto]), que con el teléfono en reposo Android
+///   puede correr hasta una hora. El permiso se lee en cada [programar] por [PermisoAlarmasExactas]
+///   (no por el plugin) y, si Android lo revocó entre la lectura y el aviso, se reintenta inexacto:
+///   programar el recordatorio nunca falla por esto.
 /// - El texto queda en las preferencias del plugin hasta que el aviso suena o se cancela.
 final class MotorDeAvisosPlugin implements MotorDeAvisos {
-  MotorDeAvisosPlugin(this._plugin);
+  MotorDeAvisosPlugin(this._plugin, {this._alarmas, AppLogger? logger})
+    : _log = logger ?? AppLogger.instance;
 
   final FlutterLocalNotificationsPlugin _plugin;
+
+  /// Sin él (tests viejos, app sin canal nativo) todo aviso es inexacto, como antes.
+  final PermisoAlarmasExactas? _alarmas;
+  final AppLogger _log;
+
+  /// Código con el que el plugin rechaza una alarma exacta sin el permiso.
+  static const String _sinPermisoExacto = 'exact_alarms_not_permitted';
 
   /// Canal de Android de los recordatorios de visitas.
   static const String canalId = 'recordatorios_visitas';
   static const String canalNombre = 'Recordatorios de visitas';
   static const String canalDescripcion = 'Avisos antes de cada visita agendada';
 
-  /// Cómo se programa el aviso en Android: sin alarma exacta (`SCHEDULE_EXACT_ALARM` /
-  /// `USE_EXACT_ALARM` están sujetos a permisos y a la política de la tienda). Con el teléfono en
-  /// reposo el aviso puede llegar con corrimiento (hasta una hora tarde en el peor caso de Android).
-  /// Si el aviso exacto vale un permiso más es una decisión abierta de Cristian
-  /// (`mobile-453-impl-p1-aviso-exacto`): mientras tanto, inexacto y sin permiso nuevo.
-  static const AndroidScheduleMode modoAndroid = AndroidScheduleMode.inexactAllowWhileIdle;
+  /// Aviso a la hora justa, aun con el teléfono en reposo (necesita `SCHEDULE_EXACT_ALARM`).
+  static const AndroidScheduleMode modoExacto = AndroidScheduleMode.exactAllowWhileIdle;
 
-  static const NotificationDetails _detalles = NotificationDetails(
+  /// Aviso sin permiso especial: con el teléfono en reposo puede llegar tarde (hasta una hora en el
+  /// peor caso de Android).
+  static const AndroidScheduleMode modoInexacto = AndroidScheduleMode.inexactAllowWhileIdle;
+
+  /// Los detalles del aviso de [cuerpo]. En Android el cuerpo va en `BigTextStyleInformation`: sin
+  /// él la notificación muestra una sola línea y una dirección larga corta la hora, que va al final
+  /// del texto («Entrevista en … a las 14:00», #453); desplegada, se lee entera.
+  static NotificationDetails _detalles(String cuerpo) => NotificationDetails(
     android: AndroidNotificationDetails(
       canalId,
       canalNombre,
@@ -38,8 +56,9 @@ final class MotorDeAvisosPlugin implements MotorDeAvisos {
       importance: Importance.high,
       priority: Priority.high,
       category: AndroidNotificationCategory.reminder,
+      styleInformation: BigTextStyleInformation(cuerpo),
     ),
-    iOS: DarwinNotificationDetails(),
+    iOS: const DarwinNotificationDetails(),
   );
 
   @override
@@ -64,6 +83,26 @@ final class MotorDeAvisosPlugin implements MotorDeAvisos {
     return lanzamiento.notificationResponse?.payload;
   }
 
+  /// El modo de ahora: exacto solo si el sistema dice que las alarmas exactas están permitidas. Si
+  /// no se puede saber, inexacto: el aviso llega igual, quizá tarde.
+  Future<AndroidScheduleMode> _modo() async {
+    final alarmas = _alarmas;
+    if (alarmas == null) return modoInexacto;
+    try {
+      return await alarmas.leerEstado() == EstadoAlarmasExactas.permitidas
+          ? modoExacto
+          : modoInexacto;
+    } on Object catch (e) {
+      _log.warn(
+        LogModulo.agenda,
+        'RECORDATORIO_ALARMAS_EXACTAS',
+        'no se pudo leer si las alarmas exactas están permitidas; el aviso va inexacto',
+        {'error': e.runtimeType.toString()},
+      );
+      return modoInexacto;
+    }
+  }
+
   @override
   Future<void> programar({
     required int id,
@@ -71,15 +110,26 @@ final class MotorDeAvisosPlugin implements MotorDeAvisos {
     required String cuerpo,
     required DateTime instante,
     required String payload,
-  }) => _plugin.zonedSchedule(
-    id: id,
-    scheduledDate: tz.TZDateTime.from(instante.toUtc(), tz.UTC),
-    notificationDetails: _detalles,
-    androidScheduleMode: modoAndroid,
-    title: titulo,
-    body: cuerpo,
-    payload: payload,
-  );
+  }) async {
+    Future<void> en(AndroidScheduleMode modo) => _plugin.zonedSchedule(
+      id: id,
+      scheduledDate: tz.TZDateTime.from(instante.toUtc(), tz.UTC),
+      notificationDetails: _detalles(cuerpo),
+      androidScheduleMode: modo,
+      title: titulo,
+      body: cuerpo,
+      payload: payload,
+    );
+
+    final modo = await _modo();
+    try {
+      await en(modo);
+    } on PlatformException catch (e) {
+      if (modo != modoExacto || e.code != _sinPermisoExacto) rethrow;
+      // Android quitó el permiso entre la lectura y el aviso: mejor tarde que nunca.
+      await en(modoInexacto);
+    }
+  }
 
   @override
   Future<void> cancelar(int id) => _plugin.cancel(id: id);

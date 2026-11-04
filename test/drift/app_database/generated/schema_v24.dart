@@ -6921,6 +6921,22 @@ class Agenda extends Table with TableInfo<Agenda, AgendaData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<String> ventaId = GeneratedColumn<String>(
+    'venta_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> montoPrevisto = GeneratedColumn<int>(
+    'monto_previsto',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
     'created_at',
     aliasedName,
@@ -6975,6 +6991,8 @@ class Agenda extends Table with TableInfo<Agenda, AgendaData> {
     estado,
     colportorId,
     visitaId,
+    ventaId,
+    montoPrevisto,
     createdAt,
     updatedAt,
     createdBy,
@@ -7036,6 +7054,14 @@ class Agenda extends Table with TableInfo<Agenda, AgendaData> {
         DriftSqlType.string,
         data['${effectivePrefix}visita_id'],
       ),
+      ventaId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}venta_id'],
+      ),
+      montoPrevisto: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}monto_previsto'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -7069,6 +7095,7 @@ class Agenda extends Table with TableInfo<Agenda, AgendaData> {
     'PRIMARY KEY(id)',
     'CHECK(tipo IN (\'ENTREVISTA\', \'COBRANZA\'))',
     'CHECK(estado IN (\'PROGRAMADA\', \'CUMPLIDA\', \'NO_CUMPLIDA\', \'CANCELADA\'))',
+    'CHECK(monto_previsto IS NULL OR(monto_previsto > 0 AND tipo = \'COBRANZA\' AND venta_id IS NOT NULL))',
   ];
   @override
   bool get dontWriteConstraints => true;
@@ -7086,6 +7113,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
   final String estado;
   final String colportorId;
   final String? visitaId;
+  final String? ventaId;
+  final int? montoPrevisto;
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
@@ -7103,6 +7132,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
     required this.estado,
     required this.colportorId,
     this.visitaId,
+    this.ventaId,
+    this.montoPrevisto,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
@@ -7130,6 +7161,12 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
     map['colportor_id'] = Variable<String>(colportorId);
     if (!nullToAbsent || visitaId != null) {
       map['visita_id'] = Variable<String>(visitaId);
+    }
+    if (!nullToAbsent || ventaId != null) {
+      map['venta_id'] = Variable<String>(ventaId);
+    }
+    if (!nullToAbsent || montoPrevisto != null) {
+      map['monto_previsto'] = Variable<int>(montoPrevisto);
     }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -7164,6 +7201,12 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
       visitaId: visitaId == null && nullToAbsent
           ? const Value.absent()
           : Value(visitaId),
+      ventaId: ventaId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ventaId),
+      montoPrevisto: montoPrevisto == null && nullToAbsent
+          ? const Value.absent()
+          : Value(montoPrevisto),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       createdBy: createdBy == null && nullToAbsent
@@ -7193,6 +7236,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
       estado: serializer.fromJson<String>(json['estado']),
       colportorId: serializer.fromJson<String>(json['colportorId']),
       visitaId: serializer.fromJson<String?>(json['visitaId']),
+      ventaId: serializer.fromJson<String?>(json['ventaId']),
+      montoPrevisto: serializer.fromJson<int?>(json['montoPrevisto']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
@@ -7215,6 +7260,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
       'estado': serializer.toJson<String>(estado),
       'colportorId': serializer.toJson<String>(colportorId),
       'visitaId': serializer.toJson<String?>(visitaId),
+      'ventaId': serializer.toJson<String?>(ventaId),
+      'montoPrevisto': serializer.toJson<int?>(montoPrevisto),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
@@ -7235,6 +7282,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
     String? estado,
     String? colportorId,
     Value<String?> visitaId = const Value.absent(),
+    Value<String?> ventaId = const Value.absent(),
+    Value<int?> montoPrevisto = const Value.absent(),
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
@@ -7256,6 +7305,10 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
     estado: estado ?? this.estado,
     colportorId: colportorId ?? this.colportorId,
     visitaId: visitaId.present ? visitaId.value : this.visitaId,
+    ventaId: ventaId.present ? ventaId.value : this.ventaId,
+    montoPrevisto: montoPrevisto.present
+        ? montoPrevisto.value
+        : this.montoPrevisto,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
@@ -7287,6 +7340,10 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
           ? data.colportorId.value
           : this.colportorId,
       visitaId: data.visitaId.present ? data.visitaId.value : this.visitaId,
+      ventaId: data.ventaId.present ? data.ventaId.value : this.ventaId,
+      montoPrevisto: data.montoPrevisto.present
+          ? data.montoPrevisto.value
+          : this.montoPrevisto,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
@@ -7311,6 +7368,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
           ..write('estado: $estado, ')
           ..write('colportorId: $colportorId, ')
           ..write('visitaId: $visitaId, ')
+          ..write('ventaId: $ventaId, ')
+          ..write('montoPrevisto: $montoPrevisto, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -7333,6 +7392,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
     estado,
     colportorId,
     visitaId,
+    ventaId,
+    montoPrevisto,
     createdAt,
     updatedAt,
     createdBy,
@@ -7354,6 +7415,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
           other.estado == this.estado &&
           other.colportorId == this.colportorId &&
           other.visitaId == this.visitaId &&
+          other.ventaId == this.ventaId &&
+          other.montoPrevisto == this.montoPrevisto &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
@@ -7373,6 +7436,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
   final Value<String> estado;
   final Value<String> colportorId;
   final Value<String?> visitaId;
+  final Value<String?> ventaId;
+  final Value<int?> montoPrevisto;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
@@ -7391,6 +7456,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
     this.estado = const Value.absent(),
     this.colportorId = const Value.absent(),
     this.visitaId = const Value.absent(),
+    this.ventaId = const Value.absent(),
+    this.montoPrevisto = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
@@ -7410,6 +7477,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
     this.estado = const Value.absent(),
     required String colportorId,
     this.visitaId = const Value.absent(),
+    this.ventaId = const Value.absent(),
+    this.montoPrevisto = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
@@ -7435,6 +7504,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
     Expression<String>? estado,
     Expression<String>? colportorId,
     Expression<String>? visitaId,
+    Expression<String>? ventaId,
+    Expression<int>? montoPrevisto,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
@@ -7454,6 +7525,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
       if (estado != null) 'estado': estado,
       if (colportorId != null) 'colportor_id': colportorId,
       if (visitaId != null) 'visita_id': visitaId,
+      if (ventaId != null) 'venta_id': ventaId,
+      if (montoPrevisto != null) 'monto_previsto': montoPrevisto,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
@@ -7475,6 +7548,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
     Value<String>? estado,
     Value<String>? colportorId,
     Value<String?>? visitaId,
+    Value<String?>? ventaId,
+    Value<int?>? montoPrevisto,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
@@ -7494,6 +7569,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
       estado: estado ?? this.estado,
       colportorId: colportorId ?? this.colportorId,
       visitaId: visitaId ?? this.visitaId,
+      ventaId: ventaId ?? this.ventaId,
+      montoPrevisto: montoPrevisto ?? this.montoPrevisto,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
@@ -7539,6 +7616,12 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
     if (visitaId.present) {
       map['visita_id'] = Variable<String>(visitaId.value);
     }
+    if (ventaId.present) {
+      map['venta_id'] = Variable<String>(ventaId.value);
+    }
+    if (montoPrevisto.present) {
+      map['monto_previsto'] = Variable<int>(montoPrevisto.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -7574,6 +7657,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
           ..write('estado: $estado, ')
           ..write('colportorId: $colportorId, ')
           ..write('visitaId: $visitaId, ')
+          ..write('ventaId: $ventaId, ')
+          ..write('montoPrevisto: $montoPrevisto, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -15764,14 +15849,6 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
-  late final GeneratedColumn<String> ticketId = GeneratedColumn<String>(
-    'ticket_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
   late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
     'created_at',
     aliasedName,
@@ -15826,7 +15903,6 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
     numeroAprobacion,
     referenciaTransferencia,
     bancoOrigen,
-    ticketId,
     createdAt,
     updatedAt,
     createdBy,
@@ -15888,10 +15964,6 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
         DriftSqlType.string,
         data['${effectivePrefix}banco_origen'],
       ),
-      ticketId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}ticket_id'],
-      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -15942,7 +16014,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
   final String? numeroAprobacion;
   final String? referenciaTransferencia;
   final String? bancoOrigen;
-  final String? ticketId;
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
@@ -15960,7 +16031,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     this.numeroAprobacion,
     this.referenciaTransferencia,
     this.bancoOrigen,
-    this.ticketId,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
@@ -15994,9 +16064,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     }
     if (!nullToAbsent || bancoOrigen != null) {
       map['banco_origen'] = Variable<String>(bancoOrigen);
-    }
-    if (!nullToAbsent || ticketId != null) {
-      map['ticket_id'] = Variable<String>(ticketId);
     }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -16035,9 +16102,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       bancoOrigen: bancoOrigen == null && nullToAbsent
           ? const Value.absent()
           : Value(bancoOrigen),
-      ticketId: ticketId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(ticketId),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       createdBy: createdBy == null && nullToAbsent
@@ -16069,7 +16133,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
         json['referenciaTransferencia'],
       ),
       bancoOrigen: serializer.fromJson<String?>(json['bancoOrigen']),
-      ticketId: serializer.fromJson<String?>(json['ticketId']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
@@ -16094,7 +16157,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
         referenciaTransferencia,
       ),
       'bancoOrigen': serializer.toJson<String?>(bancoOrigen),
-      'ticketId': serializer.toJson<String?>(ticketId),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
@@ -16115,7 +16177,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     Value<String?> numeroAprobacion = const Value.absent(),
     Value<String?> referenciaTransferencia = const Value.absent(),
     Value<String?> bancoOrigen = const Value.absent(),
-    Value<String?> ticketId = const Value.absent(),
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
@@ -16137,7 +16198,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
         ? referenciaTransferencia.value
         : this.referenciaTransferencia,
     bancoOrigen: bancoOrigen.present ? bancoOrigen.value : this.bancoOrigen,
-    ticketId: ticketId.present ? ticketId.value : this.ticketId,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
@@ -16169,7 +16229,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       bancoOrigen: data.bancoOrigen.present
           ? data.bancoOrigen.value
           : this.bancoOrigen,
-      ticketId: data.ticketId.present ? data.ticketId.value : this.ticketId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
@@ -16194,7 +16253,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
           ..write('numeroAprobacion: $numeroAprobacion, ')
           ..write('referenciaTransferencia: $referenciaTransferencia, ')
           ..write('bancoOrigen: $bancoOrigen, ')
-          ..write('ticketId: $ticketId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -16217,7 +16275,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     numeroAprobacion,
     referenciaTransferencia,
     bancoOrigen,
-    ticketId,
     createdAt,
     updatedAt,
     createdBy,
@@ -16239,7 +16296,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
           other.numeroAprobacion == this.numeroAprobacion &&
           other.referenciaTransferencia == this.referenciaTransferencia &&
           other.bancoOrigen == this.bancoOrigen &&
-          other.ticketId == this.ticketId &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
@@ -16259,7 +16315,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
   final Value<String?> numeroAprobacion;
   final Value<String?> referenciaTransferencia;
   final Value<String?> bancoOrigen;
-  final Value<String?> ticketId;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
@@ -16278,7 +16333,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     this.numeroAprobacion = const Value.absent(),
     this.referenciaTransferencia = const Value.absent(),
     this.bancoOrigen = const Value.absent(),
-    this.ticketId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
@@ -16298,7 +16352,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     this.numeroAprobacion = const Value.absent(),
     this.referenciaTransferencia = const Value.absent(),
     this.bancoOrigen = const Value.absent(),
-    this.ticketId = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
@@ -16324,7 +16377,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     Expression<String>? numeroAprobacion,
     Expression<String>? referenciaTransferencia,
     Expression<String>? bancoOrigen,
-    Expression<String>? ticketId,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
@@ -16345,7 +16397,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
       if (referenciaTransferencia != null)
         'referencia_transferencia': referenciaTransferencia,
       if (bancoOrigen != null) 'banco_origen': bancoOrigen,
-      if (ticketId != null) 'ticket_id': ticketId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
@@ -16367,7 +16418,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     Value<String?>? numeroAprobacion,
     Value<String?>? referenciaTransferencia,
     Value<String?>? bancoOrigen,
-    Value<String?>? ticketId,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
@@ -16388,7 +16438,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
       referenciaTransferencia:
           referenciaTransferencia ?? this.referenciaTransferencia,
       bancoOrigen: bancoOrigen ?? this.bancoOrigen,
-      ticketId: ticketId ?? this.ticketId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
@@ -16436,9 +16485,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     if (bancoOrigen.present) {
       map['banco_origen'] = Variable<String>(bancoOrigen.value);
     }
-    if (ticketId.present) {
-      map['ticket_id'] = Variable<String>(ticketId.value);
-    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -16474,7 +16520,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
           ..write('numeroAprobacion: $numeroAprobacion, ')
           ..write('referenciaTransferencia: $referenciaTransferencia, ')
           ..write('bancoOrigen: $bancoOrigen, ')
-          ..write('ticketId: $ticketId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -18236,1392 +18281,6 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
   }
 }
 
-class Ticket extends Table with TableInfo<Ticket, TicketData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  Ticket(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> usuarioId = GeneratedColumn<String>(
-    'usuario_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> tipo = GeneratedColumn<String>(
-    'tipo',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> urlCloud = GeneratedColumn<String>(
-    'url_cloud',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> subidoEn = GeneratedColumn<int>(
-    'subido_en',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> revisadoPor = GeneratedColumn<String>(
-    'revisado_por',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> revisadoEn = GeneratedColumn<int>(
-    'revisado_en',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> monto = GeneratedColumn<int>(
-    'monto',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> fecha = GeneratedColumn<int>(
-    'fecha',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> numeroAutorizacion =
-      GeneratedColumn<String>(
-        'numero_autorizacion',
-        aliasedName,
-        true,
-        type: DriftSqlType.string,
-        requiredDuringInsert: false,
-        $customConstraints: 'NULL',
-      );
-  late final GeneratedColumn<String> tarjetaTipo = GeneratedColumn<String>(
-    'tarjeta_tipo',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> tarjetaMarca = GeneratedColumn<String>(
-    'tarjeta_marca',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> estado = GeneratedColumn<String>(
-    'estado',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT \'PENDIENTE\'',
-    defaultValue: const CustomExpression('\'PENDIENTE\''),
-  );
-  late final GeneratedColumn<String> motivoRechazo = GeneratedColumn<String>(
-    'motivo_rechazo',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> campaniaValidadoraId =
-      GeneratedColumn<String>(
-        'campania_validadora_id',
-        aliasedName,
-        true,
-        type: DriftSqlType.string,
-        requiredDuringInsert: false,
-        $customConstraints: 'NULL',
-      );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
-    'created_by',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
-    'deleted_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
-    'sync_version',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    usuarioId,
-    tipo,
-    urlCloud,
-    subidoEn,
-    revisadoPor,
-    revisadoEn,
-    monto,
-    fecha,
-    numeroAutorizacion,
-    tarjetaTipo,
-    tarjetaMarca,
-    estado,
-    motivoRechazo,
-    campaniaValidadoraId,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'ticket';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  TicketData map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return TicketData(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}id'],
-      )!,
-      usuarioId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}usuario_id'],
-      ),
-      tipo: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}tipo'],
-      )!,
-      urlCloud: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}url_cloud'],
-      ),
-      subidoEn: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}subido_en'],
-      ),
-      revisadoPor: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}revisado_por'],
-      ),
-      revisadoEn: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}revisado_en'],
-      ),
-      monto: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}monto'],
-      ),
-      fecha: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}fecha'],
-      ),
-      numeroAutorizacion: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}numero_autorizacion'],
-      ),
-      tarjetaTipo: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}tarjeta_tipo'],
-      ),
-      tarjetaMarca: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}tarjeta_marca'],
-      ),
-      estado: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}estado'],
-      )!,
-      motivoRechazo: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}motivo_rechazo'],
-      ),
-      campaniaValidadoraId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}campania_validadora_id'],
-      ),
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}created_at'],
-      )!,
-      updatedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}updated_at'],
-      )!,
-      createdBy: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}created_by'],
-      ),
-      deletedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}deleted_at'],
-      ),
-      syncVersion: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}sync_version'],
-      )!,
-    );
-  }
-
-  @override
-  Ticket createAlias(String alias) {
-    return Ticket(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const [
-    'PRIMARY KEY(id)',
-    'CHECK(tipo IN (\'COBRO_TARJETA\', \'DEPOSITO\', \'OTRO\'))',
-    'CHECK(estado IN (\'PENDIENTE\', \'VALIDADO\', \'RECHAZADO\'))',
-    'CHECK(monto IS NULL OR monto > 0)',
-    'CHECK(tarjeta_tipo IS NULL OR tarjeta_tipo IN (\'CREDITO\', \'DEBITO\'))',
-  ];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class TicketData extends DataClass implements Insertable<TicketData> {
-  final String id;
-  final String? usuarioId;
-  final String tipo;
-  final String? urlCloud;
-  final int? subidoEn;
-  final String? revisadoPor;
-  final int? revisadoEn;
-  final int? monto;
-  final int? fecha;
-  final String? numeroAutorizacion;
-  final String? tarjetaTipo;
-  final String? tarjetaMarca;
-  final String estado;
-  final String? motivoRechazo;
-  final String? campaniaValidadoraId;
-  final int createdAt;
-  final int updatedAt;
-  final String? createdBy;
-  final int? deletedAt;
-  final int syncVersion;
-  const TicketData({
-    required this.id,
-    this.usuarioId,
-    required this.tipo,
-    this.urlCloud,
-    this.subidoEn,
-    this.revisadoPor,
-    this.revisadoEn,
-    this.monto,
-    this.fecha,
-    this.numeroAutorizacion,
-    this.tarjetaTipo,
-    this.tarjetaMarca,
-    required this.estado,
-    this.motivoRechazo,
-    this.campaniaValidadoraId,
-    required this.createdAt,
-    required this.updatedAt,
-    this.createdBy,
-    this.deletedAt,
-    required this.syncVersion,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
-    if (!nullToAbsent || usuarioId != null) {
-      map['usuario_id'] = Variable<String>(usuarioId);
-    }
-    map['tipo'] = Variable<String>(tipo);
-    if (!nullToAbsent || urlCloud != null) {
-      map['url_cloud'] = Variable<String>(urlCloud);
-    }
-    if (!nullToAbsent || subidoEn != null) {
-      map['subido_en'] = Variable<int>(subidoEn);
-    }
-    if (!nullToAbsent || revisadoPor != null) {
-      map['revisado_por'] = Variable<String>(revisadoPor);
-    }
-    if (!nullToAbsent || revisadoEn != null) {
-      map['revisado_en'] = Variable<int>(revisadoEn);
-    }
-    if (!nullToAbsent || monto != null) {
-      map['monto'] = Variable<int>(monto);
-    }
-    if (!nullToAbsent || fecha != null) {
-      map['fecha'] = Variable<int>(fecha);
-    }
-    if (!nullToAbsent || numeroAutorizacion != null) {
-      map['numero_autorizacion'] = Variable<String>(numeroAutorizacion);
-    }
-    if (!nullToAbsent || tarjetaTipo != null) {
-      map['tarjeta_tipo'] = Variable<String>(tarjetaTipo);
-    }
-    if (!nullToAbsent || tarjetaMarca != null) {
-      map['tarjeta_marca'] = Variable<String>(tarjetaMarca);
-    }
-    map['estado'] = Variable<String>(estado);
-    if (!nullToAbsent || motivoRechazo != null) {
-      map['motivo_rechazo'] = Variable<String>(motivoRechazo);
-    }
-    if (!nullToAbsent || campaniaValidadoraId != null) {
-      map['campania_validadora_id'] = Variable<String>(campaniaValidadoraId);
-    }
-    map['created_at'] = Variable<int>(createdAt);
-    map['updated_at'] = Variable<int>(updatedAt);
-    if (!nullToAbsent || createdBy != null) {
-      map['created_by'] = Variable<String>(createdBy);
-    }
-    if (!nullToAbsent || deletedAt != null) {
-      map['deleted_at'] = Variable<int>(deletedAt);
-    }
-    map['sync_version'] = Variable<int>(syncVersion);
-    return map;
-  }
-
-  TicketCompanion toCompanion(bool nullToAbsent) {
-    return TicketCompanion(
-      id: Value(id),
-      usuarioId: usuarioId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(usuarioId),
-      tipo: Value(tipo),
-      urlCloud: urlCloud == null && nullToAbsent
-          ? const Value.absent()
-          : Value(urlCloud),
-      subidoEn: subidoEn == null && nullToAbsent
-          ? const Value.absent()
-          : Value(subidoEn),
-      revisadoPor: revisadoPor == null && nullToAbsent
-          ? const Value.absent()
-          : Value(revisadoPor),
-      revisadoEn: revisadoEn == null && nullToAbsent
-          ? const Value.absent()
-          : Value(revisadoEn),
-      monto: monto == null && nullToAbsent
-          ? const Value.absent()
-          : Value(monto),
-      fecha: fecha == null && nullToAbsent
-          ? const Value.absent()
-          : Value(fecha),
-      numeroAutorizacion: numeroAutorizacion == null && nullToAbsent
-          ? const Value.absent()
-          : Value(numeroAutorizacion),
-      tarjetaTipo: tarjetaTipo == null && nullToAbsent
-          ? const Value.absent()
-          : Value(tarjetaTipo),
-      tarjetaMarca: tarjetaMarca == null && nullToAbsent
-          ? const Value.absent()
-          : Value(tarjetaMarca),
-      estado: Value(estado),
-      motivoRechazo: motivoRechazo == null && nullToAbsent
-          ? const Value.absent()
-          : Value(motivoRechazo),
-      campaniaValidadoraId: campaniaValidadoraId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(campaniaValidadoraId),
-      createdAt: Value(createdAt),
-      updatedAt: Value(updatedAt),
-      createdBy: createdBy == null && nullToAbsent
-          ? const Value.absent()
-          : Value(createdBy),
-      deletedAt: deletedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(deletedAt),
-      syncVersion: Value(syncVersion),
-    );
-  }
-
-  factory TicketData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return TicketData(
-      id: serializer.fromJson<String>(json['id']),
-      usuarioId: serializer.fromJson<String?>(json['usuarioId']),
-      tipo: serializer.fromJson<String>(json['tipo']),
-      urlCloud: serializer.fromJson<String?>(json['urlCloud']),
-      subidoEn: serializer.fromJson<int?>(json['subidoEn']),
-      revisadoPor: serializer.fromJson<String?>(json['revisadoPor']),
-      revisadoEn: serializer.fromJson<int?>(json['revisadoEn']),
-      monto: serializer.fromJson<int?>(json['monto']),
-      fecha: serializer.fromJson<int?>(json['fecha']),
-      numeroAutorizacion: serializer.fromJson<String?>(
-        json['numeroAutorizacion'],
-      ),
-      tarjetaTipo: serializer.fromJson<String?>(json['tarjetaTipo']),
-      tarjetaMarca: serializer.fromJson<String?>(json['tarjetaMarca']),
-      estado: serializer.fromJson<String>(json['estado']),
-      motivoRechazo: serializer.fromJson<String?>(json['motivoRechazo']),
-      campaniaValidadoraId: serializer.fromJson<String?>(
-        json['campaniaValidadoraId'],
-      ),
-      createdAt: serializer.fromJson<int>(json['createdAt']),
-      updatedAt: serializer.fromJson<int>(json['updatedAt']),
-      createdBy: serializer.fromJson<String?>(json['createdBy']),
-      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
-      syncVersion: serializer.fromJson<int>(json['syncVersion']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
-      'usuarioId': serializer.toJson<String?>(usuarioId),
-      'tipo': serializer.toJson<String>(tipo),
-      'urlCloud': serializer.toJson<String?>(urlCloud),
-      'subidoEn': serializer.toJson<int?>(subidoEn),
-      'revisadoPor': serializer.toJson<String?>(revisadoPor),
-      'revisadoEn': serializer.toJson<int?>(revisadoEn),
-      'monto': serializer.toJson<int?>(monto),
-      'fecha': serializer.toJson<int?>(fecha),
-      'numeroAutorizacion': serializer.toJson<String?>(numeroAutorizacion),
-      'tarjetaTipo': serializer.toJson<String?>(tarjetaTipo),
-      'tarjetaMarca': serializer.toJson<String?>(tarjetaMarca),
-      'estado': serializer.toJson<String>(estado),
-      'motivoRechazo': serializer.toJson<String?>(motivoRechazo),
-      'campaniaValidadoraId': serializer.toJson<String?>(campaniaValidadoraId),
-      'createdAt': serializer.toJson<int>(createdAt),
-      'updatedAt': serializer.toJson<int>(updatedAt),
-      'createdBy': serializer.toJson<String?>(createdBy),
-      'deletedAt': serializer.toJson<int?>(deletedAt),
-      'syncVersion': serializer.toJson<int>(syncVersion),
-    };
-  }
-
-  TicketData copyWith({
-    String? id,
-    Value<String?> usuarioId = const Value.absent(),
-    String? tipo,
-    Value<String?> urlCloud = const Value.absent(),
-    Value<int?> subidoEn = const Value.absent(),
-    Value<String?> revisadoPor = const Value.absent(),
-    Value<int?> revisadoEn = const Value.absent(),
-    Value<int?> monto = const Value.absent(),
-    Value<int?> fecha = const Value.absent(),
-    Value<String?> numeroAutorizacion = const Value.absent(),
-    Value<String?> tarjetaTipo = const Value.absent(),
-    Value<String?> tarjetaMarca = const Value.absent(),
-    String? estado,
-    Value<String?> motivoRechazo = const Value.absent(),
-    Value<String?> campaniaValidadoraId = const Value.absent(),
-    int? createdAt,
-    int? updatedAt,
-    Value<String?> createdBy = const Value.absent(),
-    Value<int?> deletedAt = const Value.absent(),
-    int? syncVersion,
-  }) => TicketData(
-    id: id ?? this.id,
-    usuarioId: usuarioId.present ? usuarioId.value : this.usuarioId,
-    tipo: tipo ?? this.tipo,
-    urlCloud: urlCloud.present ? urlCloud.value : this.urlCloud,
-    subidoEn: subidoEn.present ? subidoEn.value : this.subidoEn,
-    revisadoPor: revisadoPor.present ? revisadoPor.value : this.revisadoPor,
-    revisadoEn: revisadoEn.present ? revisadoEn.value : this.revisadoEn,
-    monto: monto.present ? monto.value : this.monto,
-    fecha: fecha.present ? fecha.value : this.fecha,
-    numeroAutorizacion: numeroAutorizacion.present
-        ? numeroAutorizacion.value
-        : this.numeroAutorizacion,
-    tarjetaTipo: tarjetaTipo.present ? tarjetaTipo.value : this.tarjetaTipo,
-    tarjetaMarca: tarjetaMarca.present ? tarjetaMarca.value : this.tarjetaMarca,
-    estado: estado ?? this.estado,
-    motivoRechazo: motivoRechazo.present
-        ? motivoRechazo.value
-        : this.motivoRechazo,
-    campaniaValidadoraId: campaniaValidadoraId.present
-        ? campaniaValidadoraId.value
-        : this.campaniaValidadoraId,
-    createdAt: createdAt ?? this.createdAt,
-    updatedAt: updatedAt ?? this.updatedAt,
-    createdBy: createdBy.present ? createdBy.value : this.createdBy,
-    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
-    syncVersion: syncVersion ?? this.syncVersion,
-  );
-  TicketData copyWithCompanion(TicketCompanion data) {
-    return TicketData(
-      id: data.id.present ? data.id.value : this.id,
-      usuarioId: data.usuarioId.present ? data.usuarioId.value : this.usuarioId,
-      tipo: data.tipo.present ? data.tipo.value : this.tipo,
-      urlCloud: data.urlCloud.present ? data.urlCloud.value : this.urlCloud,
-      subidoEn: data.subidoEn.present ? data.subidoEn.value : this.subidoEn,
-      revisadoPor: data.revisadoPor.present
-          ? data.revisadoPor.value
-          : this.revisadoPor,
-      revisadoEn: data.revisadoEn.present
-          ? data.revisadoEn.value
-          : this.revisadoEn,
-      monto: data.monto.present ? data.monto.value : this.monto,
-      fecha: data.fecha.present ? data.fecha.value : this.fecha,
-      numeroAutorizacion: data.numeroAutorizacion.present
-          ? data.numeroAutorizacion.value
-          : this.numeroAutorizacion,
-      tarjetaTipo: data.tarjetaTipo.present
-          ? data.tarjetaTipo.value
-          : this.tarjetaTipo,
-      tarjetaMarca: data.tarjetaMarca.present
-          ? data.tarjetaMarca.value
-          : this.tarjetaMarca,
-      estado: data.estado.present ? data.estado.value : this.estado,
-      motivoRechazo: data.motivoRechazo.present
-          ? data.motivoRechazo.value
-          : this.motivoRechazo,
-      campaniaValidadoraId: data.campaniaValidadoraId.present
-          ? data.campaniaValidadoraId.value
-          : this.campaniaValidadoraId,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
-      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
-      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
-      syncVersion: data.syncVersion.present
-          ? data.syncVersion.value
-          : this.syncVersion,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('TicketData(')
-          ..write('id: $id, ')
-          ..write('usuarioId: $usuarioId, ')
-          ..write('tipo: $tipo, ')
-          ..write('urlCloud: $urlCloud, ')
-          ..write('subidoEn: $subidoEn, ')
-          ..write('revisadoPor: $revisadoPor, ')
-          ..write('revisadoEn: $revisadoEn, ')
-          ..write('monto: $monto, ')
-          ..write('fecha: $fecha, ')
-          ..write('numeroAutorizacion: $numeroAutorizacion, ')
-          ..write('tarjetaTipo: $tarjetaTipo, ')
-          ..write('tarjetaMarca: $tarjetaMarca, ')
-          ..write('estado: $estado, ')
-          ..write('motivoRechazo: $motivoRechazo, ')
-          ..write('campaniaValidadoraId: $campaniaValidadoraId, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    id,
-    usuarioId,
-    tipo,
-    urlCloud,
-    subidoEn,
-    revisadoPor,
-    revisadoEn,
-    monto,
-    fecha,
-    numeroAutorizacion,
-    tarjetaTipo,
-    tarjetaMarca,
-    estado,
-    motivoRechazo,
-    campaniaValidadoraId,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is TicketData &&
-          other.id == this.id &&
-          other.usuarioId == this.usuarioId &&
-          other.tipo == this.tipo &&
-          other.urlCloud == this.urlCloud &&
-          other.subidoEn == this.subidoEn &&
-          other.revisadoPor == this.revisadoPor &&
-          other.revisadoEn == this.revisadoEn &&
-          other.monto == this.monto &&
-          other.fecha == this.fecha &&
-          other.numeroAutorizacion == this.numeroAutorizacion &&
-          other.tarjetaTipo == this.tarjetaTipo &&
-          other.tarjetaMarca == this.tarjetaMarca &&
-          other.estado == this.estado &&
-          other.motivoRechazo == this.motivoRechazo &&
-          other.campaniaValidadoraId == this.campaniaValidadoraId &&
-          other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt &&
-          other.createdBy == this.createdBy &&
-          other.deletedAt == this.deletedAt &&
-          other.syncVersion == this.syncVersion);
-}
-
-class TicketCompanion extends UpdateCompanion<TicketData> {
-  final Value<String> id;
-  final Value<String?> usuarioId;
-  final Value<String> tipo;
-  final Value<String?> urlCloud;
-  final Value<int?> subidoEn;
-  final Value<String?> revisadoPor;
-  final Value<int?> revisadoEn;
-  final Value<int?> monto;
-  final Value<int?> fecha;
-  final Value<String?> numeroAutorizacion;
-  final Value<String?> tarjetaTipo;
-  final Value<String?> tarjetaMarca;
-  final Value<String> estado;
-  final Value<String?> motivoRechazo;
-  final Value<String?> campaniaValidadoraId;
-  final Value<int> createdAt;
-  final Value<int> updatedAt;
-  final Value<String?> createdBy;
-  final Value<int?> deletedAt;
-  final Value<int> syncVersion;
-  final Value<int> rowid;
-  const TicketCompanion({
-    this.id = const Value.absent(),
-    this.usuarioId = const Value.absent(),
-    this.tipo = const Value.absent(),
-    this.urlCloud = const Value.absent(),
-    this.subidoEn = const Value.absent(),
-    this.revisadoPor = const Value.absent(),
-    this.revisadoEn = const Value.absent(),
-    this.monto = const Value.absent(),
-    this.fecha = const Value.absent(),
-    this.numeroAutorizacion = const Value.absent(),
-    this.tarjetaTipo = const Value.absent(),
-    this.tarjetaMarca = const Value.absent(),
-    this.estado = const Value.absent(),
-    this.motivoRechazo = const Value.absent(),
-    this.campaniaValidadoraId = const Value.absent(),
-    this.createdAt = const Value.absent(),
-    this.updatedAt = const Value.absent(),
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  TicketCompanion.insert({
-    required String id,
-    this.usuarioId = const Value.absent(),
-    required String tipo,
-    this.urlCloud = const Value.absent(),
-    this.subidoEn = const Value.absent(),
-    this.revisadoPor = const Value.absent(),
-    this.revisadoEn = const Value.absent(),
-    this.monto = const Value.absent(),
-    this.fecha = const Value.absent(),
-    this.numeroAutorizacion = const Value.absent(),
-    this.tarjetaTipo = const Value.absent(),
-    this.tarjetaMarca = const Value.absent(),
-    this.estado = const Value.absent(),
-    this.motivoRechazo = const Value.absent(),
-    this.campaniaValidadoraId = const Value.absent(),
-    required int createdAt,
-    required int updatedAt,
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       tipo = Value(tipo),
-       createdAt = Value(createdAt),
-       updatedAt = Value(updatedAt);
-  static Insertable<TicketData> custom({
-    Expression<String>? id,
-    Expression<String>? usuarioId,
-    Expression<String>? tipo,
-    Expression<String>? urlCloud,
-    Expression<int>? subidoEn,
-    Expression<String>? revisadoPor,
-    Expression<int>? revisadoEn,
-    Expression<int>? monto,
-    Expression<int>? fecha,
-    Expression<String>? numeroAutorizacion,
-    Expression<String>? tarjetaTipo,
-    Expression<String>? tarjetaMarca,
-    Expression<String>? estado,
-    Expression<String>? motivoRechazo,
-    Expression<String>? campaniaValidadoraId,
-    Expression<int>? createdAt,
-    Expression<int>? updatedAt,
-    Expression<String>? createdBy,
-    Expression<int>? deletedAt,
-    Expression<int>? syncVersion,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (usuarioId != null) 'usuario_id': usuarioId,
-      if (tipo != null) 'tipo': tipo,
-      if (urlCloud != null) 'url_cloud': urlCloud,
-      if (subidoEn != null) 'subido_en': subidoEn,
-      if (revisadoPor != null) 'revisado_por': revisadoPor,
-      if (revisadoEn != null) 'revisado_en': revisadoEn,
-      if (monto != null) 'monto': monto,
-      if (fecha != null) 'fecha': fecha,
-      if (numeroAutorizacion != null) 'numero_autorizacion': numeroAutorizacion,
-      if (tarjetaTipo != null) 'tarjeta_tipo': tarjetaTipo,
-      if (tarjetaMarca != null) 'tarjeta_marca': tarjetaMarca,
-      if (estado != null) 'estado': estado,
-      if (motivoRechazo != null) 'motivo_rechazo': motivoRechazo,
-      if (campaniaValidadoraId != null)
-        'campania_validadora_id': campaniaValidadoraId,
-      if (createdAt != null) 'created_at': createdAt,
-      if (updatedAt != null) 'updated_at': updatedAt,
-      if (createdBy != null) 'created_by': createdBy,
-      if (deletedAt != null) 'deleted_at': deletedAt,
-      if (syncVersion != null) 'sync_version': syncVersion,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  TicketCompanion copyWith({
-    Value<String>? id,
-    Value<String?>? usuarioId,
-    Value<String>? tipo,
-    Value<String?>? urlCloud,
-    Value<int?>? subidoEn,
-    Value<String?>? revisadoPor,
-    Value<int?>? revisadoEn,
-    Value<int?>? monto,
-    Value<int?>? fecha,
-    Value<String?>? numeroAutorizacion,
-    Value<String?>? tarjetaTipo,
-    Value<String?>? tarjetaMarca,
-    Value<String>? estado,
-    Value<String?>? motivoRechazo,
-    Value<String?>? campaniaValidadoraId,
-    Value<int>? createdAt,
-    Value<int>? updatedAt,
-    Value<String?>? createdBy,
-    Value<int?>? deletedAt,
-    Value<int>? syncVersion,
-    Value<int>? rowid,
-  }) {
-    return TicketCompanion(
-      id: id ?? this.id,
-      usuarioId: usuarioId ?? this.usuarioId,
-      tipo: tipo ?? this.tipo,
-      urlCloud: urlCloud ?? this.urlCloud,
-      subidoEn: subidoEn ?? this.subidoEn,
-      revisadoPor: revisadoPor ?? this.revisadoPor,
-      revisadoEn: revisadoEn ?? this.revisadoEn,
-      monto: monto ?? this.monto,
-      fecha: fecha ?? this.fecha,
-      numeroAutorizacion: numeroAutorizacion ?? this.numeroAutorizacion,
-      tarjetaTipo: tarjetaTipo ?? this.tarjetaTipo,
-      tarjetaMarca: tarjetaMarca ?? this.tarjetaMarca,
-      estado: estado ?? this.estado,
-      motivoRechazo: motivoRechazo ?? this.motivoRechazo,
-      campaniaValidadoraId: campaniaValidadoraId ?? this.campaniaValidadoraId,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      createdBy: createdBy ?? this.createdBy,
-      deletedAt: deletedAt ?? this.deletedAt,
-      syncVersion: syncVersion ?? this.syncVersion,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
-    }
-    if (usuarioId.present) {
-      map['usuario_id'] = Variable<String>(usuarioId.value);
-    }
-    if (tipo.present) {
-      map['tipo'] = Variable<String>(tipo.value);
-    }
-    if (urlCloud.present) {
-      map['url_cloud'] = Variable<String>(urlCloud.value);
-    }
-    if (subidoEn.present) {
-      map['subido_en'] = Variable<int>(subidoEn.value);
-    }
-    if (revisadoPor.present) {
-      map['revisado_por'] = Variable<String>(revisadoPor.value);
-    }
-    if (revisadoEn.present) {
-      map['revisado_en'] = Variable<int>(revisadoEn.value);
-    }
-    if (monto.present) {
-      map['monto'] = Variable<int>(monto.value);
-    }
-    if (fecha.present) {
-      map['fecha'] = Variable<int>(fecha.value);
-    }
-    if (numeroAutorizacion.present) {
-      map['numero_autorizacion'] = Variable<String>(numeroAutorizacion.value);
-    }
-    if (tarjetaTipo.present) {
-      map['tarjeta_tipo'] = Variable<String>(tarjetaTipo.value);
-    }
-    if (tarjetaMarca.present) {
-      map['tarjeta_marca'] = Variable<String>(tarjetaMarca.value);
-    }
-    if (estado.present) {
-      map['estado'] = Variable<String>(estado.value);
-    }
-    if (motivoRechazo.present) {
-      map['motivo_rechazo'] = Variable<String>(motivoRechazo.value);
-    }
-    if (campaniaValidadoraId.present) {
-      map['campania_validadora_id'] = Variable<String>(
-        campaniaValidadoraId.value,
-      );
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<int>(createdAt.value);
-    }
-    if (updatedAt.present) {
-      map['updated_at'] = Variable<int>(updatedAt.value);
-    }
-    if (createdBy.present) {
-      map['created_by'] = Variable<String>(createdBy.value);
-    }
-    if (deletedAt.present) {
-      map['deleted_at'] = Variable<int>(deletedAt.value);
-    }
-    if (syncVersion.present) {
-      map['sync_version'] = Variable<int>(syncVersion.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('TicketCompanion(')
-          ..write('id: $id, ')
-          ..write('usuarioId: $usuarioId, ')
-          ..write('tipo: $tipo, ')
-          ..write('urlCloud: $urlCloud, ')
-          ..write('subidoEn: $subidoEn, ')
-          ..write('revisadoPor: $revisadoPor, ')
-          ..write('revisadoEn: $revisadoEn, ')
-          ..write('monto: $monto, ')
-          ..write('fecha: $fecha, ')
-          ..write('numeroAutorizacion: $numeroAutorizacion, ')
-          ..write('tarjetaTipo: $tarjetaTipo, ')
-          ..write('tarjetaMarca: $tarjetaMarca, ')
-          ..write('estado: $estado, ')
-          ..write('motivoRechazo: $motivoRechazo, ')
-          ..write('campaniaValidadoraId: $campaniaValidadoraId, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class TicketFotoLocal extends Table
-    with TableInfo<TicketFotoLocal, TicketFotoLocalData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  TicketFotoLocal(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> ticketId = GeneratedColumn<String>(
-    'ticket_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> tipoDeImagen = GeneratedColumn<String>(
-    'tipo_de_imagen',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> bytes = GeneratedColumn<int>(
-    'bytes',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> estado = GeneratedColumn<String>(
-    'estado',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT \'PENDIENTE\'',
-    defaultValue: const CustomExpression('\'PENDIENTE\''),
-  );
-  late final GeneratedColumn<String> rutaLocal = GeneratedColumn<String>(
-    'ruta_local',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> intentos = GeneratedColumn<int>(
-    'intentos',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<String> ultimoError = GeneratedColumn<String>(
-    'ultimo_error',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> creadaEn = GeneratedColumn<int>(
-    'creada_en',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    ticketId,
-    tipoDeImagen,
-    bytes,
-    estado,
-    rutaLocal,
-    intentos,
-    ultimoError,
-    creadaEn,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'ticket_foto_local';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {ticketId};
-  @override
-  TicketFotoLocalData map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return TicketFotoLocalData(
-      ticketId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}ticket_id'],
-      )!,
-      tipoDeImagen: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}tipo_de_imagen'],
-      )!,
-      bytes: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}bytes'],
-      )!,
-      estado: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}estado'],
-      )!,
-      rutaLocal: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}ruta_local'],
-      ),
-      intentos: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}intentos'],
-      )!,
-      ultimoError: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}ultimo_error'],
-      ),
-      creadaEn: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}creada_en'],
-      )!,
-    );
-  }
-
-  @override
-  TicketFotoLocal createAlias(String alias) {
-    return TicketFotoLocal(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const [
-    'PRIMARY KEY(ticket_id)',
-    'CHECK(bytes > 0)',
-    'CHECK(estado IN (\'PENDIENTE\', \'SUBIDA\', \'RECHAZADA\'))',
-    'CHECK(intentos >= 0)',
-  ];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class TicketFotoLocalData extends DataClass
-    implements Insertable<TicketFotoLocalData> {
-  final String ticketId;
-  final String tipoDeImagen;
-  final int bytes;
-  final String estado;
-  final String? rutaLocal;
-  final int intentos;
-  final String? ultimoError;
-  final int creadaEn;
-  const TicketFotoLocalData({
-    required this.ticketId,
-    required this.tipoDeImagen,
-    required this.bytes,
-    required this.estado,
-    this.rutaLocal,
-    required this.intentos,
-    this.ultimoError,
-    required this.creadaEn,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['ticket_id'] = Variable<String>(ticketId);
-    map['tipo_de_imagen'] = Variable<String>(tipoDeImagen);
-    map['bytes'] = Variable<int>(bytes);
-    map['estado'] = Variable<String>(estado);
-    if (!nullToAbsent || rutaLocal != null) {
-      map['ruta_local'] = Variable<String>(rutaLocal);
-    }
-    map['intentos'] = Variable<int>(intentos);
-    if (!nullToAbsent || ultimoError != null) {
-      map['ultimo_error'] = Variable<String>(ultimoError);
-    }
-    map['creada_en'] = Variable<int>(creadaEn);
-    return map;
-  }
-
-  TicketFotoLocalCompanion toCompanion(bool nullToAbsent) {
-    return TicketFotoLocalCompanion(
-      ticketId: Value(ticketId),
-      tipoDeImagen: Value(tipoDeImagen),
-      bytes: Value(bytes),
-      estado: Value(estado),
-      rutaLocal: rutaLocal == null && nullToAbsent
-          ? const Value.absent()
-          : Value(rutaLocal),
-      intentos: Value(intentos),
-      ultimoError: ultimoError == null && nullToAbsent
-          ? const Value.absent()
-          : Value(ultimoError),
-      creadaEn: Value(creadaEn),
-    );
-  }
-
-  factory TicketFotoLocalData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return TicketFotoLocalData(
-      ticketId: serializer.fromJson<String>(json['ticketId']),
-      tipoDeImagen: serializer.fromJson<String>(json['tipoDeImagen']),
-      bytes: serializer.fromJson<int>(json['bytes']),
-      estado: serializer.fromJson<String>(json['estado']),
-      rutaLocal: serializer.fromJson<String?>(json['rutaLocal']),
-      intentos: serializer.fromJson<int>(json['intentos']),
-      ultimoError: serializer.fromJson<String?>(json['ultimoError']),
-      creadaEn: serializer.fromJson<int>(json['creadaEn']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'ticketId': serializer.toJson<String>(ticketId),
-      'tipoDeImagen': serializer.toJson<String>(tipoDeImagen),
-      'bytes': serializer.toJson<int>(bytes),
-      'estado': serializer.toJson<String>(estado),
-      'rutaLocal': serializer.toJson<String?>(rutaLocal),
-      'intentos': serializer.toJson<int>(intentos),
-      'ultimoError': serializer.toJson<String?>(ultimoError),
-      'creadaEn': serializer.toJson<int>(creadaEn),
-    };
-  }
-
-  TicketFotoLocalData copyWith({
-    String? ticketId,
-    String? tipoDeImagen,
-    int? bytes,
-    String? estado,
-    Value<String?> rutaLocal = const Value.absent(),
-    int? intentos,
-    Value<String?> ultimoError = const Value.absent(),
-    int? creadaEn,
-  }) => TicketFotoLocalData(
-    ticketId: ticketId ?? this.ticketId,
-    tipoDeImagen: tipoDeImagen ?? this.tipoDeImagen,
-    bytes: bytes ?? this.bytes,
-    estado: estado ?? this.estado,
-    rutaLocal: rutaLocal.present ? rutaLocal.value : this.rutaLocal,
-    intentos: intentos ?? this.intentos,
-    ultimoError: ultimoError.present ? ultimoError.value : this.ultimoError,
-    creadaEn: creadaEn ?? this.creadaEn,
-  );
-  TicketFotoLocalData copyWithCompanion(TicketFotoLocalCompanion data) {
-    return TicketFotoLocalData(
-      ticketId: data.ticketId.present ? data.ticketId.value : this.ticketId,
-      tipoDeImagen: data.tipoDeImagen.present
-          ? data.tipoDeImagen.value
-          : this.tipoDeImagen,
-      bytes: data.bytes.present ? data.bytes.value : this.bytes,
-      estado: data.estado.present ? data.estado.value : this.estado,
-      rutaLocal: data.rutaLocal.present ? data.rutaLocal.value : this.rutaLocal,
-      intentos: data.intentos.present ? data.intentos.value : this.intentos,
-      ultimoError: data.ultimoError.present
-          ? data.ultimoError.value
-          : this.ultimoError,
-      creadaEn: data.creadaEn.present ? data.creadaEn.value : this.creadaEn,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('TicketFotoLocalData(')
-          ..write('ticketId: $ticketId, ')
-          ..write('tipoDeImagen: $tipoDeImagen, ')
-          ..write('bytes: $bytes, ')
-          ..write('estado: $estado, ')
-          ..write('rutaLocal: $rutaLocal, ')
-          ..write('intentos: $intentos, ')
-          ..write('ultimoError: $ultimoError, ')
-          ..write('creadaEn: $creadaEn')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    ticketId,
-    tipoDeImagen,
-    bytes,
-    estado,
-    rutaLocal,
-    intentos,
-    ultimoError,
-    creadaEn,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is TicketFotoLocalData &&
-          other.ticketId == this.ticketId &&
-          other.tipoDeImagen == this.tipoDeImagen &&
-          other.bytes == this.bytes &&
-          other.estado == this.estado &&
-          other.rutaLocal == this.rutaLocal &&
-          other.intentos == this.intentos &&
-          other.ultimoError == this.ultimoError &&
-          other.creadaEn == this.creadaEn);
-}
-
-class TicketFotoLocalCompanion extends UpdateCompanion<TicketFotoLocalData> {
-  final Value<String> ticketId;
-  final Value<String> tipoDeImagen;
-  final Value<int> bytes;
-  final Value<String> estado;
-  final Value<String?> rutaLocal;
-  final Value<int> intentos;
-  final Value<String?> ultimoError;
-  final Value<int> creadaEn;
-  final Value<int> rowid;
-  const TicketFotoLocalCompanion({
-    this.ticketId = const Value.absent(),
-    this.tipoDeImagen = const Value.absent(),
-    this.bytes = const Value.absent(),
-    this.estado = const Value.absent(),
-    this.rutaLocal = const Value.absent(),
-    this.intentos = const Value.absent(),
-    this.ultimoError = const Value.absent(),
-    this.creadaEn = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  TicketFotoLocalCompanion.insert({
-    required String ticketId,
-    required String tipoDeImagen,
-    required int bytes,
-    this.estado = const Value.absent(),
-    this.rutaLocal = const Value.absent(),
-    this.intentos = const Value.absent(),
-    this.ultimoError = const Value.absent(),
-    required int creadaEn,
-    this.rowid = const Value.absent(),
-  }) : ticketId = Value(ticketId),
-       tipoDeImagen = Value(tipoDeImagen),
-       bytes = Value(bytes),
-       creadaEn = Value(creadaEn);
-  static Insertable<TicketFotoLocalData> custom({
-    Expression<String>? ticketId,
-    Expression<String>? tipoDeImagen,
-    Expression<int>? bytes,
-    Expression<String>? estado,
-    Expression<String>? rutaLocal,
-    Expression<int>? intentos,
-    Expression<String>? ultimoError,
-    Expression<int>? creadaEn,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (ticketId != null) 'ticket_id': ticketId,
-      if (tipoDeImagen != null) 'tipo_de_imagen': tipoDeImagen,
-      if (bytes != null) 'bytes': bytes,
-      if (estado != null) 'estado': estado,
-      if (rutaLocal != null) 'ruta_local': rutaLocal,
-      if (intentos != null) 'intentos': intentos,
-      if (ultimoError != null) 'ultimo_error': ultimoError,
-      if (creadaEn != null) 'creada_en': creadaEn,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  TicketFotoLocalCompanion copyWith({
-    Value<String>? ticketId,
-    Value<String>? tipoDeImagen,
-    Value<int>? bytes,
-    Value<String>? estado,
-    Value<String?>? rutaLocal,
-    Value<int>? intentos,
-    Value<String?>? ultimoError,
-    Value<int>? creadaEn,
-    Value<int>? rowid,
-  }) {
-    return TicketFotoLocalCompanion(
-      ticketId: ticketId ?? this.ticketId,
-      tipoDeImagen: tipoDeImagen ?? this.tipoDeImagen,
-      bytes: bytes ?? this.bytes,
-      estado: estado ?? this.estado,
-      rutaLocal: rutaLocal ?? this.rutaLocal,
-      intentos: intentos ?? this.intentos,
-      ultimoError: ultimoError ?? this.ultimoError,
-      creadaEn: creadaEn ?? this.creadaEn,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (ticketId.present) {
-      map['ticket_id'] = Variable<String>(ticketId.value);
-    }
-    if (tipoDeImagen.present) {
-      map['tipo_de_imagen'] = Variable<String>(tipoDeImagen.value);
-    }
-    if (bytes.present) {
-      map['bytes'] = Variable<int>(bytes.value);
-    }
-    if (estado.present) {
-      map['estado'] = Variable<String>(estado.value);
-    }
-    if (rutaLocal.present) {
-      map['ruta_local'] = Variable<String>(rutaLocal.value);
-    }
-    if (intentos.present) {
-      map['intentos'] = Variable<int>(intentos.value);
-    }
-    if (ultimoError.present) {
-      map['ultimo_error'] = Variable<String>(ultimoError.value);
-    }
-    if (creadaEn.present) {
-      map['creada_en'] = Variable<int>(creadaEn.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('TicketFotoLocalCompanion(')
-          ..write('ticketId: $ticketId, ')
-          ..write('tipoDeImagen: $tipoDeImagen, ')
-          ..write('bytes: $bytes, ')
-          ..write('estado: $estado, ')
-          ..write('rutaLocal: $rutaLocal, ')
-          ..write('intentos: $intentos, ')
-          ..write('ultimoError: $ultimoError, ')
-          ..write('creadaEn: $creadaEn, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class DatabaseAtV24 extends GeneratedDatabase {
   DatabaseAtV24(QueryExecutor e) : super(e);
   late final Jornada jornada = Jornada(this);
@@ -19662,8 +18321,6 @@ class DatabaseAtV24 extends GeneratedDatabase {
   late final Entrega entrega = Entrega(this);
   late final Devolucion devolucion = Devolucion(this);
   late final Deposito deposito = Deposito(this);
-  late final Ticket ticket = Ticket(this);
-  late final TicketFotoLocal ticketFotoLocal = TicketFotoLocal(this);
   late final Index jornadaColportorIdx = Index(
     'jornada_colportor_idx',
     'CREATE INDEX jornada_colportor_idx ON jornada (colportor_id, inicio)',
@@ -19727,6 +18384,10 @@ class DatabaseAtV24 extends GeneratedDatabase {
   late final Index agendaEspacioIdx = Index(
     'agenda_espacio_idx',
     'CREATE INDEX agenda_espacio_idx ON agenda (espacio_id)',
+  );
+  late final Index agendaVentaIdx = Index(
+    'agenda_venta_idx',
+    'CREATE INDEX agenda_venta_idx ON agenda (venta_id)',
   );
   late final Index visitaColportorIdx = Index(
     'visita_colportor_idx',
@@ -19844,8 +18505,6 @@ class DatabaseAtV24 extends GeneratedDatabase {
     entrega,
     devolucion,
     deposito,
-    ticket,
-    ticketFotoLocal,
     jornadaColportorIdx,
     ubicacionCiudadIdx,
     espacioUbicacionIdx,
@@ -19862,6 +18521,7 @@ class DatabaseAtV24 extends GeneratedDatabase {
     agendaColportorIdx,
     agendaEspacioPersonaIdx,
     agendaEspacioIdx,
+    agendaVentaIdx,
     visitaColportorIdx,
     visitaEspacioPersonaIdx,
     visitaEspacioIdx,

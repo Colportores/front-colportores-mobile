@@ -29,32 +29,36 @@ CatalogoLocal catalogoDeLaVista26() => const CatalogoLocal(
     ProductoDelCatalogo(
       id: 'p-deseado',
       nombre: 'El Deseado de Todas las Gentes',
-      tipo: TipoDeProducto.libro,
+      categoria: CategoriaDeProducto.bonificables,
       esBonificable: true,
       codigoEditor: 'ACES-0214',
     ),
     ProductoDelCatalogo(
       id: 'p-camino',
       nombre: 'El Camino a Cristo',
-      tipo: TipoDeProducto.libro,
+      categoria: CategoriaDeProducto.bonificables,
       esBonificable: true,
     ),
     ProductoDelCatalogo(
       id: 'p-misionero',
       nombre: 'Misionero Esperanza',
-      tipo: TipoDeProducto.misionero,
+      categoria: CategoriaDeProducto.misioneros,
       esMisionero: true,
     ),
     ProductoDelCatalogo(
       id: 'p-revista',
       nombre: 'Revista Vida y Salud',
-      tipo: TipoDeProducto.revista,
+      categoria: CategoriaDeProducto.revistas,
     ),
-    ProductoDelCatalogo(id: 'p-sin-precio', nombre: 'Libro sin precio', tipo: TipoDeProducto.libro),
+    ProductoDelCatalogo(
+      id: 'p-sin-precio',
+      nombre: 'Libro sin precio',
+      categoria: CategoriaDeProducto.espirituales,
+    ),
     ProductoDelCatalogo(
       id: 'p-material',
       nombre: 'Folleto de la casa',
-      tipo: TipoDeProducto.material,
+      categoria: CategoriaDeProducto.material,
     ),
   ],
   combos: [
@@ -116,6 +120,79 @@ CatalogoLocal catalogoDeLaVista26() => const CatalogoLocal(
   ],
 );
 
+/// Un catálogo con una fila de cada categoría y los casos que las mezclan con las marcas (#561): un
+/// libro espiritual que cuenta para la beca, un misionero que también es bonificable, y lo que no se
+/// ofrece aunque tenga precio (material y un producto cuya categoría todavía no bajó).
+CatalogoLocal catalogoPorCategorias() => CatalogoLocal(
+  productos: const [
+    ProductoDelCatalogo(
+      id: 'b-salud',
+      nombre: 'Salud y Hogar',
+      categoria: CategoriaDeProducto.bonificables,
+      esBonificable: true,
+    ),
+    ProductoDelCatalogo(
+      id: 'b-hijos',
+      nombre: 'Nuestros Hijos',
+      categoria: CategoriaDeProducto.bonificables,
+      esBonificable: true,
+    ),
+    ProductoDelCatalogo(
+      id: 'e-deseado',
+      nombre: 'El Deseado de todas las gentes',
+      categoria: CategoriaDeProducto.espirituales,
+    ),
+    ProductoDelCatalogo(
+      id: 'e-patriarcas',
+      nombre: 'Patriarcas y Profetas',
+      categoria: CategoriaDeProducto.espirituales,
+      esBonificable: true,
+    ),
+    ProductoDelCatalogo(
+      id: 'm-esperanza',
+      nombre: 'Misionero Esperanza',
+      categoria: CategoriaDeProducto.misioneros,
+      esMisionero: true,
+    ),
+    ProductoDelCatalogo(
+      id: 'm-bonificable',
+      nombre: 'Misionero Bonificable',
+      categoria: CategoriaDeProducto.misioneros,
+      esMisionero: true,
+      esBonificable: true,
+    ),
+    ProductoDelCatalogo(
+      id: 'r-vida',
+      nombre: 'Revista Vida y Salud',
+      categoria: CategoriaDeProducto.revistas,
+    ),
+    ProductoDelCatalogo(
+      id: 'z-folleto',
+      nombre: 'Folleto de la casa',
+      categoria: CategoriaDeProducto.material,
+    ),
+    ProductoDelCatalogo(
+      id: 'o-sin-categoria',
+      nombre: 'Producto sin categoría',
+      categoria: CategoriaDeProducto.otra,
+    ),
+  ],
+  generales: [
+    for (final id in [
+      'b-salud',
+      'b-hijos',
+      'e-deseado',
+      'e-patriarcas',
+      'm-esperanza',
+      'm-bonificable',
+      'r-vida',
+      'z-folleto',
+      'o-sin-categoria',
+    ])
+      PrecioDelCatalogo(id: 'g-$id', productoId: id, centavos: 100000, validoDesde: '2026-01-01'),
+  ],
+);
+
 /// Un catálogo de [n] libros, cada uno con su precio general: para las listas largas.
 CatalogoLocal catalogoLargo(int n, {String prefijo = 'Libro'}) => CatalogoLocal(
   productos: [
@@ -123,7 +200,7 @@ CatalogoLocal catalogoLargo(int n, {String prefijo = 'Libro'}) => CatalogoLocal(
       ProductoDelCatalogo(
         id: 'p$i',
         nombre: '$prefijo ${i.toString().padLeft(4, '0')}',
-        tipo: TipoDeProducto.libro,
+        categoria: CategoriaDeProducto.espirituales,
       ),
   ],
   generales: [

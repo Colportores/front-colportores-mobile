@@ -29,6 +29,10 @@ import 'generated/schema_v21.dart' as v21;
 import 'generated/schema_v22.dart' as v22;
 import 'generated/schema_v23.dart' as v23;
 import 'generated/schema_v24.dart' as v24;
+import 'generated/schema_v25.dart' as v25;
+import 'generated/schema_v26.dart' as v26;
+import 'generated/schema_v27.dart' as v27;
+import 'generated/schema_v28.dart' as v28;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1409,12 +1413,259 @@ void main() {
   );
 
   test(
-    'dado lo guardado en la versión 23, cuando migra a la 24, no se pierde nada, aparecen los tickets '
+    'dado una agenda guardada en la versión 23, cuando migra a la 24, no se pierde nada, suma la '
+    'venta y el monto previsto vacíos y deja guardar una cuota (HU-COB-004, #166)',
+    () async {
+      const agenda = v23.AgendaData(
+        id: 'a-1',
+        espacioId: 'es-1',
+        espacioPersonaId: 'ep-1',
+        tipo: 'COBRANZA',
+        fechaProgramada: 1,
+        esEstricta: 0,
+        estado: 'PROGRAMADA',
+        colportorId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 3,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 23,
+        newVersion: 24,
+        createOld: v23.DatabaseAtV23.new,
+        createNew: v24.DatabaseAtV24.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch.insert(viejo.agenda, agenda);
+        },
+        validateItems: (nuevo) async {
+          final citas = await nuevo.select(nuevo.agenda).get();
+          expect(citas.map((c) => c.id), ['a-1']);
+          expect(citas.single.tipo, 'COBRANZA');
+          expect(citas.single.syncVersion, 3);
+          expect(citas.single.ventaId, isNull);
+          expect(citas.single.montoPrevisto, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // Una cobranza con su venta acepta el monto previsto; sin venta, o de otro tipo, no.
+          await nuevo.customStatement(
+            "UPDATE agenda SET venta_id = 'v-1', monto_previsto = 833 WHERE id = 'a-1'",
+          );
+          final cuota = await nuevo.select(nuevo.agenda).getSingle();
+          expect(cuota.ventaId, 'v-1');
+          expect(cuota.montoPrevisto, 833);
+          await expectLater(
+            nuevo.customStatement("UPDATE agenda SET venta_id = NULL WHERE id = 'a-1'"),
+            throwsA(anything),
+          );
+          await expectLater(
+            nuevo.customStatement("UPDATE agenda SET monto_previsto = 0 WHERE id = 'a-1'"),
+            throwsA(anything),
+          );
+          await expectLater(
+            nuevo.customStatement("UPDATE agenda SET tipo = 'ENTREVISTA' WHERE id = 'a-1'"),
+            throwsA(anything),
+          );
+        },
+      );
+    },
+  );
+
+  test(
+    'dado depósitos guardados en la versión 24, cuando migra a la 25, no se pierde nada, suman la '
+    'validación y el rechazo vacíos y no se encola nada (#596)',
+    () async {
+      // El depósito registrado antes sigue «por validar»: el pull le trae su validación después.
+      const deposito = v24.DepositoData(
+        id: 'd-1',
+        monto: 180000,
+        fecha: 1,
+        destino: 'BANCO',
+        concepto: 'CASA_EDITORA',
+        ticketId: 't-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 24,
+        newVersion: 25,
+        createOld: v24.DatabaseAtV24.new,
+        createNew: v25.DatabaseAtV25.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.deposito, deposito),
+        validateItems: (nuevo) async {
+          final guardado = await nuevo.select(nuevo.deposito).getSingle();
+          expect(guardado.id, 'd-1');
+          expect(guardado.monto, 180000);
+          expect(guardado.ticketId, 't-1');
+          expect(guardado.syncVersion, 4);
+          expect(guardado.validadoEn, isNull);
+          expect(guardado.validadoPor, isNull);
+          expect(guardado.rechazadoEn, isNull);
+          expect(guardado.motivoRechazo, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // Las cuatro columnas aceptan lo que baja del servidor.
+          await nuevo.customStatement(
+            "UPDATE deposito SET validado_en = 2, validado_por = 'coord-1' WHERE id = 'd-1'",
+          );
+          final validado = await nuevo.select(nuevo.deposito).getSingle();
+          expect(validado.validadoEn, 2);
+          expect(validado.validadoPor, 'coord-1');
+          await nuevo.customStatement(
+            'INSERT INTO deposito (id, monto, fecha, destino, concepto, created_at, updated_at, '
+            "rechazado_en, motivo_rechazo) VALUES ('d-2', 500000, 1, 'RETIRO_COORDINADOR', "
+            "'CASA_EDITORA', 1, 1, 3, 'Entregaste 5.000, no 6.000')",
+          );
+          final rechazado = await (nuevo.select(
+            nuevo.deposito,
+          )..where((d) => d.id.equals('d-2'))).getSingle();
+          expect(rechazado.rechazadoEn, 3);
+          expect(rechazado.motivoRechazo, 'Entregaste 5.000, no 6.000');
+        },
+      );
+    },
+  );
+
+  test('dado devoluciones guardadas en la versión 25, cuando migra a la 26, no se pierde ninguna, '
+      'pierden las columnas de dinero y no se encola nada (#609)', () async {
+    // Nunca queda plata a favor del cliente: la devolución ya no guarda lo retenido ni lo
+    // reembolsado. Cada devolución sigue con sus libros, su motivo, su fecha y su auditoría.
+    const libros = '[{"producto_id":"p-1","cantidad":1,"venta_item_id":"i-1"}]';
+    const con = v25.DevolucionData(
+      id: 'd-1',
+      ventaId: 'v-1',
+      productosDevueltos: libros,
+      dineroRetenido: 190000,
+      montoReembolsado: 50000,
+      motivo: 'no le gustó',
+      fechaDevolucion: 5,
+      createdAt: 6,
+      updatedAt: 7,
+      createdBy: 'col-1',
+      syncVersion: 4,
+    );
+    const sin = v25.DevolucionData(
+      id: 'd-2',
+      ventaId: 'v-1',
+      productosDevueltos: libros,
+      dineroRetenido: 0,
+      fechaDevolucion: 8,
+      createdAt: 8,
+      updatedAt: 8,
+      deletedAt: 9,
+      syncVersion: 0,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 25,
+      newVersion: 26,
+      createOld: v25.DatabaseAtV25.new,
+      createNew: v26.DatabaseAtV26.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch.insert(viejo.devolucion, con);
+        batch.insert(viejo.devolucion, sin);
+      },
+      validateItems: (nuevo) async {
+        final filas = await (nuevo.select(
+          nuevo.devolucion,
+        )..orderBy([(d) => OrderingTerm.asc(d.id)])).get();
+        expect(filas.map((d) => d.id), ['d-1', 'd-2']);
+        expect(filas.first.ventaId, 'v-1');
+        expect(filas.first.productosDevueltos, libros);
+        expect(filas.first.motivo, 'no le gustó');
+        expect(filas.first.fechaDevolucion, 5);
+        expect(filas.first.createdAt, 6);
+        expect(filas.first.updatedAt, 7);
+        expect(filas.first.createdBy, 'col-1');
+        expect(filas.first.syncVersion, 4);
+        expect(filas.last.deletedAt, 9);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        final columnas = await nuevo.customSelect('PRAGMA table_info(devolucion)').get();
+        expect(
+          columnas.map((c) => c.read<String>('name')),
+          isNot(anyOf(contains('dinero_retenido'), contains('monto_reembolsado'))),
+        );
+        final indices = await nuevo.customSelect('PRAGMA index_list(devolucion)').get();
+        expect(indices.map((i) => i.read<String>('name')), contains('devolucion_venta_idx'));
+
+        // El CHECK del motivo sigue; las filas nuevas no llevan dinero.
+        const insertar =
+            'INSERT INTO devolucion (id, venta_id, productos_devueltos, motivo, fecha_devolucion, '
+            'created_at, updated_at) VALUES ';
+        await nuevo.customStatement("$insertar('d-3', 'v-1', '$libros', 'x', 1, 1, 1)");
+        for (final malo in [
+          "('d-4', 'v-1', '$libros', '', 1, 1, 1)",
+          "('d-5', 'v-1', '$libros', '${'a' * 501}', 1, 1, 1)",
+        ]) {
+          await expectLater(nuevo.customStatement('$insertar$malo'), throwsA(anything));
+        }
+        expect(await nuevo.select(nuevo.devolucion).get(), hasLength(3));
+      },
+    );
+  });
+
+  test(
+    'dado productos guardados en la versión 26, cuando migra a la 27, no se pierde nada, queda sin '
+    'categoría hasta el próximo pull y no se encola nada (#561)',
+    () async {
+      // La categoría baja del servidor (backend-supabase 0149): la fila de antes no se toca ni se deriva
+      // de su `tipo`; hasta que el pull la traiga de nuevo, el producto no se ofrece en Precios.
+      const producto = v26.ProductoData(
+        id: 'pro-1',
+        nombre: 'El Conflicto de los Siglos',
+        tipo: 'LIBRO',
+        esBonificable: 1,
+        esMisionero: 0,
+        precioBaseCompra: 18000,
+        casaEditora: 'ACES',
+        createdAt: 1758700000000,
+        updatedAt: 1758700000000,
+        syncVersion: 3,
+        codigoEditor: 'CS-01',
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 26,
+        newVersion: 27,
+        createOld: v26.DatabaseAtV26.new,
+        createNew: v27.DatabaseAtV27.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.producto, producto),
+        validateItems: (nuevo) async {
+          final guardado = await nuevo.select(nuevo.producto).getSingle();
+          expect(guardado.id, 'pro-1');
+          expect(guardado.nombre, 'El Conflicto de los Siglos');
+          expect(guardado.tipo, 'LIBRO');
+          expect(guardado.esBonificable, 1);
+          expect(guardado.precioBaseCompra, 18000);
+          expect(guardado.codigoEditor, 'CS-01');
+          expect(guardado.syncVersion, 3);
+          expect(guardado.categoria, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La columna acepta lo que baja del servidor.
+          await nuevo.customStatement(
+            "UPDATE producto SET categoria = 'ESPIRITUALES' WHERE id = 'pro-1'",
+          );
+          expect((await nuevo.select(nuevo.producto).getSingle()).categoria, 'ESPIRITUALES');
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 27, cuando migra a la 28, no se pierde nada, aparecen los tickets '
     'vacíos con sus CHECK y el cobro gana ticket_id vacío, sin encolar nada',
     () async {
       // HU-COB-007 (#426): `ticket` sube y baja por el motor, `ticket_foto_local` es solo del teléfono y
       // `cobranza.ticket_id` liga el cobro con tarjeta a su ticket.
-      const cobro = v23.CobranzaData(
+      const cobro = v27.CobranzaData(
         id: 'c-1',
         ventaId: 'v-1',
         monto: 150000,
@@ -1426,10 +1677,10 @@ void main() {
       );
 
       await verificador.testWithDataIntegrity(
-        oldVersion: 23,
-        newVersion: 24,
-        createOld: v23.DatabaseAtV23.new,
-        createNew: v24.DatabaseAtV24.new,
+        oldVersion: 27,
+        newVersion: 28,
+        createOld: v27.DatabaseAtV27.new,
+        createNew: v28.DatabaseAtV28.new,
         openTestedDatabase: _abrir,
         createItems: (batch, viejo) => batch.insert(viejo.cobranza, cobro),
         validateItems: (nuevo) async {

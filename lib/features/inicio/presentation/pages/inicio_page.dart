@@ -10,6 +10,7 @@ import '../../../auth/presentation/widgets/aviso_zona_banner.dart';
 import '../../../catalogo/presentation/formato_precios.dart' show TextosPrecios;
 import '../../../catalogo/presentation/pages/precios_page.dart';
 import '../../../configuracion/presentation/pages/configuracion_page.dart';
+import '../../../cuenta/presentation/pages/cuenta_page.dart';
 import '../../../jornada/presentation/pages/jornada_page.dart';
 import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
 import '../../../mapa/presentation/pages/mapa_ubicaciones_page.dart';
@@ -26,11 +27,12 @@ import '../widgets/barra_pestanas_inicio.dart';
 export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
 
 /// Estructura de la app una vez con sesión: la marca, la campana de las notificaciones y el engranaje
-/// de Configuración arriba, la barra inferior Hoy · Mapa · Lista · Agenda · Ventas abajo, y en el
+/// de Configuración arriba, la barra inferior Hoy · Mapa · Lista · Agenda · Ventas · Cuenta abajo, y en el
 /// medio la pestaña elegida.
 ///
 /// "Hoy" es la jornada (HU-JOR-001/002), "Mapa" y "Lista" las ubicaciones del colportor sobre el mapa
-/// y en una lista (HU-UBI-003 y HU-UBI-002), "Agenda" las visitas de los próximos días (HU-VIS-002). Ventas todavía no tiene pantalla: queda con
+/// y en una lista (HU-UBI-003 y HU-UBI-002), "Agenda" las visitas de los próximos días (HU-VIS-002) y
+/// "Cuenta" la plata del colportor (HU-CTA-001). Ventas todavía no tiene pantalla: queda con
 /// [PestanaProvisoria] («Esta sección llega pronto.») hasta que llegue su HU. El atrás
 /// del sistema desde las pestañas vuelve a "Hoy", y desde
 /// "Hoy" cierra la app (decisión de Cristian, 29/09). Las pestañas se mantienen vivas al cambiar (`IndexedStack`): no se pierde lo que el
@@ -197,6 +199,13 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
                       activa: _actual == PestanaInicio.agenda,
+                    ),
+                    // Mi Cuenta (HU-CTA-001, vista 33A): las cifras de la plata, con la diferencia contra
+                    // la semana pasada.
+                    PestanaInicio.cuenta => CuentaPage(
+                      key: Key('pestana_${pestana.name}'),
+                      colportorId: widget.sesion.usuarioId,
+                      activa: _actual == PestanaInicio.cuenta,
                     ),
                     // Ventas todavía no tiene su pantalla (vista 27): por ahora solo lleva a «Precios».
                     PestanaInicio.ventas => PestanaProvisoria(

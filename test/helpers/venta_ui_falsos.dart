@@ -46,35 +46,35 @@ CatalogoLocal catalogoDeVentas({int libros = 5}) {
       const ProductoDelCatalogo(
         id: 'p-camino',
         nombre: 'El camino a Cristo',
-        tipo: TipoDeProducto.misionero,
+        categoria: CategoriaDeProducto.misioneros,
         esMisionero: true,
       ),
       const ProductoDelCatalogo(
         id: 'p-vida-feliz',
         nombre: 'Vida Feliz',
-        tipo: TipoDeProducto.revista,
+        categoria: CategoriaDeProducto.revistas,
       ),
       const ProductoDelCatalogo(
         id: 'p-deseado',
         nombre: 'El Deseado de todas las gentes',
-        tipo: TipoDeProducto.libro,
+        categoria: CategoriaDeProducto.espirituales,
       ),
       const ProductoDelCatalogo(
         id: 'p-gran-esperanza',
         nombre: 'La gran esperanza',
-        tipo: TipoDeProducto.misionero,
+        categoria: CategoriaDeProducto.misioneros,
         esMisionero: true,
       ),
       const ProductoDelCatalogo(
         id: 'p-nuestra-salud',
         nombre: 'Nuestra Salud',
-        tipo: TipoDeProducto.revista,
+        categoria: CategoriaDeProducto.revistas,
       ),
       for (var i = 0; i < libros; i++)
         ProductoDelCatalogo(
           id: 'p-libro-$i',
           nombre: i < nombres.length ? nombres[i] : 'Libro ${i.toString().padLeft(4, '0')}',
-          tipo: TipoDeProducto.libro,
+          categoria: i.isEven ? CategoriaDeProducto.bonificables : CategoriaDeProducto.espirituales,
           esBonificable: i.isEven,
         ),
     ],

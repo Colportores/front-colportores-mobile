@@ -19,12 +19,15 @@ import '../../../../core/database/fecha_utc_converter.dart';
 /// Los nombres de columna son las claves de `AgendaModel.toJson()` —el payload de sync—; un test
 /// fija que coincidan. Los `CHECK` de `tipo` y `estado` son los del servidor, tal cual (estados de
 /// la HU, decisión del 23/10, «No cumplida»). **Cuelga del espacio** (`espacio_id`) y la persona es
-/// opcional («Sin persona»). Las columnas de 0068 que nadie usa todavía (`venta_id`, `entrega_id`,
-/// `monto_previsto` y el tipo `ENTREGA`) las suma la HU que las necesita.
+/// opcional («Sin persona»). De lo que la origina (0068) está [ventaId] y [montoPrevisto]: una cuota
+/// del plan de una venta es una cita `COBRANZA` con su venta y su monto (HU-COB-004, decisión «Plan
+/// cuotas» del 23/10, sin tablas de plan ni de cuotas). `entrega_id` y el tipo `ENTREGA` los suma la
+/// HU de las entregas.
 @DataClassName('AgendaFila')
 @TableIndex(name: 'agenda_colportor_idx', columns: {#colportorId, #fechaProgramada})
 @TableIndex(name: 'agenda_espacio_persona_idx', columns: {#espacioPersonaId})
 @TableIndex(name: 'agenda_espacio_idx', columns: {#espacioId})
+@TableIndex(name: 'agenda_venta_idx', columns: {#ventaId})
 class Agendas extends Table {
   @override
   String get tableName => 'agenda';
@@ -57,6 +60,13 @@ class Agendas extends Table {
   /// Se completa al registrar la visita que cumple la agenda.
   TextColumn get visitaId => text().nullable()();
 
+  /// La venta de la que sale la cita (una cuota); `null` si no sale de ninguna.
+  TextColumn get ventaId => text().nullable()();
+
+  /// Lo que se espera cobrar en la cita, en centavos: solo en una cita `COBRANZA` con venta (el
+  /// `CHECK` de abajo). Una cita con monto previsto es una cuota del plan de la venta.
+  IntColumn get montoPrevisto => integer().nullable()();
+
   IntColumn get createdAt => integer().map(const FechaUtcConverter())();
 
   IntColumn get updatedAt => integer().map(const FechaUtcConverter())();
@@ -75,5 +85,6 @@ class Agendas extends Table {
   List<String> get customConstraints => const [
     "CHECK (tipo IN ('ENTREVISTA', 'COBRANZA'))",
     "CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA'))",
+    "CHECK (monto_previsto IS NULL OR (monto_previsto > 0 AND tipo = 'COBRANZA' AND venta_id IS NOT NULL))",
   ];
 }
