@@ -53,7 +53,7 @@ class ArchiveNoSpace extends ArchiveFailure {
 }
 
 /// `ArchivePort` sobre la API REST de Google Drive v3, en el `appDataFolder`.
-class GoogleDriveArchive implements ArchivePort {
+class GoogleDriveArchive implements ArchivePort, KeyEnvelopePort {
   GoogleDriveArchive({
     required this.token,
     required this.digest,
@@ -185,6 +185,94 @@ class GoogleDriveArchive implements ArchivePort {
     // 404: ya no está, que es lo que se quería.
     await _pedir((h) => _client.delete(uri, headers: h), toleradas: {404});
   }
+
+  // --- El envoltorio de la clave (ADR-006) ------------------------------------
+  //
+  // Un archivo chico aparte de la cadena. No lleva `content_hash`, así que
+  // `_entrada` lo ignora (no es un eslabón); lo distingue `kind=dek_envelope` y
+  // la llave que envuelve va en `key_id`.
+
+  static const _tipoEnvoltorio = 'dek_envelope';
+
+  @override
+  Future<Set<String>> envelopeKeyIds() async => {
+        for (final a in await _envoltorios())
+          if (_llaveDe(a) case final llave?) llave,
+      };
+
+  @override
+  Future<List<int>?> getEnvelope(String keyId) async {
+    final ids = [
+      for (final a in await _envoltorios())
+        if (_llaveDe(a) == keyId) '${a['id']}',
+    ];
+    if (ids.isEmpty) return null;
+    return download(ids.last);
+  }
+
+  @override
+  Future<void> putEnvelope(String keyId, List<int> bytes) async {
+    // Se listan los de esa llave antes de subir: el nuevo se confirma primero y
+    // recién después se borran los viejos, así que si algo se corta sigue
+    // habiendo un envoltorio que abre.
+    final viejos = [
+      for (final a in await _envoltorios())
+        if (_llaveDe(a) == keyId) '${a['id']}',
+    ];
+    final metadatos = jsonEncode({
+      'name': 'dek_envelope',
+      'parents': ['appDataFolder'],
+      'appProperties': {'kind': _tipoEnvoltorio, 'key_id': keyId},
+    });
+    final azar = Random.secure();
+    final limite = 'colportores-${[
+      for (var i = 0; i < 16; i++) azar.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ].join()}';
+    final cuerpo = BytesBuilder(copy: false)
+      ..add(utf8.encode('--$limite\r\n'
+          'Content-Type: application/json; charset=UTF-8\r\n\r\n'
+          '$metadatos\r\n'
+          '--$limite\r\n'
+          'Content-Type: application/octet-stream\r\n\r\n'))
+      ..add(bytes)
+      ..add(utf8.encode('\r\n--$limite--'));
+    final uri = _upload.replace(queryParameters: {
+      'uploadType': 'multipart',
+      'fields': 'id',
+    });
+    await _pedir((h) => _client.post(
+          uri,
+          headers: {...h, 'Content-Type': 'multipart/related; boundary=$limite'},
+          body: cuerpo.takeBytes(),
+        ));
+    for (final id in viejos) {
+      await delete(id);
+    }
+  }
+
+  Future<List<Map<String, Object?>>> _envoltorios() async {
+    final encontrados = <Map<String, Object?>>[];
+    String? pagina;
+    do {
+      final uri = _api.resolve('files').replace(queryParameters: {
+        'spaces': 'appDataFolder',
+        'pageSize': '1000',
+        'fields': 'nextPageToken,files(id,createdTime,appProperties)',
+        'orderBy': 'createdTime',
+        if (pagina != null) 'pageToken': pagina,
+      });
+      final cuerpo = _json(await _pedir((h) => _client.get(uri, headers: h)));
+      for (final a in ((cuerpo['files'] as List?) ?? const []).cast<Map<String, Object?>>()) {
+        final props = (a['appProperties'] as Map?)?.cast<String, Object?>();
+        if (props?['kind'] == _tipoEnvoltorio) encontrados.add(a);
+      }
+      pagina = cuerpo['nextPageToken'] as String?;
+    } while (pagina != null);
+    return encontrados;
+  }
+
+  String? _llaveDe(Map<String, Object?> a) =>
+      ((a['appProperties'] as Map?)?['key_id']) as String?;
 
   /// Un archivo del listado como entrada de la cadena.
   ///
