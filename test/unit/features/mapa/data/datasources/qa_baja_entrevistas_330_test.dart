@@ -139,9 +139,6 @@ void main() {
               'la casa reactivada se pinta amarilla «Entrevista agendada» sin ninguna entrevista',
         );
       },
-      skip:
-          'QA #330: la baja cancela las entrevistas sin recalcular house_status; al reactivar, la '
-          'casa vuelve «Entrevista agendada» sin entrevista',
     );
 
     test('dado la misma baja, cuando se recalcula el color a mano tras reactivar, entonces la casa '
