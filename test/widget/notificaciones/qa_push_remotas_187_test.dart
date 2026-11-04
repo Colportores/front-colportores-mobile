@@ -371,6 +371,39 @@ void main() {
       expect(tester.getRect(_banner).top, greaterThanOrEqualTo(48));
     });
 
+    // skip: QA #187 — decisión P1 del QA (03/11): el aviso arranca debajo del encabezado y nunca tapa la
+    // campana ni el engranaje de Hoy; hoy es un overlay en top 0 que los cubre.
+    for (final (nombre, tam, escala) in [
+      ('390x844 ×1,0', const Size(390, 844), 1.0),
+      ('360x640 ×2,0', const Size(360, 640), 2.0),
+    ]) {
+      testWidgets(
+        'P1 del QA: con el aviso a la vista, la campana y el engranaje de Hoy siguen tocables ($nombre)',
+        (tester) async {
+          tester.view
+            ..physicalSize = tam
+            ..devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          tester.platformDispatcher.textScaleFactorTestValue = escala;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await abrir(tester);
+          await llega(tester, {
+            'type': 'pedido_autorizado',
+            'pedido_id': _pedido,
+            'event_id': _evento,
+          });
+          expect(_banner, findsOneWidget);
+
+          final aviso = tester.getRect(_banner);
+          for (final clave in ['inicio_notificaciones', 'inicio_configuracion']) {
+            final boton = tester.getRect(find.byKey(Key(clave)));
+            expect(boton.overlaps(aviso), isFalse, reason: '$clave queda tapado por el aviso');
+          }
+        },
+        skip: !verHallazgos,
+      );
+    }
+
     testWidgets('el toque de la notificación del sistema de un evento nuevo lo guarda ya leído', (
       tester,
     ) async {
