@@ -15,6 +15,7 @@ import '../providers/asistente_recuperacion_notifier.dart';
 import '../providers/respaldo_drive_providers.dart';
 import '../textos_recuperacion.dart';
 import '../widgets/aviso_drive.dart';
+import '../widgets/hoja_empezar_sin_recuperar.dart';
 
 /// El asistente de recuperación del primer arranque (HU-SYNC-006, vista 34, artboards 34·01 a
 /// 34·10): en un teléfono sin datos, si hay un respaldo en Drive, lo trae paso a paso. Va después de
@@ -40,6 +41,9 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
   /// 34·07 «Actualizar»: se mostró cómo actualizar.
   bool _comoActualizar = false;
 
+  /// La hoja «¿Empezar sin recuperar?» está abierta (o abriéndose): no admite otra.
+  bool _confirmandoEmpezar = false;
+
   @override
   void dispose() {
     _contrasena.dispose();
@@ -47,6 +51,20 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
   }
 
   AsistenteRecuperacion get _asistente => ref.read(asistenteRecuperacionProvider.notifier);
+
+  /// «Empezar sin recuperar»: avisa que después solo se puede traer el respaldo mientras no se cargue
+  /// nada, y recién con la confirmación termina el asistente (#610, «Recup. luego»).
+  Future<void> _empezarSinRecuperar() async {
+    if (_confirmandoEmpezar) return;
+    _confirmandoEmpezar = true;
+    try {
+      final empezar = await mostrarHojaEmpezarSinRecuperar(context);
+      if (empezar != true || !mounted) return;
+      await _asistente.terminar();
+    } finally {
+      _confirmandoEmpezar = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -194,7 +212,7 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
     final respaldo = estado.respaldo;
     final empezarSinRecuperar = _Accion(
       TextosRecuperacion.empezarSinRecuperar,
-      estado.terminando ? null : () => unawaited(_asistente.terminar()),
+      estado.terminando ? null : () => unawaited(_empezarSinRecuperar()),
     );
     return switch (estado.pantalla) {
       PantallaAsistente.buscando => _Vista(
@@ -279,8 +297,14 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
       PantallaAsistente.variosRespaldos => _Vista(
         paso: 1,
         titulo: TextosRecuperacion.tituloVariosRespaldos,
-        cuerpo: const [_Texto(TextosRecuperacion.variosRespaldos)],
-        cta: _Accion(TextosRecuperacion.reintentar, () => unawaited(_asistente.buscar())),
+        cuerpo: [
+          _Texto(
+            TextosRecuperacion.variosRespaldos(estado.respaldos.length),
+            clave: 'recuperacion_varios_texto',
+          ),
+          for (final r in estado.respaldos) _TarjetaRespaldo(respaldo: r, cuenta: cuenta),
+        ],
+        cta: _Accion(TextosRecuperacion.recuperarTodos, _asistente.elegirRecuperar),
         cta2: empezarSinRecuperar,
       ),
       PantallaAsistente.contrasena => _vistaContrasena(estado, empezarSinRecuperar, cuenta),
@@ -330,17 +354,27 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
   }
 
   _Vista _vistaContrasena(EstadoAsistente estado, _Accion empezarSinRecuperar, String? cuenta) {
-    final respaldo = estado.respaldo;
+    final varios = estado.hayVarios;
     final vacia = _contrasena.text.isEmpty;
+    final bytes = estado.respaldos.fold(0, (suma, r) => suma + r.bytes);
     return _Vista(
       paso: 2,
-      titulo: TextosRecuperacion.tituloContrasena,
+      titulo: varios
+          ? TextosRecuperacion.tituloContrasenaVarios
+          : TextosRecuperacion.tituloContrasena,
       cuerpo: [
-        if (respaldo != null) _TarjetaRespaldo(respaldo: respaldo, cuenta: cuenta),
+        for (final r in estado.respaldos) _TarjetaRespaldo(respaldo: r, cuenta: cuenta),
         _CampoContrasena(
           controlador: _contrasena,
           oculta: _ocultar,
-          error: estado.contrasenaIncorrecta ? TextosRecuperacion.contrasenaNoAbre : null,
+          ayuda: varios
+              ? TextosRecuperacion.ayudaContrasenaVarios
+              : TextosRecuperacion.ayudaContrasena,
+          error: estado.contrasenaIncorrecta
+              ? (varios
+                    ? TextosRecuperacion.contrasenaNoAbreVarios
+                    : TextosRecuperacion.contrasenaNoAbre)
+              : null,
           alCambiar: (_) {
             _asistente.contrasenaEditada();
             setState(() {});
@@ -348,15 +382,15 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
           alAlternar: () => setState(() => _ocultar = !_ocultar),
           alEnviar: vacia ? null : () => unawaited(_asistente.abrirCopia(_contrasena.text)),
         ),
-        if (respaldo != null)
+        if (estado.respaldos.isNotEmpty)
           _Texto(
-            TextosRecuperacion.confirmacionPrevia(TextosRecuperacion.peso(respaldo.bytes)),
+            TextosRecuperacion.confirmacionPrevia(TextosRecuperacion.peso(bytes)),
             clave: 'recuperacion_confirmacion',
             chico: true,
           ),
       ],
       cta: _Accion(
-        TextosRecuperacion.abrirCopia,
+        varios ? TextosRecuperacion.abrirCopias : TextosRecuperacion.abrirCopia,
         vacia ? null : () => unawaited(_asistente.abrirCopia(_contrasena.text)),
       ),
       cta2: empezarSinRecuperar,
@@ -645,6 +679,7 @@ class _CampoContrasena extends StatelessWidget {
   const _CampoContrasena({
     required this.controlador,
     required this.oculta,
+    required this.ayuda,
     required this.error,
     required this.alCambiar,
     required this.alAlternar,
@@ -653,6 +688,7 @@ class _CampoContrasena extends StatelessWidget {
 
   final TextEditingController controlador;
   final bool oculta;
+  final String ayuda;
   final String? error;
   final ValueChanged<String> alCambiar;
   final VoidCallback alAlternar;
@@ -681,7 +717,7 @@ class _CampoContrasena extends StatelessWidget {
           onChanged: alCambiar,
           onSubmitted: (_) => alEnviar?.call(),
           decoration: InputDecoration(
-            helperText: error == null ? TextosRecuperacion.ayudaContrasena : null,
+            helperText: error == null ? ayuda : null,
             helperMaxLines: 6,
             error: error == null
                 ? null
