@@ -27,43 +27,32 @@ void main() {
       expect(find.text(r'▼ $ 1.300 contra la semana pasada'), findsOneWidget);
     });
 
-    testWidgets(
-      'en V1 no se dibuja nada de lo V2 ni lo que no lleva a ningún lado: ni acciones, ni '
-      'enlaces, ni previews, ni «Próximamente»; solo la deuda con la casa editora se toca (#441)',
-      (tester) async {
-        await montarCuenta(tester, RepositorioDeCuentaControlable(inicial: resumenDelCanvas));
+    testWidgets('en V1 no se dibuja nada de lo V2 ni lo que no lleva a ningún lado: ni deuda, ni '
+        'acciones, ni enlaces, ni previews, ni «Próximamente»', (tester) async {
+      await montarCuenta(tester, RepositorioDeCuentaControlable(inicial: resumenDelCanvas));
 
-        for (final texto in [
-          'DEPOSITADO',
-          '+ Hacer un pedido',
-          'Cargar ticket',
-          'Registrar depósito',
-          'Mis pedidos',
-          'Mis tickets',
-          'Alquiler',
-          'Stock y beca',
-          'TAMBIÉN',
-          'Stock',
-          'Beca',
-          'Próximamente',
-        ]) {
-          expect(find.textContaining(texto), findsNothing, reason: texto);
-        }
-        // Ni flecha «›» ni toque en las cifras: su detalle (HU-CTA-003) todavía no existe. La única
-        // tarjeta que se toca es la de la deuda con la casa editora (33B, HU-CTA-002).
-        expect(find.text('›'), findsOneWidget);
-        expect(find.byType(InkWell), findsOneWidget);
-        expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
-        for (final cifra in ['cuenta_enMano', 'cuenta_porCobrar']) {
-          final tarjeta = find.byKey(Key(cifra));
-          expect(find.descendant(of: tarjeta, matching: find.byType(InkWell)), findsNothing);
-          expect(
-            find.descendant(of: tarjeta, matching: find.byType(GestureDetector)),
-            findsNothing,
-          );
-        }
-      },
-    );
+      for (final texto in [
+        'DEPOSITADO',
+        '+ Hacer un pedido',
+        'Cargar ticket',
+        'Registrar depósito',
+        'Mis pedidos',
+        'Mis tickets',
+        'Alquiler',
+        'Stock y beca',
+        'TAMBIÉN',
+        'Stock',
+        'Beca',
+        'Próximamente',
+      ]) {
+        expect(find.textContaining(texto), findsNothing, reason: texto);
+      }
+      // Lo único que se toca son tres tarjetas: la deuda con la casa editora (33B, HU-CTA-002) y las dos
+      // que abren su detalle en «Mi plata» (HU-CTA-003). «Depositado» no.
+      expect(find.text('›'), findsNWidgets(3));
+      expect(find.byType(InkWell), findsNWidgets(3));
+      expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
+    });
 
     testWidgets('una cifra que subió y una que bajó se leen con su verbo, sin las flechas', (
       tester,

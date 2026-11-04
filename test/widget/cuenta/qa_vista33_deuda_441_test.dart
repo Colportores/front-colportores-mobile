@@ -314,8 +314,7 @@ void main() {
       },
     );
 
-    // skip: issue #441 — pregunta §2 (QA P3): con las horas iguales el aviso sigue siendo el de V1
-    // («Lo depositado es …»); el canvas 33A·02 dice «La deuda y lo depositado son de …».
+    // Decisión §2 (QA P3, 04/11): con las horas iguales va el literal del canvas 33A·02.
     testWidgets(
       'Mi Cuenta sin conexión: con la misma hora, el aviso es el del canvas 33A·02 («La deuda y lo '
       'depositado son de …; en mano y por cobrar están al día.»)',
@@ -339,11 +338,9 @@ void main() {
         expect(aviso.data, contains('La deuda y lo depositado son del 29/10 a las 21:00'));
         expect(aviso.data, isNot(contains('La deuda con la casa editora es de')));
       },
-      skip: !_verHallazgos,
     );
 
-    // skip: issue #441 — pregunta §2 (QA P4): sin «Depositado» bajado (depositadoAl null) no hay aviso y
-    // la deuda guardada se ve como si fuera de ahora.
+    // Decisión §2 (QA P4, 04/11): sin «Depositado» bajado el aviso sale igual, con la hora de la deuda.
     testWidgets(
       'Mi Cuenta sin conexión y sin «Depositado» bajado: la deuda guardada de ayer no se ve '
       'como actual (el aviso nombra su hora)',
@@ -366,7 +363,6 @@ void main() {
         expect(find.text(r'$ 18.400'), findsOneWidget);
         expect(find.textContaining('La deuda con la casa editora es de'), findsOneWidget);
       },
-      skip: !_verHallazgos,
     );
 
     // skip: issue #441 — el esqueleto de Mi Cuenta tiene 3 bloques y el canvas 33A·03 dibuja 4.
@@ -384,7 +380,7 @@ void main() {
       skip: !_verHallazgos,
     );
 
-    // skip: issue #441 — sin conexión y sin nada guardado, 33B dice solo el error genérico.
+    // Decisión §2 (QA P1, 04/11): sin conexión y sin nada guardado, 33B dice que hace falta conexión.
     testWidgets('33B sin conexión y sin nada guardado: el aviso dice que hace falta conexión '
         '(«Necesitás conexión para ver tu deuda…», convenciones §sin conexión)', (tester) async {
       final repo = RepositorioDeDeudaControlable();
@@ -394,7 +390,7 @@ void main() {
       await tester.pump();
       expect(find.textContaining('Necesitás conexión'), findsOneWidget);
       expect(find.text('Reintentar'), findsOneWidget);
-    }, skip: !_verHallazgos);
+    });
 
     // skip: issue #441 — el aviso de lo guardado de 33B no es región viva (heredado de #611).
     testWidgets(

@@ -43,7 +43,7 @@ void main() {
       expect(find.byKey(const Key('cuenta_deuda_monto')), findsOneWidget);
       expect(find.text(r'$ 18.400'), findsOneWidget);
       expect(find.text('▤'), findsOneWidget);
-      expect(find.text('›'), findsOneWidget);
+      expect(find.descendant(of: find.byKey(tarjeta), matching: find.text('›')), findsOneWidget);
       // Primera: arriba de En mano y Por cobrar.
       expect(
         tester.getTopLeft(find.byKey(tarjeta)).dy,
@@ -225,7 +225,10 @@ void main() {
         await tester.pump();
         await tester.pump();
 
-        expect(find.text('No pudimos traer tus pedidos.'), findsOneWidget);
+        expect(
+          find.text('Necesitás conexión para ver tu deuda con la casa editora.'),
+          findsOneWidget,
+        );
         expect(find.text('Reintentar'), findsOneWidget);
       },
     );

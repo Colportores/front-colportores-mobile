@@ -167,16 +167,19 @@ void main() {
       expect(find.text('TOTAL'), findsNothing);
     });
 
-    testWidgets('sin nada guardado y sin conexión es el mismo error: no hay qué mostrar', (
-      tester,
-    ) async {
+    testWidgets('sin nada guardado y sin conexión dice que hace falta la red (decisión del 04/11), '
+        'con «Reintentar»', (tester) async {
       final repo = RepositorioDeDeudaControlable();
       await montarDeuda(tester, repo);
       repo.fallar(const FailureDeudaSinConexion());
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('No pudimos traer tus pedidos.'), findsOneWidget);
+      expect(
+        find.text('Necesitás conexión para ver tu deuda con la casa editora.'),
+        findsOneWidget,
+      );
+      expect(find.text('No pudimos traer tus pedidos.'), findsNothing);
       expect(find.text('Reintentar'), findsOneWidget);
     });
 

@@ -130,7 +130,7 @@ void main() {
     expect(notif.principal, findsNothing);
     expect(tester.widget<Text>(titulo).data, 'Encontramos un respaldo');
 
-    await _tocar(tester, cta2);
+    await empezarSinRecuperar(tester, cta2);
 
     expect(_asistente, findsNothing);
     expect(notif.pedidoPagina, findsOneWidget, reason: 'vista 24 va después de la 34');
@@ -158,7 +158,7 @@ void main() {
     tester,
   ) async {
     await _abrirApp(tester, telefono, arnes);
-    await _tocar(tester, cta2);
+    await empezarSinRecuperar(tester, cta2);
     await _tocar(tester, notif.pedidoAhoraNo);
     await tester.pumpAndSettle();
 
@@ -282,7 +282,7 @@ void main() {
         );
         await _abrirApp(tester, telefono, arnes, jornadas: jornadas);
 
-        await _tocar(tester, cta2);
+        await empezarSinRecuperar(tester, cta2);
 
         expect(_cerrarJornada, findsOneWidget);
         expect(jornadas.jornadas.every((j) => j.fin == null), isTrue);

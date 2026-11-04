@@ -61,7 +61,10 @@ class _DeudaCasaPageState extends ConsumerState<DeudaCasaPage> {
       cuerpo = [
         SliverToBoxAdapter(
           child: BannerErrorCuenta(
-            texto: TextosDeuda.errorTraer,
+            // Sin conexión y sin nada guardado: lo que falta es la red, no el servidor.
+            texto: estado.fallo == FalloDeLaDeuda.sinConexion
+                ? TextosDeuda.necesitasConexion
+                : TextosDeuda.errorTraer,
             alReintentar: () => ref.read(provider.notifier).actualizar(),
           ),
         ),

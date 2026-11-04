@@ -35,8 +35,36 @@ abstract final class TextosCuenta {
   static const avisoSinConexion = 'Sin conexión';
 }
 
+/// Los textos de «Mi plata» (vista 33C, HU-CTA-003). Los del canvas van tal cual; los demás dicen «para
+/// confirmar».
+abstract final class TextosMiPlata {
+  static const eyebrow = 'MI CUENTA';
+  static const titulo = 'Mi plata';
+  static const volver = 'Volver';
+
+  static const enMano = 'En mano';
+  static const porCobrar = 'Por cobrar';
+
+  /// 33C·03.
+  static const sinEfectivoEnMano = 'No tenés efectivo sin depositar.';
+
+  /// Para confirmar: el canvas no dibuja «Por cobrar» en cero.
+  static const sinPorCobrar = 'No tenés nada por cobrar.';
+
+  static const desde = 'desde';
+
+  static const desplegado = 'desplegado';
+  static const plegado = 'plegado';
+}
+
 /// Cómo se escriben las cifras de Mi Cuenta.
 abstract final class FormatoCuenta {
+  /// «21/10», en la hora del teléfono.
+  static String fecha(DateTime fecha) {
+    final local = fecha.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}';
+  }
+
   /// «$ 18.400», o «$ 1.450,50» si no son pesos justos.
   static String monto(int centavos) => FormatoPrecios.monto(centavos);
 
@@ -66,18 +94,33 @@ abstract final class FormatoCuenta {
   /// pantalla. Para confirmar (mapa §2: texto): el canvas solo dibuja «ayer»; «hoy» y la fecha son
   /// los otros dos días posibles.
   ///
-  /// Decisión del 04/11 (mapa §2, coherencia): si la deuda con la casa editora que se guardó
-  /// ([deudaLeidaEn]) es de otro momento que lo depositado, el aviso suma «La deuda con la casa
-  /// editora es de ayer a las 21:00.»; si coinciden, queda el aviso del canvas.
-  static String sinConexion(DateTime bajadoEn, DateTime ahora, {DateTime? deudaLeidaEn}) {
-    final depositado = _cuandoYHora(bajadoEn, ahora);
+  /// Decisiones del 04/11 (mapa §2): la deuda con la casa editora que se guardó ([deudaLeidaEn])
+  /// entra en el aviso. Si es del mismo momento que lo depositado va el literal del canvas, «La deuda
+  /// y lo depositado son de ayer a las 21:00; en mano y por cobrar están al día.»; si es de otro, el
+  /// aviso suma «La deuda con la casa editora es de hoy a las 07:05.»; y sin «Depositado» bajado
+  /// ([bajadoEn] null) queda solo «Sin conexión. La deuda con la casa editora es de …».
+  static String sinConexion(DateTime? bajadoEn, DateTime ahora, {DateTime? deudaLeidaEn}) {
+    final depositado = bajadoEn == null ? null : _cuandoYHora(bajadoEn, ahora);
+    final deuda = deudaLeidaEn == null ? null : _cuandoYHora(deudaLeidaEn, ahora);
+    if (depositado == null) {
+      // El aviso solo se arma con alguna hora guardada.
+      assert(deuda != null, 'sin ninguna hora guardada no hay aviso');
+      return '${TextosCuenta.avisoSinConexion}. La deuda con la casa editora es $deuda.';
+    }
+    if (deuda == depositado) {
+      return '${TextosCuenta.avisoSinConexion}. La deuda y lo depositado son $depositado; en mano '
+          'y por cobrar están al día.';
+    }
     final aviso =
         '${TextosCuenta.avisoSinConexion}. Lo depositado es $depositado; en mano y por cobrar '
         'están al día.';
-    if (deudaLeidaEn == null) return aviso;
-    final deuda = _cuandoYHora(deudaLeidaEn, ahora);
-    return deuda == depositado ? aviso : '$aviso La deuda con la casa editora es $deuda.';
+    return deuda == null ? aviso : '$aviso La deuda con la casa editora es $deuda.';
   }
+
+  /// Con red, pero la deuda no se pudo actualizar y lo que se ve es lo guardado (decisión del
+  /// 04/11): «No pudimos actualizar la deuda con la casa editora. Es de ayer a las 21:00.»
+  static String deudaSinActualizar(DateTime leidaEn, DateTime ahora) =>
+      'No pudimos actualizar la deuda con la casa editora. Es ${_cuandoYHora(leidaEn, ahora)}.';
 
   /// «de ayer a las 21:00», «de hoy a las 07:05» o «del 28/10 a las 09:00».
   static String _cuandoYHora(DateTime instante, DateTime ahora) {

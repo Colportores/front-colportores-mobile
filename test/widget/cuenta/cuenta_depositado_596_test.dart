@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
+import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/resumen_de_cuenta.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/cuenta_providers.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/deuda_casa_providers.dart';
@@ -158,63 +159,81 @@ void main() {
       expect(repo.suscripciones, 1);
     });
 
-    testWidgets(
-      'no se puede tocar: sin detalle todavía, ni flecha ni toque (lo único tocable es la '
-      'tarjeta de la deuda, #441)',
-      (tester) async {
-        await montarCuenta(
-          tester,
-          RepositorioDeCuentaControlable(inicial: _conDepositado),
-          overrides: _overrides(_Conexion(TipoConexion.wifi)),
-        );
+    testWidgets('no se puede tocar: sin detalle todavía, ni flecha ni toque', (tester) async {
+      await montarCuenta(
+        tester,
+        RepositorioDeCuentaControlable(inicial: _conDepositado),
+        overrides: _overrides(_Conexion(TipoConexion.wifi)),
+      );
 
-        final depositado = find.byKey(const Key('cuenta_depositado'));
-        expect(depositado, findsOneWidget);
-        expect(find.descendant(of: depositado, matching: find.text('›')), findsNothing);
-        expect(find.descendant(of: depositado, matching: find.byType(InkWell)), findsNothing);
+      // Solo «En mano» y «Por cobrar» tienen su detalle en «Mi plata» (HU-CTA-003) y la deuda con la casa
+      // editora el suyo (33B, #441): ellas llevan «›» y se tocan; «Depositado» no.
+      final depositado = find.byKey(const Key('cuenta_depositado'));
+      expect(find.descendant(of: depositado, matching: find.text('›')), findsNothing);
+      expect(find.descendant(of: depositado, matching: find.byType(InkWell)), findsNothing);
+      expect(find.descendant(of: depositado, matching: find.byType(GestureDetector)), findsNothing);
+      for (final tipo in ['enMano', 'porCobrar']) {
+        final tarjeta = find.byKey(Key('cuenta_$tipo'));
         expect(
-          find.descendant(of: depositado, matching: find.byType(GestureDetector)),
-          findsNothing,
+          find.descendant(of: tarjeta, matching: find.text('›')),
+          findsOneWidget,
+          reason: tipo,
         );
-        // Lo único que se toca en Mi Cuenta es la deuda con la casa editora.
-        expect(find.byType(InkWell), findsOneWidget);
-        expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
-      },
-    );
+      }
+      expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
+      expect(find.text('›'), findsNWidgets(3));
+    });
   });
 
-  group('33A·02 · Sin conexión con la deuda guardada (#441, decisión del 04/11)', () {
-    Future<void> montarSinRed(WidgetTester tester, DateTime? deudaLeidaEn) async {
+  group('Mi Cuenta con la deuda guardada: los avisos (#441, decisiones del 04/11)', () {
+    Future<RepositorioDeDeudaControlable> montar(
+      WidgetTester tester, {
+      required TipoConexion conexion,
+      DateTime? deudaLeidaEn,
+      ResumenDeCuenta? resumen,
+    }) async {
       final repo = RepositorioDeDeudaControlable(
         guardada: deudaLeidaEn == null ? null : lectura(deudaDelCanvas, leidaEn: deudaLeidaEn),
       );
       await montarCuenta(
         tester,
-        RepositorioDeCuentaControlable(inicial: _conDepositado),
+        RepositorioDeCuentaControlable(inicial: resumen ?? _conDepositado),
         overrides: [
-          ..._overrides(_Conexion(TipoConexion.sinConexion)),
+          ..._overrides(_Conexion(conexion)),
           deudaConLaCasaRepositoryProvider.overrideWithValue(repo),
         ],
       );
       await tester.pump();
       await tester.pump();
+      return repo;
     }
 
-    testWidgets('si la deuda guardada es del mismo momento que lo depositado, queda el aviso del '
-        'canvas', (tester) async {
-      await montarSinRed(tester, _ayerALas21);
+    Future<void> asentar(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('sin red, con la misma hora de la deuda y de lo depositado, va el literal del '
+        'canvas: «La deuda y lo depositado son de …»', (tester) async {
+      await montar(tester, conexion: TipoConexion.sinConexion, deudaLeidaEn: _ayerALas21);
 
       expect(
         find.text(
-          'Sin conexión. Lo depositado es de ayer a las 21:00; en mano y por cobrar están al día.',
+          'Sin conexión. La deuda y lo depositado son de ayer a las 21:00; en mano y por cobrar '
+          'están al día.',
         ),
         findsOneWidget,
       );
-      expect(find.textContaining('La deuda con la casa editora es'), findsNothing);
     });
 
-    testWidgets('si la deuda se guardó en otro momento, el aviso suma su hora', (tester) async {
-      await montarSinRed(tester, DateTime(2026, 10, 30, 7, 5));
+    testWidgets('sin red, con la deuda guardada en otro momento, el aviso suma su hora', (
+      tester,
+    ) async {
+      await montar(
+        tester,
+        conexion: TipoConexion.sinConexion,
+        deudaLeidaEn: DateTime(2026, 10, 30, 7, 5),
+      );
 
       expect(
         find.text(
@@ -226,8 +245,12 @@ void main() {
       expect(find.text(r'$ 18.400'), findsOneWidget);
     });
 
-    testWidgets('y si la deuda es la vieja, dice su día y no «al día»', (tester) async {
-      await montarSinRed(tester, DateTime(2026, 10, 28, 9));
+    testWidgets('sin red y con la deuda de hace días, el aviso dice su día', (tester) async {
+      await montar(
+        tester,
+        conexion: TipoConexion.sinConexion,
+        deudaLeidaEn: DateTime(2026, 10, 28, 9),
+      );
 
       expect(
         find.text(
@@ -238,10 +261,111 @@ void main() {
       );
     });
 
-    testWidgets('sin deuda guardada el aviso no nombra la deuda', (tester) async {
-      await montarSinRed(tester, null);
+    testWidgets('sin red y sin deuda guardada, el aviso es el de lo depositado', (tester) async {
+      await montar(tester, conexion: TipoConexion.sinConexion);
 
-      expect(find.textContaining('La deuda con la casa editora es'), findsNothing);
+      expect(
+        find.text(
+          'Sin conexión. Lo depositado es de ayer a las 21:00; en mano y por cobrar están al día.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('sin red y sin «Depositado» bajado, la deuda guardada avisa su hora', (
+      tester,
+    ) async {
+      await montar(
+        tester,
+        conexion: TipoConexion.sinConexion,
+        deudaLeidaEn: DateTime(2026, 10, 28, 9),
+        resumen: resumenDelCanvas,
+      );
+
+      expect(
+        find.text('Sin conexión. La deuda con la casa editora es del 28/10 a las 09:00.'),
+        findsOneWidget,
+      );
+      expect(find.text(r'$ 18.400'), findsOneWidget);
+    });
+
+    testWidgets('sin red, sin «Depositado» y sin deuda guardada no hay nada viejo que decir', (
+      tester,
+    ) async {
+      await montar(tester, conexion: TipoConexion.sinConexion, resumen: resumenDelCanvas);
+
+      expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsNothing);
+    });
+
+    testWidgets(
+      'con red, si la deuda no se pudo actualizar, el aviso dice de cuándo es la guardada '
+      'y ofrece «Reintentar»',
+      (tester) async {
+        final repo = await montar(tester, conexion: TipoConexion.wifi, deudaLeidaEn: _ayerALas21);
+        expect(find.textContaining('No pudimos actualizar la deuda'), findsNothing);
+
+        repo.fallar();
+        await asentar(tester);
+
+        expect(
+          find.text('No pudimos actualizar la deuda con la casa editora. Es de ayer a las 21:00.'),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsNothing);
+        expect(find.text(r'$ 18.400'), findsOneWidget);
+
+        // «Reintentar» vuelve a pedir una sola vez aunque se toque dos veces.
+        final antes = repo.lecturas;
+        await tester.tap(find.byKey(const Key('cuenta_reintentar')));
+        await tester.tap(find.byKey(const Key('cuenta_reintentar')), warnIfMissed: false);
+        await asentar(tester);
+        expect(repo.lecturas, antes + 1);
+        expect(find.textContaining('No pudimos actualizar la deuda'), findsNothing);
+
+        repo.responder(lectura(deudaDelCanvas, leidaEn: DateTime(2026, 10, 30, 11)));
+        await asentar(tester);
+        expect(find.textContaining('No pudimos actualizar la deuda'), findsNothing);
+      },
+    );
+
+    testWidgets('con red pero sin respuesta del servidor (se agotó la espera) pasa lo mismo', (
+      tester,
+    ) async {
+      final repo = await montar(tester, conexion: TipoConexion.wifi, deudaLeidaEn: _ayerALas21);
+
+      repo.fallar(const FailureDeudaSinConexion());
+      await asentar(tester);
+
+      expect(
+        find.text('No pudimos actualizar la deuda con la casa editora. Es de ayer a las 21:00.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('sin deuda guardada y con el servidor caído, Mi Cuenta no avisa de la deuda', (
+      tester,
+    ) async {
+      final repo = await montar(tester, conexion: TipoConexion.wifi);
+
+      repo.fallar();
+      await asentar(tester);
+
+      expect(find.textContaining('No pudimos actualizar la deuda'), findsNothing);
+      expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
+    });
+
+    testWidgets('sin red no se suma el aviso de «no pudimos actualizar»: ya dice que no hay '
+        'conexión', (tester) async {
+      final repo = await montar(
+        tester,
+        conexion: TipoConexion.sinConexion,
+        deudaLeidaEn: _ayerALas21,
+      );
+
+      repo.fallar();
+      await asentar(tester);
+
+      expect(find.textContaining('No pudimos actualizar la deuda'), findsNothing);
       expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsOneWidget);
     });
   });
