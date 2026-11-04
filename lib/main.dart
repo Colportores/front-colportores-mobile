@@ -170,6 +170,10 @@ Future<void> main() async {
 
   final respaldoNocturno = await _prepararRespaldoNocturno();
 
+  // Los `overrides` de cada arranque de la raíz se arman sin esperar nada (son una función síncrona):
+  // lo que se lee de la plataforma va acá, antes.
+  final carpetaDeLaApp = (await getApplicationSupportDirectory()).path;
+
   // Cada arranque de la raíz arma sus `overrides` (con un `DatabaseHelper` nuevo): «Recuperar mi
   // respaldo» reinicia la app por dentro (`reiniciarRaizProvider`) y arranca como la primera vez, sin
   // nada vivo del anterior (decisión de Cristian, 04/11, «Motor vivo»). El `ProviderScope` lo arma
@@ -269,9 +273,7 @@ Future<void> main() async {
           ArchivoEnvoltorioDek(directorio: getApplicationDocumentsDirectory),
         ),
         // La copia local de la foto de cada ticket (HU-COB-007): carpeta privada de la app.
-        almacenDeFotosDeTicketProvider.overrideWithValue(
-          AlmacenDeFotosEnDisco((await getApplicationSupportDirectory()).path),
-        ),
+        almacenDeFotosDeTicketProvider.overrideWithValue(AlmacenDeFotosEnDisco(carpetaDeLaApp)),
         // Bloqueo de pantalla y nivel del Keystore: canal nativo propio (MainActivity.kt,
         // AppDelegate.swift).
         seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
