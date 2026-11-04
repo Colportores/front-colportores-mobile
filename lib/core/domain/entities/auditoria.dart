@@ -34,11 +34,10 @@ class Auditoria extends Equatable {
   /// Siempre en UTC — ver el invariante en el doc de la clase.
   final DateTime updatedAt;
 
-  /// UUID v7 del usuario que creó el registro. Nullable: el esquema no aclara si toda fila
-  /// tiene un creador conocido desde el origen (ej. datos semilla).
-  ///
-  /// TODO(#8): §Principios 3 lo lista como campo de auditoría universal, así que hacerlo
-  /// nullable es apartarse del esquema — decisión pendiente (ver comentario en el issue #8).
+  /// UUID v7 del usuario que creó el registro. Nullable, igual que en el backend
+  /// (`created_by uuid default auth.uid() references usuario(id) on delete set null`): si el
+  /// usuario se borra, el `SET NULL` deja la fila sin creador conocido, y los datos semilla
+  /// nacen sin él. Una fila sin creador sigue siendo válida: nunca se descarta por eso.
   final String? createdBy;
 
   /// Soft delete (esquema-datos.md §Principios 6): nunca se borra físicamente, se marca acá.
