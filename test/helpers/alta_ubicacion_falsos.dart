@@ -4,6 +4,7 @@ import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.dart';
@@ -243,6 +244,8 @@ CandidataDuplicado candidata(
   TipoUbicacion tipo = TipoUbicacion.casa,
   String ciudadId = 'ciu-mvd',
   DateTime? actualizada,
+  EstadoCasa? estado,
+  int? espacios,
 }) {
   final cuando = actualizada ?? DateTime.utc(2026, 9, 29, 12);
   return CandidataDuplicado(
@@ -259,6 +262,8 @@ CandidataDuplicado candidata(
     motivo: motivo,
     distanciaMetros: metros,
     admiteConservarAmbos: admiteConservarAmbos,
+    estado: estado,
+    cantidadEspacios: espacios,
   );
 }
 
