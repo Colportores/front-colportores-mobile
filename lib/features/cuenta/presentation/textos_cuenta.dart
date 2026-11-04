@@ -119,8 +119,38 @@ abstract final class FormatoCuenta {
   /// queda lo depositado. [bajadoEn] es la última bajada del servidor; [ahora], el reloj de la
   /// pantalla. Para confirmar (mapa §2: texto): el canvas solo dibuja «ayer»; «hoy» y la fecha son
   /// los otros dos días posibles.
-  static String sinConexion(DateTime bajadoEn, DateTime ahora) {
-    final momento = bajadoEn.toLocal();
+  ///
+  /// Decisiones del 04/11 (mapa §2): la deuda con la casa editora que se guardó ([deudaLeidaEn])
+  /// entra en el aviso. Si es del mismo momento que lo depositado va el literal del canvas, «La deuda
+  /// y lo depositado son de ayer a las 21:00; en mano y por cobrar están al día.»; si es de otro, el
+  /// aviso suma «La deuda con la casa editora es de hoy a las 07:05.»; y sin «Depositado» bajado
+  /// ([bajadoEn] null) queda solo «Sin conexión. La deuda con la casa editora es de …».
+  static String sinConexion(DateTime? bajadoEn, DateTime ahora, {DateTime? deudaLeidaEn}) {
+    final depositado = bajadoEn == null ? null : _cuandoYHora(bajadoEn, ahora);
+    final deuda = deudaLeidaEn == null ? null : _cuandoYHora(deudaLeidaEn, ahora);
+    if (depositado == null) {
+      // El aviso solo se arma con alguna hora guardada.
+      assert(deuda != null, 'sin ninguna hora guardada no hay aviso');
+      return '${TextosCuenta.avisoSinConexion}. La deuda con la casa editora es $deuda.';
+    }
+    if (deuda == depositado) {
+      return '${TextosCuenta.avisoSinConexion}. La deuda y lo depositado son $depositado; en mano '
+          'y por cobrar están al día.';
+    }
+    final aviso =
+        '${TextosCuenta.avisoSinConexion}. Lo depositado es $depositado; en mano y por cobrar '
+        'están al día.';
+    return deuda == null ? aviso : '$aviso La deuda con la casa editora es $deuda.';
+  }
+
+  /// Con red, pero la deuda no se pudo actualizar y lo que se ve es lo guardado (decisión del
+  /// 04/11): «No pudimos actualizar la deuda con la casa editora. Es de ayer a las 21:00.»
+  static String deudaSinActualizar(DateTime leidaEn, DateTime ahora) =>
+      'No pudimos actualizar la deuda con la casa editora. Es ${_cuandoYHora(leidaEn, ahora)}.';
+
+  /// «de ayer a las 21:00», «de hoy a las 07:05» o «del 28/10 a las 09:00».
+  static String _cuandoYHora(DateTime instante, DateTime ahora) {
+    final momento = instante.toLocal();
     final hoy = DateTime(ahora.year, ahora.month, ahora.day);
     final dia = DateTime(momento.year, momento.month, momento.day);
     String dos(int n) => n.toString().padLeft(2, '0');
@@ -129,8 +159,7 @@ abstract final class FormatoCuenta {
       1 => 'de ayer',
       _ => 'del ${dos(dia.day)}/${dos(dia.month)}',
     };
-    return '${TextosCuenta.avisoSinConexion}. Lo depositado es $cuando a las '
-        '${dos(momento.hour)}:${dos(momento.minute)}; en mano y por cobrar están al día.';
+    return '$cuando a las ${dos(momento.hour)}:${dos(momento.minute)}';
   }
 
   /// Lo mismo para el lector de pantalla, que lee mal las flechas: «Subió $ 1.800 contra la semana

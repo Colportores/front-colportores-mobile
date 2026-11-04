@@ -33,6 +33,7 @@ import 'generated/schema_v25.dart' as v25;
 import 'generated/schema_v26.dart' as v26;
 import 'generated/schema_v27.dart' as v27;
 import 'generated/schema_v28.dart' as v28;
+import 'generated/schema_v29.dart' as v29;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1700,4 +1701,43 @@ void main() {
       );
     },
   );
+
+  test('dado depósitos guardados en la versión 28, cuando migra a la 29, no se pierde '
+      'nada y suma la tabla de la deuda guardada, vacía (#441)', () async {
+    const deposito = v28.DepositoData(
+      id: 'd-1',
+      monto: 180000,
+      fecha: 1,
+      destino: 'BANCO',
+      concepto: 'CASA_EDITORA',
+      ticketId: 't-1',
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 4,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 28,
+      newVersion: 29,
+      createOld: v28.DatabaseAtV28.new,
+      createNew: v29.DatabaseAtV29.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) => batch.insert(viejo.deposito, deposito),
+      validateItems: (nuevo) async {
+        final guardado = await nuevo.select(nuevo.deposito).getSingle();
+        expect(guardado.id, 'd-1');
+        expect(guardado.monto, 180000);
+        expect(guardado.syncVersion, 4);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        // La tabla nace vacía, con una fila por colportor: guardar de nuevo la pisa.
+        expect(await nuevo.select(nuevo.deudaCasaCache).get(), isEmpty);
+        const insertar = 'INSERT INTO deuda_casa_cache (colportor_id, respuesta, leida_en) VALUES ';
+        await nuevo.customStatement("$insertar('col-1', '{}', 1)");
+        await nuevo.customStatement("$insertar('col-2', '{}', 2)");
+        await expectLater(nuevo.customStatement("$insertar('col-1', '{}', 3)"), throwsA(anything));
+        expect(await nuevo.select(nuevo.deudaCasaCache).get(), hasLength(2));
+      },
+    );
+  });
 }

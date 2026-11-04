@@ -1310,3 +1310,19 @@ final class FailureCuotasNoDisponibles extends Failure {
         codigo: 'COBRO_CUOTAS_NO_DISPONIBLES',
       );
 }
+
+/// No hay conexión para traer la deuda con la casa editora (HU-CTA-002, 33B). Lo último que llegó
+/// sigue guardado en el teléfono: la pantalla lo muestra con su hora. Sin nada guardado es el error
+/// de 33B·03.
+final class FailureDeudaSinConexion extends Failure {
+  const FailureDeudaSinConexion()
+    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'DEUDA_CASA_SIN_CONEXION');
+}
+
+/// El servidor no pudo contar la deuda con la casa editora, o contestó algo que la app no entiende
+/// (HU-CTA-002, 33B·03). Es **otra cosa** que «no debés nada»: nadie muestra «$ 0» ante esta falla.
+/// Se puede reintentar. El texto es el del canvas.
+final class FailureDeudaNoDisponible extends Failure {
+  const FailureDeudaNoDisponible()
+    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'DEUDA_CASA_NO_DISPONIBLE');
+}

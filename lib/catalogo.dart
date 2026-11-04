@@ -106,6 +106,9 @@ final specsDeLaApp = <SyncSpec>[
   // El historial del centro de notificaciones (HU-NOT-005): avisos de este teléfono, con la
   // dirección de la visita en el texto; nunca sube.
   SyncSpec.local('notificacion_historial'),
+  // La última deuda con la casa editora que dijo el servidor, con su hora (HU-CTA-002): se vuelve a
+  // bajar, así que tampoco entra al backup.
+  SyncSpec.local('deuda_casa_cache'),
 ];
 
 /// El registro validado contra [tablasLocales] (todas las de la DB, sin [tablasDelMotor]).
@@ -124,10 +127,13 @@ final entidadesQueEscribeElMotor = {
 /// servidor. Las `push` (lo que escribió el colportor, y puede no haber subido todavía) y las
 /// `local` (personas, notas, historial: solo viven en el teléfono), más la cola de sync, porque los
 /// jobs encolados al momento del backup tienen que volver a existir (contrato §7, fase 1). Las
-/// réplicas de solo lectura (`pull`) las reconstruye el pull, y `sesion_usuario` es de la sesión de
-/// este teléfono.
+/// réplicas de solo lectura (`pull`) las reconstruye el pull, `sesion_usuario` es de la sesión de
+/// este teléfono y `deuda_casa_cache` se vuelve a bajar del servidor.
 final entidadesDelBackup = {
   for (final s in specsDeLaApp)
-    if (s.policy != SyncPolicy.pull && s.entity != 'sesion_usuario') s.entity,
+    if (s.policy != SyncPolicy.pull &&
+        s.entity != 'sesion_usuario' &&
+        s.entity != 'deuda_casa_cache')
+      s.entity,
   'sync_queue',
 };

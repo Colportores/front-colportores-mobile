@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,9 +7,11 @@ import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../domain/entities/resumen_de_cuenta.dart';
 import '../providers/cuenta_providers.dart';
+import '../providers/deuda_casa_providers.dart';
 import '../textos_cuenta.dart';
 import '../widgets/piezas_cuenta.dart';
 import '../widgets/piezas_mi_plata.dart';
+import '../widgets/tarjeta_de_deuda.dart';
 import 'mi_plata_page.dart';
 
 /// La pestaña «Cuenta» (vista 33A, HU-CTA-001): las cifras de la plata del colportor con cuánto
@@ -19,10 +23,11 @@ import 'mi_plata_page.dart';
 /// aviso: no hay nada viejo que decir. Mientras se calcula, un bloque gris por tarjeta
 /// (33A·03); si la base no se puede leer, el error con «Reintentar» (33A·05), nunca ceros.
 ///
-/// En V1 son tres tarjetas, Depositado, En mano y Por cobrar. «Depositado» suma solo lo que el
-/// coordinador validó y baja del servidor por el pull: mientras el teléfono no bajó nada no se dibuja
-/// (ni un cero), y sin conexión un aviso dice de cuándo es (33A·02). La deuda con la casa editora llega
-/// con los pedidos (V2). Cada tarjeta se toca y abre su detalle en «Mi plata» (HU-CTA-003, 33C).
+/// Son cuatro tarjetas: la deuda con la casa editora, Depositado, En mano y Por cobrar. «Depositado» suma
+/// solo lo que el coordinador validó y baja del servidor por el pull: mientras el teléfono no bajó nada
+/// no se dibuja (ni un cero), y sin conexión un aviso dice de cuándo es (33A·02). La deuda la cuenta el
+/// servidor (HU-CTA-002): se muestra lo último que llegó y su toque abre el detalle por pedido (33B).
+/// Las tres cifras se tocan y abren su detalle en «Mi plata» (HU-CTA-003, 33C).
 class CuentaPage extends ConsumerStatefulWidget {
   const CuentaPage({super.key, required this.colportorId, this.activa = true});
 
@@ -63,7 +68,11 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
     // construcción.
     if (widget.activa && !anterior.activa) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && widget.activa) ref.invalidate(resumenDeCuentaProvider(widget.colportorId));
+        if (mounted && widget.activa) {
+          ref.invalidate(resumenDeCuentaProvider(widget.colportorId));
+          // La deuda se vuelve a pedir al servidor; la última que llegó sigue a la vista mientras tanto.
+          unawaited(ref.read(deudaConLaCasaProvider(widget.colportorId).notifier).actualizar());
+        }
       });
     }
   }
@@ -86,6 +95,13 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       final datos = resumen.requireValue;
       final depositadoAl = datos.depositadoAl;
       final sinConexion = ref.watch(conexionProvider).value == TipoConexion.sinConexion;
+      // La deuda guardada: su hora entra en el aviso, y si no se pudo actualizar se avisa.
+      final deudaLeidaEn = ref.watch(
+        deudaConLaCasaProvider(widget.colportorId).select((e) => e.lectura?.leidaEn),
+      );
+      final falloDeLaDeuda = ref.watch(
+        deudaConLaCasaProvider(widget.colportorId).select((e) => e.fallo),
+      );
       cuerpo = [
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -96,10 +112,29 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
               spacing: 8,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (sinConexion && depositadoAl != null)
+                // Sin conexión: el aviso sale si hay alguna hora guardada (la de «Depositado» o la de la
+                // deuda) y las nombra. Con red, si la deuda no se pudo actualizar, lo guardado se ve con
+                // su hora y un «Reintentar».
+                if (sinConexion && (depositadoAl != null || deudaLeidaEn != null))
                   AvisoSinConexionCuenta(
-                    texto: FormatoCuenta.sinConexion(depositadoAl, ref.read(relojCuentaProvider)()),
+                    texto: FormatoCuenta.sinConexion(
+                      depositadoAl,
+                      ref.read(relojCuentaProvider)(),
+                      deudaLeidaEn: deudaLeidaEn,
+                    ),
+                  )
+                else if (!sinConexion && deudaLeidaEn != null && falloDeLaDeuda != null)
+                  BannerErrorCuenta(
+                    margen: EdgeInsets.zero,
+                    texto: FormatoCuenta.deudaSinActualizar(
+                      deudaLeidaEn,
+                      ref.read(relojCuentaProvider)(),
+                    ),
+                    alReintentar: () => unawaited(
+                      ref.read(deudaConLaCasaProvider(widget.colportorId).notifier).actualizar(),
+                    ),
                   ),
+                TarjetaDeDeuda(colportorId: widget.colportorId),
                 for (final tipo in TipoDeCifra.values)
                   if (_cifraDe(tipo, datos) case final cifra?)
                     TarjetaDeCifra(
