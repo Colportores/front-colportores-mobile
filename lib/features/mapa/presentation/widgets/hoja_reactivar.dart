@@ -80,8 +80,9 @@ final class AbrirExistenteElegida extends SalidaHojaReactivar {
 /// Abre la hoja de «Reactivar» de la baja [item] (vista 09·03). Devuelve cómo terminó, o `null` si el
 /// colportor cerró sin hacer nada.
 ///
-/// [ultimaVisita] es el renglón «Última visita» («No contestó · 02/09»); `null` no lo muestra (hasta que
-/// las visitas se guarden en el teléfono no hay de dónde sacarlo).
+/// [ultimaVisita] es el renglón «Última visita» («No contestó · 02/09»); `null` no lo muestra (la ubicación
+/// no tiene visitas o no se pudieron leer: nunca se inventa una). La Lista lo lee de las visitas del
+/// teléfono (`lectorUltimaVisitaDeLaUbicacionProvider`).
 ///
 /// Con [ofreceAbrirExistente] la hoja que dice «No se puede reactivar» (la baja choca con otra casa
 /// activa, D1, o se unió a otra que sigue activa) ofrece «Abrir la existente»; sin él, solo «Entendido»

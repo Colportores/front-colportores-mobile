@@ -165,34 +165,30 @@ void main() {
     });
   });
 
-  group('Baja con visitas pendientes propias: doble confirmación', () {
-    test(
-      'dado 2 visitas pendientes propias, cuando inicia la baja, muestra el resumen literal y no '
-      'escribe; con la segunda confirmación, procede',
-      () async {
-        await local.insertar(ubicacion());
-        encolador.encolados.clear();
-        pendientes.pendientes = const PendientesUbicacion(visitasPropiasPendientes: 2);
+  group('Baja con entrevistas agendadas: doble confirmación', () {
+    test('dado 2 entrevistas agendadas, cuando inicia la baja, muestra el resumen literal y no '
+        'escribe; con la segunda confirmación, procede', () async {
+      await local.insertar(ubicacion());
+      encolador.encolados.clear();
+      pendientes.pendientes = const PendientesUbicacion(entrevistasAgendadas: ['ag-1', 'ag-2']);
 
-        final r = await okBaja(baja(motivo: 'Ya no existe'));
+      final r = await okBaja(baja(motivo: 'Ya no existe'));
 
-        expect(r, isA<BajaRequiereConfirmacion>());
-        expect((r as BajaRequiereConfirmacion).pendientes.resumen, [
-          'Esta ubicación tiene 2 visitas pendientes. Si la das de baja, no podrás registrar '
-              'nuevas visitas, pero el historial se conserva.',
-        ]);
-        expect((await guardada()).auditoria.deletedAt, isNull);
-        expect(encolador.encolados, isEmpty);
-        expect(await auditoria(), isEmpty, reason: 'sin baja no hay motivo que guardar');
+      expect(r, isA<BajaRequiereConfirmacion>());
+      expect((r as BajaRequiereConfirmacion).pendientes.resumen, [
+        'Esta casa tiene 2 entrevistas agendadas. Si la das de baja, se cancelan.',
+      ]);
+      expect((await guardada()).auditoria.deletedAt, isNull);
+      expect(encolador.encolados, isEmpty);
+      expect(await auditoria(), isEmpty, reason: 'sin baja no hay motivo que guardar');
 
-        final confirmada = await okBaja(baja(confirma: true, motivo: 'Ya no existe'));
+      final confirmada = await okBaja(baja(confirma: true, motivo: 'Ya no existe'));
 
-        expect(confirmada, isA<UbicacionDadaDeBaja>());
-        expect((await guardada()).auditoria.deletedAt, t1);
-        expect(encolador.encolados, hasLength(1));
-        expect(await auditoria(), hasLength(1));
-      },
-    );
+      expect(confirmada, isA<UbicacionDadaDeBaja>());
+      expect((await guardada()).auditoria.deletedAt, t1);
+      expect(encolador.encolados, hasLength(1));
+      expect(await auditoria(), hasLength(1));
+    });
 
     test('dado que no se puede consultar lo pendiente, cuando da de baja, devuelve esa falla sin '
         'escribir', () async {
@@ -251,11 +247,11 @@ void main() {
       await comprobarSinEscribir();
     });
 
-    test('dado un bloqueo y además visitas propias pendientes, cuando da de baja, el bloqueo gana: '
+    test('dado un bloqueo y además entrevistas agendadas, cuando da de baja, el bloqueo gana: '
         'no pide la segunda confirmación', () async {
       await local.insertar(ubicacion());
       pendientes.pendientes = const PendientesUbicacion(
-        visitasPropiasPendientes: 3,
+        entrevistasAgendadas: ['a', 'b', 'c'],
         tieneVisitasDeOtros: true,
       );
 
@@ -367,6 +363,53 @@ void main() {
         expect((await lista()).single.motivoBaja, isNull);
       },
     );
+
+    test(
+      'dado una baja con motivo, cuando el servidor devuelve otro deleted_at (el eco del pull), la '
+      'Lista sigue mostrando el motivo: se busca por el último ubicacion_baja (P1, 04/11)',
+      () async {
+        await local.insertar(ubicacion());
+        await okBaja(baja(motivo: 'No quiere visitas'));
+        await (db.update(db.ubicaciones)..where((u) => u.id.equals('ub-1'))).write(
+          UbicacionesCompanion(deletedAt: Value(t1.add(const Duration(seconds: 3)))),
+        );
+
+        final fila = (await lista()).single;
+
+        expect(fila.ubicacion.auditoria.deletedAt, t1.add(const Duration(seconds: 3)));
+        expect(fila.motivoBaja, 'No quiere visitas');
+      },
+    );
+
+    test(
+      'dado dos bajas con la reactivación en el medio y el eco del servidor, cuando la Lista las '
+      'pide, muestra el motivo de la última',
+      () async {
+        await local.insertar(ubicacion());
+        await okBaja(baja(motivo: 'Ya no existe'));
+        await reactivar(ReactivarUbicacionParams(id: 'ub-1', baseUpdatedAt: t1));
+        final t2 = t1.add(const Duration(days: 1));
+        await DarDeBajaUbicacionUseCase(
+          UbicacionRepositoryImpl(local, logger: loggerMudo()),
+          pendientes,
+          ahora: () => t2,
+        )(DarDeBajaUbicacionParams(id: 'ub-1', baseUpdatedAt: t1, motivo: 'Está deshabitada'));
+        await (db.update(db.ubicaciones)..where((u) => u.id.equals('ub-1'))).write(
+          UbicacionesCompanion(deletedAt: Value(t2.add(const Duration(seconds: 9)))),
+        );
+
+        expect((await lista()).single.motivoBaja, 'Está deshabitada');
+      },
+    );
+
+    test('dado una baja con motivo y la ubicación ya reactivada, cuando la Lista la pide, no tiene '
+        'motivo', () async {
+      await local.insertar(ubicacion());
+      await okBaja(baja(motivo: 'Ya no existe'));
+      await reactivar(ReactivarUbicacionParams(id: 'ub-1', baseUpdatedAt: t1));
+
+      expect((await lista()).single.motivoBaja, isNull);
+    });
 
     test('dado una baja con motivo, cuando se loguea, el motivo (texto libre) no sale en el '
         'log', () async {

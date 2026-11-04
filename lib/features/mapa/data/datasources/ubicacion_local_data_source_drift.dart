@@ -7,6 +7,8 @@ import '../../../../core/database/fecha_utc_converter.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../../agenda/data/datasources/agenda_local_data_source_drift.dart';
+import '../../../agenda/data/models/agenda_model.dart';
 import '../../../agenda/domain/entities/estado_agenda.dart';
 import '../../../agenda/domain/entities/tipo_agenda.dart';
 import '../../domain/entities/color_house_status.dart';
@@ -256,6 +258,15 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
     if (deletedAt == null) await _exigirReactivable(fila, duplicados);
 
+    // Las entrevistas agendadas de la casa se cancelan con la baja, en la misma transacción (decisión
+    // de Cristian, 21/10): no se borra nada y siguen canceladas si se reactiva. Va ANTES de escribir
+    // `deleted_at`: el recálculo del color no mira una ubicación ya dada de baja, y así la fila de
+    // `house_status` deja de pintar «Entrevista programada» (R-UB08). Con [conservadaId] (unión de
+    // duplicados) no se tocan: `unirDuplicada` las pasa a la que se conserva.
+    if (deletedAt != null && conservadaId == null) {
+      await _cancelarEntrevistasDe(id, updatedAt, colportorId: fila.createdBy ?? '');
+    }
+
     await (update(ubicaciones)..where((u) => u.id.equals(id))).write(
       UbicacionesCompanion(updatedAt: Value(updatedAt), deletedAt: Value(deletedAt)),
     );
@@ -280,6 +291,44 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     );
     return (ubicacion: guardada, escribio: true);
   });
+
+  /// Pasa a `CANCELADA` las entrevistas `PROGRAMADA` de [ubicacionId], las encola como `update` y, si
+  /// cambió alguna, recalcula el color de la casa (como la cancelación normal, R-UB08). Las cobranzas
+  /// (cuotas) no se tocan: una ubicación con ventas no se puede dar de baja. Hay que llamarla con la
+  /// ubicación todavía viva: el recálculo no hace nada sobre una que ya tiene `deleted_at`.
+  Future<void> _cancelarEntrevistasDe(
+    String ubicacionId,
+    DateTime cuando, {
+    required String colportorId,
+  }) async {
+    final delLugar = selectOnly(espacios)
+      ..addColumns([espacios.id])
+      ..where(espacios.ubicacionId.equals(ubicacionId));
+    final agendas = attachedDatabase.agendas;
+    final aCancelar =
+        await (select(agendas)..where(
+              (a) =>
+                  a.espacioId.isInQuery(delLugar) &
+                  a.tipo.equals(TipoAgenda.entrevista.codigo) &
+                  a.estado.equals(EstadoAgenda.programada.codigo) &
+                  a.deletedAt.isNull(),
+            ))
+            .get();
+    for (final fila in aCancelar) {
+      await (update(agendas)..where((a) => a.id.equals(fila.id))).write(
+        AgendasCompanion(estado: Value(EstadoAgenda.cancelada.codigo), updatedAt: Value(cuando)),
+      );
+      final guardada = await (select(agendas)..where((a) => a.id.equals(fila.id))).getSingle();
+      await _encolador.encolar(
+        'agenda',
+        OperacionSync.update,
+        AgendaModel.fromEntity(AgendaLocalDataSourceDrift.desdeFila(guardada)).toJson(),
+      );
+    }
+    if (aCancelar.isNotEmpty) {
+      await _estadoDeLasCasas.recalcular(ubicacionId, ahora: cuando, colportorId: colportorId);
+    }
+  }
 
   /// El motivo `duplicado_de_<A>` de la baja vigente de [fila] si nació de unir duplicados
   /// (HU-UBI-006), o `null` si no: su evento `ubicacion_baja` en la auditoría local, con la misma marca
@@ -520,8 +569,10 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   /// personas, las visitas y las agendas (también las dadas de baja: el historial se conserva).
   /// Las filas siguen con su vínculo y su persona; solo cambia el espacio al que pertenecen. No se
   /// encola nada por fila: el servidor repite la unión cuando le llega el trabajo «marcar como
-  /// duplicado» (HU-UBI-006), como con los espacios que pasan enteros. Las ventas, entregas y
-  /// cobranzas todavía no están en el teléfono.
+  /// duplicado» (HU-UBI-006), como con los espacios que pasan enteros. Las ventas, las entregas y
+  /// los cobros cuelgan del vínculo (`venta.espacio_persona_id`), que se pasa entero: se mudan de
+  /// espacio con él sin tocar ninguna fila suya (#208 P4). Quien llama recalcula después el color de A
+  /// en la misma transacción.
   Future<void> _pasarLoQueCuelgaDe(
     String deB, {
     required String a,
@@ -556,11 +607,18 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     required String colportorId,
     bool incluirBajas = false,
   }) {
-    // `distinct`: el segundo JOIN (la auditoría) puede repetir la fila de cada espacio.
+    // `distinct`: el JOIN de las agendas puede repetir la fila de cada espacio.
     final cantidad = espacios.id.count(distinct: true);
-    // El motivo de la baja vigente: el evento de esta ubicación con la misma marca que su `deleted_at`.
-    // Una baja anterior ya reactivada, o una que vino del sync, no tiene la misma marca: sin motivo.
-    final motivo = auditLogLocal.motivo.max();
+    // El motivo de la baja: el ÚLTIMO evento `ubicacion_baja` de esta ubicación (por `creado_en`), no el
+    // que coincide con su `deleted_at` al instante: el servidor pone su propio `deleted_at` y el pull
+    // lo traerá de vuelta (#181), y el motivo no tiene que desaparecer de la Lista (decisión del
+    // 04/11, P1). Solo si la ubicación está de baja: una reactivada no tiene motivo.
+    const motivo = CustomExpression<String>(
+      'CASE WHEN ubicacion.deleted_at IS NULL THEN NULL ELSE ('
+      'SELECT a.motivo FROM audit_log a '
+      "WHERE a.evento = '${EventoAuditoriaLocal.ubicacionBaja}' AND a.uuid = ubicacion.id "
+      'ORDER BY a.creado_en DESC, a.id DESC LIMIT 1) END',
+    );
     // La próxima entrevista agendada (#491): la `PROGRAMADA` de tipo `ENTREVISTA` más cercana de este
     // colportor que todavía no pasó, en cualquier espacio sin baja de la ubicación. Al estar en la
     // consulta, agendar, cancelar o registrar una visita hace que el stream emita de nuevo.
@@ -572,12 +630,6 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
             leftOuterJoin(
               espacios,
               espacios.ubicacionId.equalsExp(ubicaciones.id) & espacios.deletedAt.isNull(),
-            ),
-            leftOuterJoin(
-              auditLogLocal,
-              auditLogLocal.evento.equals(EventoAuditoriaLocal.ubicacionBaja) &
-                  auditLogLocal.uuid.equalsExp(ubicaciones.id) &
-                  auditLogLocal.creadoEn.equalsExp(ubicaciones.deletedAt),
             ),
             // El color vigente de la casa: una fila por ubicación, y la dada de baja (la casa volvió
             // a «Sin visita») no cuenta. Al estar en la consulta, un cambio de `house_status` hace
