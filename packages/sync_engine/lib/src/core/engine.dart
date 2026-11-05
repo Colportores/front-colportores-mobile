@@ -808,6 +808,7 @@ class SyncEngine {
     final puntas = <BackupEntry>[];
     DateTime? restauradoAntes;
     var problema = '';
+    var cadenasSalteadas = 0;
 
     // Fase 1 — restore desde Drive.
     //
@@ -820,6 +821,11 @@ class SyncEngine {
 
     if (yaRestaurado != null) {
       restauradoAntes = DateTime.tryParse(yaRestaurado);
+      // Un reintento no repite el restore ni trae las fechas de las cadenas:
+      // cuántas se saltearon sale de la marca guardada junto a la de
+      // recuperación (una marca vieja, sin ella, cuenta cero).
+      final salteadas = await _store.watermarkOf(_scopeRecoverySalteadas);
+      cadenasSalteadas = int.tryParse(salteadas ?? '') ?? 0;
     } else if (fuentes.isNotEmpty && await fuentes.first.backup.isAuthorized) {
       // El avance suma las partes de todas las cadenas: el «12/15 partes».
       var totalDelAvance = 0;
@@ -845,6 +851,7 @@ class SyncEngine {
         bajadas.add(bajada);
         antes += bajada.outcome.total;
       }
+      cadenasSalteadas = fuentes.length - bajadas.length;
       if (bajadas.isEmpty) {
         final estado = await fuentes.first.backup.verifyChain();
         problema = estado.problems.map((p) => p.name).join(', ');
@@ -880,6 +887,14 @@ class SyncEngine {
           const {},
           scope: _scopeMirror,
           watermark: masVieja.watermark,
+        );
+        // Antes que la marca de recuperación: si el corte cae entre las dos,
+        // el reintento vuelve a restaurar (no hay marca) en vez de contar de
+        // menos.
+        await _store.applyDelta(
+          const {},
+          scope: _scopeRecoverySalteadas,
+          watermark: '$cadenasSalteadas',
         );
         await _store.applyDelta(
           const {},
@@ -930,6 +945,7 @@ class SyncEngine {
       partial: parcial,
       partsRestored: partesAplicadas,
       partsTotal: partesTotales,
+      skippedChains: cadenasSalteadas,
     );
   }
 
@@ -1539,6 +1555,11 @@ class SyncEngine {
   /// local, no en memoria: un `recover()` interrumpido se retoma aunque la app
   /// se haya cerrado en el medio.
   static const _scopeRecovery = 'recovery';
+
+  /// Cuántas cadenas del restore se saltearon por no tener una base usable. Se
+  /// guarda junto a [_scopeRecovery] para que el reintento tras un corte en la
+  /// fase 3 lo informe (#656).
+  static const _scopeRecoverySalteadas = 'recovery_skipped';
 
   List<String> _idsDe(PushBatch lote, Map<String, String> idPorOpId) => [
     for (final job in lote.jobs)
