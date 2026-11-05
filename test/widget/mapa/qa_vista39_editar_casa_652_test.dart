@@ -468,6 +468,28 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets(
+      'dado «Abrir la existente» desde la 07 (UbicacionExistenteElegida), el mapa muestra '
+      'la hoja de la OTRA casa y «Editar casa» sigue andando en ella (a5565012)',
+      (tester) async {
+        final s = await _mapa(tester);
+        s.m.mapa.tocarPunto('a');
+        await asentarLista(tester);
+        s.edicion.alAbrir = () async => const UbicacionExistenteElegida('b');
+
+        await tester.tap(_editar);
+        await asentarLista(tester);
+
+        expect(find.text('Av. Italia 1250'), findsWidgets);
+        expect(find.text('Av. Italia 1234'), findsNothing);
+        expect(tester.takeException(), isNull);
+        s.edicion.alAbrir = null;
+        await tester.tap(_editar);
+        await asentarLista(tester);
+        expect(s.edicion.abiertas.map((a) => a.ubicacionId), ['a', 'b']);
+      },
+    );
+
     testWidgets('dado que la edición devuelve UbicacionBajaRealizada (dar de baja desde la 07), la '
         'hoja de la casa no deja un lápiz que edite una casa ya dada de baja', (tester) async {
       final s = await _mapa(tester);
