@@ -31,6 +31,7 @@ abstract final class FlujoFichaDesdeLaCasa {
       espacioId: datos.espacioId,
       colportorId: colportor,
       nombre: datos.nombre,
+      nombreCompleto: datos.nombreCompleto,
     );
   }
 }

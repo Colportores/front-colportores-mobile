@@ -258,6 +258,15 @@ void main() {
         findsOneWidget,
         reason: 'el texto del canvas lleva el nombre de la fila',
       );
+      // El canvas lleva el nombre completo de la fila como título, antes de leer la ficha.
+      expect(find.text('María Pérez'), findsOneWidget);
+
+      // «Reintentar» lee la ficha: el título pasa a ser el de la ficha, uno solo.
+      mundo.fichas.errorAlObservar = null;
+      await tester.tap(find.text(TextosFicha.reintentar));
+      await asentar(tester);
+      expect(find.byKey(ClavesFicha.error), findsNothing);
+      expect(find.text('María Pérez'), findsOneWidget);
     });
 
     testWidgets('32B·06 cargando: «Cargando la ficha de María»', (tester) async {
@@ -269,6 +278,7 @@ void main() {
 
       expect(find.byKey(ClavesFicha.cargando), findsOneWidget);
       expect(find.bySemanticsLabel(TextosFicha.cargando('María')), findsOneWidget);
+      expect(find.text('María Pérez'), findsOneWidget, reason: 'el título del canvas 32B·06');
       semantica.dispose();
     });
 
@@ -288,6 +298,7 @@ void main() {
 
       expect(_laFicha(tester).nombre, isNull);
       expect(find.text(TextosFicha.noPudimosLeer(null)), findsOneWidget);
+      expect(find.text('Pérez'), findsOneWidget, reason: 'el título es lo que la fila muestra');
     });
   });
 
