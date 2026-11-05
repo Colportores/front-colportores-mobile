@@ -296,6 +296,36 @@ void main() {
       expect(a.resultados, isEmpty, reason: '«¿Qué pasó?» sigue abierta para elegir otra cosa');
     });
 
+    testWidgets('con una entrevista en curso con otra persona de la MISMA casa no se descarta '
+        '«¿Con quién?»: se avisa y la entrevista vieja queda como estaba', (tester) async {
+      await a.montar(
+        tester,
+        personas: [
+          clienteDePersonas('1', 'Pedro', apellido: 'Gómez'),
+          clienteDePersonas('2', 'Ana', apellido: 'Pérez', minutos: 5),
+        ],
+      );
+      await a
+          .contenedor(tester)
+          .read(entrevistaEnCursoProvider('col-1').notifier)
+          .empezar(espacioId: 'esp-1', espacioPersonaId: 'ep-1');
+      await a.asentar(tester);
+
+      await a.abrirQuePaso(tester);
+      await a.elegir(tester, OpcionQuePaso.entrevistaDada);
+      // «¿Con quién?»: se elige a Ana (ep-2).
+      await tester.tap(find.text('Ana Pérez'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Empezar entrevista'));
+      await a.asentar(tester);
+
+      expect(find.byKey(ClavesEntrevista.hojaEnCurso), findsNothing);
+      expect(find.textContaining('Ya tenés una entrevista en curso'), findsOneWidget);
+      expect(a.montaje.almacen.guardadas['col-1']!.espacioPersonaId, 'ep-1');
+      expect(a.salidasDeEntrevista, [false]);
+      expect(a.resultados, isEmpty, reason: '«¿Qué pasó?» sigue abierta');
+    });
+
     testWidgets('un nombre largo y textScaler 2.0 no rompen R·05 ni R·06', (tester) async {
       await a.montar(
         tester,

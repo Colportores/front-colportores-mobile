@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/logging/app_logger.dart';
 import '../../mapa/presentation/providers/hoja_casa_providers.dart'
     show ContextoDeEntrevista, VentaRegistradaEnLaCasa;
 import '../domain/entities/entrevista_en_curso.dart';
@@ -47,11 +48,22 @@ abstract final class FlujoEntrevistaDada {
         );
     final entrevista = empezada.fold<EntrevistaEnCurso?>((_) => null, (e) => e);
     if (entrevista == null) {
+      // Decisión §2 (R6): la colportora no puede hacer nada con el detalle; sigue R·07 y el fallo
+      // queda en el log, sin datos de personas.
+      AppLogger.instance.warn(
+        LogModulo.agenda,
+        'ENTREVISTA_EMPEZAR',
+        'no se pudo guardar el inicio de la entrevista; sigue R·07',
+        {'falla': empezada.fold((f) => f.runtimeType.toString(), (_) => '')},
+      );
       if (!context.mounted) return false;
       return _sinInicio(context, contenedor, colportor, datos);
     }
-    // Ya hay una entrevista en curso y es de otra casa: no se empieza otra encima.
-    if (entrevista.espacioId != datos.espacioId) {
+    // Ya hay una entrevista en curso y es de otra casa, o de otra persona de esta casa: `empezar`
+    // devolvió la vieja, y abrirla con «¿Con quién?» descartado dejaría la visita (y la venta) a
+    // nombre de quien no se eligió. No se empieza otra encima.
+    if (entrevista.espacioId != datos.espacioId ||
+        entrevista.espacioPersonaId != datos.persona.espacioPersonaId) {
       final aviso = await _avisoDeOtra(contenedor, entrevista);
       if (context.mounted) {
         ScaffoldMessenger.maybeOf(context)
