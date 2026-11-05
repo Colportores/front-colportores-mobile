@@ -940,7 +940,7 @@ void main() {
     });
 
     testWidgets(
-      'dado que la pestaña no está a la vista, entonces no pide el GPS hasta que se abre',
+      'dado que el mapa todavía no pidió el GPS, entonces la Lista no lo pide al abrirse (#651)',
       (tester) async {
         final gps = GpsFalso(Right(lecturaGps(7)));
         final activa = ValueNotifier(false);
@@ -950,6 +950,7 @@ void main() {
           repo: RepoListaFalso(_muestra()),
           gps: gps,
           activaCambiante: activa,
+          gpsAbierto: false,
         );
         expect(gps.lecturas, 0);
         expect(find.textContaining('GPS'), findsNothing);
@@ -958,13 +959,26 @@ void main() {
         activa.value = true;
         await asentarLista(tester);
 
-        expect(gps.lecturas, 1);
+        expect(gps.lecturas, 0, reason: 'solo el mapa pide el GPS y el permiso');
+        expect(gps.activaciones, isEmpty);
+        expect(find.textContaining('GPS'), findsNothing);
+        expect(find.text('Rivadavia 100'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado que el mapa ya leyó el GPS, entonces la Lista muestra esa lectura sin pedirla',
+      (tester) async {
+        final gps = GpsFalso(Right(lecturaGps(7)));
+        await montarLista(tester, repo: RepoListaFalso(_muestra()), gps: gps);
+
+        expect(gps.lecturas, 1, reason: 'la leyó el GPS del colportor (el mapa), una sola vez');
         expect(find.text('◎ GPS ±7${_nbsp}m'), findsOneWidget);
       },
     );
 
-    testWidgets('dado que vuelve a la pestaña, entonces refresca el GPS; sin permiso no vuelve a '
-        'pedirlo en cada apertura', (tester) async {
+    testWidgets('dado que cambia de pestaña y vuelve, entonces no relee el GPS; sin permiso no '
+        'vuelve a pedirlo en cada apertura', (tester) async {
       final gps = gpsFallido();
       final activa = ValueNotifier(true);
       addTearDown(activa.dispose);

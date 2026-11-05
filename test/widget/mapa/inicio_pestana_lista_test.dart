@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart';
+import '../../helpers/mapa_base_falso.dart';
 import 'lista_ubicaciones_arnes.dart' show asentarLista;
 
 final _sesion = Sesion(
@@ -39,6 +40,7 @@ Future<void> _montar(WidgetTester tester, {required RepoListaFalso repo, GpsFals
         disparadorBackupProvider.overrideWithValue(_BackupFalso()),
         relojJornadaProvider.overrideWithValue(() => DateTime(2026, 10, 6, 15)),
         ...overridesLista(repo: repo, gps: gps),
+        ...overridesPestanaMapa(),
       ],
       child: MaterialApp(
         theme: temaClaro(),
@@ -65,23 +67,31 @@ void main() {
     expect(repo.pedidos.first.colportorId, 'col-1');
   });
 
-  testWidgets('dado que arranca en «Hoy», entonces no pide el GPS hasta abrir «Lista», y al '
-      'volver a abrirla lo refresca', (tester) async {
+  testWidgets('dado que arranca en «Hoy», entonces «Lista» no pide el GPS: lo pide el mapa, una '
+      'sola vez, y la Lista lo refleja', (tester) async {
     final gps = GpsFalso(Right(lecturaGps(8)));
     await _montar(tester, repo: RepoListaFalso([filaLista('a')]), gps: gps);
     expect(gps.lecturas, 0);
 
     await tester.tap(find.byKey(const Key('inicio_pestana_lista')));
     await asentarLista(tester);
-    expect(gps.lecturas, 1);
     expect(find.byType(ListaUbicacionesPage), findsOneWidget);
+    expect(gps.lecturas, 0, reason: 'solo el mapa pide el permiso (#651)');
+    expect(find.textContaining('GPS ±'), findsNothing);
 
+    await tester.tap(find.byKey(const Key('inicio_pestana_mapa')));
+    await asentarLista(tester);
+    expect(gps.lecturas, 1);
+
+    await tester.tap(find.byKey(const Key('inicio_pestana_lista')));
+    await asentarLista(tester);
     await tester.tap(find.byKey(const Key('inicio_pestana_hoy')));
     await asentarLista(tester);
     await tester.tap(find.byKey(const Key('inicio_pestana_lista')));
     await asentarLista(tester);
 
-    expect(gps.lecturas, 2);
+    expect(gps.lecturas, 1, reason: 'cambiar de pestaña no relee el GPS');
+    expect(find.textContaining('GPS ±8'), findsOneWidget);
   });
 
   testWidgets('dado que escribe en el buscador y cambia de pestaña, entonces al volver sigue ahí', (

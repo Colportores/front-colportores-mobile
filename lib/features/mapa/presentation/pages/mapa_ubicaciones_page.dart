@@ -25,6 +25,7 @@ import '../providers/mapa_base_providers.dart';
 import '../providers/mapa_ubicaciones_notifier.dart';
 import '../providers/mapa_ubicaciones_providers.dart';
 import '../providers/situacion_mapa_providers.dart';
+import '../providers/ubicacion_colportor_provider.dart';
 import '../providers/zonas_del_mapa_providers.dart';
 import '../widgets/aviso_mapa.dart';
 import '../widgets/hoja_mapa_ubicaciones.dart';
@@ -108,6 +109,10 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   MapaUbicacionesNotifier get _notificador => ref.read(_proveedor.notifier);
 
+  /// El GPS del colportor: lo pide esta pestaña (es la única vista que muestra el diálogo del
+  /// permiso, #651) y lo leen todas las demás.
+  UbicacionColportorNotifier get _gps => ref.read(ubicacionColportorProvider.notifier);
+
   @override
   void initState() {
     super.initState();
@@ -134,14 +139,14 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   void _alAbrirPestana() {
     if (!mounted) return;
-    unawaited(_notificador.alAbrirPestana());
+    unawaited(_gps.alAbrirPestana());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState estado) {
     // Volvió de los ajustes del sistema: si estaba sin GPS, se vuelve a intentar.
     if (estado == AppLifecycleState.resumed && widget.activa) {
-      unawaited(_notificador.reintentarGpsSiHaceFalta());
+      unawaited(_gps.reintentarGpsSiHaceFalta());
     }
   }
 
@@ -321,7 +326,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     // Con el punto en la parte que la hoja deja libre.
     void centrar(Coordenadas punto) => _centrarEn(punto, _altura, zoomMinimo: MapaAlta.zoomCalle);
     centrar(lectura.coordenadas);
-    await _notificador.refrescarGps();
+    await _gps.refrescar();
     if (!mounted || gestos != _gestos) return;
     final nueva = ref.read(_proveedor).lectura;
     if (nueva != null && nueva.coordenadas != lectura.coordenadas) centrar(nueva.coordenadas);
@@ -627,7 +632,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                     alCerrarVistaPrevia: _notificador.cerrarSeleccion,
                     alElegirDelPunto: (id) => _elegir(id),
                     alReintentar: _notificador.reintentar,
-                    alActivarGps: () => unawaited(_notificador.activarGps()),
+                    alActivarGps: () => unawaited(_gps.activarGps()),
                     alRegistrar: () => unawaited(_abrirAlta()),
                     colportorId: widget.colportorId,
                   ),

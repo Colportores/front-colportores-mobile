@@ -26,6 +26,7 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 
 import 'mapa_base_falso.dart';
+import 'ubicacion_colportor_falsos.dart';
 import 'ubicacion_sin_modificar.dart';
 import 'zonas_falsas.dart';
 
@@ -286,11 +287,15 @@ List<Override> overridesAlta({
   SituacionMapa? situacion,
   bool situacionReal = false,
   String Function()? generadorId,
+  bool gpsAbierto = true,
 }) {
   final gpsFalso = gps ?? GpsFalso();
   var secuencia = 0;
   return [
     proveedorGpsProvider.overrideWithValue(gpsFalso),
+    // El alta no pide el permiso (#651): lee el GPS del colportor, que ya abrió el mapa. Con
+    // [gpsAbierto] `false` el mapa todavía no se abrió (nadie lo lee hasta que el test lo pida).
+    if (gpsAbierto) ubicacionColportorYaAbierta(),
     activadorGpsProvider.overrideWithValue(gpsFalso),
     geocodificadorInversoProvider.overrideWithValue(geocodificador ?? GeocodificadorFalso()),
     ciudadesParaAltaProvider.overrideWithValue(puertoCiudades ?? ciudades ?? CiudadesFalsas()),
