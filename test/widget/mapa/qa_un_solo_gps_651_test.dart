@@ -149,6 +149,7 @@ Future<void> _alVolverALaApp(WidgetTester tester) async {
 
 final _activarEnElMapa = find.byKey(ClavesMapaUbicaciones.activarGps);
 final _chipDeLaLista = find.text('◎ Sin GPS');
+final _chipSinPedir = find.text('◎ Sin GPS · Activar GPS');
 
 void main() {
   group('Criterio: primera vez en el Mapa, un solo diálogo; las demás vistas nunca lo piden', () {
@@ -162,7 +163,7 @@ void main() {
 
         await _irA(tester, 'lista');
         expect(gps.lecturas, 0, reason: 'la Lista no pide el permiso');
-        expect(_chipDeLaLista, findsNothing, reason: 'P3: sin pasar por el mapa no hay chip');
+        expect(_chipSinPedir, findsOneWidget, reason: 'sin pasar por el mapa se ofrece activarlo');
 
         await _irA(tester, 'mapa');
         expect(gps.lecturas, 1, reason: 'el mapa pide el permiso, una vez');
@@ -501,5 +502,94 @@ void main() {
         expect(gps.lecturas, antes, reason: 'el alta no relee: usa la lectura que ya había');
       },
     );
+  });
+
+  group('Delta: «Activar GPS» de la Lista lleva al Mapa (commit 6378f78c)', () {
+    testWidgets(
+      'dado que nunca pasó por el Mapa, cuando toca el chip de la Lista, entonces va al Mapa, que '
+      'lee una sola vez (un solo diálogo) y la Lista se actualiza',
+      (tester) async {
+        final gps = GpsFalso(Right(lecturaGps(7)));
+        await _montar(tester, gps: gps);
+        await _irA(tester, 'lista');
+        expect(gps.lecturas, 0);
+
+        await tester.tap(_chipSinPedir);
+        await asentarLista(tester);
+
+        expect(find.byKey(const Key('pestana_mapa')), findsOneWidget);
+        expect(gps.lecturas, 1, reason: 'solo el mapa lee');
+        expect(gps.activaciones, isEmpty, reason: 'sin motivo previo no hay ajuste que abrir');
+        await _irA(tester, 'lista');
+        expect(_chipSinPedir, findsNothing);
+        expect(find.textContaining('GPS ±7'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado que nunca pasó por el Mapa y el permiso se niega, cuando toca el chip, entonces queda '
+      'en el Mapa con «Activar GPS» a mano y la Lista pasa a «Sin GPS» sin repetir el diálogo',
+      (tester) async {
+        final gps = GpsFalso(_sin(MotivoSinGps.permisoDenegado));
+        await _montar(tester, gps: gps);
+        await _irA(tester, 'lista');
+
+        await tester.tap(_chipSinPedir);
+        await asentarLista(tester);
+
+        expect(gps.lecturas, 1);
+        // La hoja del mapa arranca minimizada: se sube para ver el aviso.
+        await tester.tap(find.byKey(ClavesMapaUbicaciones.asa));
+        await asentarLista(tester);
+        expect(_activarEnElMapa, findsOneWidget);
+        await _irA(tester, 'lista');
+        expect(_chipDeLaLista, findsOneWidget);
+        expect(_chipSinPedir, findsNothing);
+      },
+    );
+
+    testWidgets(
+      'dado sin señal, cuando toca el chip de la Lista, entonces no se superponen dos lecturas '
+      'que muestren dos diálogos (activar + abrir la pestaña)',
+      (tester) async {
+        final gps = GpsFalso(_sin(MotivoSinGps.sinSenal));
+        await _montar(tester, gps: gps);
+        await _irA(tester, 'mapa');
+        await _irA(tester, 'lista');
+        final antes = gps.lecturas;
+
+        await tester.tap(_chipDeLaLista);
+        await asentarLista(tester);
+
+        expect(gps.lecturas - antes, lessThanOrEqualTo(2));
+        expect(gps.activaciones, hasLength(1));
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    for (final tamano in const [Size(360, 640), Size(412, 915)]) {
+      for (final escala in const [1.0, 2.0]) {
+        testWidgets('chip «◎ Sin GPS · Activar GPS» de la Lista · ${tamano.width.toInt()}×'
+            '${tamano.height.toInt()} · texto $escala: sin overflow, dentro de la pantalla y con las '
+            'guías de accesibilidad', (tester) async {
+          final handle = tester.ensureSemantics();
+          await _montar(tester, gps: GpsFalso(), tamano: tamano, escala: escala);
+          await _irA(tester, 'lista');
+
+          expect(tester.takeException(), isNull);
+          final caja = tester.getRect(_chipSinPedir);
+          expect(caja.left, greaterThanOrEqualTo(0));
+          expect(caja.right, lessThanOrEqualTo(tamano.width));
+          await _capturar(tester, 'lista_sin_pedir_${tamano.width.toInt()}_x$escala');
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+          if (!_conCapturas) {
+            await expectLater(tester, meetsGuideline(textContrastGuideline));
+          }
+          handle.dispose();
+        });
+      }
+    }
   });
 }
