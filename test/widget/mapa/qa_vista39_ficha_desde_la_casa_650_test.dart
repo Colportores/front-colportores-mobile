@@ -393,22 +393,100 @@ void main() {
     });
   });
 
-  group('hallazgos (QA_HALLAZGOS=true los corre)', () {
-    const hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
+  group('32B·06 y 32B·07: el nombre completo de la fila es el título (decisión del 05/11)', () {
+    // Es un `Text` con exactamente el nombre que la fila mostraba.
+    Finder titulo(String nombre) => find.byWidgetPredicate((w) => w is Text && w.data == nombre);
 
-    // skip: QA #650 — 32B·06 y 32B·07 del canvas llevan el nombre como título («María Fernández»); la
-    // ficha sin leer solo muestra «PERSONA» y el nombre queda en el lector (06) o en el aviso (07).
     for (final estado in [EstadoFicha.cargando, EstadoFicha.error]) {
-      testWidgets('${estado.rotulo}: el título muestra el nombre de la fila', (tester) async {
+      testWidgets('${estado.rotulo}: el título es «María Pérez», como la ficha leída', (
+        tester,
+      ) async {
+        final semantica = tester.ensureSemantics();
         await _montarHoja(tester, mundo: mundoDe563(estado));
         await _tocarFila(tester);
 
-        final titulo = find.byWidgetPredicate(
-          (w) => w is Text && RegExp(r'^María( Pérez)?$').hasMatch(w.data ?? ''),
+        expect(titulo('María Pérez'), findsOneWidget);
+        expect(
+          tester.getSemantics(titulo('María Pérez')).flagsCollection.isHeader,
+          isTrue,
+          reason: 'el título es un encabezado',
         );
-        expect(titulo, findsWidgets);
-      }, skip: !hallazgos);
+        // El texto del lector de 06 y el aviso de 07 siguen diciendo el nombre de pila.
+        if (estado == EstadoFicha.cargando) {
+          expect(find.bySemanticsLabel(TextosFicha.cargando('María')), findsOneWidget);
+        } else {
+          expect(find.text(TextosFicha.noPudimosLeer('María')), findsOneWidget);
+        }
+        semantica.dispose();
+      });
+
+      testWidgets('${estado.rotulo}: persona sin apellido muestra solo el nombre', (tester) async {
+        await _montarHoja(
+          tester,
+          mundo: mundoDe563(estado),
+          personas: [_persona('per-1', 'María', apellido: '')],
+        );
+        await _tocarFila(tester);
+
+        expect(titulo('María'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+
+      for (final tamano in tamanos) {
+        for (final escala in escalas) {
+          testWidgets(
+            '${estado.rotulo}: título largo a ${tamano.width.toInt()}×${tamano.height.toInt()} al ${(escala * 100).toInt()} %: entero y sin overflow',
+            (tester) async {
+              final semantica = tester.ensureSemantics();
+              const completo = 'María de los Ángeles Fernández Ortiz de la Cruz';
+              await _montarHoja(
+                tester,
+                mundo: mundoDe563(estado),
+                tamano: tamano,
+                escala: escala,
+                personas: [
+                  _persona('per-1', 'María de los Ángeles', apellido: 'Fernández Ortiz de la Cruz'),
+                ],
+              );
+              await _tocarFila(tester);
+
+              expect(titulo(completo), findsOneWidget, reason: 'el título se dibuja entero');
+              await _capturar(
+                tester,
+                'titulo_${estado.name}_${tamano.width.toInt()}_${(escala * 10).toInt()}',
+              );
+              expect(tester.takeException(), isNull);
+              await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+              await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+              await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+              if (!_capturas) await expectLater(tester, meetsGuideline(textContrastGuideline));
+              semantica.dispose();
+            },
+          );
+        }
+      }
     }
+
+    testWidgets(
+      'el título ya no desaparece al reintentar: 07 → Reintentar → la ficha con el mismo nombre',
+      (tester) async {
+        final mundo = MundoFicha()..fichas.errorAlObservar = StateError('x');
+        await _montarHoja(tester, mundo: mundo);
+        await _tocarFila(tester);
+        expect(titulo('María Pérez'), findsOneWidget);
+
+        mundo.fichas.errorAlObservar = null;
+        await tester.tap(find.text(TextosFicha.reintentar));
+        await asentar(tester);
+
+        expect(find.byKey(ClavesFicha.error), findsNothing);
+        expect(
+          titulo('María Pérez'),
+          findsOneWidget,
+          reason: 'un solo título, el de la ficha leída',
+        );
+      },
+    );
   });
 
   group('casos límite del flujo', () {
