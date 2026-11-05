@@ -30,8 +30,6 @@ abstract final class ConstructorEstiloMapa {
   /// Van por debajo de todos los puntos y no están en [capasTocables]: no reciben toques.
   static const fuenteZonas = 'colportores-zonas';
   static const fuenteZonasRotulos = 'colportores-zonas-rotulos';
-  static const capaZonasOtrasRelleno = 'colportores:zonas-otras-relleno';
-  static const capaZonasOtrasBorde = 'colportores:zonas-otras-borde';
   static const capaZonaPropiaHalo = 'colportores:zonas-propia-halo';
   static const capaZonaPropiaRelleno = 'colportores:zonas-propia-relleno';
   static const capaZonaPropiaBorde = 'colportores:zonas-propia-borde';
@@ -397,11 +395,11 @@ abstract final class ConstructorEstiloMapa {
     respaldo,
   ];
 
-  /// Las zonas propias ([propia] `true`) o las demás.
-  static List<Object?> _esZona({required bool propia}) => [
+  /// Solo las zonas propias del colportor (#654).
+  static const List<Object?> _esZonaPropia = [
     '==',
     ['get', 'propia'],
-    propia,
+    true,
   ];
 
   static List<Object?> _filtroEstilo(EstiloPunto estilo) => ['all', _noEsGrupo, _esEstilo(estilo)];
@@ -446,35 +444,14 @@ abstract final class ConstructorEstiloMapa {
     return [
       // Las zonas (#511) van primero: por debajo de todo lo que el colportor toca. Estilo de zona del
       // panel (vista 24: relleno translúcido y borde del color de la zona) y el retoque del teléfono:
-      // la propia, arriba de las demás, con borde grueso, relleno más firme y un filete blanco que
-      // le asegura contraste sobre cualquier fondo; las demás, finas y tenues.
-      {
-        'id': capaZonasOtrasRelleno,
-        'type': 'fill',
-        'source': fuenteZonas,
-        'filter': _esZona(propia: false),
-        'paint': {
-          'fill-color': ['get', 'color'],
-          'fill-opacity': .05,
-        },
-      },
-      {
-        'id': capaZonasOtrasBorde,
-        'type': 'line',
-        'source': fuenteZonas,
-        'filter': _esZona(propia: false),
-        'layout': {'line-join': 'round'},
-        'paint': {
-          'line-color': ['get', 'color'],
-          'line-opacity': .45,
-          'line-width': 2,
-        },
-      },
+      // borde grueso, relleno más firme y un filete blanco que le asegura contraste sobre cualquier
+      // fondo. Solo se dibujan las zonas propias (#654): las de otros colportores no aparecen ni
+      // como contorno; el filtro `propia` lo asegura aunque una ajena llegara hasta acá.
       {
         'id': capaZonaPropiaHalo,
         'type': 'line',
         'source': fuenteZonas,
-        'filter': _esZona(propia: true),
+        'filter': _esZonaPropia,
         'layout': {'line-join': 'round'},
         'paint': {'line-color': blanco, 'line-opacity': .9, 'line-width': 7},
       },
@@ -482,7 +459,7 @@ abstract final class ConstructorEstiloMapa {
         'id': capaZonaPropiaRelleno,
         'type': 'fill',
         'source': fuenteZonas,
-        'filter': _esZona(propia: true),
+        'filter': _esZonaPropia,
         'paint': {
           'fill-color': ['get', 'color'],
           'fill-opacity': .2,
@@ -492,7 +469,7 @@ abstract final class ConstructorEstiloMapa {
         'id': capaZonaPropiaBorde,
         'type': 'line',
         'source': fuenteZonas,
-        'filter': _esZona(propia: true),
+        'filter': _esZonaPropia,
         'layout': {'line-join': 'round'},
         'paint': {
           'line-color': ['get', 'color'],
@@ -500,36 +477,17 @@ abstract final class ConstructorEstiloMapa {
         },
       },
       // El nombre de la zona: lo que dice cuál es la propia sin depender del color ni del grosor.
-      // La propia se acomoda primero y gana si dos nombres se pisan.
       if (conRecursos)
         {
           'id': capaZonasRotulo,
           'type': 'symbol',
           'source': fuenteZonasRotulos,
+          'filter': _esZonaPropia,
           'layout': {
             'text-field': ['get', 'rotulo'],
             'text-font': ['NotoSans-Medium'],
-            'text-size': [
-              'case',
-              [
-                '==',
-                ['get', 'propia'],
-                true,
-              ],
-              13,
-              12,
-            ],
+            'text-size': 13,
             'text-max-width': 9,
-            'symbol-sort-key': [
-              'case',
-              [
-                '==',
-                ['get', 'propia'],
-                true,
-              ],
-              0,
-              1,
-            ],
           },
           'paint': {
             'text-color': _hex(ColoresMapa.tinta),
