@@ -105,28 +105,31 @@ void main() {
       expect(TextosMapaZonas.paraElLector(const []), isNull);
     });
 
-    test('la propia y cuántas más hay', () {
-      expect(
-        TextosMapaZonas.paraElLector([
-          _zona('a', 'Cerro Norte', propia: true),
-          _zona('b', 'La Teja'),
-        ]),
-        'Tu zona: Cerro Norte. Otra zona en el mapa.',
-      );
-      expect(
-        TextosMapaZonas.paraElLector([
-          _zona('a', 'Cerro Norte', propia: true),
-          _zona('b', 'La Teja'),
-          _zona('c', 'Belvedere'),
-        ]),
-        'Tu zona: Cerro Norte. 2 zonas más en el mapa.',
-      );
-    });
+    test(
+      'nombra solo la propia: las de otros colportores no se mencionan ni se cuentan (#654)',
+      () {
+        expect(
+          TextosMapaZonas.paraElLector([
+            _zona('a', 'Cerro Norte', propia: true),
+            _zona('b', 'La Teja'),
+          ]),
+          'Tu zona: Cerro Norte.',
+        );
+        expect(
+          TextosMapaZonas.paraElLector([
+            _zona('a', 'Cerro Norte', propia: true),
+            _zona('b', 'La Teja'),
+            _zona('c', 'Belvedere'),
+          ]),
+          'Tu zona: Cerro Norte.',
+        );
+      },
+    );
 
-    test('solo las demás: no se inventa una zona propia', () {
+    test('solo las demás: no se dice nada ni se inventa una zona propia (#654)', () {
       expect(
         TextosMapaZonas.paraElLector([_zona('b', 'La Teja'), _zona('c', 'Belvedere')]),
-        '2 zonas más en el mapa.',
+        isNull,
       );
     });
 

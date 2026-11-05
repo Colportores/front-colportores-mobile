@@ -1,8 +1,10 @@
-// HU-UBI-003 (#511): las zonas de las campañas sobre el mapa de ubicaciones, con el estilo de zona del
-// panel (vista 24) y el retoque del teléfono: la propia resaltada, las demás tenues. No hay canvas
-// del teléfono (decisión de Cristian, 27/10, «Zonas mapa»): los casos son los del issue y los
-// límites de cada flujo. La vista nativa es la falsa del arnés: se mira lo que el mapa le pide
-// dibujar (`config.zonas`) y lo que oye el lector de pantalla.
+// HU-UBI-003 (#511, #654): las zonas del colportor sobre el mapa de ubicaciones, con el estilo de
+// zona del panel (vista 24) y el retoque del teléfono. Desde el #654 (decisión de Cristian, 04/11) el
+// mapa dibuja y nombra solo las zonas propias: las de otros colportores de la misma campaña y
+// ciudad llegan a la réplica (el cálculo de la zona de cada punto las necesita) pero no al dibujo.
+// No hay canvas del teléfono (decisión de Cristian, 27/10, «Zonas mapa»): los casos son los del
+// issue y los límites de cada flujo. La vista nativa es la falsa del arnés: se mira lo que el mapa
+// le pide dibujar (`config.zonas`) y lo que oye el lector de pantalla.
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/mapa_base.dart';
@@ -91,15 +93,21 @@ void main() {
       semantica.dispose();
     });
 
-    testWidgets('dada una sola zona que no es la del colportor (sin zona asignada), entonces se ve '
-        'tenue y no se inventa una propia', (tester) async {
+    testWidgets('dado un colportor sin zona asignada (la ciudad tiene zonas de otros), entonces no '
+        'se dibuja ninguna y el lector oye solo «Mapa de ubicaciones»', (tester) async {
       final semantica = tester.ensureSemantics();
-      final zonas = ZonasDelMapaFalsas([zonaCuadrada('a', nombre: 'La Teja')]);
-      final m = await _montar(tester, zonas);
+      final zonas = ZonasDelMapaFalsas([
+        zonaCuadrada('a', nombre: 'La Teja'),
+        zonaCuadrada('b', nombre: 'Belvedere', lon: -56.1),
+      ]);
+      final m = await _montar(tester, zonas, casas: _casasAgrupadas());
 
-      expect(_propias(m.mapa), {'a': false});
-      expect(_dibujadas(m.mapa).single.rotulo, 'La Teja');
-      expect(find.bySemanticsLabel('$_mapa. Otra zona en el mapa.'), findsOneWidget);
+      expect(_dibujadas(m.mapa), isEmpty);
+      expect(find.bySemanticsLabel(_mapa), findsOneWidget);
+      expect(find.textContaining('zona', findRichText: true), findsNothing);
+      expect(find.byType(MapaBase), findsOneWidget);
+      expect(botonNueva, findsOneWidget);
+      expect(tester.takeException(), isNull);
       semantica.dispose();
     });
 
@@ -107,7 +115,7 @@ void main() {
         'al menos 3:1', (tester) async {
       final zonas = ZonasDelMapaFalsas([
         zonaCuadrada('sin', propia: true, color: null),
-        zonaCuadrada('amarillo', color: '#FFFF00', lon: -56.10),
+        zonaCuadrada('amarillo', propia: true, color: '#FFFF00', lon: -56.10),
       ]);
       final m = await _montar(tester, zonas);
 
@@ -118,8 +126,8 @@ void main() {
   });
 
   group('varias zonas, superpuestas y anidadas', () {
-    testWidgets('dadas tres zonas que se pisan, entonces las tres llegan al mapa y solo la propia '
-        'está resaltada', (tester) async {
+    testWidgets('dadas tres zonas que se pisan, entonces al mapa llega solo la propia y el lector '
+        'no menciona las otras', (tester) async {
       final semantica = tester.ensureSemantics();
       final zonas = ZonasDelMapaFalsas([
         zonaCuadrada('a', nombre: 'Centro', lado: .06),
@@ -128,27 +136,46 @@ void main() {
       ]);
       final m = await _montar(tester, zonas);
 
-      expect(_propias(m.mapa), {'a': false, 'b': true, 'c': false});
-      expect(
-        find.bySemanticsLabel('$_mapa. Tu zona: Cordón. 2 zonas más en el mapa.'),
-        findsOneWidget,
-      );
+      expect(_propias(m.mapa), {'b': true});
+      expect(find.bySemanticsLabel('$_mapa. Tu zona: Cordón.'), findsOneWidget);
+      expect(find.textContaining('Centro', findRichText: true), findsNothing);
       semantica.dispose();
     });
 
-    testWidgets('dada la zona propia adentro de otra, entonces las dos llegan y cada una conserva '
-        'su nombre y su lugar', (tester) async {
+    testWidgets('dada la zona propia adentro de otra, entonces llega solo la propia con su nombre '
+        'y su lugar', (tester) async {
       final zonas = ZonasDelMapaFalsas([
         zonaCuadrada('grande', nombre: 'Ciudad vieja', lado: .1),
         zonaCuadrada('chica', nombre: 'Plaza', propia: true, lat: -34.87, lon: -56.17, lado: .01),
       ]);
       final m = await _montar(tester, zonas);
 
-      final porId = {for (final z in _dibujadas(m.mapa)) z.id: z};
-      expect(_propias(m.mapa), {'grande': false, 'chica': true});
-      expect(porId['chica']!.rotulo, 'Tu zona · Plaza');
-      expect(porId['grande']!.rotulo, 'Ciudad vieja');
-      expect(porId['chica']!.puntoRotulo, isNot(porId['grande']!.puntoRotulo));
+      final zona = _dibujadas(m.mapa).single;
+      expect(zona.id, 'chica');
+      expect(zona.rotulo, 'Tu zona · Plaza');
+      expect(zona.puntoRotulo, isNotNull);
+    });
+
+    testWidgets('dados dos colportores en la misma campaña y ciudad, cada uno dibuja solo la '
+        'suya', (tester) async {
+      // La réplica es la misma para los dos: trae las zonas de la ciudad. `propia` depende de la
+      // inscripción de cada uno (el repositorio la calcula; acá lo hace el falso).
+      final ana = ZonasDelMapaFalsas([
+        zonaCuadrada('zona-ana', nombre: 'Cerro Norte', propia: true),
+        zonaCuadrada('zona-beto', nombre: 'La Teja', lon: -56.1),
+      ]);
+      final beto = ZonasDelMapaFalsas([
+        zonaCuadrada('zona-ana', nombre: 'Cerro Norte'),
+        zonaCuadrada('zona-beto', nombre: 'La Teja', propia: true, lon: -56.1),
+      ]);
+
+      final deAna = await _montar(tester, ana);
+      expect(_dibujadas(deAna.mapa).map((z) => z.id), ['zona-ana']);
+      expect(_dibujadas(deAna.mapa).single.rotulo, 'Tu zona · Cerro Norte');
+
+      final deBeto = await _montar(tester, beto);
+      expect(_dibujadas(deBeto.mapa).map((z) => z.id), ['zona-beto']);
+      expect(_dibujadas(deBeto.mapa).single.rotulo, 'Tu zona · La Teja');
     });
 
     testWidgets('dadas dos zonas propias (el colportor está en dos campañas), entonces las dos se '
@@ -223,7 +250,7 @@ void main() {
   });
 
   group('al día con el pull', () {
-    testWidgets('dado un pull que cambia la zona propia, entonces el resaltado se mueve y el '
+    testWidgets('dado un pull que cambia la zona propia, entonces el mapa dibuja la nueva y el '
         'lector lo dice', (tester) async {
       final semantica = tester.ensureSemantics();
       final zonas = ZonasDelMapaFalsas([
@@ -231,7 +258,7 @@ void main() {
         zonaCuadrada('b', nombre: 'Cordón', lon: -56.1),
       ]);
       final m = await _montar(tester, zonas);
-      expect(_propias(m.mapa), {'a': true, 'b': false});
+      expect(_propias(m.mapa), {'a': true});
 
       zonas.emitir([
         zonaCuadrada('a', nombre: 'Centro'),
@@ -239,11 +266,26 @@ void main() {
       ]);
       await asentarLista(tester);
 
-      expect(_propias(m.mapa), {'a': false, 'b': true});
-      expect(
-        find.bySemanticsLabel('$_mapa. Tu zona: Cordón. Otra zona en el mapa.'),
-        findsOneWidget,
-      );
+      expect(_propias(m.mapa), {'b': true});
+      expect(find.bySemanticsLabel('$_mapa. Tu zona: Cordón.'), findsOneWidget);
+      semantica.dispose();
+    });
+
+    testWidgets('dado un pull que le quita la zona asignada (las ajenas siguen en la réplica), '
+        'entonces el mapa queda sin zonas y sin texto de más', (tester) async {
+      final semantica = tester.ensureSemantics();
+      final zonas = ZonasDelMapaFalsas([
+        zonaCuadrada('a', propia: true),
+        zonaCuadrada('b', lon: -56.1),
+      ]);
+      final m = await _montar(tester, zonas);
+      expect(_dibujadas(m.mapa), hasLength(1));
+
+      zonas.emitir([zonaCuadrada('a'), zonaCuadrada('b', lon: -56.1)]);
+      await asentarLista(tester);
+
+      expect(_dibujadas(m.mapa), isEmpty);
+      expect(find.bySemanticsLabel(_mapa), findsOneWidget);
       semantica.dispose();
     });
 
@@ -266,13 +308,14 @@ void main() {
         'último, sin pisarse ni perder ninguno', (tester) async {
       final zonas = ZonasDelMapaFalsas([zonaCuadrada('a')]);
       final m = await _montar(tester, zonas);
+      expect(_dibujadas(m.mapa), isEmpty);
 
       zonas
         ..emitir([zonaCuadrada('a'), zonaCuadrada('b', propia: true)])
         ..emitir([zonaCuadrada('b', propia: true), zonaCuadrada('c', lon: -56.1)]);
       await asentarLista(tester);
 
-      expect(_propias(m.mapa), {'b': true, 'c': false});
+      expect(_propias(m.mapa), {'b': true});
     });
   });
 
@@ -302,9 +345,9 @@ void main() {
       expect(_propias(m.mapa), {'a': true});
       expect(tester.takeException(), isNull);
 
-      zonas.emitir([zonaCuadrada('b')]);
+      zonas.emitir([zonaCuadrada('b', propia: true), zonaCuadrada('c', lon: -56.1)]);
       await asentarLista(tester);
-      expect(_propias(m.mapa), {'b': false});
+      expect(_propias(m.mapa), {'b': true});
     });
   });
 
@@ -339,15 +382,15 @@ void main() {
   });
 
   group('datos límite', () {
-    testWidgets('dadas 300 zonas, entonces todas llegan al mapa sin error', (tester) async {
+    testWidgets('dadas 300 zonas de la ciudad, entonces al mapa llega solo la propia, sin '
+        'error', (tester) async {
       final zonas = ZonasDelMapaFalsas([
         for (var i = 0; i < 300; i++)
           zonaCuadrada('z-$i', propia: i == 7, lon: -56.5 + i * .002, lado: .01),
       ]);
       final m = await _montar(tester, zonas, casas: _casasAgrupadas());
 
-      expect(_dibujadas(m.mapa), hasLength(300));
-      expect(_dibujadas(m.mapa).where((z) => z.propia), hasLength(1));
+      expect(_dibujadas(m.mapa).map((z) => z.id), ['z-7']);
       expect(tester.takeException(), isNull);
     });
 
@@ -370,8 +413,8 @@ void main() {
       final zonas = ZonasDelMapaFalsas([plana, zonaCuadrada('b', lon: -56.1)]);
       final m = await _montar(tester, zonas);
 
-      expect(_dibujadas(m.mapa), hasLength(2));
-      expect(_dibujadas(m.mapa).firstWhere((z) => z.id == 'plana').puntoRotulo, isNull);
+      expect(_dibujadas(m.mapa), hasLength(1));
+      expect(_dibujadas(m.mapa).single.puntoRotulo, isNull);
       expect(tester.takeException(), isNull);
     });
 
@@ -389,7 +432,7 @@ void main() {
         tamano: const Size(320, 568),
       );
 
-      expect(_dibujadas(m.mapa), hasLength(2));
+      expect(_dibujadas(m.mapa).map((z) => z.id), ['a']);
       expect(find.byType(MapaBase), findsOneWidget);
       expect(botonNueva, findsOneWidget);
       expect(botonMiUbicacion, findsOneWidget);

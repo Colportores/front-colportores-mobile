@@ -24,10 +24,21 @@ final zonasDelMapaRepositoryProvider = Provider<ZonasDelMapaRepository>(
   ),
 );
 
-/// Las zonas de las campañas vigentes del colportor [colportorId], al día con cada pull. Si la
-/// lectura falla el flujo queda en error: [zonasParaElMapaProvider] conserva lo último que se leyó.
+/// Las zonas **propias** del colportor [colportorId] que el mapa dibuja, al día con cada pull (#654).
+/// El repositorio lee todas las zonas de las ciudades de sus campañas (la réplica las necesita para
+/// calcular la zona de cada punto); acá se descartan las de otros colportores: el mapa no las
+/// dibuja ni las nombra. Sin zona asignada la lista queda vacía. Si la lectura falla el flujo queda
+/// en error: [zonasParaElMapaProvider] conserva lo último que se leyó.
 final zonasDelMapaProvider = StreamProvider.autoDispose.family<List<ZonaDelMapa>, String>(
-  (ref, colportorId) => ref.watch(zonasDelMapaRepositoryProvider).observar(colportorId),
+  (ref, colportorId) => ref
+      .watch(zonasDelMapaRepositoryProvider)
+      .observar(colportorId)
+      .map(
+        (zonas) => [
+          for (final zona in zonas)
+            if (zona.propia) zona,
+        ],
+      ),
   retry: _sinReintentos,
 );
 
