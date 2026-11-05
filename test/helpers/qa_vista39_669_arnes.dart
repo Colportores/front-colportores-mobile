@@ -9,7 +9,6 @@ import 'dart:ui' as ui;
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/agenda/domain/services/destino_de_entrevista.dart';
-import 'package:colportores_mobile/features/agenda/presentation/providers/entrevista_providers.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_persona_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
@@ -23,7 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'entrevista_dada_648_arnes.dart';
 import 'persona_falsos.dart';
 import 'qa_agenda_148_arnes.dart' show cargarFuentes;
-import 'qa_vista39_648_arnes.dart' show t360x640, t412x915;
+import 'qa_vista39_648_arnes.dart' show t360x640;
 
 export 'qa_agenda_148_arnes.dart' show usarFuentesReales;
 export 'qa_vista39_648_arnes.dart' show t360x640, t412x915;

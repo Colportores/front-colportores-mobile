@@ -12,7 +12,6 @@ import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_que_p
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../helpers/entrevista_dada_648_arnes.dart';
 import '../../helpers/qa_vista39_669_arnes.dart';
 
 /// Todos los textos que se ven en pantalla.
