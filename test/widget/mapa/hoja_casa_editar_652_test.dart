@@ -8,6 +8,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/lista_ubicaciones.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart' show TipoUbicacion;
 import 'package:colportores_mobile/features/mapa/presentation/pages/modificar_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_ubicacion.dart';
@@ -106,14 +107,14 @@ void main() {
 
       expect(_editar, findsOneWidget);
       expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+      expect(find.text('Editar casa'), findsOneWidget);
       expect(find.byKey(ClavesHojaCasa.titulo), findsOneWidget);
-      // Junto a la dirección: en la misma fila de la cabecera, arriba, no entre los botones de abajo.
-      expect(
-        (tester.getCenter(_editar).dy - tester.getCenter(find.byKey(ClavesHojaCasa.titulo)).dy)
-            .abs(),
-        lessThan(24),
-        reason: 'en la misma fila que la dirección',
-      );
+      // Junto a la dirección: al lado o, si no entra (texto grande, calle larga), justo abajo; siempre
+      // en la cabecera, antes de lo que sigue.
+      final titulo = tester.getRect(find.byKey(ClavesHojaCasa.titulo));
+      final boton = tester.getRect(_editar);
+      expect(boton.top, greaterThanOrEqualTo(titulo.top - 1));
+      expect(boton.top, lessThanOrEqualTo(titulo.bottom + 1));
       final caja = tester.getSize(_editar);
       expect(caja.height, greaterThanOrEqualTo(48));
       expect(caja.width, greaterThanOrEqualTo(48));
@@ -122,9 +123,26 @@ void main() {
         'Editar casa: Grecia 3310',
         reason: 'el lector dice qué casa se edita',
       );
-      expect(find.byTooltip('Editar casa'), findsOneWidget);
       semantica.dispose();
     });
+
+    for (final (tipo, rotulo) in [
+      (TipoUbicacion.edificio, 'Editar edificio'),
+      (TipoUbicacion.negocio, 'Editar negocio'),
+    ]) {
+      testWidgets(
+        'dado un ${tipo.name}, el rótulo del botón y del lector sigue el tipo ($rotulo)',
+        (tester) async {
+          final semantica = tester.ensureSemantics();
+          await _montar(tester, item: itemDeLaHoja(tipo: tipo));
+
+          expect(find.text(rotulo), findsOneWidget);
+          expect(find.text('Editar casa'), findsNothing);
+          expect(tester.getSemantics(_editar).label, '$rotulo: Grecia 3310');
+          semantica.dispose();
+        },
+      );
+    }
 
     testWidgets('dado que no se sabe quién es el colportor, no se ofrece (sin destino)', (
       tester,

@@ -9,6 +9,7 @@ import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart'
 import '../../domain/entities/contexto_de_la_casa.dart';
 import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
+import '../../domain/entities/ubicacion.dart' show TipoUbicacion;
 import '../../domain/services/cercania_de_la_casa.dart';
 import '../formato_espacios.dart' show TextosEspacios;
 import '../formato_hoja_casa.dart';
@@ -229,6 +230,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
                 direccion: FormatoUbicaciones.direccion(ubicacion),
                 subtitulo: subtitulo,
                 alCerrar: widget.alCerrar,
+                tipo: ubicacion.tipo,
                 alEditar: _editarCasa(),
               ),
               const SizedBox(height: 10),
@@ -383,13 +385,17 @@ class _Cabecera extends StatelessWidget {
     required this.subtitulo,
     required this.alCerrar,
     required this.alEditar,
+    required this.tipo,
   });
 
   final String direccion;
+
+  /// El tipo de la ubicación: el rótulo de «Editar …» lo sigue (casa, edificio o negocio).
+  final TipoUbicacion tipo;
   final String subtitulo;
   final VoidCallback alCerrar;
 
-  /// «Editar casa» junto a la dirección; `null` = no se ofrece.
+  /// El botón «Editar …» junto a la dirección; `null` = no se ofrece.
   final VoidCallback? alEditar;
 
   @override
@@ -402,48 +408,59 @@ class _Cabecera extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
+              // Con el botón la fila mide lo mismo que la ✕ (48 dp) y la dirección queda centrada en
+              // ella (lo mismo que 12 dp de aire arriba), así que el botón no le suma alto; sin él, el
+              // aire de siempre.
               child: Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Semantics(
-                  header: true,
-                  child: Text(
-                    direccion,
-                    key: ClavesHojaCasa.titulo,
-                    style: const TextStyle(
-                      fontFamily: 'SourceSerif4',
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                      height: 1.2,
-                      color: ColoresLista.tinta,
+                padding: EdgeInsets.only(top: alEditar == null ? 12 : 0),
+                // «Editar casa» (decisión de Cristian, 04/11; con el lápiz y el rótulo del tipo,
+                // decisión del 05/11, #652) va junto a la dirección y, si no entra a su lado (texto
+                // grande, calle larga), pasa abajo: ni la dirección ni el botón se recortan.
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 4,
+                  children: [
+                    Semantics(
+                      header: true,
+                      child: Text(
+                        direccion,
+                        key: ClavesHojaCasa.titulo,
+                        style: const TextStyle(
+                          fontFamily: 'SourceSerif4',
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          height: 1.2,
+                          color: ColoresLista.tinta,
+                        ),
+                      ),
                     ),
-                  ),
+                    if (alEditar != null)
+                      Semantics(
+                        button: true,
+                        label: TextosHojaCasa.editarDe(tipo, direccion),
+                        onTap: alEditar,
+                        excludeSemantics: true,
+                        child: TextButton.icon(
+                          key: ClavesHojaCasa.editar,
+                          onPressed: alEditar,
+                          icon: const Icon(Icons.edit_outlined, size: 16),
+                          label: Text(TextosHojaCasa.editar(tipo)),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                            foregroundColor: ColoresAlta.azul,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            // El texto del tema (con su tipografía): un `TextStyle` suelto caería en
+                            // la de sistema, más ancha.
+                            textStyle: Theme.of(
+                              context,
+                            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
-            // «Editar casa» (decisión de Cristian, 04/11, #652): el lápiz junto a la dirección, en la
-            // misma fila que la ✕ (48 dp de alto, igual que ella), así que no le suma alto a la hoja y
-            // no se aprieta con texto grande. Su nombre lo dice el lector de pantalla y un tooltip.
-            if (alEditar != null)
-              Semantics(
-                button: true,
-                label: TextosHojaCasa.editarCasaDe(direccion),
-                onTap: alEditar,
-                excludeSemantics: true,
-                child: Tooltip(
-                  message: TextosHojaCasa.editarCasa,
-                  excludeFromSemantics: true,
-                  child: InkResponse(
-                    key: ClavesHojaCasa.editar,
-                    onTap: alEditar,
-                    radius: 24,
-                    child: const SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: Icon(Icons.edit_outlined, size: 20, color: ColoresAlta.azul),
-                    ),
-                  ),
-                ),
-              ),
             Semantics(
               button: true,
               label: TextosMapaUbicaciones.cerrarVistaPrevia,

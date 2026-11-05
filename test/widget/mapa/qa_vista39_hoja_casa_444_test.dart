@@ -355,7 +355,10 @@ void main() {
         // A 360×640 con el texto al 200 % la hoja a un tercio solo deja ver el título y media línea del
         // subtítulo: no es un defecto, se llega a todo desplazando (decisión del 29/10, #541 P1). Esa
         // celda comprueba que la persona y «Registrar visita» se alcanzan desplazando, sin texto cortado.
-        final chico = t == _t360 && s == 2.0;
+        // Con «Editar casa» (botón con lápiz y rótulo, decisión del 05/11, #652) al 200 % la dirección y el
+        // botón no caben juntos: el botón pasa abajo y a 412×915 la persona también se alcanza
+        // desplazando.
+        final chico = s == 2.0;
         testWidgets(
           chico
               ? 'mapa · ${t.width.toInt()}×${t.height.toInt()} · texto $s×: la persona y «Registrar '

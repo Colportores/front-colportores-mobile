@@ -1,6 +1,8 @@
 import '../domain/entities/lista_ubicaciones.dart';
+import '../domain/entities/ubicacion.dart' show TipoUbicacion;
 import '../domain/services/cercania_de_la_casa.dart';
 import 'formato_baja.dart';
+import 'formato_espacios.dart' show TextosEspacios;
 import 'formato_lista_ubicaciones.dart';
 import 'formato_mapa_ubicaciones.dart';
 import 'formato_ubicaciones.dart';
@@ -18,14 +20,16 @@ abstract final class TextosHojaCasa {
   /// visita». Es decoración: el lector de pantalla solo dice [registrarVisita].
   static const tildeDelBoton = '✓';
 
-  /// «Editar casa» junto a la dirección (decisión de Cristian, 04/11, «Editar casa», #652): abre la
-  /// edición de la ubicación (vista 07). El canvas de la 39 no lo dibuja; manda la decisión.
-  static const editarCasa = 'Editar casa';
+  /// El rótulo del botón junto a la dirección (decisión de Cristian, 04/11, «Editar casa», #652; el
+  /// rótulo sigue el tipo, decisión del 05/11): «Editar casa», «Editar edificio» o «Editar negocio»,
+  /// como en la hoja de la Lista. Abre la edición de la ubicación (vista 07). El canvas de la 39 no lo
+  /// dibuja; manda la decisión.
+  static String editar(TipoUbicacion tipo) => TextosEspacios.editarUbicacion(tipo);
 
   /// Lo que lee el lector de pantalla del botón: lleva la dirección, porque la hoja puede estar
-  /// debajo de otras acciones y «Editar casa» solo no dice cuál.
-  static String editarCasaDe(String direccion) =>
-      direccion.trim().isEmpty ? editarCasa : '$editarCasa: $direccion';
+  /// debajo de otras acciones y el rótulo solo no dice cuál.
+  static String editarDe(TipoUbicacion tipo, String direccion) =>
+      direccion.trim().isEmpty ? editar(tipo) : '${editar(tipo)}: $direccion';
 
   /// A confirmar (mapa §2: texto): lo que dice la hoja si el destino de «Registrar visita» o de
   /// «$ Cobrar» no se pudo abrir. El canvas no dibuja el error.
