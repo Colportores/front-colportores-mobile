@@ -15,7 +15,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../helpers/entrevista_dada_648_arnes.dart';
 import '../../helpers/persona_falsos.dart';
 import '../../helpers/qa_vista39_661_arnes.dart';
 

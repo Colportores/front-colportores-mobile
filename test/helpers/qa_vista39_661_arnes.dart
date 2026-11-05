@@ -15,7 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'entrevista_dada_648_arnes.dart';
 import 'persona_falsos.dart';
 import 'qa_agenda_148_arnes.dart' show cargarFuentes;
-import 'qa_vista39_648_arnes.dart' show t360x640, t412x915;
+import 'qa_vista39_648_arnes.dart' show t360x640;
 
 export 'qa_agenda_148_arnes.dart' show usarFuentesReales;
 export 'qa_vista39_648_arnes.dart' show t360x640, t412x915, verHallazgos648;
