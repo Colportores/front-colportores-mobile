@@ -379,7 +379,7 @@ void main() {
       });
 
       testWidgets(
-        'si la otra entrevista se termina, el aviso desaparece y se puede dar la de esta casa',
+        'si la otra entrevista se termina sin venta, se cierra todo: mapa libre (Tras guardar)',
         (tester) async {
           await conOtraEnCurso(tester);
           await tester.ensureVisible(irALaEntrevista());
@@ -394,16 +394,39 @@ void main() {
             isEmpty,
             reason: 'la otra entrevista ya no está en curso',
           );
+          expect(a.resultados, [true], reason: 'la hoja de la casa se cierra');
+          expect(find.byKey(ClavesQuePaso.hoja), findsNothing);
+          expect(find.byKey(ClavesEntrevista.hojaEnCurso), findsNothing);
           expect(find.byKey(ClavesQuePaso.falla), findsNothing);
-          expect(irALaEntrevista(), findsNothing);
-          expect(
-            find.byKey(ClavesQuePaso.hoja),
-            findsOneWidget,
-            reason: '«¿Qué pasó?» sigue abierta',
-          );
+          expect(a.entrevistas, isEmpty, reason: 'la de esta casa no se empezó sola');
+          // Para dar la entrevista de esta casa, Ana la vuelve a tocar.
+          await a.abrirQuePaso(tester);
           await a.elegir(tester, OpcionQuePaso.entrevistaDada);
           expect(a.entrevistas, hasLength(1));
+          expect(a.entrevistas.single.espacioId, 'esp-1');
           expect(find.byKey(ClavesEntrevista.hojaEnCurso), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'si la otra entrevista se termina con venta, también se cierra todo: mapa libre',
+        (tester) async {
+          await conOtraEnCurso(tester);
+          await tester.ensureVisible(irALaEntrevista());
+          await tester.tap(irALaEntrevista());
+          await a.asentar(tester);
+          await a.tocarKey(tester, ClavesEntrevista.finalizar);
+          await a.tocarKey(tester, ClavesEntrevista.registrarVenta);
+          await a.armarLaVenta(tester);
+
+          await a.registrarSinFecha(tester);
+
+          expect(a.entorno.ventas.recibidas, hasLength(1));
+          expect(a.montaje.almacen.guardadas, isEmpty);
+          expect(a.resultados, [true], reason: 'la hoja de la casa se cierra');
+          expect(find.byKey(ClavesQuePaso.hoja), findsNothing);
+          expect(find.byKey(ClavesQuePaso.falla), findsNothing);
+          expect(a.entrevistas, isEmpty);
         },
       );
 

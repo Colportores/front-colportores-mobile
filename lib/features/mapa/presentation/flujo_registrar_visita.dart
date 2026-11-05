@@ -11,8 +11,6 @@ import '../../agenda/domain/usecases/registrar_resultado_visita_use_case.dart';
 import '../../agenda/presentation/flujo_entrevista_dada.dart';
 import '../../agenda/presentation/providers/agenda_providers.dart';
 import '../../agenda/presentation/widgets/flujo_entrevista.dart';
-import '../../agenda/presentation/widgets/hoja_termino_entrevista.dart'
-    show VentaGuardadaEnLaEntrevista;
 import '../../agenda/presentation/widgets/textos_entrevista.dart';
 import '../../jornada/domain/jornada_sin_cerrar.dart';
 import '../../jornada/domain/usecases/finalizar_jornada_use_case.dart';
@@ -186,26 +184,25 @@ abstract final class FlujoRegistrarVisita {
     }
 
     // «Ya tenés una entrevista en curso en …» lleva «Ir a la entrevista»: abre esa entrevista (R·05) con
-    // la misma navegación del aviso fijo del mapa. Al volver, si ya no está en curso (se terminó) el
-    // aviso desaparece y se puede elegir de nuevo; si sigue en curso, el aviso vuelve con su botón.
+    // la misma navegación del aviso fijo del mapa. Al volver con atrás, si sigue en curso, el aviso vuelve
+    // con su botón; si la terminó, eso es guardar y se cierra todo (ver abajo).
     OpcionFallida fallaConOtraEntrevista(String aviso, String colportor) => OpcionFallida(
       aviso,
       accion: (
         etiqueta: TextosEntrevista.irALaEntrevista,
         alTocar: () async {
           if (!context.mounted) return const OpcionCancelada();
-          final salida = await FlujoEntrevista.abrirEn(context, contenedor, colportorId: colportor);
-          // La venta de esa entrevista quedó guardada: la hoja de la casa se queda (R·08), como en las
-          // demás.
-          if (salida is VentaGuardadaEnLaEntrevista) {
-            return salidaConVenta(const VentaRegistradaEnLaCasa())!;
-          }
+          await FlujoEntrevista.abrirEn(context, contenedor, colportorId: colportor);
           final sigue = await FlujoEntrevistaDada.avisoSiHayOtraEnCurso(
             contenedor,
             colportorId: colportor,
             espacioId: espacioId,
           );
-          return sigue == null ? const OpcionCancelada() : fallaConOtraEntrevista(sigue, colportor);
+          // Si la terminó (con venta o sin venta) eso es guardar: se cierra «¿Qué pasó?» y la hoja de la
+          // casa, y queda el mapa libre (decisión de Cristian, «Tras guardar», 05/11). Para dar la
+          // entrevista de esta casa, se vuelve a tocar. Si volvió con atrás sin terminarla, sigue el
+          // aviso con su botón.
+          return sigue == null ? const OpcionResuelta() : fallaConOtraEntrevista(sigue, colportor);
         },
       ),
     );
