@@ -22,10 +22,6 @@ import '../../helpers/lista_ubicaciones_falsos.dart';
 import 'mapa_ubicaciones_arnes.dart';
 import 'mapa_ubicaciones_page_test.dart' show canvas;
 
-/// Los tests de un hallazgo se saltan (con el motivo en un comentario); `--dart-define=QA_HALLAZGOS=true`
-/// los corre. `skip` de `testWidgets` es un `bool?`, no un texto.
-const _sinHallazgos = !bool.fromEnvironment('QA_HALLAZGOS');
-
 const _tamanos = [Size(360, 640), Size(412, 915)];
 const _escalas = [1.0, 2.0];
 const _adelante = Coordenadas(lat: -34.88700, lon: -56.13024);
@@ -160,21 +156,23 @@ void main() {
   });
 
   group('acciones superpuestas', () {
-    testWidgets('mientras sigue, un toque en un marcador abre su vista previa sin soltar a Ana', (
-      tester,
-    ) async {
-      final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
-      await _tocarBoton(tester);
+    // Decisión P1 (§2, opción a): tocar una casa pasa a «Mapa libre»; antes seguía a Ana.
+    testWidgets(
+      'mientras sigue, un toque en un marcador abre su vista previa y pasa a «Mapa libre»',
+      (tester) async {
+        final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+        await _tocarBoton(tester);
 
-      m.mapa.tocarPunto('b');
-      await asentarLista(tester);
+        m.mapa.tocarPunto('b');
+        await asentarLista(tester);
 
-      expect(seleccionadaId(tester), 'b');
-      expect(m.gps.siguiendo, isTrue);
-    });
+        expect(seleccionadaId(tester), 'b');
+        expect(_modo(tester), ModoSeguimiento.libre);
+        expect(m.gps.siguiendo, isFalse);
+      },
+    );
 
-    // skip: QA #674 — tocar una casa mientras sigue la centra y el próximo paso de Ana vuelve a
-    // centrar en ella (pregunta §2).
+    // Decisión P1 (§2): tocar una casa pasa a «Mapa libre», así el próximo paso de Ana no la devuelve.
     testWidgets('dada la casa elegida mientras sigue, cuando Ana camina, entonces el mapa no la '
         'saca de la vista de la casa que acaba de tocar', (tester) async {
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
@@ -193,7 +191,7 @@ void main() {
             'tocar una casa mientras sigue la lleva al centro; el siguiente paso de Ana la '
             'devuelve a la colportora y la vista previa queda sobre una casa que ya no se ve',
       );
-    }, skip: _sinHallazgos);
+    });
 
     testWidgets('con la app que pasa por inactiva y vuelve (aviso del sistema, llamada) el stream '
         'se cierra y se reabre una sola vez', (tester) async {

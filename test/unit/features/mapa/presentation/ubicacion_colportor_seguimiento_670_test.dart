@@ -87,9 +87,14 @@ void main() {
         expect(b.estado.modo, ModoSeguimiento.seguir);
         expect(b.estado.enVivo, isTrue);
         expect(b.gps.siguiendo, isTrue);
-        expect(b.estado.lecturaViva, b.estado.lectura);
+        expect(
+          b.estado.lecturaViva,
+          isNull,
+          reason: 'hasta el primer evento la lectura es la vieja',
+        );
 
         await b.moverse(_lectura(_otraEsquina, rumbo: 90));
+        expect(b.estado.lecturaViva, b.estado.lectura, reason: 'ya llegó algo del stream');
         expect(b.estado.lectura, _lectura(_otraEsquina, rumbo: 90));
         expect(b.estado.posicion, _otraEsquina);
         expect(b.estado.gps, EstadoGpsLista.conLectura);
@@ -337,6 +342,121 @@ void main() {
     });
   });
 
+  group('el alta desde «Mapa libre» no parte de una lectura vieja', () {
+    const km = Coordenadas(lat: -34.8800, lon: -56.1302);
+
+    test(
+      'abrirla pide una lectura nueva y el pin parte de ella, sin diálogo del permiso',
+      () async {
+        final b = _Banco();
+        await b.abrirElMapa();
+        expect(b.estado.modo, ModoSeguimiento.libre);
+        expect(b.gps.lecturas, 1);
+        // La colportora caminó desde que miró el mapa.
+        b.gps.respuesta = Right(_lectura(km, precision: 4));
+
+        b.abrirAlta();
+        await pumpEventQueue();
+
+        expect(b.gps.lecturas, 2, reason: 'una lectura nueva al abrir');
+        expect(b.gps.activaciones, isEmpty, reason: 'sin diálogo: el permiso ya estaba dado');
+        expect(b.alta.punto, km);
+        expect(b.alta.lectura?.coordenadas, km);
+        expect(b.alta.lectura?.precisionMetros, 4);
+        expect(b.alta.gps, EstadoGps.conLectura);
+      },
+    );
+
+    test('mientras la lectura nueva viene, el alta dice que busca y no muestra la vieja', () async {
+      final b = _Banco();
+      await b.abrirElMapa();
+      b.gps
+        ..bloqueo = Completer<void>()
+        ..respuesta = Right(_lectura(km));
+
+      b.abrirAlta();
+      await pumpEventQueue();
+      expect(b.alta.gps, EstadoGps.buscando);
+      expect(b.alta.punto, isNull);
+
+      b.gps.bloqueo!.complete();
+      await pumpEventQueue();
+      expect(b.alta.punto, km);
+    });
+
+    test(
+      'si la lectura nueva falla, parte de la última buena y el alta no queda trabada',
+      () async {
+        final b = _Banco();
+        await b.abrirElMapa();
+        final ultima = b.estado.lectura!;
+        b.gps.respuesta = const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.sinSenal));
+
+        b.abrirAlta();
+        await pumpEventQueue();
+
+        expect(b.alta.gps, EstadoGps.conLectura);
+        expect(b.alta.punto, ultima.coordenadas);
+      },
+    );
+
+    test('con el pin ya puesto a mano (dedo mantenido) no espera ni mueve el pin', () async {
+      final b = _Banco();
+      await b.abrirElMapa();
+      b.gps.respuesta = Right(_lectura(km));
+      const aMano = Coordenadas(lat: -34.7, lon: -56.0);
+
+      const parametros = ParametrosAlta(colportorId: 'col-1', puntoInicial: aMano);
+      b.contenedor.listen(altaUbicacionProvider(parametros), (_, _) {});
+      await pumpEventQueue();
+
+      final alta = b.contenedor.read(altaUbicacionProvider(parametros));
+      expect(alta.punto, aMano);
+      expect(b.gps.lecturas, 1);
+    });
+
+    test(
+      '«Volver a mi ubicación» en libre lee otra vez y lleva el pin a donde está ahora',
+      () async {
+        final b = _Banco();
+        await b.abrirElMapa();
+        b.abrirAlta();
+        await pumpEventQueue();
+        const aMano = Coordenadas(lat: -34.7, lon: -56.0);
+        b.contenedor.read(altaUbicacionProvider(parametrosAlta).notifier).marcarPunto(aMano);
+        b.gps.respuesta = Right(_lectura(km, precision: 5));
+
+        await b.contenedor
+            .read(altaUbicacionProvider(parametrosAlta).notifier)
+            .volverAMiUbicacion();
+
+        expect(b.alta.punto, km);
+        expect(b.alta.lectura?.coordenadas, km);
+        expect(b.alta.origen, OrigenCoordenadas.gps);
+      },
+    );
+
+    test('«Volver a mi ubicación» dos veces seguidas: gana la última', () async {
+      final b = _Banco();
+      await b.abrirElMapa();
+      b.abrirAlta();
+      await pumpEventQueue();
+      final alta = b.contenedor.read(altaUbicacionProvider(parametrosAlta).notifier);
+      final lenta = Completer<Either<Failure, LecturaGps>>();
+      const ultima = Coordenadas(lat: -34.8900, lon: -56.1400);
+      // La lectura 2 fue la de abrir el alta: el primer toque es la 3 (lenta), el segundo la 4.
+      b.gps.porLectura = (numero) =>
+          numero == 3 ? lenta.future : Future.value(Right(_lectura(ultima)));
+
+      final primera = alta.volverAMiUbicacion();
+      final segunda = alta.volverAMiUbicacion();
+      lenta.complete(Right(_lectura(km)));
+      await Future.wait([primera, segunda]);
+
+      expect(b.alta.punto, ultima);
+    });
+  });
+
   group('el alta y Modificar usan la posición viva', () {
     test('con el seguimiento prendido, el pin del alta arranca en la posición de ahora', () async {
       final b = _Banco();
@@ -378,7 +498,7 @@ void main() {
       const adelante = Coordenadas(lat: -34.9, lon: -56.14);
       await b.moverse(_lectura(adelante, precision: 5));
 
-      b.contenedor.read(altaUbicacionProvider(parametrosAlta).notifier).volverAMiUbicacion();
+      await b.contenedor.read(altaUbicacionProvider(parametrosAlta).notifier).volverAMiUbicacion();
 
       expect(b.alta.punto, adelante);
       expect(b.alta.lectura?.coordenadas, adelante);
@@ -401,7 +521,9 @@ void main() {
         expect(b.alta.punto, aMano, reason: 'el pin puesto a mano no se mueve solo');
         expect(b.alta.lectura?.coordenadas, _otraEsquina);
 
-        b.contenedor.read(altaUbicacionProvider(parametrosAlta).notifier).volverAMiUbicacion();
+        await b.contenedor
+            .read(altaUbicacionProvider(parametrosAlta).notifier)
+            .volverAMiUbicacion();
         expect(b.alta.punto, _otraEsquina);
       },
     );

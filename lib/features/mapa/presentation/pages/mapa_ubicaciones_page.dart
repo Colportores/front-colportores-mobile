@@ -26,6 +26,7 @@ import '../providers/lista_ubicaciones_providers.dart';
 import '../providers/mapa_base_providers.dart';
 import '../providers/mapa_ubicaciones_notifier.dart';
 import '../providers/mapa_ubicaciones_providers.dart';
+import '../providers/pantallas_sobre_el_mapa.dart';
 import '../providers/situacion_mapa_providers.dart';
 import '../providers/ubicacion_colportor_provider.dart';
 import '../providers/zonas_del_mapa_providers.dart';
@@ -132,10 +133,17 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   /// El mismo GPS, guardado para `dispose`: ahí `ref` ya no se puede leer.
   late final UbicacionColportorNotifier _gpsAlDescartar;
 
+  /// Las pantallas apiladas en el navegador y la ruta de esta pestaña: con otra pantalla encima que no
+  /// sea una capa del mapa (la ficha de una persona, una agenda…) el seguimiento se apaga.
+  late final PantallasSobreElMapa _pantallas;
+  ModalRoute<dynamic>? _ruta;
+  var _cubierta = false;
+
   @override
   void initState() {
     super.initState();
     _gpsAlDescartar = ref.read(ubicacionColportorProvider.notifier);
+    _pantallas = ref.read(pantallasSobreElMapaProvider)..cambios.addListener(_alCambiarLaPila);
     WidgetsBinding.instance.addObserver(this);
     final estadoApp = WidgetsBinding.instance.lifecycleState;
     _enPrimerPlano = estadoApp == null || estadoApp == AppLifecycleState.resumed;
@@ -145,6 +153,12 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
         _avisarSiEstaALaVista();
       });
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ruta = ModalRoute.of(context);
   }
 
   @override
@@ -166,6 +180,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _pantallas.cambios.removeListener(_alCambiarLaPila);
     // El mapa deja de estar a la vista: el seguimiento no sigue gastando batería sin pantalla. Fuera
     // del desmontaje (un provider no se toca mientras se arma o se desarma el árbol).
     final gps = _gpsAlDescartar;
@@ -173,11 +188,22 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     super.dispose();
   }
 
-  /// Le dice al GPS único si el mapa está a la vista: la pestaña activa y la app en primer plano.
+  /// Se apiló o se cerró una pantalla: si el mapa quedó tapado por una que no es una capa suya, o
+  /// dejó de estarlo, se lo dice al GPS (fuera del cuadro actual: el navegador avisa en pleno gesto).
+  void _alCambiarLaPila() {
+    if (!mounted) return;
+    final cubierta = _pantallas.hayPantallaAjenaSobre(_ruta);
+    if (cubierta == _cubierta) return;
+    _cubierta = cubierta;
+    scheduleMicrotask(_avisarSiEstaALaVista);
+  }
+
+  /// Le dice al GPS único si el mapa está a la vista: la pestaña activa y la app en primer plano, sin
+  /// otra pantalla (que no sea el alta o «Modificar») encima.
   /// Cuando vuelve a estarlo con el seguimiento prendido, el mapa se lleva de nuevo a la posición.
   void _avisarSiEstaALaVista() {
     if (!mounted) return;
-    final aLaVista = widget.activa && _enPrimerPlano;
+    final aLaVista = widget.activa && _enPrimerPlano && !_cubierta;
     _gps.mapaALaVista(aLaVista);
     if (!aLaVista) return;
     final gps = ref.read(ubicacionColportorProvider);
@@ -395,6 +421,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     _notificador.seleccionar(ubicacionId);
     final nueva = _altura == AlturaHoja.minimizada ? AlturaHoja.tercio : _altura;
     if (nueva != _altura) setState(() => _altura = nueva);
+    _soltarElSeguimiento();
     if (item != null) _centrarEn(item.ubicacion.coordenadas, nueva, zoomMinimo: zoomMinimo);
   }
 
@@ -440,6 +467,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     // la baja si quiere el mapa).
     const nueva = AlturaHoja.mitad;
     if (nueva != _altura) setState(() => _altura = nueva);
+    _soltarElSeguimiento();
     if (tocada != null) _centrarEn(tocada.ubicacion.coordenadas, nueva);
   }
 
@@ -465,6 +493,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
           _notificador.seleccionar(ubicacion.id);
           final nueva = _altura == AlturaHoja.minimizada ? AlturaHoja.tercio : _altura;
           if (nueva != _altura) setState(() => _altura = nueva);
+          _soltarElSeguimiento();
           _centrarEn(ubicacion.coordenadas, nueva, zoomMinimo: MapaAlta.zoomCalle);
         case UbicacionReutilizada(:final ubicacionId):
           _alReutilizar(ubicacionId);
@@ -512,6 +541,13 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   /// La colportora movió el mapa con el dedo: deja de seguirla (como en Maps).
   void _alMoverElMapa() {
     _gestos++;
+    _soltarElSeguimiento();
+  }
+
+  /// Un gesto de la colportora sobre el mapa (arrastrarlo, elegir una casa o una fila) deja de
+  /// seguirla: si no, la próxima lectura del GPS llevaría el mapa de vuelta a ella y pisaría lo que
+  /// acaba de elegir. El mapa se queda como ella lo dejó (no se endereza).
+  void _soltarElSeguimiento() {
     if (!ref.read(ubicacionColportorProvider).modo.sigue) return;
     _libreDeUnGesto = true;
     _gps.cambiarModo(ModoSeguimiento.libre);

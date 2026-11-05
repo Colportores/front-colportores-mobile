@@ -2,6 +2,7 @@
 // Cristian del 05/11, «GPS viejo»): el botón de ubicación tiene tres modos —libre, seguir y seguir y
 // girar— y el mapa sigue a la colportora como Maps. El canvas solo dibuja «Mi ubicación» (06C·01):
 // los tres modos no tienen artboard, así que acá se prueba cada modo, sus cambios y sus casos límite.
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:colportores_mobile/core/error/failure.dart' show MotivoSinGps;
@@ -10,6 +11,7 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenada
 import 'package:colportores_mobile/features/mapa/domain/value_objects/modo_seguimiento.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:colportores_mobile/features/mapa/presentation/formato_mapa_ubicaciones.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/pantallas_sobre_el_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/ubicacion_colportor_provider.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';
 import 'package:flutter/material.dart';
@@ -283,6 +285,56 @@ void main() {
       expect(m.mapa.movimientos.length, movimientos, reason: 'no hay otro movimiento del código');
     });
 
+    testWidgets('elegir una casa en el mapa mientras la sigue la suelta: la próxima lectura no '
+        'devuelve el mapa a ella', (tester) async {
+      final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+      await _tocarBoton(tester);
+      expect(m.gps.siguiendo, isTrue);
+
+      m.mapa.tocarPunto('d');
+      await asentarLista(tester);
+
+      final casa = punto(m.mapa, 'd').coordenadas;
+      expect(_modo(tester), ModoSeguimiento.libre);
+      expect(m.gps.siguiendo, isFalse);
+      expect(seleccionadaId(tester), 'd');
+      expect(dpBajoElPunto(m.mapa, casa), closeTo(altoHoja(tester) / 2, 0.01));
+
+      await _moverse(tester, m.gps, _lectura(_adelante));
+      expect(dpBajoElPunto(m.mapa, casa), closeTo(altoHoja(tester) / 2, 0.01));
+      expect(dpALaDerechaDelPunto(m.mapa, casa), closeTo(0, 0.01));
+    });
+
+    testWidgets('elegir una fila de la lista mientras la sigue también la suelta', (tester) async {
+      final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+      await _tocarBoton(tester);
+      await tocarAsa(tester, 2);
+
+      await tester.tap(fila('d'));
+      await asentarLista(tester);
+
+      final casa = punto(m.mapa, 'd').coordenadas;
+      expect(seleccionadaId(tester), 'd');
+      expect(_modo(tester), ModoSeguimiento.libre);
+      await _moverse(tester, m.gps, _lectura(_masAdelante));
+      expect(dpBajoElPunto(m.mapa, casa), closeTo(altoHoja(tester) / 2, 0.01));
+    });
+
+    testWidgets('elegir una casa con el mapa girado lo deja girado y vuelve a «libre»', (
+      tester,
+    ) async {
+      final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+      await _tocarBoton(tester);
+      await _tocarBoton(tester);
+      await _moverse(tester, m.gps, _lectura(_adelante, rumbo: 135));
+
+      m.mapa.tocarPunto('d');
+      await asentarLista(tester);
+
+      expect(_modo(tester), ModoSeguimiento.libre);
+      expect(m.mapa.camara!.rumbo, 135, reason: 'queda como estaba, no se endereza de golpe');
+    });
+
     testWidgets('después de soltarla, un toque al botón la vuelve a seguir desde el principio', (
       tester,
     ) async {
@@ -320,6 +372,85 @@ void main() {
       expect(m.mapa.camara!.rumbo, 10);
       expect(_pixelesAlPunto(m.mapa, _masAdelante), closeTo(altoHoja(tester) / 2, 0.01));
     });
+
+    testWidgets(
+      'otra pantalla encima de la pestaña Mapa (la ficha de una persona, una agenda) cierra '
+      'el stream; al cerrarla vuelve en el mismo modo y la primera lectura la lleva a ella',
+      (tester) async {
+        final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+        await _tocarBoton(tester);
+        await _tocarBoton(tester);
+        expect(m.gps.siguiendo, isTrue);
+
+        final navegador = tester.state<NavigatorState>(find.byType(Navigator));
+        unawaited(
+          navegador.push(
+            MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('ficha'))),
+          ),
+        );
+        await asentarLista(tester);
+        expect(find.text('ficha'), findsOneWidget);
+        expect(m.gps.siguiendo, isFalse, reason: 'tapado por otra pantalla: sin stream');
+        expect(_modo(tester), ModoSeguimiento.seguirYGirar, reason: 'el modo se recuerda');
+
+        navegador.pop();
+        await asentarLista(tester);
+        expect(m.gps.siguiendo, isTrue, reason: 'al cerrarla, el mapa vuelve a seguirla');
+        expect(_modo(tester), ModoSeguimiento.seguirYGirar);
+        await _moverse(tester, m.gps, _lectura(_masAdelante, rumbo: 10));
+        expect(m.mapa.camara!.rumbo, 10);
+      },
+    );
+
+    testWidgets('dos pantallas apiladas: el stream vuelve recién cuando se cierra la última', (
+      tester,
+    ) async {
+      final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+      await _tocarBoton(tester);
+      final navegador = tester.state<NavigatorState>(find.byType(Navigator));
+
+      for (final texto in ['uno', 'dos']) {
+        unawaited(
+          navegador.push(MaterialPageRoute<void>(builder: (_) => Scaffold(body: Text(texto)))),
+        );
+        await asentarLista(tester);
+      }
+      expect(m.gps.siguiendo, isFalse);
+
+      navegador.pop();
+      await asentarLista(tester);
+      expect(m.gps.siguiendo, isFalse, reason: 'todavía queda una pantalla encima');
+
+      navegador.pop();
+      await asentarLista(tester);
+      expect(m.gps.siguiendo, isTrue);
+      expect(_modo(tester), ModoSeguimiento.seguir);
+    });
+
+    testWidgets(
+      'el alta y «Modificar» son capas del mapa: con ellas encima el stream sigue abierto',
+      (tester) async {
+        final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
+        await _tocarBoton(tester);
+        final navegador = tester.state<NavigatorState>(find.byType(Navigator));
+
+        for (final nombre in RutasCapaDelMapa.todas) {
+          unawaited(
+            navegador.push(
+              MaterialPageRoute<void>(
+                settings: RouteSettings(name: nombre),
+                builder: (_) => const Scaffold(body: Text('capa')),
+              ),
+            ),
+          );
+          await asentarLista(tester);
+          expect(m.gps.siguiendo, isTrue, reason: '$nombre no apaga el seguimiento');
+          navegador.pop();
+          await asentarLista(tester);
+          expect(m.gps.siguiendo, isTrue);
+        }
+      },
+    );
 
     testWidgets('con la app en segundo plano se cierra y al volver se reabre', (tester) async {
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));

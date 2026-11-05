@@ -20,9 +20,6 @@ import '../../../../helpers/zonas_falsas.dart';
 /// Donde estaba Ana cuando abrió el mapa (`puntoItalia`) y donde está ahora, a unos 400 m.
 const _ahora = Coordenadas(lat: -34.8840, lon: -56.1302);
 
-/// Los tests de un hallazgo se saltan con el motivo; `--dart-define=QA_HALLAZGOS=true` los corre.
-Object _omitir(String motivo) => const bool.fromEnvironment('QA_HALLAZGOS') ? false : motivo;
-
 LecturaGps _lectura(Coordenadas punto) => LecturaGps(coordenadas: punto, precisionMetros: 5);
 
 final class _Banco {
@@ -81,33 +78,25 @@ void main() {
           reason: 'el pin parte de la posición de ahora, no de la vieja',
         );
       },
-      skip: _omitir(
-        'QA #674: en «Mapa libre» el alta parte de la última lectura (la de abrir la pestaña) sin pedir otra; contradice P2 (a) y el cuerpo del PR',
-      ),
     );
 
-    test(
-      'dado el alta abierta con el pin a mano y Ana en otro lugar, cuando toca «Volver a mi '
-      'ubicación» en libre, entonces lee de nuevo y el pin va adonde está ahora',
-      () async {
-        final b = _Banco();
-        await b.abrirElMapa();
-        b.abrirAlta();
-        await pumpEventQueue();
-        b.altaNotifier.marcarPunto(const Coordenadas(lat: -34.7, lon: -56.0));
-        await pumpEventQueue();
-        b.gps.respuesta = Right(_lectura(_ahora));
+    test('dado el alta abierta con el pin a mano y Ana en otro lugar, cuando toca «Volver a mi '
+        'ubicación» en libre, entonces lee de nuevo y el pin va adonde está ahora', () async {
+      final b = _Banco();
+      await b.abrirElMapa();
+      b.abrirAlta();
+      await pumpEventQueue();
+      b.altaNotifier.marcarPunto(const Coordenadas(lat: -34.7, lon: -56.0));
+      await pumpEventQueue();
+      final antes = b.gps.lecturas;
+      b.gps.respuesta = Right(_lectura(_ahora));
 
-        b.altaNotifier.volverAMiUbicacion();
-        await pumpEventQueue();
+      await b.altaNotifier.volverAMiUbicacion();
+      await pumpEventQueue();
 
-        expect(b.gps.lecturas, 2, reason: 'sin seguimiento hay que leer de nuevo');
-        expect(b.alta.punto, _ahora);
-      },
-      skip: _omitir(
-        'QA #674: «Volver a mi ubicación» del alta en libre usa la lectura guardada (vieja) y no lee de nuevo, a diferencia de Modificar',
-      ),
-    );
+      expect(b.gps.lecturas, antes + 1, reason: 'sin seguimiento hay que leer de nuevo');
+      expect(b.alta.punto, _ahora);
+    });
 
     test(
       'control: con seguimiento el pin del alta parte de la posición viva sin otra lectura',
@@ -143,9 +132,6 @@ void main() {
           reason: 'ningún evento del stream llegó: la lectura sigue siendo la vieja',
         );
       },
-      skip: _omitir(
-        'QA #674: lecturaViva devuelve la lectura vieja apenas se abre el stream; el alta/Modificar pueden partir de ella hasta el primer evento',
-      ),
     );
   });
 }

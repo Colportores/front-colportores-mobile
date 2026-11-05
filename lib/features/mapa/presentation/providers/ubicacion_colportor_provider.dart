@@ -22,6 +22,7 @@ final class UbicacionColportorState extends Equatable {
     this.motivoSinGps,
     this.modo = ModoSeguimiento.libre,
     this.enVivo = false,
+    this.llegoDelStream = false,
     this.cortes = 0,
   });
 
@@ -42,6 +43,10 @@ final class UbicacionColportorState extends Equatable {
   /// se leyó. Pasa solo con un [modo] que sigue y el mapa a la vista.
   final bool enVivo;
 
+  /// El stream abierto ya trajo una lectura: hasta ese primer evento, [lectura] sigue siendo la de
+  /// antes de abrirlo (puede ser vieja).
+  final bool llegoDelStream;
+
   /// Cuántas veces se cortó el seguimiento solo (el GPS se apagó o dejó de responder): quien
   /// escucha avisa a la colportora una vez por cada corte.
   final int cortes;
@@ -49,9 +54,9 @@ final class UbicacionColportorState extends Equatable {
   /// La posición con la que se ordena y se mide, si hay.
   Coordenadas? get posicion => lectura?.coordenadas;
 
-  /// La posición de ahora, si el seguimiento la mantiene viva; si no, `null`: la última lectura
-  /// puede ser vieja.
-  LecturaGps? get lecturaViva => enVivo ? lectura : null;
+  /// La posición de ahora, si el seguimiento la mantiene viva y ya trajo una lectura; si no, `null`:
+  /// la última lectura puede ser vieja.
+  LecturaGps? get lecturaViva => enVivo && llegoDelStream ? lectura : null;
 
   UbicacionColportorState copyWith({
     EstadoGpsLista? gps,
@@ -60,6 +65,7 @@ final class UbicacionColportorState extends Equatable {
     bool borrarMotivo = false,
     ModoSeguimiento? modo,
     bool? enVivo,
+    bool? llegoDelStream,
     int? cortes,
   }) => UbicacionColportorState(
     gps: gps ?? this.gps,
@@ -67,11 +73,12 @@ final class UbicacionColportorState extends Equatable {
     motivoSinGps: borrarMotivo ? null : (motivoSinGps ?? this.motivoSinGps),
     modo: modo ?? this.modo,
     enVivo: enVivo ?? this.enVivo,
+    llegoDelStream: llegoDelStream ?? this.llegoDelStream,
     cortes: cortes ?? this.cortes,
   );
 
   @override
-  List<Object?> get props => [gps, lectura, motivoSinGps, modo, enVivo, cortes];
+  List<Object?> get props => [gps, lectura, motivoSinGps, modo, enVivo, llegoDelStream, cortes];
 }
 
 /// El único GPS del colportor (decisión de Cristian, 04/11, #651).
@@ -216,7 +223,7 @@ class UbicacionColportorNotifier extends Notifier<UbicacionColportorState> {
             onError: (Object _, StackTrace _) => _alTerminarElStream(),
             onDone: _alTerminarElStream,
           );
-      state = state.copyWith(enVivo: true);
+      state = state.copyWith(enVivo: true, llegoDelStream: false);
     } else if (!hace && _suscripcion != null) {
       _cerrarSeguimiento();
     }
@@ -226,7 +233,7 @@ class UbicacionColportorNotifier extends Notifier<UbicacionColportorState> {
     final suscripcion = _suscripcion;
     _suscripcion = null;
     if (suscripcion != null) unawaited(suscripcion.cancel());
-    if (state.enVivo) state = state.copyWith(enVivo: false);
+    if (state.enVivo) state = state.copyWith(enVivo: false, llegoDelStream: false);
   }
 
   void _alLlegarLectura(Either<Failure, LecturaGps> resultado) {
@@ -234,7 +241,12 @@ class UbicacionColportorNotifier extends Notifier<UbicacionColportorState> {
     resultado.fold<void>(_cortarSeguimiento, (lectura) {
       // Esta lectura es más nueva que cualquier lectura suelta que siga en vuelo.
       _secuencia++;
-      state = state.copyWith(gps: EstadoGpsLista.conLectura, lectura: lectura, borrarMotivo: true);
+      state = state.copyWith(
+        gps: EstadoGpsLista.conLectura,
+        lectura: lectura,
+        llegoDelStream: true,
+        borrarMotivo: true,
+      );
     });
   }
 
