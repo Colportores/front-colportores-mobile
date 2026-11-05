@@ -242,8 +242,8 @@ void main() {
     );
 
     testWidgets(
-      'dado el chip de la Lista, cuando lo toca dos veces con el diálogo abierto, entonces se abre '
-      'un solo diálogo y al cerrarlo puede volver a tocarlo',
+      'dado el chip de la Lista, cuando lo toca con el diálogo abierto, entonces la lleva al mapa '
+      '(un solo diálogo, ya no sobre la Lista) y al cerrarlo puede volver a tocarlo',
       (tester) async {
         final gps = GpsFalso(_sin(MotivoSinGps.permisoDenegado));
         await _montar(tester, gps: gps);
@@ -253,13 +253,14 @@ void main() {
 
         await tester.tap(_chipDeLaLista);
         await tester.pump();
-        await tester.tap(_chipDeLaLista, warnIfMissed: false);
-        await tester.pump();
-        expect(gps.activaciones, hasLength(1), reason: 'un segundo toque no abre otro diálogo');
+        // La Lista pasó a segundo plano: no hay segundo chip que tocar sobre el diálogo abierto.
+        expect(_chipDeLaLista, findsNothing);
+        expect(gps.activaciones, hasLength(1), reason: 'un solo diálogo, el del mapa');
 
         gps.bloqueoActivacion!.complete();
         await asentarLista(tester);
         gps.bloqueoActivacion = null;
+        await _irA(tester, 'lista');
         await tester.tap(_chipDeLaLista);
         await asentarLista(tester);
         expect(gps.activaciones, hasLength(2), reason: 'no quedó nada trabado');
