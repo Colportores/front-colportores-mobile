@@ -159,10 +159,10 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   void _alCrearseElMapa(ControladorMapaBase mapa) {
     _mapa = mapa;
-    // Si el shell ya pidió ir a una casa, la cámara va ahí y no al GPS. Se atiende al terminar el
-    // cuadro: acá se está construyendo y no se puede tocar ningún provider.
+    // Si el shell ya pidió algo, se atiende al terminar el cuadro: acá se está construyendo y no se
+    // puede tocar ningún provider. La cámara la mueve la intención si le toca (`_atenderIntencion`);
+    // si no la mueve, el encuadre de la primera vez sigue como siempre.
     if (ref.read(navegacionInicioProvider).intencion != null) {
-      _camaraDirigida = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => _atenderIntencion());
     }
     _encuadrarSiHaceFalta(ref.read(_proveedor));
@@ -191,14 +191,21 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       if (item.ubicacion.id == intencion.ubicacionId) casa = item;
     }
     ref.read(navegacionInicioProvider.notifier).atendida(intencion);
-    _camaraDirigida = true;
     if (intencion.conSuHoja) {
-      // Una casa que no está entre las del colportor no tiene hoja que subir.
-      if (casa != null) _elegir(intencion.ubicacionId, zoomMinimo: MapaAlta.zoomCalle);
+      // Una casa que no está entre las del colportor no tiene hoja que subir ni cámara que mover.
+      if (casa != null) {
+        _camaraDirigida = true;
+        _elegir(intencion.ubicacionId, zoomMinimo: MapaAlta.zoomCalle);
+      }
       return;
     }
     _notificador.cerrarSeleccion();
-    if (casa != null && !_estaALaVista(casa.ubicacion.coordenadas)) {
+    if (casa == null) return;
+    // Mapa recién armado, todavía sin encuadre (con la vista del país entera «todo se ve» y no sirve):
+    // la casa a un zoom de calle. Si ya estaba encuadrado, solo se mueve si la casa quedó fuera.
+    final sinEncuadrar = _encuadre == _Encuadre.ninguno;
+    if (sinEncuadrar || !_estaALaVista(casa.ubicacion.coordenadas)) {
+      _camaraDirigida = true;
       _centrarEn(casa.ubicacion.coordenadas, _altura, zoomMinimo: MapaAlta.zoomCalle);
     }
   }

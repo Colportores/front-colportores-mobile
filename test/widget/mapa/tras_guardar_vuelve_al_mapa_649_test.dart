@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart'
     show ContextoDeCita, ContextoDeCobro, ContextoDeVisita;
+import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_mapa_ubicaciones.dart';
 import 'package:flutter/material.dart';
@@ -283,6 +284,9 @@ void main() {
         expect(_vistaPrevia, findsNothing);
         expect(m.pestana, _mapa);
         expect(m.seleccionada, isNull);
+        // El mapa nunca se había abierto: queda sobre la casa, no en todo el país.
+        expect(m.mapa.armada, isTrue);
+        expect(m.mapa.camara!.zoom, greaterThanOrEqualTo(MapaAlta.zoomCalle));
       },
     );
 

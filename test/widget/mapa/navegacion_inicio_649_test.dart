@@ -7,6 +7,7 @@ import 'package:colportores_mobile/features/jornada/data/datasources/fakes/jorna
 import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_mapa_ubicaciones.dart';
 import 'package:dartz/dartz.dart';
@@ -246,6 +247,49 @@ void main() {
       expect(m.seleccionada, isNull);
       expect(_resumen, findsNothing);
     });
+
+    testWidgets(
+      'cuando el mapa nunca se abrió, entonces la cámara queda sobre la casa a zoom de calle y no '
+      'en todo el país',
+      (tester) async {
+        final casa = filaLista('a', metrosAlNorte: 30);
+        final m = await montar649(tester, filas: [casa]);
+        expect(m.mapa.armada, isFalse);
+
+        m.notificador.volverAlMapa('a');
+        await m.asentar();
+        await m.asentar();
+
+        expect(m.pestana, _mapa);
+        expect(m.seleccionada, isNull);
+        expect(m.mapa.movimientos, isNotEmpty, reason: 'la cámara se movió a la casa');
+        final camara = m.mapa.camara!;
+        expect(camara.zoom, greaterThanOrEqualTo(MapaAlta.zoomCalle));
+        expect(
+          ProyeccionMercator.distanciaPixeles(
+            camara.centro,
+            casa.ubicacion.coordenadas,
+            camara.zoom,
+          ),
+          lessThan(400),
+        );
+      },
+    );
+
+    testWidgets(
+      'cuando el mapa nunca se abrió y la casa no es de la colportora, entonces se encuadra como '
+      'siempre (todas las ubicaciones)',
+      (tester) async {
+        final m = await montar649(tester, filas: [filaLista('a', metrosAlNorte: 30)]);
+
+        m.notificador.volverAlMapa('de-otro');
+        await m.asentar();
+        await m.asentar();
+
+        expect(m.mapa.movimientos, isNotEmpty, reason: 'el encuadre de la primera vez corrió');
+        expect(m.mapa.camara!.zoom, greaterThanOrEqualTo(MapaAlta.zoomCalle));
+      },
+    );
 
     testWidgets('cuando la casa ya se ve en el mapa, entonces la cámara no se mueve', (
       tester,
