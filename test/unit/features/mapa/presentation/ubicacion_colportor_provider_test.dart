@@ -88,10 +88,12 @@ void main() {
       expect(b.alta.punto, b.estado.posicion, reason: 'el pin parte de la lectura recordada');
     });
 
-    test('abrir el alta o la lista después no relee el GPS', () async {
+    test('abrir la lista después no relee el GPS; el alta, desde «Mapa libre», lee una vez más '
+        '(#670: nunca parte de una lectura vieja) sin abrir el permiso', () async {
       final b = _Banco();
       await b.ubicacion.alAbrirPestana();
       await _esperar();
+      final antes = b.gps.lecturas;
 
       // Armar un alta nueva es lo que pasa cada vez que se abre.
       const otraApertura = ParametrosAlta(colportorId: 'col-1', apertura: 2);
@@ -99,7 +101,7 @@ void main() {
       await _esperar();
 
       expect(b.contenedor.read(altaUbicacionProvider(otraApertura)).gps, EstadoGps.conLectura);
-      expect(b.gps.lecturas, 1);
+      expect(b.gps.lecturas, antes + 1, reason: 'una lectura nueva para el alta, ninguna más');
       expect(b.gps.activaciones, isEmpty);
     });
 
@@ -206,12 +208,13 @@ void main() {
       final b = _Banco();
       await b.ubicacion.alAbrirPestana();
       await _esperar();
+      final antes = b.gps.lecturas;
       b.contenedor.invalidate(mapaUbicacionesProvider('col-1'));
       b.contenedor.invalidate(listaUbicacionesProvider('col-1'));
 
       expect(b.mapa.lectura, b.estado.lectura, reason: 'el centro inicial del mapa');
       expect(b.lista.posicion, b.estado.posicion);
-      expect(b.gps.lecturas, 1);
+      expect(b.gps.lecturas, antes);
     });
 
     test('una lectura que falla después no tira la última buena', () async {

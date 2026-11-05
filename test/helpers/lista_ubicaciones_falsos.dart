@@ -244,6 +244,7 @@ List<Override> overridesLista({
   return [
     ubicacionRepositoryProvider.overrideWithValue(repo),
     proveedorGpsProvider.overrideWithValue(gpsFalso),
+    seguidorGpsProvider.overrideWithValue(gpsFalso),
     // Solo el mapa pide el GPS (#651): la Lista lo lee. Con [gpsAbierto] el colportor ya pasó por el
     // mapa; sin él, nadie lo lee hasta que el test lo pida (o monte la pestaña Mapa).
     if (gpsAbierto) ubicacionColportorYaAbierta(),

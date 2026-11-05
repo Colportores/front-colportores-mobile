@@ -16,6 +16,7 @@ import '../providers/alta_ubicacion_notifier.dart'
 import '../providers/alta_ubicacion_providers.dart';
 import '../providers/baja_ubicacion_providers.dart';
 import '../providers/modificar_ubicacion_notifier.dart';
+import '../providers/pantallas_sobre_el_mapa.dart' show RutasCapaDelMapa;
 import '../widgets/dialogos_modificar.dart';
 import '../widgets/hoja_baja.dart';
 import '../widgets/hoja_ciudad.dart';
@@ -98,6 +99,7 @@ class ModificarUbicacionPage extends ConsumerStatefulWidget {
     bool ofreceIrALaCobranza = false,
   }) => Navigator.of(context).push<SalidaModificarUbicacion>(
     MaterialPageRoute(
+      settings: const RouteSettings(name: RutasCapaDelMapa.modificar),
       builder: (_) => ModificarUbicacionPage(
         parametros: ParametrosModificar(
           colportorId: colportorId,

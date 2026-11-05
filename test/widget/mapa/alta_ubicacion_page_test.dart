@@ -1186,19 +1186,23 @@ void main() {
 
     testWidgets(
       'al reentrar arranca de cero: «Casa» elegida aunque la anterior fuera otro tipo, y con '
-      'la lectura del GPS único, sin leer otra vez',
+      'una lectura nueva del GPS único (#670: desde «Mapa libre» nunca parte de una vieja)',
       (tester) async {
         final e = await _montar(tester);
         await _tocar(tester, find.text('Edificio'));
         expect(_marcado('Edificio'), findsOneWidget);
         await _tocar(tester, find.byTooltip('Cerrar'));
-        expect(e.gps.lecturas, 1);
+        final antes = e.gps.lecturas;
 
         await tester.tap(find.text('abrir'));
         await _asentar(tester);
 
-        expect(e.gps.lecturas, 1, reason: 'el alta no pide el GPS ni el permiso (#651)');
-        expect(find.text('GPS ±6 m'), findsOneWidget, reason: 'parte de la última lectura');
+        expect(
+          e.gps.lecturas,
+          antes + 1,
+          reason: 'una lectura nueva al abrir; el permiso ya estaba (#651)',
+        );
+        expect(find.text('GPS ±6 m'), findsOneWidget, reason: 'parte de la lectura nueva');
         expect(find.byIcon(Icons.check), findsOneWidget);
         expect(_marcado('Casa'), findsOneWidget, reason: 'no recuerda el tipo del alta anterior');
         expect(_marcado('Edificio'), findsNothing);

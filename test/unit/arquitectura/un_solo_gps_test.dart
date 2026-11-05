@@ -85,6 +85,21 @@ void main() {
       );
     });
 
+    test('solo el provider único abre el stream del seguimiento (#670)', () async {
+      final fuera = await _usosFuera(RegExp(r'seguidorGpsProvider|\.seguir\(\)'), [
+        _providerUnico,
+        _cableado,
+        _adaptador,
+        'features/mapa/data/services/plataforma_gps_geolocator.dart',
+      ]);
+
+      expect(
+        fuera,
+        isEmpty,
+        reason: 'el seguimiento de la ubicación lo maneja el GPS único:\n${fuera.join('\n')}',
+      );
+    });
+
     test('ninguna vista toca el puerto ni el plugin del GPS', () async {
       final fuera = await _usosFuera(
         RegExp(r'proveedorGpsProvider|proveedorGpsPlataformaProvider|plataformaGpsProvider'),
