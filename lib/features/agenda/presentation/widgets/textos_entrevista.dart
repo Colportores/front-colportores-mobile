@@ -102,9 +102,8 @@ abstract final class TextosEntrevista {
       ? 'La venta no se guardó. La entrevista sigue en curso.'
       : 'La venta no se guardó. La entrevista con ${persona.trim()} sigue en curso.';
 
-  /// «Vender» de «¿Qué pasó?» (no hay entrevista en curso): la venta no se completó y no cambió nada.
-  /// Propuesta (mapa §2: texto/aviso).
-  static const ventaDeLaCasaNoGuardada = 'La venta no se guardó. Podés volver a tocar «Vender».';
+  /// El botón del aviso «Ya tenés una entrevista en curso en …» de «¿Qué pasó?»: abre esa entrevista.
+  static const irALaEntrevista = 'Ir a la entrevista';
 
   /// «Entrevista dada» con otra entrevista en curso en otra casa: no se empieza una segunda encima.
   /// Propuesta (mapa §2: caso límite de UI).
