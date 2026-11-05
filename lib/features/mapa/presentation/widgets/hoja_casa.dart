@@ -9,13 +9,14 @@ import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart'
 import '../../domain/entities/contexto_de_la_casa.dart';
 import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
+import '../../domain/entities/persona.dart';
 import '../../domain/services/cercania_de_la_casa.dart';
 import '../formato_hoja_casa.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
 import '../pages/alta_persona_page.dart';
 import '../providers/hoja_casa_providers.dart';
-import '../textos_personas.dart' show TextosPersonas;
+import '../textos_personas.dart' show FormatoPersonas, TextosPersonas;
 import '../textos_registrar_visita.dart';
 import 'estados_hoja_casa.dart';
 import 'hoja_con_quien.dart' show mostrarHojaConQuienParaProgramar;
@@ -285,13 +286,21 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
 
   /// Lo que hace tocar a la persona [personaId] (abrir su ficha, 32B), o `null` si no se ofrece: sin
   /// destino enganchado la fila no se toca. Se puede abrir con la casa dada de baja (es solo ver).
-  VoidCallback? Function(String personaId) _abrirFicha(ContextoDeLaCasa contexto) {
+  /// La ficha recibe el nombre de pila que la fila ya tiene ([nombre] vacío = sin nombre).
+  VoidCallback? Function(Persona persona) _abrirFicha(ContextoDeLaCasa contexto) {
     final destino = ref.watch(fichaDePersonaDesdeLaCasaProvider);
     final espacioId = contexto.espacioId;
-    return (personaId) {
+    return (persona) {
       if (destino == null || espacioId == null) return null;
+      final pila = persona.nombre.trim();
+      final completo = FormatoPersonas.nombreCompleto(persona);
       return () => _correr(
-        () => destino((personaId: personaId, espacioId: espacioId)),
+        () => destino((
+          personaId: persona.id,
+          espacioId: espacioId,
+          nombre: pila.isEmpty ? null : pila,
+          nombreCompleto: completo.isEmpty ? null : completo,
+        )),
         TextosPestanasHojaCasa.noPudimosAbrirFicha,
       );
     };
@@ -506,7 +515,7 @@ class _Arriba extends ConsumerWidget {
   final VoidCallback? alRegistrarVisita;
   final VoidCallback? alAgendar;
   final VoidCallback? Function(String personaId) alCobrar;
-  final VoidCallback? Function(String personaId) alAbrirFicha;
+  final VoidCallback? Function(Persona persona) alAbrirFicha;
   final VoidCallback? alAgregarPersona;
   final ValueChanged<PestanaHojaCasa> alElegirPestana;
 
@@ -564,7 +573,7 @@ class _Arriba extends ConsumerWidget {
                     null => null,
                   },
                   alCobrar: alCobrar(p.persona.id),
-                  alAbrir: alAbrirFicha(p.persona.id),
+                  alAbrir: alAbrirFicha(p.persona),
                 ),
             ],
             alAgregar: alAgregarPersona,

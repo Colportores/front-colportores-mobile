@@ -142,8 +142,16 @@ final cobrarDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDe
 );
 
 /// Lo que recibe «Ver la ficha» de una persona de la pestaña Personas (vista 39 C·02: «Tocar una
-/// persona abre su ficha», vista 32 B): la persona y el espacio ya puestos.
-typedef ContextoDeFicha = ({String personaId, String espacioId});
+/// persona abre su ficha», vista 32 B): la persona y el espacio ya puestos y el nombre que la fila ya
+/// tiene, para que «Cargando la ficha de María», el error 32B·07 («No pudimos leer los datos de María en
+/// tu teléfono.») y el título de 32B·06/07 («María Fernández») lo digan antes de que la ficha se lea.
+/// `nombre` es el de pila y `nombreCompleto` el que la fila muestra; `null` = «la persona» y sin título.
+typedef ContextoDeFicha = ({
+  String personaId,
+  String espacioId,
+  String? nombre,
+  String? nombreCompleto,
+});
 
 /// A dónde lleva tocar una persona de la pestaña Personas (la ficha de la persona, vista 32 B,
 /// HU-UBI-009). **Sin destino**: mientras sea `null` la fila no se puede tocar y no lleva «›»
