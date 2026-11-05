@@ -220,7 +220,11 @@ void main() {
         for (final c in capasZona) {
           expect(
             c['filter'],
-            equals(['==', ['get', 'propia'], true]),
+            equals([
+              '==',
+              ['get', 'propia'],
+              true,
+            ]),
             reason: 'la capa ${c['id']} tiene que filtrar por propia',
           );
           expect((c['id'] as String), isNot(contains('otras')));
