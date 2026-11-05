@@ -15,7 +15,8 @@ import '../formato_hoja_casa.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
 import '../pages/alta_persona_page.dart';
-import '../pages/modificar_ubicacion_page.dart' show UbicacionBajaRealizada;
+import '../pages/modificar_ubicacion_page.dart'
+    show UbicacionBajaRealizada, UbicacionExistenteElegida;
 import '../providers/hoja_casa_providers.dart';
 import '../textos_personas.dart' show TextosPersonas;
 import '../textos_registrar_visita.dart';
@@ -81,6 +82,7 @@ class HojaCasa extends ConsumerStatefulWidget {
     this.alReactivar,
     this.arriba = false,
     this.colportorId,
+    this.alAbrirOtra,
   });
 
   final ItemListaUbicacion item;
@@ -99,6 +101,11 @@ class HojaCasa extends ConsumerStatefulWidget {
   /// UUID del colportor con la sesión iniciada (`created_by` de las altas). Sin él no se ofrece
   /// «+ Agregar persona».
   final String? colportorId;
+
+  /// «Abrir la existente» del aviso de duplicado de «Editar casa» (decisión del 05/11, #652): el
+  /// anfitrión (el mapa o la Lista) reemplaza esta hoja por la de esa otra ubicación (él sabe cómo
+  /// cerrar la suya antes de abrir la otra). Sin él, la hoja solo se cierra.
+  final ValueChanged<String>? alAbrirOtra;
 
   @override
   ConsumerState<HojaCasa> createState() => _HojaCasaState();
@@ -235,7 +242,8 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
 
   /// Lo que hace «Editar casa», o `null` si no se ofrece: sin saber quién es el colportor, o con la
   /// casa de baja (esa se reactiva, no se edita). Abre la vista 07 con la ubicación de la casa y, al
-  /// guardar o cancelar, **vuelve a esta hoja**, que sigue abierta (si se dio de baja, se cierra): la casa se lee de la lista viva y
+  /// guardar o cancelar, **vuelve a esta hoja**, que sigue abierta (si se dio de baja, o si se eligió
+  /// «Abrir la existente», se cierra y en ese caso [alAbrirOtra] abre la otra): la casa se lee de la lista viva y
   /// muestra la dirección nueva sin cerrar la hoja ni mover el mapa. Comparte la guarda de las demás
   /// acciones (un doble toque abre una sola edición). Con la cuenta restringida no se abre otra edición.
   VoidCallback? _editarCasa() {
@@ -252,6 +260,15 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
       // Se dio de baja desde la 07 (09·01): la casa ya no está activa, así que la hoja no vuelve con
       // sus acciones (Registrar visita, Editar casa); se cierra, como el resto de la salida del mapa.
       if (salida is UbicacionBajaRealizada && mounted) widget.alCerrar();
+      // «Abrir la existente»: la edición no se guardó y se abre esa otra casa, como en la vista 10.
+      if (salida is UbicacionExistenteElegida && mounted) {
+        final abrirOtra = widget.alAbrirOtra;
+        if (abrirOtra == null) {
+          widget.alCerrar();
+        } else {
+          abrirOtra(salida.ubicacionId);
+        }
+      }
     }, TextosEspacios.noPudimosAbrirEdicion);
   }
 

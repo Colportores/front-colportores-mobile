@@ -256,6 +256,8 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     colportorId: widget.colportorId,
     item: item,
     alReactivar: _reactivar,
+    // «Abrir la existente» desde «Editar casa» (#652): la hoja de esa otra ubicación.
+    alAbrirOtra: _abrirLaExistente,
   );
 
   /// «Abrir la existente» del aviso de un duplicado: la hoja de esa ubicación, que es la de la casa si

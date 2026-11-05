@@ -25,6 +25,7 @@ typedef _Apertura = ({String colportorId, String ubicacionId});
 class _Escenario {
   final aperturas = <_Apertura>[];
   final cierres = <int>[];
+  final otras = <String>[];
   final item = ValueNotifier<ItemListaUbicacion>(itemDeLaHoja());
 }
 
@@ -35,6 +36,7 @@ Future<_Escenario> _montar(
   String? colportorId = 'col-1',
   double escala = 1,
   bool arriba = false,
+  bool conAnfitrion = true,
   Size tamano = const Size(390, 844),
 }) async {
   tester.view.physicalSize = tamano;
@@ -75,6 +77,7 @@ Future<_Escenario> _montar(
                 alCerrar: () => e.cierres.add(e.cierres.length),
                 colportorId: colportorId,
                 arriba: arriba,
+                alAbrirOtra: conAnfitrion ? e.otras.add : null,
               ),
             ),
           ),
@@ -170,12 +173,12 @@ void main() {
       expect(_editar, findsOneWidget);
     });
 
-    testWidgets('dado que se cerró la edición sin guardar (null) o con otra salida, la hoja sigue '
+    testWidgets('dado que se cerró la edición sin guardar (null) o se guardó, la hoja sigue '
         'abierta y se puede volver a editar', (tester) async {
       var vez = 0;
       final e = await _montar(
         tester,
-        alAbrir: (_) async => ++vez == 1 ? null : const UbicacionExistenteElegida('u-2'),
+        alAbrir: (_) async => ++vez == 1 ? null : UbicacionEditada(itemDeLaHoja().ubicacion),
       );
 
       await tester.tap(_editar);
@@ -202,6 +205,40 @@ void main() {
 
         expect(e.aperturas, hasLength(1));
         expect(e.cierres, hasLength(1));
+      },
+    );
+
+    testWidgets(
+      'dado «Abrir la existente» en el aviso de duplicado (UbicacionExistenteElegida), la '
+      'hoja se cierra y su anfitrión abre esa otra ubicación; la edición no se guarda',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          alAbrir: (_) async => const UbicacionExistenteElegida('u-2'),
+        );
+
+        await tester.tap(_editar);
+        await _asentar(tester);
+
+        expect(e.aperturas, hasLength(1));
+        expect(e.otras, ['u-2'], reason: 'el anfitrión reemplaza la hoja por la de la otra');
+      },
+    );
+
+    testWidgets(
+      'dado «Abrir la existente» sin anfitrión que abra la otra, la hoja solo se cierra',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          conAnfitrion: false,
+          alAbrir: (_) async => const UbicacionExistenteElegida('u-2'),
+        );
+
+        await tester.tap(_editar);
+        await _asentar(tester);
+
+        expect(e.cierres, hasLength(1));
+        expect(e.otras, isEmpty);
       },
     );
 
