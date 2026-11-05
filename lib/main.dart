@@ -29,6 +29,8 @@ import 'features/agenda/data/recordatorios/motor_de_avisos_plugin.dart';
 import 'features/agenda/data/recordatorios/recordatorios_locales.dart';
 import 'features/agenda/presentation/flujo_agendar_visita.dart';
 import 'features/agenda/presentation/flujo_detalle_agenda.dart';
+import 'features/agenda/presentation/flujo_entrevista_dada.dart';
+import 'features/agenda/presentation/flujo_vender_desde_la_casa.dart';
 import 'features/agenda/presentation/providers/consulta_agenda_providers.dart';
 import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
@@ -285,7 +287,7 @@ Future<void> main() async {
         ),
         // «Registrar visita» de la hoja de la casa (vista 39, #411): «¿Qué pasó?» y el aviso
         // «Guardado» con «Deshacer». Se abre sobre el navegador de la app, no sobre la hoja que se
-        // cierra. «Entrevista dada» y «Cobranza» se enganchan con sus HU.
+        // cierra.
         registrarVisitaDesdeLaCasaProvider.overrideWith(
           (ref) => (datos) {
             final contexto = navigatorKeyColportores.currentContext;
@@ -336,6 +338,33 @@ Future<void> main() async {
             final contexto = navigatorKeyColportores.currentContext;
             if (contexto == null) return false;
             return FlujoCobrarDesdeLaCasa.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «Entrevista dada» de «¿Qué pasó?» (vista 39, R·04 → R·05, #648): «Empezar entrevista» guarda la
+        // entrevista en curso con la hora del toque y abre «Entrevista en curso»; de ahí «¿Hubo venta?»
+        // y la venta. Devuelve `true` si la entrevista quedó guardada o en curso.
+        entrevistaDadaDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoEntrevistaDada.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «Vender» de «¿Qué pasó?» (vista 39, decisión de Cristian del 04/11, #648): la venta (vista 27)
+        // de la casa y la persona de la última entrevista dada. Solo se ofrece si ya hubo una.
+        venderDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoVenderDesdeLaCasa.abrir(
               contexto,
               datos,
               colportorId: ref.read(sesionProvider).value?.usuarioId,
