@@ -14,7 +14,6 @@ import '../../jornada/domain/usecases/finalizar_jornada_use_case.dart';
 import '../../jornada/domain/usecases/obtener_jornada_activa_use_case.dart';
 import '../../jornada/presentation/providers/jornada_providers.dart';
 import '../domain/entities/eleccion_de_cita.dart';
-import '../domain/entities/persona_de_la_entrevista.dart';
 import 'formato_ubicaciones.dart';
 import 'providers/hoja_casa_providers.dart';
 import 'providers/personas_providers.dart';
@@ -166,16 +165,17 @@ abstract final class FlujoRegistrarVisita {
         return const OpcionFallida(TextosRegistrarVisita.noPudimosGuardar);
       }
       if (!context.mounted) return const OpcionCancelada();
-      final PersonaDeLaEntrevista? persona = await mostrarHojaConQuien(
+      final eleccion = await mostrarHojaConQuien(
         context,
         espacioId: espacioId,
         colportorId: colportor,
       );
-      if (persona == null) return const OpcionCancelada();
+      if (eleccion == null) return const OpcionCancelada();
       final hecho = await entrevistaDada((
         ubicacionId: datos.ubicacionId,
         espacioId: espacioId,
-        persona: persona,
+        // «Todavía no sé con quién»: la entrevista sigue sin persona.
+        persona: eleccion.persona,
       ));
       return hecho == true ? const OpcionResuelta() : const OpcionCancelada();
     }

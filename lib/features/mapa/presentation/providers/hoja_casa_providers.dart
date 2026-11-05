@@ -81,11 +81,13 @@ typedef ContextoDeCita = ({
   String? personaId,
 });
 
-/// Lo que recibe «Entrevista dada» (la entrevista en curso, #450) después de «¿Con quién?».
+/// Lo que recibe «Entrevista dada» (la entrevista en curso, #450) después de «¿Con quién?». Con
+/// «Todavía no sé con quién» [persona] es `null`: la entrevista sigue sin persona (el nombre es
+/// opcional, decisión de Cristian, 04/11) y no se inventa a nadie.
 typedef ContextoDeEntrevista = ({
   String ubicacionId,
   String espacioId,
-  PersonaDeLaEntrevista persona,
+  PersonaDeLaEntrevista? persona,
 });
 
 /// A dónde lleva «✓ Registrar visita» (#411, «¿Qué pasó?»). **Sin destino**: mientras sea `null` el

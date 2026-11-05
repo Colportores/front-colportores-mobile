@@ -705,7 +705,7 @@ void main() {
         await tester.tap(find.widgetWithText(FilledButton, 'Empezar entrevista'));
         await asentar(tester);
 
-        expect(a.enganches.entrevistas.single.persona.espacioPersonaId, 'ep-ana');
+        expect(a.enganches.entrevistas.single.persona?.espacioPersonaId, 'ep-ana');
         expect(a.resultados, [true]);
       },
     );
