@@ -664,19 +664,15 @@ void main() {
     }
   });
 
-  testWidgets(
-    'HALLAZGO · el lápiz no le quita renglones a la dirección: la hoja no crece por «Editar casa» '
-    'a 360×640 ×2',
-    (tester) async {
-      await _montarReal(tester, tamano: t360x640, escala: 2, colportorId: null);
-      final sinLapiz = tester.getSize(find.byKey(ClavesHojaCasa.titulo)).height;
-      await _montarReal(tester, tamano: t360x640, escala: 2);
-      final conLapiz = tester.getSize(find.byKey(ClavesHojaCasa.titulo)).height;
+  testWidgets('el lápiz no le quita renglones a la dirección: la hoja no crece por «Editar casa» '
+      'a 360×640 ×2', (tester) async {
+    await _montarReal(tester, tamano: t360x640, escala: 2, colportorId: null);
+    final sinLapiz = tester.getSize(find.byKey(ClavesHojaCasa.titulo)).height;
+    await _montarReal(tester, tamano: t360x640, escala: 2);
+    final conLapiz = tester.getSize(find.byKey(ClavesHojaCasa.titulo)).height;
 
-      expect(conLapiz, sinLapiz, reason: 'la dirección ocupa más renglones por el lápiz');
-    },
-    skip: _hallazgo,
-  );
+    expect(conLapiz, sinLapiz, reason: 'la dirección ocupa más renglones por el lápiz');
+  });
 
   // Decisiones del 05/11 (archivo ...-652-qa-261105-1010.md): P1 el rótulo sigue el tipo; P2 botón
   // chico con el lápiz y el rótulo. Sin aplicar en el código al momento de este QA.
@@ -701,32 +697,29 @@ void main() {
           expect(nodo.tooltip.isEmpty ? nodo.label : nodo.tooltip, contains(e.value));
           semantica.dispose();
         },
-        skip: _hallazgo,
       );
     }
 
     for (final escala in [1.0, 2.0]) {
-      testWidgets(
-        'P2: el botón muestra el rótulo, mide 48 dp y no se recorta a 360×640 ×$escala',
-        (tester) async {
-          final s = await _mapa(tester, tamano: t360x640, escala: escala, fuentesReales: true);
-          s.m.mapa.tocarPunto('a');
-          await asentarLista(tester);
+      testWidgets('P2: el botón muestra el rótulo, mide 48 dp y no se recorta a 360×640 ×$escala', (
+        tester,
+      ) async {
+        final s = await _mapa(tester, tamano: t360x640, escala: escala, fuentesReales: true);
+        s.m.mapa.tocarPunto('a');
+        await asentarLista(tester);
 
-          final rotulo = find.descendant(of: _editar, matching: find.text('Editar casa'));
-          expect(rotulo, findsOneWidget);
-          final b = tester.getRect(_editar);
-          final r = tester.getRect(rotulo);
-          expect(b.height, greaterThanOrEqualTo(48));
-          expect(b.left, greaterThanOrEqualTo(0));
-          expect(b.right, lessThanOrEqualTo(360));
-          expect(r.left, greaterThanOrEqualTo(b.left));
-          expect(r.right, lessThanOrEqualTo(b.right), reason: 'el rótulo no se recorta');
-          expect(tester.takeException(), isNull);
-          await _capturar(tester, 'p2_rotulo_360x640_x$escala');
-        },
-        skip: _hallazgo,
-      );
+        final rotulo = find.descendant(of: _editar, matching: find.text('Editar casa'));
+        expect(rotulo, findsOneWidget);
+        final b = tester.getRect(_editar);
+        final r = tester.getRect(rotulo);
+        expect(b.height, greaterThanOrEqualTo(48));
+        expect(b.left, greaterThanOrEqualTo(0));
+        expect(b.right, lessThanOrEqualTo(360));
+        expect(r.left, greaterThanOrEqualTo(b.left));
+        expect(r.right, lessThanOrEqualTo(b.right), reason: 'el rótulo no se recorta');
+        expect(tester.takeException(), isNull);
+        await _capturar(tester, 'p2_rotulo_360x640_x$escala');
+      });
     }
   });
 }
