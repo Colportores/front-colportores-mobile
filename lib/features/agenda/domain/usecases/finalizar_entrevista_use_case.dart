@@ -17,7 +17,7 @@ final class FinalizarEntrevistaParams extends Equatable {
   const FinalizarEntrevistaParams({
     required this.ids,
     required this.espacioId,
-    required this.espacioPersonaId,
+    this.espacioPersonaId,
     required this.colportorId,
     required this.entrada,
     required this.salida,
@@ -49,7 +49,9 @@ final class FinalizarEntrevistaParams extends Equatable {
   /// El espacio (casa o depto) donde fue la entrevista; si en el teléfono cambió, la visita va al
   /// vigente (ver [ResolverDestinoDeEntrevista]).
   final String espacioId;
-  final String espacioPersonaId;
+
+  /// Con quién; `null` = la entrevista fue sin persona (la visita cuelga de la casa).
+  final String? espacioPersonaId;
   final String colportorId;
   final DateTime entrada;
   final DateTime salida;
@@ -134,20 +136,17 @@ final class FinalizarEntrevistaUseCase
     );
     if (invalida != null) return Left(invalida);
 
-    // La entrevista empezó con una casa y una persona elegidas (R·04): sin alguna de las dos no hay
-    // entrevista que guardar. «Sin persona» es otra cosa: es lo que queda si la persona ya no está.
-    final campos = <String, String>{
-      if (params.espacioId.trim().isEmpty) 'espacio': 'Falta la casa de la entrevista',
-      if (params.espacioPersonaId.trim().isEmpty)
-        'persona': 'Elegí con quién fue la entrevista para guardarla.',
-    };
-    if (campos.isNotEmpty) return Left(FailureValidacion(campos: campos));
+    // La entrevista empezó en una casa (R·04): sin ella no hay entrevista que guardar. La persona es
+    // opcional («Entrev. s/n», 05/11): sin persona, o con una que ya no está, la visita queda de la casa.
+    if (params.espacioId.trim().isEmpty) {
+      return const Left(FailureValidacion(campos: {'espacio': 'Falta la casa de la entrevista'}));
+    }
 
     final DestinoDeEntrevista? destino;
     try {
       destino = await _destino.resolver(
         espacioId: params.espacioId.trim(),
-        espacioPersonaId: params.espacioPersonaId.trim(),
+        espacioPersonaId: _sinVacios(params.espacioPersonaId),
       );
     } on Object catch (e) {
       _log.error(
@@ -212,4 +211,9 @@ final class FinalizarEntrevistaUseCase
     );
     return const Left(entrevistaSinLugar);
   }
+}
+
+String? _sinVacios(String? id) {
+  final limpio = id?.trim();
+  return limpio == null || limpio.isEmpty ? null : limpio;
 }

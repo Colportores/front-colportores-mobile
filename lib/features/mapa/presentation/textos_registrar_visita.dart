@@ -32,6 +32,11 @@ abstract final class TextosRegistrarVisita {
   /// pregunta a quién en el paso siguiente. Texto propuesto (mapa §2: texto/aviso).
   static const ayudaVenderVarias = 'Elegís a quién le vendés';
 
+  /// «Vender» cuando las personas entrevistadas se dieron de baja desde que se abrió «¿Qué pasó?»: no hay
+  /// a quién venderle. Dice qué pasó y qué hacer (mapa §2: texto/aviso; texto del issue front-colportores-mobile#669).
+  static const nadieParaVender =
+      'Ya no queda ninguna persona entrevistada en esta casa. Elegí otra opción.';
+
   /// La ayuda de «Vender»: «Registrar la venta de Pedro Gómez».
   static String ayudaVender(String persona) => persona.trim().isEmpty
       ? 'Registrar la venta de la entrevista'

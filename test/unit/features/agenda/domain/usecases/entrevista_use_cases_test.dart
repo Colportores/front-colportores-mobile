@@ -100,7 +100,7 @@ void main() {
       expect(memoria.guardadas, hasLength(1));
     });
 
-    test('sin colportora, lugar o persona no guarda nada y dice qué falta', () async {
+    test('sin colportora o lugar no guarda nada y dice qué falta', () async {
       final r = await empezar(
         const EmpezarEntrevistaParams(colportorId: '', espacioId: ' ', espacioPersonaId: ''),
       );
@@ -109,9 +109,36 @@ void main() {
       expect(falla, isA<FailureValidacion>());
       expect(
         (falla as FailureValidacion).campos.keys,
-        unorderedEquals(<String>['colportorId', 'espacioId', 'persona']),
+        unorderedEquals(<String>['colportorId', 'espacioId']),
       );
       expect(memoria.guardadas, isEmpty);
+    });
+
+    test(
+      'sin persona (#669, «Entrev. s/n»: «Empieza sin nombre») empieza igual, de la casa',
+      () async {
+        final r = await empezar(
+          const EmpezarEntrevistaParams(colportorId: 'col-1', espacioId: 'esp-1'),
+        );
+
+        final entrevista = r.getOrElse(() => throw StateError('debía empezar'));
+        expect(entrevista.espacioPersonaId, isNull);
+        expect(entrevista.espacioId, 'esp-1');
+        expect(entrevista.inicio, inicioEntrevista.toUtc());
+        expect(memoria.guardadas['col-1'], entrevista);
+      },
+    );
+
+    test('una persona en blanco cuenta como sin persona: nunca se guarda un id vacío', () async {
+      final r = await empezar(
+        const EmpezarEntrevistaParams(
+          colportorId: 'col-1',
+          espacioId: 'esp-1',
+          espacioPersonaId: '  ',
+        ),
+      );
+
+      expect(r.getOrElse(() => throw StateError('debía empezar')).espacioPersonaId, isNull);
     });
 
     test(
@@ -260,7 +287,33 @@ void main() {
       expect(agenda.recibidas, hasLength(1));
     });
 
-    test('sin persona no se guarda con una persona vacía', () async {
+    test(
+      'sin persona (#669) la visita se guarda de la casa, sin persona, y no consulta un vínculo',
+      () async {
+        reloj = ahoraEntrevista;
+        await memoria.guardar(entrevistaDePrueba(espacioPersonaId: null));
+
+        final r = await finalizar(
+          FinalizarEntrevistaParams(
+            ids: const IdsResultadoVisita(visita: 'vis-1', nota: 'not-1'),
+            espacioId: 'esp-1',
+            colportorId: 'col-1',
+            entrada: entrada,
+            salida: salida,
+          ),
+        );
+
+        expect(r.isRight(), isTrue);
+        final visita = agenda.recibidas.single.visita;
+        expect(visita.tipoResultado, TipoResultadoVisita.entrevista);
+        expect(visita.espacioPersonaId, isNull);
+        expect(visita.espacioId, 'esp-1');
+        expect(destino.consultas.single, (espacioId: 'esp-1', espacioPersonaId: null));
+        expect(memoria.guardadas, isEmpty, reason: 'la entrevista en curso se cierra');
+      },
+    );
+
+    test('una persona en blanco se trata como sin persona (no se guarda un id vacío)', () async {
       reloj = ahoraEntrevista;
 
       final r = await finalizar(
@@ -274,8 +327,27 @@ void main() {
         ),
       );
 
+      expect(r.isRight(), isTrue);
+      expect(agenda.recibidas.single.visita.espacioPersonaId, isNull);
+      expect(destino.consultas.single.espacioPersonaId, isNull);
+    });
+
+    test('sin casa no hay entrevista que guardar, con o sin persona', () async {
+      reloj = ahoraEntrevista;
+
+      final r = await finalizar(
+        FinalizarEntrevistaParams(
+          ids: const IdsResultadoVisita(visita: 'v', nota: 'n'),
+          espacioId: ' ',
+          colportorId: 'col-1',
+          entrada: entrada,
+          salida: salida,
+        ),
+      );
+
       expect(r.isLeft(), isTrue);
       expect(agenda.recibidas, isEmpty);
+      expect(destino.consultas, isEmpty);
     });
 
     group('«Sin salida» (25/10): se guarda igual', () {

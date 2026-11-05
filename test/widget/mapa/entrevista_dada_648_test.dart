@@ -788,7 +788,7 @@ void main() {
     });
 
     testWidgets(
-      'la venta guardada llega a R·08 con la hoja de la casa abierta y sin visita atada',
+      'la venta guardada llega a R·08 con la hoja de la casa abierta y con su visita «Venta» de hoy (#669)',
       (tester) async {
         a.lector.porVinculo['ep-1'] = _ayer;
         await a.montar(tester);
@@ -799,10 +799,14 @@ void main() {
         await a.registrarSinFecha(tester);
 
         final venta = a.entorno.ventas.recibidas.single.venta;
-        expect(venta.visitaId, isNull, reason: 'no hay visita: es una venta suelta de la casa');
+        // Decisión de Cristian, 05/11, «Vender visita»: la venta deja también una visita «Venta» de hoy.
+        final visita = a.montaje.agenda.recibidas.single.visita;
+        expect(visita.tipoResultado, TipoResultadoVisita.venta);
+        expect(venta.visitaId, visita.id, reason: 'la venta lleva el id de su visita');
+        expect(visita.espacioPersonaId, 'ep-1');
+        expect(visita.espacioId, 'esp-1');
         expect(venta.espacioPersonaId, 'ep-1');
         expect(venta.numeroTalonario, '0039');
-        expect(a.montaje.agenda.recibidas, isEmpty);
         expect(a.salidasDeVenta.single, isA<VentaRegistradaEnLaCasa>());
         expect(a.resultados, [false], reason: 'R·08: la hoja de la casa queda abierta');
         expect(find.text('Venta 0039 guardada.'), findsOneWidget);
@@ -887,11 +891,15 @@ void main() {
         await a.armarLaVenta(tester);
         await a.registrarSinFecha(tester);
 
-        expect(
-          a.montaje.agenda.recibidas.single.visita.tipoResultado,
+        expect(a.montaje.agenda.recibidas.map((r) => r.visita.tipoResultado), [
           TipoResultadoVisita.entrevista,
+          TipoResultadoVisita.venta,
+        ]);
+        expect(
+          a.entorno.ventas.recibidas.single.venta.visitaId,
+          a.montaje.agenda.recibidas.last.visita.id,
+          reason: 'la venta lleva la visita «Venta», no la de la entrevista de antes',
         );
-        expect(a.entorno.ventas.recibidas.single.venta.visitaId, isNull);
         expect(a.resultados, [true, false]);
       },
     );

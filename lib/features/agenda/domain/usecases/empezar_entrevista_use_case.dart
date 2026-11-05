@@ -13,14 +13,16 @@ final class EmpezarEntrevistaParams extends Equatable {
   const EmpezarEntrevistaParams({
     required this.colportorId,
     required this.espacioId,
-    required this.espacioPersonaId,
+    this.espacioPersonaId,
     this.agendaId,
     this.jornadaId,
   });
 
   final String colportorId;
   final String espacioId;
-  final String espacioPersonaId;
+
+  /// Con quién; `null` = la entrevista empieza sin persona (decisión de Cristian, 05/11).
+  final String? espacioPersonaId;
   final String? agendaId;
   final String? jornadaId;
 
@@ -34,7 +36,8 @@ final class EmpezarEntrevistaParams extends Equatable {
 /// - Si la colportora **ya tiene una en curso** (doble toque, o volvió a «Empezar» sin terminar la
 ///   anterior), devuelve **la que estaba**: la hora de inicio no se pisa ni se pierde. La pantalla
 ///   decide qué le dice.
-/// - Sin colportora, espacio o persona no guarda nada: `Left(FailureValidacion)`.
+/// - Sin colportora o espacio no guarda nada: `Left(FailureValidacion)`. Sin persona **sí** empieza
+///   (decisión de Cristian, 05/11, «Entrev. s/n»: «Empieza sin nombre»): el nombre se pide si hay venta.
 /// - Si el almacén falla, `Left` y no hay entrevista en curso: la hora no queda a medias.
 final class EmpezarEntrevistaUseCase
     implements UseCase<EntrevistaEnCurso, EmpezarEntrevistaParams> {
@@ -55,11 +58,10 @@ final class EmpezarEntrevistaUseCase
   Future<Either<Failure, EntrevistaEnCurso>> call(EmpezarEntrevistaParams params) async {
     final colportorId = params.colportorId.trim();
     final espacioId = params.espacioId.trim();
-    final espacioPersonaId = params.espacioPersonaId.trim();
+    final persona = params.espacioPersonaId?.trim();
     final campos = <String, String>{
       if (colportorId.isEmpty) 'colportorId': 'No hay un colportor para empezar la entrevista',
       if (espacioId.isEmpty) 'espacioId': 'Falta el lugar de la entrevista',
-      if (espacioPersonaId.isEmpty) 'persona': 'Elegí con quién es la entrevista para empezarla.',
     };
     if (campos.isNotEmpty) return Left(FailureValidacion(campos: campos));
 
@@ -72,7 +74,7 @@ final class EmpezarEntrevistaUseCase
       final entrevista = EntrevistaEnCurso(
         colportorId: colportorId,
         espacioId: espacioId,
-        espacioPersonaId: espacioPersonaId,
+        espacioPersonaId: persona == null || persona.isEmpty ? null : persona,
         ids: IdsResultadoVisita(visita: _generarId(), nota: _generarId()),
         inicio: _ahora(),
         agendaId: agendaId == null || agendaId.isEmpty ? null : agendaId,

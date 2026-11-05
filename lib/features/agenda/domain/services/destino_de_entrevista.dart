@@ -24,9 +24,7 @@ final class DestinoDeEntrevista extends Equatable {
 /// - casa o depto unido a otro: la visita va al que quedó.
 abstract interface class ResolverDestinoDeEntrevista {
   /// El destino vivo de la entrevista que empezó en [espacioId] con [espacioPersonaId], o `null` si
-  /// ya no hay dónde colgar la visita (ni el espacio ni el vínculo siguen en el teléfono).
-  Future<DestinoDeEntrevista?> resolver({
-    required String espacioId,
-    required String espacioPersonaId,
-  });
+  /// ya no hay dónde colgar la visita (ni el espacio ni el vínculo siguen en el teléfono). Con
+  /// [espacioPersonaId] `null` (la entrevista empezó sin persona) el destino es el espacio, sin persona.
+  Future<DestinoDeEntrevista?> resolver({required String espacioId, String? espacioPersonaId});
 }

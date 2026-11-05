@@ -18,11 +18,11 @@ final rotuloDeEntrevistaProvider = FutureProvider.autoDispose
 /// Lo mismo para un lugar y un vínculo `espacio_persona` que todavía no tienen una entrevista guardada
 /// (la que se termina sin inicio registrado, R·07).
 final rotuloDelLugarYLaPersonaProvider = FutureProvider.autoDispose
-    .family<RotuloEntrevista, ({String espacioId, String espacioPersonaId})>(
+    .family<RotuloEntrevista, ({String espacioId, String? espacioPersonaId})>(
       (ref, clave) => _leerRotulo(ref, clave.espacioId, clave.espacioPersonaId),
     );
 
-Future<RotuloEntrevista> _leerRotulo(Ref ref, String espacioId, String espacioPersonaId) async {
+Future<RotuloEntrevista> _leerRotulo(Ref ref, String espacioId, String? espacioPersonaId) async {
   var direccion = '';
   var persona = '';
   try {
@@ -33,6 +33,8 @@ Future<RotuloEntrevista> _leerRotulo(Ref ref, String espacioId, String espacioPe
   } on Object {
     // Sin dirección: el título dice «Entrevista en curso» a secas.
   }
+  // Una entrevista sin persona no tiene nombre que leer.
+  if (espacioPersonaId == null) return (direccion: direccion, persona: persona);
   try {
     final personas = await ref.watch(personasDelEspacioProvider(espacioId).future);
     for (final p in personas) {
