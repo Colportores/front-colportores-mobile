@@ -290,7 +290,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(m.fichas, [(personaId: 'p-ana', espacioId: 'esp-1')]);
+      expect(m.fichas, [(personaId: 'p-ana', espacioId: 'esp-1', nombre: 'Ana')]);
     });
 
     testWidgets('mientras la ficha no esté enganchada la fila no se toca y no lleva «›»', (

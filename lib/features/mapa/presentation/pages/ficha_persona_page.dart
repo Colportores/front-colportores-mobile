@@ -48,6 +48,7 @@ class FichaPersonaPage extends ConsumerStatefulWidget {
     required this.personaId,
     required this.espacioId,
     required this.colportorId,
+    this.nombre,
   });
 
   final String personaId;
@@ -58,6 +59,11 @@ class FichaPersonaPage extends ConsumerStatefulWidget {
   /// UUID del usuario con la sesión iniciada (`created_by` de las notas nuevas).
   final String colportorId;
 
+  /// El nombre de pila que quien la abre ya tenía (la fila de la pestaña Personas): mientras la ficha
+  /// no se leyó dice «Cargando la ficha de María» y, si no se puede leer, 32B·07 («No pudimos leer los
+  /// datos de María en tu teléfono.»). `null` = «de la persona».
+  final String? nombre;
+
   /// De a cuántos movimientos se muestra el historial.
   static const pagina = 100;
 
@@ -66,10 +72,15 @@ class FichaPersonaPage extends ConsumerStatefulWidget {
     required String personaId,
     required String espacioId,
     required String colportorId,
+    String? nombre,
   }) => Navigator.of(context).push<void>(
     MaterialPageRoute(
-      builder: (_) =>
-          FichaPersonaPage(personaId: personaId, espacioId: espacioId, colportorId: colportorId),
+      builder: (_) => FichaPersonaPage(
+        personaId: personaId,
+        espacioId: espacioId,
+        colportorId: colportorId,
+        nombre: nombre,
+      ),
     ),
   );
 
@@ -258,13 +269,13 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     if (lectura.hasError && ficha == null) {
       cuerpo = _Mensaje(
         clave: ClavesFicha.error,
-        texto: TextosFicha.noPudimosLeer(null),
+        texto: TextosFicha.noPudimosLeer(widget.nombre),
         alReintentar: _reintentar,
       );
     } else if (lectura.hasValue && ficha == null) {
       cuerpo = const _Mensaje(texto: TextosFicha.personaNoEncontrada);
     } else if (ficha == null) {
-      cuerpo = const SingleChildScrollView(child: CargandoFicha(nombre: null));
+      cuerpo = SingleChildScrollView(child: CargandoFicha(nombre: widget.nombre));
     } else {
       cuerpo = _CuerpoDeLaFicha(
         ficha: ficha,

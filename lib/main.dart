@@ -49,6 +49,7 @@ import 'features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
 import 'features/mapa/presentation/flujo_agendar_desde_la_agenda.dart';
+import 'features/mapa/presentation/flujo_ficha_desde_la_casa.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/providers/baja_ubicacion_providers.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
@@ -309,6 +310,20 @@ Future<void> main() async {
               colportorId: cobro.colportorId,
               espacioId: cobro.espacioId,
               espacioPersonaId: cobro.espacioPersonaId,
+            );
+          },
+        ),
+        // Tocar una persona de la pestaña Personas de la hoja de la casa (vista 39 C·02 → vista 32 B,
+        // HU-UBI-009, #650): su ficha, con la persona, el depto y el nombre que la fila ya tiene. La hoja
+        // sigue abierta debajo. Sin navegador o sin sesión lanza: la hoja lo avisa y la fila se habilita.
+        fichaDePersonaDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) throw StateError('No hay navegador donde abrir la ficha');
+            return FlujoFichaDesdeLaCasa.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
             );
           },
         ),

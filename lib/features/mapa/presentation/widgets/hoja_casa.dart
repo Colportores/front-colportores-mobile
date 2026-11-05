@@ -285,13 +285,19 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
 
   /// Lo que hace tocar a la persona [personaId] (abrir su ficha, 32B), o `null` si no se ofrece: sin
   /// destino enganchado la fila no se toca. Se puede abrir con la casa dada de baja (es solo ver).
-  VoidCallback? Function(String personaId) _abrirFicha(ContextoDeLaCasa contexto) {
+  /// La ficha recibe el nombre de pila que la fila ya tiene ([nombre] vacío = sin nombre).
+  VoidCallback? Function(String personaId, String nombre) _abrirFicha(ContextoDeLaCasa contexto) {
     final destino = ref.watch(fichaDePersonaDesdeLaCasaProvider);
     final espacioId = contexto.espacioId;
-    return (personaId) {
+    return (personaId, nombre) {
       if (destino == null || espacioId == null) return null;
+      final pila = nombre.trim();
       return () => _correr(
-        () => destino((personaId: personaId, espacioId: espacioId)),
+        () => destino((
+          personaId: personaId,
+          espacioId: espacioId,
+          nombre: pila.isEmpty ? null : pila,
+        )),
         TextosPestanasHojaCasa.noPudimosAbrirFicha,
       );
     };
@@ -506,7 +512,7 @@ class _Arriba extends ConsumerWidget {
   final VoidCallback? alRegistrarVisita;
   final VoidCallback? alAgendar;
   final VoidCallback? Function(String personaId) alCobrar;
-  final VoidCallback? Function(String personaId) alAbrirFicha;
+  final VoidCallback? Function(String personaId, String nombre) alAbrirFicha;
   final VoidCallback? alAgregarPersona;
   final ValueChanged<PestanaHojaCasa> alElegirPestana;
 
@@ -564,7 +570,7 @@ class _Arriba extends ConsumerWidget {
                     null => null,
                   },
                   alCobrar: alCobrar(p.persona.id),
-                  alAbrir: alAbrirFicha(p.persona.id),
+                  alAbrir: alAbrirFicha(p.persona.id, p.persona.nombre),
                 ),
             ],
             alAgregar: alAgregarPersona,
