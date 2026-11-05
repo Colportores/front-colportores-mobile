@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -598,7 +599,12 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
   Future<Failure?> volverAMiUbicacion() async {
     if (state.modo != ModoEdicion.moverPunto || state.guardando) return null;
     final numero = ++_secuenciaGps;
-    final resultado = await ref.read(ubicacionColportorProvider.notifier).refrescar();
+    // Con el mapa siguiendo a la colportora (#670) la posición ya es la de ahora, sin otra lectura
+    // ni diálogo: el pin va ahí. Sin seguimiento se lee de nuevo, como siempre.
+    final viva = ref.read(ubicacionColportorProvider).lecturaViva;
+    final Either<Failure, LecturaGps> resultado = viva != null
+        ? Right(viva)
+        : await ref.read(ubicacionColportorProvider.notifier).refrescar();
     if (!ref.mounted || numero != _secuenciaGps || state.modo != ModoEdicion.moverPunto) {
       return null;
     }

@@ -12,6 +12,18 @@ abstract final class TextosMapaUbicaciones {
   static const referencias = 'Referencias';
   static const miUbicacion = 'Mi ubicación';
   static const nueva = 'Nueva';
+
+  // Seguimiento de la ubicación (#670, decisión de Cristian del 05/11, «GPS viejo»): lo que dice el
+  // botón de ubicación según su modo. Son los tres textos del issue; los lee el lector de pantalla
+  // y se anuncian al cambiar de modo.
+  static const seguimientoLibre = 'Mapa libre';
+  static const seguimientoSeguir = 'Seguir mi ubicación';
+  static const seguimientoSeguirYGirar = 'Seguir y girar con el teléfono';
+
+  /// El aviso cuando se corta el seguimiento solo (propuesta: pendiente «mapa §2: texto/aviso»).
+  static const seguimientoCortado =
+      'Dejamos de seguir tu ubicación: el GPS se apagó o dejó de responder. '
+      'Activalo y tocá el botón para volver a seguirte.';
   static const cerrarVistaPrevia = 'Cerrar vista previa';
   static const leyendaSinVisita = 'Sin visita';
   static const leyendaAgrupadas = 'Agrupadas';

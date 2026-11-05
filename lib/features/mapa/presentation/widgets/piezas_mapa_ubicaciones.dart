@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/entities/estado_casa.dart';
+import '../../domain/value_objects/modo_seguimiento.dart';
 import '../formato_lista_ubicaciones.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../mapa_base/marcador_estado.dart' show MarcadorEstado, VarianteMarcador;
@@ -34,15 +35,44 @@ abstract final class ClavesMapaUbicaciones {
   static Key fila(String id) => Key('mapa_fila_$id');
 }
 
-/// «Mi ubicación» (canvas, 06C·01): el botón redondo blanco de 52 dp que centra el mapa en el GPS.
+/// El ícono y el texto de cada modo de seguimiento del botón de ubicación (#670). Un solo lugar:
+/// el botón y el anuncio al cambiar de modo dicen lo mismo.
+extension PresentacionModoSeguimiento on ModoSeguimiento {
+  /// Lo que dice el lector de pantalla del botón en este modo.
+  String get texto => switch (this) {
+    ModoSeguimiento.libre => TextosMapaUbicaciones.seguimientoLibre,
+    ModoSeguimiento.seguir => TextosMapaUbicaciones.seguimientoSeguir,
+    ModoSeguimiento.seguirYGirar => TextosMapaUbicaciones.seguimientoSeguirYGirar,
+  };
+
+  /// Libre: la mira vacía (el mapa no te sigue); seguir: el punto; seguir y girar: la flecha que
+  /// apunta hacia donde mira el mapa.
+  IconData get icono => switch (this) {
+    ModoSeguimiento.libre => Icons.location_searching,
+    ModoSeguimiento.seguir => Icons.my_location,
+    ModoSeguimiento.seguirYGirar => Icons.navigation,
+  };
+}
+
+/// El botón de ubicación (canvas 06C·01 «Mi ubicación»): el botón redondo blanco de 52 dp que lleva el
+/// mapa al GPS y, con #670, pasa por tres modos —libre, seguir y seguir y girar— cuyo [modo] se ve en
+/// el ícono y se lee en la etiqueta.
 /// Sin [alPresionar] está deshabilitado (HU-UBI-003, «Edge: sin GPS») y el lector de pantalla dice por
 /// qué según el [gps]: mientras busca la primera lectura todavía no se sabe si hay GPS, así que no se
 /// afirma que no lo hay (#359).
 class BotonMiUbicacion extends StatelessWidget {
-  const BotonMiUbicacion({super.key, required this.alPresionar, required this.gps});
+  const BotonMiUbicacion({
+    super.key,
+    required this.alPresionar,
+    required this.gps,
+    this.modo = ModoSeguimiento.libre,
+  });
 
   final VoidCallback? alPresionar;
   final EstadoGpsLista gps;
+
+  /// Cómo sigue el mapa a la colportora.
+  final ModoSeguimiento modo;
 
   /// El motivo por el que el botón está apagado.
   String get _motivo => switch (gps) {
@@ -59,9 +89,7 @@ class BotonMiUbicacion extends StatelessWidget {
       enabled: habilitado,
       // Apagado, el motivo va en la etiqueta, detrás del nombre, y no en la pista: con «Hablar pistas»
       // apagado en VoiceOver una pista no se leería (#359; igual que «Registrar» apagado, #345).
-      label: habilitado
-          ? TextosMapaUbicaciones.miUbicacion
-          : '${TextosMapaUbicaciones.miUbicacion}. $_motivo',
+      label: habilitado ? modo.texto : '${TextosMapaUbicaciones.miUbicacion}. $_motivo',
       onTap: alPresionar,
       child: ExcludeSemantics(
         child: Material(
@@ -75,9 +103,14 @@ class BotonMiUbicacion extends StatelessWidget {
               width: 52,
               height: 52,
               child: Icon(
-                Icons.my_location,
+                modo.icono,
                 size: 22,
-                color: habilitado ? ColoresMapa.aroSeleccion : ColoresLista.chevron,
+                // Siguiendo se pinta del azul del punto del GPS, como en Maps (4,9:1 sobre el blanco).
+                color: !habilitado
+                    ? ColoresLista.chevron
+                    : modo.sigue
+                    ? ColoresMapa.puntoGps
+                    : ColoresMapa.aroSeleccion,
               ),
             ),
           ),

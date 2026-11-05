@@ -323,9 +323,14 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
     if (lectura != null) {
       // Si el colportor ya puso el pin (tap largo, toque en el mapa) la lectura no lo mueve.
       final sinPunto = state.punto == null;
+      // Con el mapa siguiendo a la colportora (#670) la lectura se mueve sola mientras el alta está
+      // abierta. El pin que salió de una lectura se queda con ella —«Registrar» guarda ese punto y su
+      // precisión, no una posición que el pin no muestra—; «Volver a mi ubicación» lo lleva a la
+      // posición de ahora.
+      final pinDeUnaLectura = !sinPunto && state.origen == OrigenCoordenadas.gps;
       state = state.copyWith(
         gps: EstadoGps.conLectura,
-        lectura: lectura,
+        lectura: pinDeUnaLectura && state.lectura != null ? null : lectura,
         borrarMotivo: true,
         punto: sinPunto ? lectura.coordenadas : null,
         origen: sinPunto ? OrigenCoordenadas.gps : null,
@@ -361,12 +366,14 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
 
   /// «Volver a mi ubicación»: el pin vuelve a la última lectura del GPS.
   void volverAMiUbicacion() {
-    final lectura = state.lectura;
+    // Con el seguimiento prendido (#670) es la posición de ahora; si no, la última lectura.
+    final lectura = ref.read(ubicacionColportorProvider).lecturaViva ?? state.lectura;
     if (lectura == null) {
       unawaited(ref.read(ubicacionColportorProvider.notifier).refrescar());
       return;
     }
     state = state.copyWith(
+      lectura: lectura,
       punto: lectura.coordenadas,
       origen: OrigenCoordenadas.gps,
       precisionDecidida: false,
