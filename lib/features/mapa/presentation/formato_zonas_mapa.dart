@@ -7,18 +7,15 @@ abstract final class TextosMapaZonas {
   /// El nombre de la zona propia sobre el mapa: no depende solo del color ni del grosor del borde.
   static String rotuloPropia(String nombre) => 'Tu zona · $nombre';
 
-  /// Lo que le suma al nodo «Mapa de ubicaciones» para el lector de pantalla; `null` sin zonas.
+  /// Lo que le suma al nodo «Mapa de ubicaciones» para el lector de pantalla; `null` sin zonas
+  /// propias. Nombra solo las zonas propias (#654): las de otros colportores no se mencionan.
   static String? paraElLector(List<ZonaDelMapa> zonas) {
-    if (zonas.isEmpty) return null;
     final propias = [
       for (final z in zonas)
         if (z.propia) z.nombre,
     ];
-    final otras = zonas.length - propias.length;
-    return [
-      if (propias.isNotEmpty) 'Tu zona: ${_unir(propias)}.',
-      if (otras > 0) otras == 1 ? 'Otra zona en el mapa.' : '$otras zonas más en el mapa.',
-    ].join(' ');
+    if (propias.isEmpty) return null;
+    return 'Tu zona: ${_unir(propias)}.';
   }
 
   static String _unir(List<String> nombres) {

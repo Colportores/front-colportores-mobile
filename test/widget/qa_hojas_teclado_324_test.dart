@@ -412,7 +412,7 @@ void main() {
     testWidgets('03 · tocar «Registrar» apagado 5 veces seguidas anuncia 5 veces, no registra y '
         'el foco no se mueve', (tester) async {
       final anuncios = escucharAnuncios(tester);
-      final montada = await a.abrirEn(tester, a.EstadoAlta.gpsPreciso, teclado: a.tecladoAbierto);
+      final montada = await a.abrirEn(tester, a.EstadoAlta.sinGps, teclado: a.tecladoAbierto);
       await _tocarCampo(tester, a.campoNumero, a.asentar);
       final foco = quienTieneElFoco(tester);
       for (var i = 0; i < 5; i++) {
@@ -420,7 +420,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 40));
       }
       await a.asentar(tester);
-      expect(anuncios, everyElement(TextosAlta.elegiElTipo));
+      expect(anuncios, everyElement(TextosAlta.marcaElPunto));
       expect(anuncios, hasLength(5), reason: 'uno por toque');
       expect(montada.repo.llamadas, isEmpty);
       expect(quienTieneElFoco(tester), foco, reason: 'el foco no se movió');
@@ -428,8 +428,8 @@ void main() {
     });
 
     testWidgets(
-      '03 · el motivo cambia con lo que falta: tipo, luego precisión, y el anuncio sigue al '
-      'motivo vigente',
+      '03 · el motivo sigue a lo que falta: la precisión, y al resolverla ya no hay nada que '
+      'anunciar (el tipo viene en «Casa», #665)',
       (tester) async {
         final anuncios = escucharAnuncios(tester);
         await a.abrirEn(tester, a.EstadoAlta.gpsImpreciso, teclado: a.tecladoAbierto);
@@ -441,13 +441,8 @@ void main() {
         await tester.pump();
         await tester.tap(find.text(TextosAlta.continuar));
         await a.asentar(tester);
-        await tester.tap(a.botonRegistrarFijo);
-        await a.asentar(tester);
-        expect(
-          anuncios.last,
-          TextosAlta.elegiElTipo,
-          reason: 'resuelta la precisión, falta el tipo',
-        );
+        expect(a.registrarHabilitado(tester), isTrue, reason: 'resuelta la precisión, se puede');
+        expect(anuncios, hasLength(1), reason: 'sin motivo no se anuncia nada más');
       },
     );
   });
@@ -458,10 +453,6 @@ void main() {
       (tester) async {
         final montada = await a.abrirEn(tester, a.EstadoAlta.gpsPreciso, teclado: a.tecladoAbierto);
         montada.repo.comportamiento = (_) async => const Left(FailureInesperado());
-        await tester.ensureVisible(find.text('Casa'));
-        await tester.pump();
-        await tester.tap(find.text('Casa'));
-        await a.asentar(tester);
         await tester.enterText(a.campoNumero, '1240');
         await m.asentarConTeclado(tester);
         await tester.tap(a.botonRegistrarFijo);

@@ -119,6 +119,35 @@ Future<Object?> _abrir(
   );
 }
 
+/// El paso «¿Con quién?» de **«Vender»** de «¿Qué pasó?» (vista 39, decisión de #648 P3, regla R6): la casa
+/// tiene más de una persona con entrevista dada y la venta no se le asigna a una por su cuenta, se
+/// pregunta a quién. [entrevistadas] son los `espacio_persona_id` de esas personas, la de la entrevista
+/// más reciente primero: es la que viene elegida.
+///
+/// Solo las entrevistadas, y nada más: sin «+ Alguien nuevo» ni «Todavía no sé con quién» (a quien no
+/// tuvo entrevista no se le vende desde acá, y a nadie se le inventa). Devuelve a la elegida, o `null`
+/// si la colportora tocó «Volver» o cerró sin elegir (no se guarda nada).
+Future<PersonaDeLaEntrevista?> mostrarHojaConQuienVende(
+  BuildContext context, {
+  required String espacioId,
+  required String colportorId,
+  required List<String> entrevistadas,
+}) async {
+  final r = await showModalBottomSheet<Object>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    enableDrag: false,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (_) =>
+        HojaConQuien(espacioId: espacioId, colportorId: colportorId, entrevistadas: entrevistadas),
+  );
+  return r is EleccionDeEntrevista ? r.persona : null;
+}
+
 enum _Modo { formulario, lista }
 
 /// La hoja de «¿Con quién?» (vista 39, R·04 y C·07). Ver [mostrarHojaConQuien].
@@ -138,6 +167,7 @@ class HojaConQuien extends ConsumerStatefulWidget {
     required this.espacioId,
     required this.colportorId,
     this.paraProgramar = false,
+    this.entrevistadas,
   });
 
   /// El espacio visitado. En un edificio es siempre el depto, nunca el edificio entero.
@@ -150,6 +180,10 @@ class HojaConQuien extends ConsumerStatefulWidget {
   /// [mostrarHojaConQuienParaProgramar]). Sale con un [EleccionDeCita] en vez de una
   /// [PersonaDeLaEntrevista].
   final bool paraProgramar;
+
+  /// Los `espacio_persona_id` de las personas entre las que se elige, la más reciente primero (ver
+  /// [mostrarHojaConQuienVende]); `null` = el paso de siempre, con todas las del espacio.
+  final List<String>? entrevistadas;
 
   @override
   ConsumerState<HojaConQuien> createState() => _HojaConQuienState();
@@ -224,7 +258,7 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
   }
 
   /// Con una sola persona el paso se salta: se cierra apenas termina el cuadro.
-  void _saltar(Object resultado) {
+  void _saltar(Object? resultado) {
     if (_cerrando) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _cerrarCon(resultado);
@@ -315,9 +349,13 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
   @override
   Widget build(BuildContext context) {
     final datos = ref.watch(personasDelEspacioProvider(widget.espacioId));
-    final personas = datos.value;
+    final personas = _visibles(datos.value);
     if (_modo == null && personas != null) {
       switch (PasoConQuien.de(personas)) {
+        // «Vender»: sin ninguna de las entrevistadas (ya no están) no hay a quién vender: se cierra
+        // sin elegir, nada se guarda.
+        case SinPersonas() when widget.entrevistadas != null:
+          _saltar(null);
         case SinPersonas() when widget.paraProgramar:
           _saltar(const CitaSinPersona());
         case SinPersonas():
@@ -432,6 +470,15 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
     );
   }
 
+  /// Las personas entre las que se elige: todas las del espacio o, en «Vender», solo las
+  /// [HojaConQuien.entrevistadas] y en ese orden (la más reciente primero).
+  List<PersonaDelEspacio>? _visibles(List<PersonaDelEspacio>? todas) {
+    final ids = widget.entrevistadas;
+    if (todas == null || ids == null) return todas;
+    final porVinculo = {for (final p in todas) p.vinculo.id: p};
+    return [for (final id in ids) ?porVinculo[id]];
+  }
+
   /// La persona elegida de [personas]: la que se tocó o, si no se tocó ninguna, la primera.
   PersonaDelEspacio? _elegidaDe(List<PersonaDelEspacio> personas) => personas.isEmpty
       ? null
@@ -441,6 +488,8 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
   Widget _lista(BuildContext context, List<PersonaDelEspacio> personas) {
     final saldos = ref.watch(saldosDelEspacioProvider(widget.espacioId)).asData?.value ?? const {};
     final elegida = _elegidaDe(personas);
+    // «Vender»: solo las entrevistadas, sin «+ Alguien nuevo» ni «Todavía no sé con quién».
+    final soloEntrevistadas = widget.entrevistadas != null;
     final repetidos = TextosConQuien.conNombreRepetido(personas);
     final conHora = TextosConQuien.conSegundaLineaRepetida(personas);
     return Column(
@@ -451,7 +500,7 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
           child: ListView.separated(
             shrinkWrap: true,
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-            itemCount: personas.length + (widget.paraProgramar ? 3 : 2),
+            itemCount: personas.length + (soloEntrevistadas ? 1 : (widget.paraProgramar ? 3 : 2)),
             separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, i) {
               if (i == 0) {
@@ -461,7 +510,7 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
                       : TextosConQuien.tituloConPersonas,
                 );
               }
-              if (widget.paraProgramar && i == personas.length + 2) {
+              if (!soloEntrevistadas && widget.paraProgramar && i == personas.length + 2) {
                 // Solo al programar: la cita puede quedar sin nombre.
                 return _FilaOpcion(
                   key: ClavesConQuien.todaviaNoSe,
@@ -471,7 +520,7 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
                   alTocar: _abriendoAlta ? null : () => _cerrarCon(const CitaSinPersona()),
                 );
               }
-              if (i == personas.length + 1) {
+              if (!soloEntrevistadas && i == personas.length + 1) {
                 return _FilaOpcion(
                   titulo: TextosConQuien.alguienNuevo,
                   detalle: TextosConQuien.alguienNuevoAyuda,
@@ -519,11 +568,14 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
                         // La elección de este instante, no la del último cuadro pintado: dos toques
                         // seguidos (elegir y empezar) no pueden devolver a la anterior.
                         _elegidaDe(
-                          ref.read(personasDelEspacioProvider(widget.espacioId)).value ?? personas,
+                          _visibles(ref.read(personasDelEspacioProvider(widget.espacioId)).value) ??
+                              personas,
                         )?.aLaEntrevista.paraLaHoja(paraProgramar: widget.paraProgramar),
                       ),
                 child: Text(
-                  widget.paraProgramar ? TextosConQuien.seguir : TextosConQuien.empezar,
+                  soloEntrevistadas
+                      ? TextosConQuien.vender
+                      : (widget.paraProgramar ? TextosConQuien.seguir : TextosConQuien.empezar),
                   textAlign: TextAlign.center,
                 ),
               ),

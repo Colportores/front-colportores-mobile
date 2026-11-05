@@ -412,7 +412,9 @@ abstract final class FlujoEntrevista {
       persona: rotulo.persona,
       direccion: rotulo.direccion,
       desdeLaJornada: false,
-      noSeGuardo: TextosEntrevista.ventaDeLaCasaNoGuardada,
+      // Volver atrás desde la venta sin guardar no avisa nada (QA de #648, P1): «¿Qué pasó?» queda
+      // abierta como estaba y no cambió nada, no hay qué decir.
+      noSeGuardo: null,
     );
   }
 
@@ -422,7 +424,8 @@ abstract final class FlujoEntrevista {
 
   /// Desde la venta hacia adelante (vista 27 → 27A·14 → cobro → «¿Cuándo volvés a cobrar?» → R·08), con
   /// la casa y la persona ya resueltas. [antesDeGuardar] y [visitaId] solo los trae la venta que sale de
-  /// una entrevista; [soltar] cierra esa entrevista una vez guardada la venta.
+  /// una entrevista; [soltar] cierra esa entrevista una vez guardada la venta. [noSeGuardo] es el aviso de
+  /// la venta que no se completó (la entrevista sigue en curso); `null` = sin aviso.
   static Future<SalidaTerminoEntrevista> _venderYSeguir(
     BuildContext context,
     ProviderContainer ref, {
@@ -434,7 +437,7 @@ abstract final class FlujoEntrevista {
     required String persona,
     required String direccion,
     required bool desdeLaJornada,
-    required String noSeGuardo,
+    required String? noSeGuardo,
     String? visitaId,
     Future<void> Function()? antesDeGuardar,
     Future<Either<Failure, Unit>> Function()? soltar,
@@ -464,7 +467,7 @@ abstract final class FlujoEntrevista {
       ),
     );
     if (guardada == null) {
-      avisar(noSeGuardo);
+      if (noSeGuardo != null) avisar(noSeGuardo);
       return const VentaSinCompletar();
     }
 

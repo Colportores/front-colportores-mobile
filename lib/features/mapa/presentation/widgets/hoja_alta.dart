@@ -39,7 +39,6 @@ abstract final class TextosAlta {
   static const cambiar = TextosCampos.cambiar;
 
   // Provisorios: la HU y el canvas no los traen (se confirman con Cristian, ver el issue #193).
-  static const elegiElTipo = 'Elegí el tipo de ubicación para registrar.';
   static const elegiLaCiudad = 'Elegí la ciudad para registrar.';
   static const elegiPrecision = 'Elegí «Ajustar manualmente» o «Continuar» para registrar.';
   static const buscandoGps = 'Buscando GPS…';
@@ -69,7 +68,8 @@ String mensajeFallaAlta(Failure falla) => switch (falla) {
 
 /// La hoja inferior de la vista 03: tipo, ciudad, calle, número y «Registrar».
 ///
-/// - El tipo no viene preseleccionado: es obligatorio y elegirlo es un toque.
+/// - El tipo viene preseleccionado en «Casa» (decisión de Cristian, 05/11, #665): registrar una casa
+///   no pide tocar nada del tipo, y cambiarlo es un toque.
 /// - Calle y número muestran «Del mapa» o «Editado»; si el colportor escribió un campo y el mapa
 ///   dice otra cosa, se ofrece «Usar …» sin pisarlo.
 /// - Con el GPS impreciso (más de 50 m), «Registrar» espera a «Ajustar manualmente» o «Continuar».
@@ -78,7 +78,7 @@ String mensajeFallaAlta(Failure falla) => switch (falla) {
 ///   un teléfono chico, el texto grande o el teclado abierto la acción principal se ve siempre. El
 ///   aviso de falla queda en la parte que se desplaza, justo arriba del botón, y cuando aparece se
 ///   lleva a la vista.
-/// - El motivo («Elegí el tipo de ubicación para registrar.») va debajo del botón, como en el canvas,
+/// - El motivo («Marcá el punto en el mapa para registrar.») va debajo del botón, como en el canvas,
 ///   mientras lo fijo (botón y motivo) no pase de dos tercios de la hoja: con las fuentes reales eso
 ///   alcanza hasta 200 % con el teclado cerrado. Con un texto más grande, que le dejaría poco a los
 ///   campos, el motivo pasa al final de lo que se desplaza, justo arriba del botón: así no desborda ni
@@ -90,7 +90,7 @@ String mensajeFallaAlta(Failure falla) => switch (falla) {
 ///   el botón pasa al final de lo que se desplaza (arriba de él, el motivo): nada desborda.
 /// - Tocar «Registrar» apagado no hace nada más que decir por qué: lleva el motivo a la vista, lo
 ///   anuncia una vez y no cierra el teclado ni mueve el foco. Para el lector de pantalla el motivo
-///   va en la etiqueta del botón apagado («Registrar. Elegí el tipo de ubicación para registrar.»),
+///   va en la etiqueta del botón apagado («Registrar. Marcá el punto en el mapa para registrar.»),
 ///   sin pista (`hint`): las pistas se pueden apagar en VoiceOver y la etiqueta siempre se lee.
 class HojaAlta extends ConsumerStatefulWidget {
   const HojaAlta({
@@ -404,7 +404,7 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
 
   /// «Registrar». Apagado no hace nada, pero se puede tocar: lleva el motivo a la vista y lo anuncia
   /// (ver [_explicarElMotivo]). Para el lector de pantalla el motivo va en la etiqueta del botón
-  /// apagado, detrás de su nombre visible («Registrar. Elegí el tipo de ubicación para registrar.»),
+  /// apagado, detrás de su nombre visible («Registrar. Marcá el punto en el mapa para registrar.»),
   /// y sin pista: es igual en Android y en iOS, y no depende de que el lector hable las pistas
   /// (decisión del 16/10 en #355). El toque cae dentro de la región de los campos de texto: no les
   /// quita el foco ni cierra el teclado.
@@ -458,7 +458,6 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
     if (e.guardando) return null;
     if (e.punto == null) return TextosAlta.marcaElPunto;
     if (e.necesitaDecisionPrecision) return TextosAlta.elegiPrecision;
-    if (e.tipo == null) return TextosAlta.elegiElTipo;
     // Sin ciudad: buscándola, el campo lo dice; sin ciudades o sin poder leerlas, el aviso de arriba
     // dice qué hacer. Solo «por elegir» (varias ciudades y todavía sin punto) pide elegir.
     if (e.ciudad == null && e.origenCiudad == OrigenCiudad.porElegir) {
