@@ -10,6 +10,7 @@ import '../../domain/entities/contexto_de_la_casa.dart';
 import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/services/cercania_de_la_casa.dart';
+import '../formato_espacios.dart' show TextosEspacios;
 import '../formato_hoja_casa.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
@@ -19,6 +20,7 @@ import '../textos_personas.dart' show TextosPersonas;
 import '../textos_registrar_visita.dart';
 import 'estados_hoja_casa.dart';
 import 'hoja_con_quien.dart' show mostrarHojaConQuienParaProgramar;
+import 'hoja_ubicacion.dart' show abridorEdicionUbicacionProvider;
 import 'pestanas_hoja_casa.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta;
 import 'piezas_hoja_casa.dart';
@@ -219,6 +221,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
                 direccion: FormatoUbicaciones.direccion(ubicacion),
                 subtitulo: subtitulo,
                 alCerrar: widget.alCerrar,
+                alEditar: _editarCasa(),
               ),
               const SizedBox(height: 10),
               cuerpo,
@@ -227,6 +230,21 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
         ),
       ),
     );
+  }
+
+  /// Lo que hace «Editar casa», o `null` si no se ofrece: sin saber quién es el colportor, o con la
+  /// casa de baja (esa se reactiva, no se edita). Abre la vista 07 con la ubicación de la casa y, al
+  /// guardar o cancelar, **vuelve a esta hoja**, que sigue abierta: la casa se lee de la lista viva y
+  /// muestra la dirección nueva sin cerrar la hoja ni mover el mapa. Comparte la guarda de las demás
+  /// acciones (un doble toque abre una sola edición). Con la cuenta restringida no se abre otra edición.
+  VoidCallback? _editarCasa() {
+    final colportorId = widget.colportorId;
+    if (colportorId == null || widget.item.esBaja) return null;
+    final abrir = ref.watch(abridorEdicionUbicacionProvider);
+    return () => _correr(() async {
+      if (frenaPorCuentaRestringida(context, ref)) return;
+      await abrir(context, colportorId: colportorId, ubicacionId: widget.item.ubicacion.id);
+    }, TextosEspacios.noPudimosAbrirEdicion);
   }
 
   /// Lo que hace «Registrar visita», o `null` si no se ofrece: sin destino enganchado, o con la casa
@@ -335,11 +353,19 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
 
 /// El título (la dirección), la ✕ y la línea de abajo.
 class _Cabecera extends StatelessWidget {
-  const _Cabecera({required this.direccion, required this.subtitulo, required this.alCerrar});
+  const _Cabecera({
+    required this.direccion,
+    required this.subtitulo,
+    required this.alCerrar,
+    required this.alEditar,
+  });
 
   final String direccion;
   final String subtitulo;
   final VoidCallback alCerrar;
+
+  /// «Editar casa» junto a la dirección; `null` = no se ofrece.
+  final VoidCallback? alEditar;
 
   @override
   Widget build(BuildContext context) {
@@ -369,6 +395,30 @@ class _Cabecera extends StatelessWidget {
                 ),
               ),
             ),
+            // «Editar casa» (decisión de Cristian, 04/11, #652): el lápiz junto a la dirección, en la
+            // misma fila que la ✕ (48 dp de alto, igual que ella), así que no le suma alto a la hoja y
+            // no se aprieta con texto grande. Su nombre lo dice el lector de pantalla y un tooltip.
+            if (alEditar != null)
+              Semantics(
+                button: true,
+                label: TextosHojaCasa.editarCasaDe(direccion),
+                onTap: alEditar,
+                excludeSemantics: true,
+                child: Tooltip(
+                  message: TextosHojaCasa.editarCasa,
+                  excludeFromSemantics: true,
+                  child: InkResponse(
+                    key: ClavesHojaCasa.editar,
+                    onTap: alEditar,
+                    radius: 24,
+                    child: const SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Icon(Icons.edit_outlined, size: 20, color: ColoresAlta.azul),
+                    ),
+                  ),
+                ),
+              ),
             Semantics(
               button: true,
               label: TextosMapaUbicaciones.cerrarVistaPrevia,

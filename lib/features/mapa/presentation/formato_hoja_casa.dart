@@ -18,6 +18,15 @@ abstract final class TextosHojaCasa {
   /// visita». Es decoración: el lector de pantalla solo dice [registrarVisita].
   static const tildeDelBoton = '✓';
 
+  /// «Editar casa» junto a la dirección (decisión de Cristian, 04/11, «Editar casa», #652): abre la
+  /// edición de la ubicación (vista 07). El canvas de la 39 no lo dibuja; manda la decisión.
+  static const editarCasa = 'Editar casa';
+
+  /// Lo que lee el lector de pantalla del botón: lleva la dirección, porque la hoja puede estar
+  /// debajo de otras acciones y «Editar casa» solo no dice cuál.
+  static String editarCasaDe(String direccion) =>
+      direccion.trim().isEmpty ? editarCasa : '$editarCasa: $direccion';
+
   /// A confirmar (mapa §2: texto): lo que dice la hoja si el destino de «Registrar visita» o de
   /// «$ Cobrar» no se pudo abrir. El canvas no dibuja el error.
   static const noPudimosAbrirVisita = 'No pudimos abrir «Registrar visita». Probá de nuevo.';

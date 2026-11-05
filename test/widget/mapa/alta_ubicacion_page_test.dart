@@ -526,6 +526,65 @@ void main() {
       expect(find.text('Del mapa'), findsNWidgets(2));
     });
 
+    testWidgets(
+      'regresión #652: el mapa solo trae la calle, el número se escribe a mano y es el que se guarda',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          geocodificador: GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia')),
+        );
+        await _tocar(tester, find.text('Casa'));
+        await tester.enterText(find.widgetWithText(TextField, 'Nº'), '45');
+        await tester.pump();
+        expect(find.text('Editado'), findsOneWidget);
+
+        await _tocar(tester, _registrar);
+
+        expect(e.repo.llamadas.single.ubicacion.numero, '45');
+        expect(e.salidas.single, isA<UbicacionCreada>());
+        expect((e.salidas.single! as UbicacionCreada).ubicacion.numero, '45');
+      },
+    );
+
+    testWidgets(
+      'regresión #652: el número escrito a mano gana aunque la dirección del mapa llegue después y '
+      'distinta, y es el que se guarda',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          geocodificador: GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia')),
+        );
+        await _tocar(tester, find.text('Casa'));
+        await tester.enterText(find.widgetWithText(TextField, 'Nº'), '45');
+        await tester.pump();
+
+        e.geocodificador.respuesta = (_) =>
+            const DireccionDelPunto(calle: 'Av. Italia', numero: '1250');
+        await tester.drag(_mapa, const Offset(0, 80));
+        await _asentar(tester);
+        expect(find.widgetWithText(TextField, '45'), findsOneWidget);
+
+        await _tocar(tester, _registrar);
+
+        expect(e.repo.llamadas.single.ubicacion.numero, '45');
+      },
+    );
+
+    testWidgets(
+      'regresión #652: sin número en el mapa y sin escribir uno, se guarda sin número (no se inventa)',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          geocodificador: GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia')),
+        );
+        await _tocar(tester, find.text('Casa'));
+
+        await _tocar(tester, _registrar);
+
+        expect(e.repo.llamadas.single.ubicacion.numero, isNull);
+      },
+    );
+
     testWidgets('al moverse la calle que vino del mapa aparece «Calle actualizada» un rato', (
       tester,
     ) async {
