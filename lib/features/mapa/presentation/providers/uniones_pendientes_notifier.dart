@@ -56,7 +56,8 @@ final class FallaUnion extends Equatable {
 
   /// Reintentar sirve si la falla puede cambiar sola o con otro intento. Con la que se iba a
   /// conservar ya dada de baja, no: el par hay que revisarlo de nuevo.
-  bool get sePuedeReintentar => falla is! FailureConservadaDeBaja;
+  bool get sePuedeReintentar =>
+      falla is! FailureConservadaDeBaja && falla is! FailureConservadaSoloEnTelefono;
 
   @override
   List<Object?> get props => [union, falla];

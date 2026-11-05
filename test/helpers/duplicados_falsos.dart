@@ -5,6 +5,7 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacios_activos.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
@@ -14,6 +15,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart'
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/pares_duplicados_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/consultor_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/encolador_marcar_duplicado.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
@@ -68,6 +70,33 @@ final class EncoladorMarcarDuplicadoFalso implements EncoladorMarcarDuplicado {
     final error = fallarCon;
     if (error != null) throw error;
     encolados.add((duplicadaId: duplicadaId, conservadaId: conservadaId));
+  }
+}
+
+/// [ConsultorAltaUbicacion] en memoria (HU-UBI-006, «Par local»): [poner] cambia dónde está el alta de
+/// una ubicación y el stream emite de nuevo. Lo que no se pone está en el servidor.
+final class ConsultorAltaUbicacionFalso implements ConsultorAltaUbicacion {
+  ConsultorAltaUbicacionFalso([Map<String, EstadoAltaUbicacion> inicial = const {}])
+    : _actual = {...inicial};
+
+  Map<String, EstadoAltaUbicacion> _actual;
+  final _cambios = StreamController<Map<String, EstadoAltaUbicacion>>.broadcast(sync: true);
+
+  /// Hace que el alta de [id] esté en [estado]; [EstadoAltaUbicacion.enServidor] la saca de la lista.
+  void poner(String id, EstadoAltaUbicacion estado) {
+    _actual = {..._actual};
+    if (estado == EstadoAltaUbicacion.enServidor) {
+      _actual.remove(id);
+    } else {
+      _actual[id] = estado;
+    }
+    _cambios.add(_actual);
+  }
+
+  @override
+  Stream<Map<String, EstadoAltaUbicacion>> observarSinConfirmar() async* {
+    yield _actual;
+    yield* _cambios.stream;
   }
 }
 
@@ -303,7 +332,9 @@ List<Override> overridesDuplicados(
   bool conMapa = false,
   FabricaMapaFalsa? mapa,
   SituacionMapa? situacion,
+  ConsultorAltaUbicacion? altas,
 }) => [
+  if (altas != null) consultorAltaUbicacionProvider.overrideWithValue(altas),
   if (conMapa)
     // `overridesAlta` ya sobrescribe el repositorio y el reloj: un provider no se puede sobrescribir
     // dos veces en el mismo contenedor.

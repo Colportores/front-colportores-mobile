@@ -145,8 +145,12 @@ abstract interface class UbicacionLocalDataSource {
   /// `UbicacionRepository.unirDuplicada`.
   ///
   /// Lanza [UbicacionInexistenteException] si falta una de las dos y [ConservadaDeBajaException] si
-  /// la conservada está de baja. Lo que lance el encolado (no hay motor de sync, #178) revierte la
-  /// transacción entera.
+  /// la conservada está de baja. Si el alta de alguna está viajando, [AltaSubiendoException]; si se
+  /// pide conservar la que solo está en el teléfono teniendo la otra en el servidor,
+  /// [ConservadaSoloEnTelefonoException]. Lo que lance el encolado revierte la transacción entera.
+  ///
+  /// **«Par local»** (alguna de las dos no está en el servidor): se hace en el teléfono y no se encola
+  /// el trabajo «marcar como duplicado» (contrato del motor, §6.2).
   Future<UnionLocal> unirDuplicada(
     String conservadaId,
     String duplicadaId, {
@@ -241,4 +245,24 @@ final class ConservadaDeBajaException implements Exception {
 
   @override
   String toString() => 'ConservadaDeBajaException';
+}
+
+/// Al marcar un duplicado, el alta de alguna de las dos está viajando (`IN_FLIGHT`): no se sabe si el
+/// servidor la va a aceptar, así que la unión espera su respuesta (HU-UBI-006, «Par local»; contrato
+/// del motor, §6.2). No cambia nada.
+final class AltaSubiendoException implements Exception {
+  const AltaSubiendoException();
+
+  @override
+  String toString() => 'AltaSubiendoException';
+}
+
+/// Al marcar un duplicado, se pidió conservar la que solo está en el teléfono teniendo la otra en el
+/// servidor (HU-UBI-006, «Par local»): no puede subir mientras la otra esté viva (D1). La vista 10
+/// no lo ofrece; esto es la guarda si el par cambió mientras corría la espera de «Deshacer».
+final class ConservadaSoloEnTelefonoException implements Exception {
+  const ConservadaSoloEnTelefonoException();
+
+  @override
+  String toString() => 'ConservadaSoloEnTelefonoException';
 }

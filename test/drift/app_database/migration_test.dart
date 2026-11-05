@@ -33,6 +33,7 @@ import 'generated/schema_v25.dart' as v25;
 import 'generated/schema_v26.dart' as v26;
 import 'generated/schema_v27.dart' as v27;
 import 'generated/schema_v28.dart' as v28;
+import 'generated/schema_v29.dart' as v29;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
@@ -1696,6 +1697,49 @@ void main() {
             "UPDATE ciudad SET departamento = 'San José' WHERE id = 'ciu-1'",
           );
           expect((await nuevo.select(nuevo.ciudad).getSingle()).departamento, 'San José');
+        },
+      );
+    },
+  );
+
+  test(
+    'dado ubicaciones guardadas en la versión 28, cuando migra a la 29, no se pierde nada, suma la '
+    'tabla de la marca de unión vacía y no se encola nada (#285)',
+    () async {
+      const ubicacion = v28.UbicacionData(
+        id: 'ub-1',
+        tipo: 'CASA',
+        calle: 'Rivera',
+        numero: '1234',
+        lat: -34.9,
+        lon: -56.16,
+        ciudadId: 'ciu-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 28,
+        newVersion: 29,
+        createOld: v28.DatabaseAtV28.new,
+        createNew: v29.DatabaseAtV29.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.ubicacion, ubicacion),
+        validateItems: (nuevo) async {
+          final guardada = await nuevo.select(nuevo.ubicacion).getSingle();
+          expect(guardada.id, 'ub-1');
+          expect(guardada.calle, 'Rivera');
+          expect(guardada.syncVersion, 4);
+          expect(await nuevo.select(nuevo.ubicacionUnida).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La tabla acepta la marca que baja del servidor, una por ubicación.
+          await nuevo.customStatement(
+            "INSERT INTO ubicacion_unida (ubicacion_id, unida_a_id) VALUES ('ub-1', 'ub-2')",
+          );
+          final marca = await nuevo.select(nuevo.ubicacionUnida).getSingle();
+          expect((marca.ubicacionId, marca.unidaAId), ('ub-1', 'ub-2'));
         },
       );
     },

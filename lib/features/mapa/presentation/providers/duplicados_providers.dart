@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../data/datasources/pares_duplicados_local_data_source_drift.dart';
 import '../../data/repositories/pares_duplicados_repository_impl.dart';
+import '../../data/services/consultor_alta_ubicacion_drift.dart';
 import '../../domain/repositories/pares_duplicados_repository.dart';
+import '../../domain/services/consultor_alta_ubicacion.dart';
 import '../../domain/usecases/duplicados_ubicacion_use_cases.dart';
 import 'alta_ubicacion_providers.dart';
 
@@ -18,11 +20,19 @@ final paresDuplicadosRepositoryProvider = Provider<ParesDuplicadosRepository>((r
   return ParesDuplicadosRepositoryImpl(ParesDuplicadosLocalDataSourceDrift(db));
 });
 
+/// Dónde está el alta de cada ubicación respecto del servidor (HU-UBI-006, «Par local»), leída de la
+/// cola de sync. Sin DB abierta no hay cola: `null`, y todas se tratan como del servidor.
+final consultorAltaUbicacionProvider = Provider<ConsultorAltaUbicacion?>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  return db == null ? null : ConsultorAltaUbicacionDrift(db);
+});
+
 /// Los pares de la pantalla, reactivos: un par unido, decidido o corregido sale solo.
 final observarParesDuplicadosUseCaseProvider = Provider<ObservarParesDuplicadosUseCase>(
   (ref) => ObservarParesDuplicadosUseCase(
     ref.watch(ubicacionRepositoryProvider),
     ref.watch(paresDuplicadosRepositoryProvider),
+    altas: ref.watch(consultorAltaUbicacionProvider),
     ahora: ref.watch(relojAltaUbicacionProvider),
   ),
 );

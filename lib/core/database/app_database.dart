@@ -25,6 +25,7 @@ import '../../features/mapa/data/datasources/house_status_table.dart';
 import '../../features/mapa/data/datasources/notas_table.dart';
 import '../../features/mapa/data/datasources/pares_duplicados_table.dart';
 import '../../features/mapa/data/datasources/personas_table.dart';
+import '../../features/mapa/data/datasources/ubicacion_unida_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
 import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
@@ -93,6 +94,7 @@ part 'app_database.g.dart';
     Entregas,
     Devoluciones,
     Depositos,
+    UbicacionesUnidas,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -152,10 +154,13 @@ class AppDatabase extends _$AppDatabase {
   ///   etiqueta de cada producto en Precios, en lugar del `tipo` heredado (#561).
   /// - 28: `ciudad` suma `departamento`, que el servidor ya manda en el pull (backend-supabase 0066):
   ///   con él «Mapas offline» ofrece el mapa del departamento de la colportora (#619).
+  /// - 29: `ubicacion_unida`, la marca de unión que baja con la ubicación (`unida_a_id`), solo local y
+  ///   de solo bajada: de ahí salen la leyenda «Unida a otra ubicación» y la guarda de «Reactivar»
+  ///   (backend-supabase 0051, «Marca local» de Cristian, 28/10, HU-UBI-006, #285).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 28;
+  static const int versionEsquema = 29;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -432,6 +437,12 @@ class AppDatabase extends _$AppDatabase {
     // «Mapas offline» no ofrece «Mi departamento» (#619).
     from27To28: (m, esquema) async {
       await m.addColumn(esquema.ciudad, esquema.ciudad.departamento);
+    },
+    // Solo crea la marca de unión, vacía (la llena el pull con el `unida_a_id` de cada ubicación): nada
+    // de lo guardado cambia. Las uniones que el servidor ya había mandado antes no se recuperan solas
+    // (el pull es por delta); las que hizo este teléfono siguen en la auditoría local (#285).
+    from28To29: (m, esquema) async {
+      await m.createTable(esquema.ubicacionUnida);
     },
   );
 }

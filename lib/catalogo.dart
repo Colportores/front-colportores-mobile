@@ -98,6 +98,9 @@ final specsDeLaApp = <SyncSpec>[
 
   // local: jamás sale del teléfono por sync (Ley 18.331). Solo el backup E2E.
   SyncSpec.local('audit_log'),
+  // La marca de unión de las ubicaciones (HU-UBI-006, «Marca local» de Cristian, 28/10): la llena el pull
+  // de `ubicacion` con su `unida_a_id` (`DriftLocalStore`) y nunca sube.
+  SyncSpec.local('ubicacion_unida'),
   // La copia local del nombre del usuario (#243): viene de Auth, no del sync.
   SyncSpec.local('sesion_usuario'),
   // El cliente del colportor y sus notas: PII (Ley 18.331), solo en el teléfono.

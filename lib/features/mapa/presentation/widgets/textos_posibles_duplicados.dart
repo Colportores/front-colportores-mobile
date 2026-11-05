@@ -90,6 +90,18 @@ abstract final class TextosPosiblesDuplicados {
   static String conservada(String letra) => 'Ubicación $letra, la que se conserva';
   static String duplicada(String letra) => 'Ubicación $letra, la que queda como baja';
 
+  // «Par local» (HU-UBI-006, #285): una de las dos todavía no está en el servidor. Textos provisorios
+  // (mapa §2: texto/aviso), coherentes con los de arriba; el canvas no dibuja este caso.
+
+  /// La que solo está en el teléfono: no se puede conservar, queda como baja.
+  static String duplicadaSoloEnTelefono(String letra) =>
+      'Ubicación $letra, solo en tu teléfono: queda como baja';
+
+  /// Debajo de las dos opciones cuando una no se puede conservar.
+  static const parLocal =
+      'Una de las dos todavía no está en el servidor, así que se conserva la que sí está. Lo que '
+      'cargaste en la otra pasa a ella y se sube con el resto.';
+
   // ------------------------------------------------------------ par resuelto (10·03)
   static const deshacer = 'Deshacer';
 
@@ -124,7 +136,11 @@ abstract final class TextosPosiblesDuplicados {
   /// El texto del aviso rojo según la falla de la unión: con la que se iba a conservar de baja, el
   /// suyo («La ubicación que ibas a conservar ya está dada de baja. Revisá el par de nuevo.»).
   static String falloUnion(Failure falla) =>
-      falla is FailureConservadaDeBaja ? falla.mensaje : noSePudoUnir;
+      falla is FailureConservadaDeBaja ||
+          falla is FailureAltaSubiendo ||
+          falla is FailureConservadaSoloEnTelefono
+      ? falla.mensaje
+      : noSePudoUnir;
 
   /// «No se pudieron marcar 2 pares como duplicados. Probá de nuevo.»
   static String noSePudieronUnir(int cantidad) =>
