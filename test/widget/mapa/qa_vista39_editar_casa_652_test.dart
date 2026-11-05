@@ -36,10 +36,7 @@ import 'mapa_ubicaciones_arnes.dart';
 import 'mapa_ubicaciones_page_test.dart' show canvas;
 
 const _conCapturas = bool.fromEnvironment('QA_CAPTURAS');
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
-/// `skip` de un hallazgo: salvo con `QA_HALLAZGOS=true`.
-const _hallazgo = !_verHallazgos;
 Finder get _editar => find.byKey(ClavesHojaCasa.editar);
 
 String _sufijo(Size t, double e) => '${t.width.toInt()}x${t.height.toInt()}_x$e';
