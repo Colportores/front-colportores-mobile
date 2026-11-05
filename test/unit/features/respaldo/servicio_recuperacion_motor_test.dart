@@ -962,6 +962,40 @@ void main() {
       },
     );
 
+    test('un corte de red en la reconciliación y «Reintentar»: sigue contando el que no tenía base '
+        'usable y el que la contraseña no abre (#656)', () async {
+      await respaldarOtro(_password, antes: conLaPersonaYLaCola);
+      drive.ocultarHashRemoto = true;
+      drive.corrupt(drive.entries.first.id); // la base del teléfono viejo
+      final respaldos = await losRespaldos();
+      // Un tercero que la contraseña no abre, para sumar al que no tiene base usable.
+      final sinClave = RespaldoEnDrive(
+        llave: 'sin-sobre',
+        fecha: respaldos.first.fecha,
+        partes: 1,
+        bytes: 1,
+        completo: true,
+        tieneLlave: false,
+      );
+      final todos = [...respaldos, sinClave];
+      servidor.failTransient(100);
+
+      final primero = await servicio.recuperar(respaldos: todos, password: _password);
+
+      expect(primero, isA<RecuperacionSinConexion>());
+      expect(await personasDelNuevo(), ['per-9:Zoe'], reason: 'el restore ya entró');
+
+      servidor.clearFailures();
+      final segundo = await servicio.recuperar(respaldos: todos, password: _password);
+
+      expect(
+        (segundo as RecuperacionHecha).informe.respaldosSinAbrir,
+        2,
+        reason: 'la base dañada y el que no abre',
+      );
+      expect(await personasDelNuevo(), ['per-9:Zoe'], reason: 'no se restaura de nuevo');
+    });
+
     test('cancelar a mitad de la descarga no toca la DB y destruye las dos claves', () async {
       await respaldarOtro(_password, antes: conLaPersonaYLaCola);
       final cancelar = CancelacionRecuperacion();

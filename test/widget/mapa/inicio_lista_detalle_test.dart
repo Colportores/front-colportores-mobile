@@ -72,6 +72,8 @@ Future<_Edicion> _montar(WidgetTester tester) async {
             filaLista('b', tipo: TipoUbicacion.edificio, calle: 'Mataojo', numero: '2044'),
             filaLista('c', calle: 'Colonia', numero: '77'),
           ]),
+          // La distancia sale del GPS único, que ya pasó por el mapa (#651).
+          gpsAbierto: true,
         ),
         ubicacionDeLaHojaProvider.overrideWith(
           (ref, id) => ubicacionGuardada(

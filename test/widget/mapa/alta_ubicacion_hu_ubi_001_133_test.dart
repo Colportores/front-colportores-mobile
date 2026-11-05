@@ -39,6 +39,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
 import '../../helpers/mapa_base_falso.dart';
+import '../../helpers/ubicacion_colportor_falsos.dart';
 
 final _t0 = DateTime.utc(2026, 10, 27, 12);
 
@@ -692,6 +693,9 @@ void main() {
         ),
       );
       t.geocodificador.respuesta = (_) => const DireccionDelPunto(calle: 'Bulevar', numero: '10');
+      // El alta no lee el GPS por su cuenta (#651): el colportor se movió y tocó «Mi ubicación» en
+      // el mapa, que es quien lo vuelve a leer.
+      await refrescarGpsDelColportor(tester);
       await tester.tap(find.text('abrir'));
       await _asentar(tester);
       expect(_habilitado(tester, _registrar), isFalse, reason: 'el tipo vuelve sin elegir');

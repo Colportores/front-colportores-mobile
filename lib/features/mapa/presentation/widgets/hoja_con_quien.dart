@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/eleccion_de_cita.dart';
+import '../../domain/entities/eleccion_de_entrevista.dart';
 import '../../domain/entities/persona.dart';
 import '../../domain/entities/persona_de_la_entrevista.dart';
 import '../../domain/entities/persona_del_espacio.dart';
@@ -33,13 +34,15 @@ final _leyendoPrevias = <String>{};
 /// elegir (HU-VIS-005, HU-UBI-008; artboards R·04 y C·07). Es el paso que sigue a «Entrevista dada».
 ///
 /// - Sin personas: pide el nombre (el apellido es opcional) y con eso alcanza; la persona se guarda
-///   en el teléfono al tocar «Empezar entrevista».
+///   en el teléfono al tocar «Empezar entrevista». El nombre es **opcional** (decisión de Cristian,
+///   04/11): «Todavía no sé con quién» sigue a la entrevista sin persona y sin guardar a nadie
+///   ([EntrevistaSinPersona]).
 /// - Con una sola: **no muestra nada** y devuelve a esa persona.
 /// - Con varias: la lista, y «+ Alguien nuevo» abre el alta de persona (32A) y vuelve acá.
 ///
 /// Todo es local: no hay estado «sin conexión» ni espera de red. [colportorId] es el usuario con la
 /// sesión iniciada (`created_by` de la persona nueva).
-Future<PersonaDeLaEntrevista?> mostrarHojaConQuien(
+Future<EleccionDeEntrevista?> mostrarHojaConQuien(
   BuildContext context, {
   required String espacioId,
   required String colportorId,
@@ -50,7 +53,7 @@ Future<PersonaDeLaEntrevista?> mostrarHojaConQuien(
     colportorId: colportorId,
     paraProgramar: false,
   );
-  return r is PersonaDeLaEntrevista ? r : null;
+  return r is EleccionDeEntrevista ? r : null;
 }
 
 /// El mismo paso para **programar** una entrevista (vista 39, «Programar entrevista» → «¿Con quién es la
@@ -91,7 +94,7 @@ Future<Object?> _abrir(
     final previas = await repo.observarDelEspacio(espacioId).first.timeout(_esperaPrevia);
     final paso = PasoConQuien.de(previas);
     if (paso is UnaPersona) {
-      return paraProgramar ? CitaConPersona(paso.elegida) : paso.elegida;
+      return paraProgramar ? CitaConPersona(paso.elegida) : EntrevistaConPersona(paso.elegida);
     }
     if (paso is SinPersonas && paraProgramar) return const CitaSinPersona();
   } on Object {
@@ -122,7 +125,8 @@ enum _Modo { formulario, lista }
 ///
 /// - **Cargando** y **no se pudo leer** (con «Reintentar»): los estados que el canvas no dibuja.
 /// - **R·04**: el candado, `NOMBRE` y `APELLIDO (OPCIONAL)`. «Empezar entrevista» queda apagado a la
-///   vista mientras falta el nombre, pero se puede tocar (dice qué falta). Los ids del alta se
+///   vista mientras falta el nombre, pero se puede tocar (dice qué falta). Debajo, «Todavía no sé con
+///   quién» (el nombre es opcional): sigue sin persona y sin guardar nada. Los ids del alta se
 ///   generan una vez por hoja: un doble toque o un reintento tras una falla no crean dos personas.
 /// - **C·07**: una persona por fila (viene elegida la primera), con su saldo si se lo conoce, y
 ///   «+ Alguien nuevo» al final. Al volver del alta, la persona nueva queda elegida.
@@ -209,9 +213,9 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
     );
   }
 
-  /// Lo que entrega la hoja con [elegida]: la persona sola, o la cita con ella al programar.
+  /// Lo que entrega la hoja con [elegida]: la entrevista con ella, o la cita con ella al programar.
   Object _resultadoDe(PersonaDeLaEntrevista elegida) =>
-      widget.paraProgramar ? CitaConPersona(elegida) : elegida;
+      widget.paraProgramar ? CitaConPersona(elegida) : EntrevistaConPersona(elegida);
 
   void _cerrarCon(Object? resultado) {
     if (_cerrando) return;
@@ -267,13 +271,21 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
     if (!mounted) return;
     final exito = guardada;
     if (exito != null) {
-      _cerrarCon(exito);
+      _cerrarCon(EntrevistaConPersona(exito));
       return;
     }
     setState(() {
       _enviando = false;
       _falla = falla;
     });
+  }
+
+  /// R·04, «Todavía no sé con quién»: la entrevista sigue sin persona y no se guarda a nadie. No hace
+  /// falta validar nada (el nombre es opcional); mientras se guarda a la persona no se toca, y el
+  /// cierre es el de siempre (un doble toque no cierra dos veces).
+  void _sinNombre() {
+    if (_enviando || _cerrando) return;
+    _cerrarCon(const EntrevistaSinPersona());
   }
 
   Future<void> _alguienNuevo() async {
@@ -411,6 +423,8 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
             enviando: _enviando,
             alTocar: _empezarConNombre,
           ),
+          const SizedBox(height: 10),
+          _BotonSinNombre(alTocar: _enviando ? null : _sinNombre),
           const SizedBox(height: 10),
           _BotonVolver(alTocar: _enviando ? null : () => _cerrarCon(null)),
         ],
@@ -688,6 +702,25 @@ class _BotonVolver extends StatelessWidget {
   );
 }
 
+/// «Todavía no sé con quién» (R·04): la entrevista sigue sin persona. Texto azul, sin contorno: la
+/// acción principal sigue siendo «Empezar entrevista» y «Volver» la salida.
+class _BotonSinNombre extends StatelessWidget {
+  const _BotonSinNombre({required this.alTocar});
+
+  final VoidCallback? alTocar;
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    key: ClavesConQuien.todaviaNoSe,
+    style: TextButton.styleFrom(
+      minimumSize: const Size.fromHeight(56),
+      foregroundColor: Theme.of(context).colorScheme.primary,
+    ),
+    onPressed: alTocar,
+    child: const Text(TextosConQuien.todaviaNoSe, textAlign: TextAlign.center),
+  );
+}
+
 /// Mientras llegan las personas del espacio.
 class _Cargando extends StatelessWidget {
   const _Cargando({required this.alVolver});
@@ -760,8 +793,10 @@ class _ErrorDeLectura extends StatelessWidget {
 }
 
 extension on PersonaDeLaEntrevista {
-  /// Lo que entrega la hoja al elegir a esta persona: ella sola, o la cita con ella al programar.
-  Object paraLaHoja({required bool paraProgramar}) => paraProgramar ? CitaConPersona(this) : this;
+  /// Lo que entrega la hoja al elegir a esta persona: la entrevista con ella, o la cita con ella al
+  /// programar.
+  Object paraLaHoja({required bool paraProgramar}) =>
+      paraProgramar ? CitaConPersona(this) : EntrevistaConPersona(this);
 }
 
 /// Las claves de la hoja «¿Con quién?» (para los tests y la QA).

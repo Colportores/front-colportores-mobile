@@ -11,30 +11,41 @@ import '../../domain/entities/entrevista_en_curso.dart';
 typedef RotuloEntrevista = ({String direccion, String persona});
 
 final rotuloDeEntrevistaProvider = FutureProvider.autoDispose
-    .family<RotuloEntrevista, EntrevistaEnCurso>((ref, entrevista) async {
-      var direccion = '';
-      var persona = '';
-      try {
-        final contexto = await ref.watch(contextoEspacioProvider(entrevista.espacioId).future);
-        if (contexto != null) {
-          direccion = FormatoUbicaciones.direccionPropia(contexto.ubicacion);
-        }
-      } on Object {
-        // Sin dirección: el título dice «Entrevista en curso» a secas.
+    .family<RotuloEntrevista, EntrevistaEnCurso>(
+      (ref, entrevista) => _leerRotulo(ref, entrevista.espacioId, entrevista.espacioPersonaId),
+    );
+
+/// Lo mismo para un lugar y un vínculo `espacio_persona` que todavía no tienen una entrevista guardada
+/// (la que se termina sin inicio registrado, R·07).
+final rotuloDelLugarYLaPersonaProvider = FutureProvider.autoDispose
+    .family<RotuloEntrevista, ({String espacioId, String espacioPersonaId})>(
+      (ref, clave) => _leerRotulo(ref, clave.espacioId, clave.espacioPersonaId),
+    );
+
+Future<RotuloEntrevista> _leerRotulo(Ref ref, String espacioId, String espacioPersonaId) async {
+  var direccion = '';
+  var persona = '';
+  try {
+    final contexto = await ref.watch(contextoEspacioProvider(espacioId).future);
+    if (contexto != null) {
+      direccion = FormatoUbicaciones.direccionPropia(contexto.ubicacion);
+    }
+  } on Object {
+    // Sin dirección: el título dice «Entrevista en curso» a secas.
+  }
+  try {
+    final personas = await ref.watch(personasDelEspacioProvider(espacioId).future);
+    for (final p in personas) {
+      if (p.vinculo.id == espacioPersonaId) {
+        persona = [
+          p.persona.nombre,
+          p.persona.apellido,
+        ].where((t) => t.trim().isNotEmpty).join(' ');
+        break;
       }
-      try {
-        final personas = await ref.watch(personasDelEspacioProvider(entrevista.espacioId).future);
-        for (final p in personas) {
-          if (p.vinculo.id == entrevista.espacioPersonaId) {
-            persona = [
-              p.persona.nombre,
-              p.persona.apellido,
-            ].where((t) => t.trim().isNotEmpty).join(' ');
-            break;
-          }
-        }
-      } on Object {
-        // Sin nombre: idem.
-      }
-      return (direccion: direccion, persona: persona);
-    });
+    }
+  } on Object {
+    // Sin nombre: idem.
+  }
+  return (direccion: direccion, persona: persona);
+}

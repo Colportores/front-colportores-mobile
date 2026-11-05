@@ -22,6 +22,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 
 import 'alta_ubicacion_falsos.dart';
 import 'baja_ubicacion_falsos.dart';
+import 'ubicacion_colportor_falsos.dart';
 import 'ubicacion_sin_modificar.dart';
 
 /// Hoy para los tests de la lista: las filas dicen «hace 2 h», «ayer»… respecto de este momento.
@@ -237,11 +238,15 @@ List<Override> overridesLista({
   CiudadesParaAlta? ciudades,
   DateTime? ahora,
   ConsultorPendientesUbicacion? pendientes,
+  bool gpsAbierto = false,
 }) {
   final gpsFalso = gps ?? GpsFalso();
   return [
     ubicacionRepositoryProvider.overrideWithValue(repo),
     proveedorGpsProvider.overrideWithValue(gpsFalso),
+    // Solo el mapa pide el GPS (#651): la Lista lo lee. Con [gpsAbierto] el colportor ya pasó por el
+    // mapa; sin él, nadie lo lee hasta que el test lo pida (o monte la pestaña Mapa).
+    if (gpsAbierto) ubicacionColportorYaAbierta(),
     activadorGpsProvider.overrideWithValue(gpsFalso),
     ciudadesParaAltaProvider.overrideWithValue(ciudades ?? CiudadesFalsas()),
     relojListaUbicacionesProvider.overrideWithValue(() => ahora ?? ahoraLista),
