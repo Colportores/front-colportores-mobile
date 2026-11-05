@@ -96,7 +96,16 @@ typedef ContextoDeEntrevista = ({
 
 /// Lo que recibe «Vender» de «¿Qué pasó?» (vista 39, decisión de Cristian del 04/11, «Vender desde el
 /// mapa»): la casa y la persona a la que se le vende, ya resueltas (la de la última entrevista dada).
-typedef ContextoDeVenta = ({String ubicacionId, String espacioId, String espacioPersonaId});
+/// Además de la venta se guarda una visita «Venta» de hoy (decisión de Cristian, 05/11, «Vender visita»):
+/// [agendaId] es la agenda que cumple (la tocada en la fila de la agenda o la programada de la casa) y
+/// [jornadaId] la jornada abierta de hoy, los dos si los hay.
+typedef ContextoDeVenta = ({
+  String ubicacionId,
+  String espacioId,
+  String espacioPersonaId,
+  String? agendaId,
+  String? jornadaId,
+});
 
 /// Lo que contesta el gancho de «Entrevista dada» o el de «Vender» cuando **la venta ya quedó guardada**:
 /// la colportora vuelve a la hoja de la casa (R·08), que ya muestra la cobranza pendiente. Quien lo

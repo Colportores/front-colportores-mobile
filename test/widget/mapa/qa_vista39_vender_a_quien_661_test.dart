@@ -198,7 +198,7 @@ void main() {
     });
 
     testWidgets(
-      'a mitad de camino se dan de baja las dos: el toque en «Vender» dice algo (no es un no-hacer-nada mudo)',
+      'a mitad de camino se dan de baja las dos: el toque en «Vender» dice por qué y «¿Qué pasó?» sigue abierta (#669)',
       (tester) async {
         final a = await llegarA661(tester, Estado661.quePasoVarias);
         final repo =
@@ -214,9 +214,14 @@ void main() {
           findsOneWidget,
           reason: 'el toque terminó sin hacer nada ni decir por qué',
         );
+        // El texto del issue #669: dice qué pasó y qué hacer.
+        expect(
+          find.text('Ya no queda ninguna persona entrevistada en esta casa. Elegí otra opción.'),
+          findsOneWidget,
+        );
+        expect(a.resultados, isEmpty, reason: '«¿Qué pasó?» sigue abierta');
+        expect(find.byKey(ClavesQuePaso.guardando), findsNothing);
       },
-      // skip: QA #661 — si las entrevistadas ya no están, «Vender» cierra «¿Con quién?» sin aviso ni salida.
-      skip: !verHallazgos661,
     );
   });
 

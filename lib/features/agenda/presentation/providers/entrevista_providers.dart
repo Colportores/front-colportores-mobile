@@ -227,7 +227,7 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
   /// seguidos no escriben dos horas de inicio distintas.
   Future<Either<Failure, EntrevistaEnCurso>> empezar({
     required String espacioId,
-    required String espacioPersonaId,
+    String? espacioPersonaId,
     String? agendaId,
     String? jornadaId,
   }) {
@@ -250,7 +250,7 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
 
   Future<Either<Failure, EntrevistaEnCurso>> _empezar({
     required String espacioId,
-    required String espacioPersonaId,
+    String? espacioPersonaId,
     String? agendaId,
     String? jornadaId,
   }) async {
@@ -359,6 +359,37 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
       return Left(FailureInesperado(causa: e.runtimeType.toString()));
     } finally {
       _finalizando = false;
+    }
+  }
+
+  /// A una entrevista que empezó **sin persona** le pone con quién fue: la persona que la colportora
+  /// acaba de dar de alta para registrar la venta (decisión de Cristian, 05/11, «Entrev. s/n»). Queda
+  /// en el estado y en el almacén: si la venta no se completa, la entrevista sigue en curso con esa
+  /// persona y no se vuelve a pedir el nombre (ni se da de alta dos veces). Si el almacén falla, queda
+  /// en el estado y en el log: la venta sigue igual con esa persona. No hace nada si no hay entrevista o
+  /// si ya tenía persona.
+  Future<void> ponerPersona(String espacioPersonaId) async {
+    final entrevista = state.entrevista;
+    if (entrevista == null || entrevista.espacioPersonaId != null) return;
+    final conPersona = EntrevistaEnCurso(
+      colportorId: entrevista.colportorId,
+      espacioId: entrevista.espacioId,
+      espacioPersonaId: espacioPersonaId,
+      ids: entrevista.ids,
+      inicio: entrevista.inicio,
+      agendaId: entrevista.agendaId,
+      jornadaId: entrevista.jornadaId,
+    );
+    if (ref.mounted) state = state.copiar(entrevista: () => conPersona);
+    try {
+      await ref.read(entrevistaEnCursoRepositoryProvider).guardar(conPersona);
+    } on Object catch (e) {
+      AppLogger.instance.warn(
+        LogModulo.agenda,
+        'ENTREVISTA_PERSONA',
+        'no se pudo guardar la persona de la entrevista en curso',
+        {'tipo': e.runtimeType.toString()},
+      );
     }
   }
 

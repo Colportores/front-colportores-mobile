@@ -17,6 +17,7 @@ import '../../jornada/domain/usecases/finalizar_jornada_use_case.dart';
 import '../../jornada/domain/usecases/obtener_jornada_activa_use_case.dart';
 import '../../jornada/presentation/providers/jornada_providers.dart';
 import '../domain/entities/eleccion_de_cita.dart';
+import '../domain/entities/eleccion_de_venta.dart';
 import 'formato_ubicaciones.dart';
 import 'providers/hoja_casa_providers.dart';
 import 'providers/personas_providers.dart';
@@ -260,13 +261,24 @@ abstract final class FlujoRegistrarVisita {
           colportorId: colportor,
           entrevistadas: [for (final q in venta) q.espacioPersonaId],
         );
-        if (elegida == null) return const OpcionCancelada();
-        espacioPersonaId = elegida.espacioPersonaId;
+        switch (elegida) {
+          case null:
+            return const OpcionCancelada();
+          // Se dieron de baja mientras tanto: se dice por qué y «¿Qué pasó?» sigue abierta.
+          case NadieParaVender():
+            return const OpcionFallida(TextosRegistrarVisita.nadieParaVender);
+          case VenderA(:final persona):
+            espacioPersonaId = persona.espacioPersonaId;
+        }
       }
       final hecho = await vender((
         ubicacionId: datos.ubicacionId,
         espacioId: espacioId,
         espacioPersonaId: espacioPersonaId,
+        // La visita «Venta» de hoy cuelga de la agenda que cumple y de la jornada abierta, como la
+        // entrevista: se leen al vender, no al abrir la hoja.
+        agendaId: await agendaDeLaVisita(),
+        jornadaId: await _jornadaAbierta(contenedor, colportor),
       ));
       return salidaConVenta(hecho) ?? const OpcionCancelada();
     }
