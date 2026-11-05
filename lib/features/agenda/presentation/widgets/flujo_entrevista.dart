@@ -13,7 +13,7 @@ import '../../../mapa/presentation/providers/hoja_casa_providers.dart'
     show contextoDeLaCasaProvider;
 import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
 import '../../../mapa/presentation/providers/personas_providers.dart';
-import '../../../mapa/presentation/textos_personas.dart' show FormatoPersonas;
+import '../../../mapa/presentation/textos_personas.dart' show FormatoPersonas, TextosPersonas;
 import '../../../ventas/domain/entities/cliente_de_la_venta.dart';
 import '../../../ventas/domain/entities/nueva_venta.dart' show VentaGuardada;
 import '../../../ventas/presentation/flujo_cuando_cobrar.dart';
@@ -447,6 +447,7 @@ abstract final class FlujoEntrevista {
       context,
       espacioId: espacioId,
       colportorId: colportorId,
+      ayuda: TextosPersonas.altaParaVender,
     );
     if (nueva == null) return null;
     final nombre = FormatoPersonas.nombreCompleto(nueva);

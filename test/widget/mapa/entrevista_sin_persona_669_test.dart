@@ -15,8 +15,10 @@ import 'package:colportores_mobile/features/mapa/presentation/textos_personas.da
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_con_quien.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_que_paso.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/agendar_visita_arnes.dart' show casaMataojo;
 import '../../helpers/entrevista_dada_648_arnes.dart';
 import '../../helpers/persona_falsos.dart';
 
@@ -151,6 +153,41 @@ void main() {
   });
 
   group('con venta: se pide el nombre con el alta corta (32 A) antes de la venta', () {
+    testWidgets('el alta dice para qué se pide el nombre: solo en este paso (#672, QA)', (
+      tester,
+    ) async {
+      await _hastaR06(tester, a);
+
+      await a.tocarKey(tester, ClavesEntrevista.registrarVenta);
+
+      expect(_alta, findsOneWidget);
+      expect(find.byKey(ClavesAltaPersona.ayuda), findsOneWidget);
+      expect(
+        find.text('Para registrar la venta, anotá a quién se la hacés. Con el nombre alcanza.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('el alta de siempre (pestaña Personas) no lleva esa línea', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            personaRepositoryProvider.overrideWithValue(PersonaRepositorioFalso()),
+            espacioRepositoryProvider.overrideWithValue(
+              EspacioRepositorioParaPersonas(casaMataojo()),
+            ),
+          ],
+          child: const MaterialApp(
+            home: AltaPersonaPage(espacioId: 'esp-1', colportorId: 'col-1'),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(ClavesAltaPersona.ayuda), findsNothing);
+      expect(find.text(TextosPersonas.altaTitulo), findsOneWidget);
+    });
+
     testWidgets(
       '«Sí, registrar la venta» abre el alta; con el nombre, la venta queda a su nombre',
       (tester) async {
