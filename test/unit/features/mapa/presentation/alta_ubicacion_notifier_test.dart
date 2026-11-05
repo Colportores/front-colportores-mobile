@@ -112,14 +112,31 @@ void main() {
       },
     );
 
-    test('el tipo no viene elegido: sin tipo no se puede registrar; con el tipo, sí', () async {
+    test(
+      'el tipo viene en «Casa» (#665): con punto y ciudad ya se puede registrar, sin elegir nada',
+      () async {
+        final b = _banco();
+        await _esperar();
+        expect(b.estado.tipo, TipoUbicacion.casa);
+        expect(b.estado.puedeRegistrar, isTrue);
+
+        final resultado = await b.notificador.registrar();
+
+        expect(resultado, isA<AltaCreada>());
+        expect(b.repo.llamadas.single.ubicacion.tipo, TipoUbicacion.casa);
+      },
+    );
+
+    test('cambiar el tipo y volver a «Casa» funciona igual que antes (#665)', () async {
       final b = _banco();
       await _esperar();
-      expect(b.estado.tipo, isNull);
-      expect(b.estado.puedeRegistrar, isFalse);
+
+      b.notificador.elegirTipo(TipoUbicacion.negocio);
+      expect(b.estado.tipo, TipoUbicacion.negocio);
+      expect(b.estado.puedeRegistrar, isTrue);
 
       b.notificador.elegirTipo(TipoUbicacion.casa);
-
+      expect(b.estado.tipo, TipoUbicacion.casa);
       expect(b.estado.puedeRegistrar, isTrue);
     });
 
@@ -519,7 +536,11 @@ void main() {
       expect(b.estado.calle, const CampoDireccion());
       expect(b.estado.numero, const CampoDireccion());
       expect(b.estado.propuesta, isNull);
-      expect(b.estado.puedeRegistrar, isFalse, reason: 'falta el tipo, no la dirección');
+      expect(
+        b.estado.puedeRegistrar,
+        isTrue,
+        reason: 'la dirección es opcional: se registra igual',
+      );
     });
 
     test('con el geocodificador sin respuesta se registra igual con las coordenadas', () async {

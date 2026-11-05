@@ -35,6 +35,12 @@ import '../../helpers/mapa_base_falso.dart';
 /// Atajo: el GPS que no da ubicación por [motivo].
 GpsFalso _gpsSin(MotivoSinGps motivo) => GpsFalso(Left(FailureGpsNoDisponible(motivo: motivo)));
 
+/// El botón de tipo [etiqueta] cuando es el elegido (el que lleva el tilde).
+Finder _marcado(String etiqueta) => find.descendant(
+  of: find.ancestor(of: find.text(etiqueta), matching: find.byType(InkWell)).first,
+  matching: find.byIcon(Icons.check),
+);
+
 /// La pantalla que abre el alta y guarda cómo se cerró.
 class _Anfitrion extends StatelessWidget {
   const _Anfitrion({required this.salidas, this.puntoInicial});
@@ -228,14 +234,12 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('con GPS preciso se registra con un toque en «Casa» y otro en «Registrar»', (
+    testWidgets('con GPS preciso se registra con un solo toque en «Registrar»: «Casa» ya viene', (
       tester,
     ) async {
       final e = await _montar(tester);
-      expect(_habilitado(tester, _registrar), isFalse, reason: 'el tipo es obligatorio');
+      expect(_habilitado(tester, _registrar), isTrue, reason: '«Casa» viene elegida (#665)');
 
-      await _tocar(tester, find.text('Casa'));
-      expect(_habilitado(tester, _registrar), isTrue);
       await _tocar(tester, _registrar);
 
       final salida = e.salidas.single;
@@ -249,14 +253,38 @@ void main() {
       expect(find.text('abrir'), findsOneWidget, reason: 'vuelve al mapa');
     });
 
-    testWidgets('el tipo no viene elegido y el elegido se marca', (tester) async {
+    testWidgets('«Casa» viene elegida y el elegido se marca; cambiar y volver a «Casa» funciona', (
+      tester,
+    ) async {
       await _montar(tester);
 
-      expect(find.byIcon(Icons.check), findsNothing);
-      await _tocar(tester, find.text('Negocio'));
-
       expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(_marcado('Casa'), findsOneWidget, reason: '«Casa» al abrir');
+      expect(_marcado('Negocio'), findsNothing);
+      expect(_marcado('Edificio'), findsNothing);
+
+      await _tocar(tester, find.text('Negocio'));
+      expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(_marcado('Negocio'), findsOneWidget);
+      expect(_marcado('Casa'), findsNothing);
+
+      await _tocar(tester, find.text('Casa'));
+      expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(_marcado('Casa'), findsOneWidget);
+      expect(_habilitado(tester, _registrar), isTrue);
     });
+
+    testWidgets(
+      'con el texto al 200 % la fila de tipos no desborda y «Casa» se sigue viendo elegida',
+      (tester) async {
+        await _montar(tester, escala: 2, tamano: const Size(360, 640));
+
+        expect(tester.takeException(), isNull, reason: 'sin overflow');
+        expect(_marcado('Casa'), findsOneWidget);
+        await _traer(tester, find.text('Casa'));
+        expect(find.text('Casa').hitTestable(), findsOneWidget);
+      },
+    );
 
     testWidgets('mientras guarda: «Registrando…», deshabilitado, y no se puede cerrar', (
       tester,
@@ -1156,21 +1184,27 @@ void main() {
       expect(e.salidas, [null]);
     });
 
-    testWidgets('al reentrar arranca de cero: sin tipo y con la lectura del GPS único, sin leer '
-        'otra vez', (tester) async {
-      final e = await _montar(tester);
-      await _tocar(tester, find.text('Casa'));
-      await _tocar(tester, find.byTooltip('Cerrar'));
-      expect(e.gps.lecturas, 1);
+    testWidgets(
+      'al reentrar arranca de cero: «Casa» elegida aunque la anterior fuera otro tipo, y con '
+      'la lectura del GPS único, sin leer otra vez',
+      (tester) async {
+        final e = await _montar(tester);
+        await _tocar(tester, find.text('Edificio'));
+        expect(_marcado('Edificio'), findsOneWidget);
+        await _tocar(tester, find.byTooltip('Cerrar'));
+        expect(e.gps.lecturas, 1);
 
-      await tester.tap(find.text('abrir'));
-      await _asentar(tester);
+        await tester.tap(find.text('abrir'));
+        await _asentar(tester);
 
-      expect(e.gps.lecturas, 1, reason: 'el alta no pide el GPS ni el permiso (#651)');
-      expect(find.text('GPS ±6 m'), findsOneWidget, reason: 'parte de la última lectura');
-      expect(find.byIcon(Icons.check), findsNothing);
-      expect(_habilitado(tester, _registrar), isFalse);
-    });
+        expect(e.gps.lecturas, 1, reason: 'el alta no pide el GPS ni el permiso (#651)');
+        expect(find.text('GPS ±6 m'), findsOneWidget, reason: 'parte de la última lectura');
+        expect(find.byIcon(Icons.check), findsOneWidget);
+        expect(_marcado('Casa'), findsOneWidget, reason: 'no recuerda el tipo del alta anterior');
+        expect(_marcado('Edificio'), findsNothing);
+        expect(_habilitado(tester, _registrar), isTrue);
+      },
+    );
 
     testWidgets('un alta por tap largo arranca en ese punto con «Marcado a mano»', (tester) async {
       await _montar(

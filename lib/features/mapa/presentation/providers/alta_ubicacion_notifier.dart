@@ -105,7 +105,7 @@ final class AltaUbicacionState extends Equatable {
     this.punto,
     this.origen = OrigenCoordenadas.gps,
     this.precisionDecidida = false,
-    this.tipo,
+    this.tipo = TipoUbicacion.casa,
     this.ciudad,
     this.origenCiudad = OrigenCiudad.buscando,
     this.calle = const CampoDireccion(),
@@ -130,7 +130,9 @@ final class AltaUbicacionState extends Equatable {
   /// El colportor ya vio el aviso de baja precisión y eligió «Ajustar manualmente» o «Continuar».
   final bool precisionDecidida;
 
-  final TipoUbicacion? tipo;
+  /// El tipo del alta. Arranca en «Casa» (decisión de Cristian, 05/11, #665): el colportor lo cambia
+  /// solo si el lugar es otro. Siempre hay uno elegido, así que nunca falta para registrar.
+  final TipoUbicacion tipo;
 
   final CiudadCatalogo? ciudad;
   final OrigenCiudad origenCiudad;
@@ -170,8 +172,8 @@ final class AltaUbicacionState extends Equatable {
   /// «Registrar» espera a que el colportor elija «Ajustar manualmente» o «Continuar».
   bool get necesitaDecisionPrecision => esImpreciso && !precisionDecidida;
 
-  /// Los datos mínimos del alta: punto, tipo y ciudad.
-  bool get estaCompleto => punto != null && tipo != null && ciudad != null;
+  /// Los datos mínimos del alta: punto y ciudad (el tipo siempre está elegido, arranca en «Casa»).
+  bool get estaCompleto => punto != null && ciudad != null;
 
   bool get puedeRegistrar => !guardando && estaCompleto && !necesitaDecisionPrecision;
 
@@ -265,7 +267,7 @@ final class AltaFallida extends ResultadoRegistroAlta {
   final Failure falla;
 }
 
-/// No hizo nada: ya había un registro en curso (doble toque) o falta tipo, punto o ciudad.
+/// No hizo nada: ya había un registro en curso (doble toque) o falta punto o ciudad.
 final class AltaIgnorada extends ResultadoRegistroAlta {
   const AltaIgnorada();
 }
@@ -553,7 +555,7 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
     final punto = state.punto;
     final tipo = state.tipo;
     final ciudad = state.ciudad;
-    if (state.guardando || punto == null || tipo == null || ciudad == null) {
+    if (state.guardando || punto == null || ciudad == null) {
       return const AltaIgnorada();
     }
     if (justificacion == null && state.necesitaDecisionPrecision) return const AltaIgnorada();
