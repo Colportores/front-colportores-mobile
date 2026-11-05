@@ -114,11 +114,7 @@ Future<ResultadoConQuien> _abrirConQuien(
 }
 
 /// La hoja de la casa recién creada (C·02 sin personas).
-Future<void> _abrirHojaVacia(
-  WidgetTester tester, {
-  required Size tamano,
-  double escala = 1,
-}) async {
+Future<void> _abrirHojaVacia(WidgetTester tester, {required Size tamano, double escala = 1}) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
