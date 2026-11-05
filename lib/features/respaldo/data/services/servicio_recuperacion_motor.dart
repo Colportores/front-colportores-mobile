@@ -220,12 +220,9 @@ final class ServicioRecuperacionMotor implements ServicioRecuperacion {
         return const RespaldoIlegible();
       }
       // Los que no se abrieron con la contraseña y los que no tenían una base que leer: ninguno se
-      // tocó en Drive.
-      // Si el restore ya había pasado en un intento anterior, el motor no lo repite y no trae las
-      // fechas: quedan contados los que la contraseña no abrió.
-      final sinAbrir = informe.backupDates.isEmpty
-          ? respaldos.length - abiertas.length
-          : respaldos.length - informe.backupDates.length;
+      // tocó en Drive. Las cadenas salteadas las cuenta el motor, también en el reintento tras un
+      // corte de red en la fase 3 (#656), donde no repite el restore y no trae las fechas.
+      final sinAbrir = respaldos.length - abiertas.length + informe.skippedChains;
       _log.info(LogModulo.backup, 'RECUPERACION_OK', 'datos recuperados', {
         'parcial': informe.partial,
         'respaldos': informe.backupDates.length,

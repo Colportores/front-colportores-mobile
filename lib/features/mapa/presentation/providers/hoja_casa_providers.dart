@@ -81,12 +81,30 @@ typedef ContextoDeCita = ({
   String? personaId,
 });
 
-/// Lo que recibe «Entrevista dada» (la entrevista en curso, #450) después de «¿Con quién?».
+/// Lo que recibe «Entrevista dada» (la entrevista en curso, #450) después de «¿Con quién?». Con
+/// «Todavía no sé con quién» [persona] es `null`: la entrevista sigue sin persona (el nombre es
+/// opcional, decisión de Cristian, 04/11) y no se inventa a nadie. [agendaId] es la agenda que la
+/// entrevista viene a cumplir (la tocada en la fila de la agenda o, desde la hoja de la casa, la
+/// programada de la casa) y [jornadaId] la jornada abierta de hoy: los dos, si los hay.
 typedef ContextoDeEntrevista = ({
   String ubicacionId,
   String espacioId,
-  PersonaDeLaEntrevista persona,
+  PersonaDeLaEntrevista? persona,
+  String? agendaId,
+  String? jornadaId,
 });
+
+/// Lo que recibe «Vender» de «¿Qué pasó?» (vista 39, decisión de Cristian del 04/11, «Vender desde el
+/// mapa»): la casa y la persona a la que se le vende, ya resueltas (la de la última entrevista dada).
+typedef ContextoDeVenta = ({String ubicacionId, String espacioId, String espacioPersonaId});
+
+/// Lo que contesta el gancho de «Entrevista dada» o el de «Vender» cuando **la venta ya quedó guardada**:
+/// la colportora vuelve a la hoja de la casa (R·08), que ya muestra la cobranza pendiente. Quien lo
+/// recibe resuelve «¿Qué pasó?» pero **no** cierra la hoja de la casa: cerrarla sacaría la casa elegida
+/// de R·08.
+final class VentaRegistradaEnLaCasa {
+  const VentaRegistradaEnLaCasa();
+}
 
 /// A dónde lleva «✓ Registrar visita» (#411, «¿Qué pasó?»). **Sin destino**: mientras sea `null` el
 /// botón no se muestra (HU-UBI-003, «los botones llegan con la HU que los resuelve y no se muestran
@@ -103,9 +121,18 @@ final programarEntrevistaDesdeLaCasaProvider =
     Provider<FutureOr<Object?> Function(ContextoDeCita)?>((ref) => null);
 
 /// A dónde lleva «Entrevista dada» (#450: «Empieza a contar el tiempo»). Devuelve `true` si la
-/// entrevista se dio. Sin destino, la opción no se ofrece en «¿Qué pasó?».
+/// entrevista quedó guardada o en curso (la hoja de la casa se cierra y el mapa muestra el color nuevo o
+/// el aviso fijo) y [VentaRegistradaEnLaCasa] si terminó en una venta (la hoja de la casa sigue abierta).
+/// Sin destino, la opción no se ofrece en «¿Qué pasó?».
 final entrevistaDadaDesdeLaCasaProvider =
     Provider<FutureOr<Object?> Function(ContextoDeEntrevista)?>((ref) => null);
+
+/// A dónde lleva «Vender» de «¿Qué pasó?»: la venta (vista 27) de la casa y la persona que ya tuvieron
+/// una entrevista dada. Devuelve [VentaRegistradaEnLaCasa] si se guardó la venta. Sin destino, la
+/// opción no se ofrece.
+final venderDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDeVenta)?>(
+  (ref) => null,
+);
 
 /// A dónde lleva «$ Cobrar» (#440, «¿Qué venta?»), tanto desde la hoja de la casa como desde la opción
 /// «Cobranza» de «¿Qué pasó?». Devuelve `true` si se cobró (desde «¿Qué pasó?» la visita queda
@@ -115,8 +142,16 @@ final cobrarDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDe
 );
 
 /// Lo que recibe «Ver la ficha» de una persona de la pestaña Personas (vista 39 C·02: «Tocar una
-/// persona abre su ficha», vista 32 B): la persona y el espacio ya puestos.
-typedef ContextoDeFicha = ({String personaId, String espacioId});
+/// persona abre su ficha», vista 32 B): la persona y el espacio ya puestos y el nombre que la fila ya
+/// tiene, para que «Cargando la ficha de María», el error 32B·07 («No pudimos leer los datos de María en
+/// tu teléfono.») y el título de 32B·06/07 («María Fernández») lo digan antes de que la ficha se lea.
+/// `nombre` es el de pila y `nombreCompleto` el que la fila muestra; `null` = «la persona» y sin título.
+typedef ContextoDeFicha = ({
+  String personaId,
+  String espacioId,
+  String? nombre,
+  String? nombreCompleto,
+});
 
 /// A dónde lleva tocar una persona de la pestaña Personas (la ficha de la persona, vista 32 B,
 /// HU-UBI-009). **Sin destino**: mientras sea `null` la fila no se puede tocar y no lleva «›»

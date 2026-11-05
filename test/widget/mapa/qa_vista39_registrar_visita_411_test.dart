@@ -47,6 +47,9 @@ Finder get _deshacer => find.text('Deshacer');
 /// Cuántos píxeles puede sobresalir un texto de la pantalla por redondeos.
 const _tolerancia = 0.6;
 
+/// Las cinco opciones del canvas C·06: «Vender» (decisión de Cristian, 04/11, #648) es de otra HU.
+final _delCanvas = OpcionQuePaso.values.where((o) => o != OpcionQuePaso.vender).toList();
+
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   setUpAll(cargarTipografias);
@@ -102,7 +105,7 @@ void main() {
       for (final escala in [2.0, 3.0]) {
         await llegarA411(tester, Estado411.c06Cinco, tamano: t320x568, escala: escala);
         expect(tester.takeException(), isNull);
-        for (final o in OpcionQuePaso.values) {
+        for (final o in _delCanvas) {
           await tester.ensureVisible(renglon(o));
           await tester.pump();
           final r = tester.getRect(renglon(o));
@@ -129,13 +132,13 @@ void main() {
       (tester) async {
         await llegarA411(tester, Estado411.c06Cinco);
 
-        final orden = [for (final o in OpcionQuePaso.values) tester.getTopLeft(renglon(o)).dy];
+        final orden = [for (final o in _delCanvas) tester.getTopLeft(renglon(o)).dy];
         expect(
           [...orden]..sort(),
           orden,
           reason: 'No contestó, Rechazo, Programar, Dada, Cobranza',
         );
-        expect(OpcionQuePaso.values.map((o) => o.name).toList(), [
+        expect(_delCanvas.map((o) => o.name).toList(), [
           'noContesto',
           'rechazo',
           'programarEntrevista',

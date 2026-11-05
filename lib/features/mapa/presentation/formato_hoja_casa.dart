@@ -61,6 +61,10 @@ abstract final class TextosPestanasHojaCasa {
   /// texto solo dice que no hay.
   static const sinPersonas = 'Todavía no hay personas acá.';
 
+  /// Debajo de [sinPersonas] cuando se puede agregar: anotar a la persona no es un paso obligatorio
+  /// (decisión de Cristian, 04/11: el nombre es opcional). Texto propuesto (mapa §2: texto/aviso).
+  static const sinPersonasParaDespues = 'Podés sumar a alguien ahora o dejarlo para después.';
+
   /// A confirmar: lo que dice la hoja si no se pudo abrir el alta de persona o la ficha. El canvas no
   /// dibuja el error.
   static const noPudimosAbrirAlta = 'No pudimos abrir «Agregar persona». Probá de nuevo.';

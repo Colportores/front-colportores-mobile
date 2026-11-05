@@ -21,6 +21,10 @@ enum OpcionQuePaso {
 
   /// Sigue al cobro (C·08, #440). Solo se ofrece si alguien de la casa debe.
   cobranza,
+
+  /// Sigue a la venta (vista 27) de la persona de la última entrevista dada (decisión de Cristian,
+  /// 04/11, «Vender desde el mapa»). Solo se ofrece si en la casa ya hubo una entrevista dada.
+  vender,
 }
 
 /// Lo que pasó al elegir una opción: la hoja se cierra, queda abierta sin decir nada (la colportora
@@ -48,6 +52,9 @@ final class OpcionFallida extends SalidaDeOpcion {
 
 /// Quién debe y cuánto, para la ayuda de «Cobranza».
 typedef CobroOfrecido = ({String persona, int saldoCentavos});
+
+/// A quién se le vende, para la ayuda de «Vender»: la persona de la última entrevista dada.
+typedef VentaOfrecida = ({String persona});
 
 /// Las claves de la hoja (para los tests y la QA).
 abstract final class ClavesQuePaso {
@@ -102,6 +109,7 @@ Future<bool> mostrarHojaQuePaso(
   required Set<OpcionQuePaso> ofrecidas,
   required Future<SalidaDeOpcion> Function(OpcionQuePaso opcion) alElegir,
   CobroOfrecido? cobro,
+  VentaOfrecida? venta,
 }) async {
   final resultado = await showModalBottomSheet<bool>(
     context: context,
@@ -114,8 +122,13 @@ Future<bool> mostrarHojaQuePaso(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) =>
-        HojaQuePaso(direccion: direccion, ofrecidas: ofrecidas, cobro: cobro, alElegir: alElegir),
+    builder: (_) => HojaQuePaso(
+      direccion: direccion,
+      ofrecidas: ofrecidas,
+      cobro: cobro,
+      venta: venta,
+      alElegir: alElegir,
+    ),
   );
   return resultado ?? false;
 }
@@ -132,11 +145,13 @@ class HojaQuePaso extends StatefulWidget {
     required this.ofrecidas,
     required this.alElegir,
     this.cobro,
+    this.venta,
   });
 
   final String direccion;
   final Set<OpcionQuePaso> ofrecidas;
   final CobroOfrecido? cobro;
+  final VentaOfrecida? venta;
   final Future<SalidaDeOpcion> Function(OpcionQuePaso opcion) alElegir;
 
   @override
@@ -202,6 +217,7 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
 
   List<_Fila> _filas() {
     final cobro = widget.cobro;
+    final venta = widget.venta;
     return [
       if (widget.ofrecidas.contains(OpcionQuePaso.noContesto))
         const _Fila(
@@ -244,6 +260,14 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
           glifo: r'$',
           fondo: ColoresAlta.azul,
           redondo: false,
+        ),
+      if (widget.ofrecidas.contains(OpcionQuePaso.vender) && venta != null)
+        _Fila(
+          opcion: OpcionQuePaso.vender,
+          titulo: TextosRegistrarVisita.vender,
+          ayuda: TextosRegistrarVisita.ayudaVender(venta.persona),
+          glifo: '+',
+          fondo: ColoresAlta.azul,
         ),
     ];
   }

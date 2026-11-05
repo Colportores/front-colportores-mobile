@@ -521,6 +521,42 @@ void main() {
       expect(nuevo.restored!.keys, containsAll(['b1', 'b2', 'b3']));
       expect(nuevo.restored!.keys, isNot(contains('a1')));
       expect([informe.partsRestored, informe.backupDates.length], [3, 1]);
+      expect(informe.skippedChains, 1, reason: 'la rota queda contada');
+    });
+
+    test('el reintento tras un corte en la reconciliación sigue contando la '
+        'cadena salteada (#656)', () async {
+      drive.corrupt('backup-1');
+      final fuentes = [
+        RecoverySource(backup: servicioDe('a'), keyId: 'id-a'),
+        RecoverySource(backup: servicioDe('b'), keyId: 'id-b'),
+      ];
+      transporte.failTransient(100);
+      await expectLater(
+        motor.recover(sources: fuentes),
+        throwsA(isA<TransportFailure>()),
+      );
+      expect(nuevo.chainsRestored, hasLength(1), reason: 'el restore ya entró');
+      nuevo.chainsRestored = [];
+      transporte.clearFailures();
+
+      final segundo = await motor.recover(sources: fuentes);
+
+      expect(nuevo.chainsRestored, isEmpty, reason: 'no se repite el restore');
+      expect(segundo.backupDates, isEmpty, reason: 'no trae las fechas');
+      expect(segundo.skippedChains, 1);
+      expect(segundo.backupDate, isNotNull);
+    });
+
+    test('sin cadenas salteadas, el reintento informa cero', () async {
+      final fuentes = [
+        RecoverySource(backup: servicioDe('a'), keyId: 'id-a'),
+        RecoverySource(backup: servicioDe('b'), keyId: 'id-b'),
+      ];
+      final primero = await motor.recover(sources: fuentes);
+      final segundo = await motor.recover(sources: fuentes);
+
+      expect([primero.skippedChains, segundo.skippedChains], [0, 0]);
     });
 
     test('una cadena cuya base no se descifra se salta y la otra entra', () async {
