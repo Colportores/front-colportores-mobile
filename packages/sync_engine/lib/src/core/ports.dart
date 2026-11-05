@@ -287,13 +287,15 @@ abstract interface class ArchivePort {
   ///
   /// [exportedAt] es de cuándo, en el reloj del teléfono, se leyó la DB; ver
   /// [BackupEntry.exportedAt]. [keyId] es la llave que cifró el payload; ver
-  /// [BackupEntry.keyId].
+  /// [BackupEntry.keyId]. [firma] es la firma de las anotaciones del archivo
+  /// ([CryptoPort.sign] sobre [mensajeDeFirma]); ver [BackupEntry.firma].
   Future<BackupEntry> upload({
     required List<int> payload,
     required String? parentId,
     required String watermark,
     DateTime? exportedAt,
     String? keyId,
+    String? firma,
   });
 
   Future<List<int>> download(String id);
@@ -324,6 +326,17 @@ abstract interface class CryptoPort {
   /// y una etiqueta propia (ver `AesGcmCrypto.keyId`), y ser estable: la misma
   /// llave, recuperada en otro teléfono, da el mismo identificador.
   Future<String> keyId();
+
+  /// Firma [mensaje] con una llave derivada de la llave de la usuaria (HMAC), en
+  /// hexadecimal. Es lo que protege las anotaciones de cada archivo del
+  /// respaldo (`BackupEntry.firma`). **Nunca** la llave ni algo que la
+  /// reconstruya: la llave de la firma sale de la del cifrado con una
+  /// etiqueta propia y no se usa para nada más (ver `AesGcmCrypto.sign`).
+  Future<String> sign(String mensaje);
+
+  /// [firma] es la de [mensaje], comparada en tiempo constante. Una firma
+  /// ausente (`null`) o de otro largo es `false`: nunca lanza por eso.
+  Future<bool> verifySignature(String mensaje, String? firma);
 }
 
 /// La DB local vista como archivo: exportar para el backup, reemplazar para el

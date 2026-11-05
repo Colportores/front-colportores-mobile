@@ -144,6 +144,15 @@ class BackupService {
     );
     final cifrado = await _crypto.encrypt(crudo);
 
+    // Las anotaciones del archivo (padre, hash, instante) llevan la firma de la
+    // llave de la usuaria: sin ella, quien llegue a la carpeta de Drive podría
+    // reencadenar archivos sin que se note.
+    final firma = await _crypto.sign(mensajeDeFirma(
+      parentId: punta?.id,
+      contentHash: _crypto.digest(cifrado),
+      exportedAt: inicio,
+    ));
+
     // La subida es todo o nada: si se corta, no hay entrada y la cadena
     // anterior sigue siendo la vigente (HU-SYNC-005, «manifest intacto»).
     final entrada = await _archive.upload(
@@ -152,6 +161,7 @@ class BackupService {
       watermark: mark,
       exportedAt: inicio,
       keyId: llave,
+      firma: firma,
     );
 
     if (punta == null) {
@@ -224,15 +234,29 @@ class BackupService {
   /// comparando el hash. Si el archivo informa el hash que calculó
   /// ([BackupEntry.storedHash], Drive lo hace) se compara sin bajar nada; si no,
   /// se baja el blob.
+  ///
+  /// También verifica la **firma de las anotaciones** de cada archivo
+  /// ([BackupEntry.firma]): una entrada sin firma, o cuya firma no coincide con
+  /// la que da la llave de la usuaria, es una cadena rota
+  /// ([ChainProblem.badSignature]) y el próximo respaldo parte de una base
+  /// nueva. Es solo local: no baja nada.
   Future<ChainStatus> verifyChain({bool checkContent = true}) async =>
       _verificar((await _propias()).entradas, checkContent: checkContent);
 
   Future<ChainStatus> _verificar(
     List<BackupEntry> entradas, {
     required bool checkContent,
+    bool verificarFirma = true,
   }) async {
     final cadena = buildChain(entradas);
-    if (!cadena.ok || !checkContent) return cadena;
+    if (!cadena.ok) return cadena;
+    if (verificarFirma && !await _firmasValidas(cadena.ordered)) {
+      return const ChainStatus(
+        problems: {ChainProblem.badSignature},
+        ordered: [],
+      );
+    }
+    if (!checkContent) return cadena;
 
     for (final entrada in cadena.ordered) {
       // Con el hash remoto, `buildChain` ya comparó: acá no hay nada que bajar.
@@ -247,6 +271,17 @@ class BackupService {
       }
     }
     return cadena;
+  }
+
+  /// Todas las entradas traen la firma de sus anotaciones y es la de esta llave.
+  /// Se miran todas aunque la primera falle: el costo es el mismo y no depende
+  /// de cuál esté mal.
+  Future<bool> _firmasValidas(List<BackupEntry> entradas) async {
+    var todas = true;
+    for (final e in entradas) {
+      if (!await _crypto.verifySignature(e.mensajeFirmado, e.firma)) todas = false;
+    }
+    return todas;
   }
 
   /// La verificación periódica (HU-SYNC-009): mira la cadena, deja el

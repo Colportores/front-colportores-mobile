@@ -281,7 +281,20 @@ class _ModificarCuotasPageState extends ConsumerState<ModificarCuotasPage> {
         ],
         const RotuloDeCuotas(TextosCuotas.cuotas),
         for (final cuota in plan.cuotas) ...[
-          if (cuota.sePuedeModificar)
+          if (cuota.sePuedeModificar && lugarDe[cuota.agendaId] == _abiertas.length - 1)
+            // La última cuota abierta es lo que falta: no se escribe a mano (decisión del 03/11, #608).
+            FilaDeCuotaEditable(
+              key: Key('cuotas_fila_${cuota.numero}'),
+              rotulo: TextosCuotas.rotuloDeCuota(cuota.numero, cuota.fecha),
+              valorFijo: FormatoVenta.monto(_montos[lugarDe[cuota.agendaId]!]),
+              calculada: true,
+              ayuda: _abiertas.length == 1
+                  ? TextosCuotas.ultimaUnica
+                  : _ajustadas.contains(lugarDe[cuota.agendaId]!)
+                  ? TextosCuotas.ultimaCalculadaAjustada()
+                  : TextosCuotas.ultimaCalculada,
+            )
+          else if (cuota.sePuedeModificar)
             FilaDeCuotaEditable(
               key: Key('cuotas_fila_${cuota.numero}'),
               rotulo: TextosCuotas.rotuloDeCuota(cuota.numero, cuota.fecha),

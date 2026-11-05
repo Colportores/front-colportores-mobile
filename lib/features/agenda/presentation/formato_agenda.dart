@@ -4,6 +4,7 @@ import '../domain/entities/filtros_agenda.dart';
 import '../domain/entities/item_agenda.dart';
 import '../domain/entities/tipo_agenda.dart';
 import '../domain/entities/vista_agenda.dart';
+import '../domain/services/texto_recordatorio.dart';
 
 /// Los textos de la pestaña Agenda (vista 23B, HU-VIS-002). Los literales son los del canvas; los
 /// que el canvas no dibuja están marcados en el pendiente de la HU.
@@ -145,7 +146,9 @@ abstract final class FormatoAgenda {
     final base = partes.join(' ');
     final depto = item.numeroDepto?.trim() ?? '';
     final conDepto = item.alternativa == null && lugar.tipo == TipoUbicacion.edificio;
-    return conDepto && depto.isNotEmpty ? '$base · Depto $depto' : base;
+    final conDatos = conDepto && depto.isNotEmpty ? '$base · Depto $depto' : base;
+    // «Alt. de baja»: la cobranza sigue y suena, pero la dirección se ve marcada para reagendarla.
+    return lugar.deBaja ? '$conDatos ${TextoRecordatorio.direccionDadaDeBaja}' : conDatos;
   }
 
   /// El título de la fila: la persona; sin persona, la dirección; sin ninguna, «Visita sin datos».

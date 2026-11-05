@@ -93,7 +93,7 @@ void main() {
     await nota('vencida', borrada: haceDias(95));
     await nota('vieja', borrada: haceDias(400));
     await nota('activa');
-    await nota('lugar-vieja', borrada: haceDias(400), tipo: TipoObjetivoNota.ubicacion);
+    await nota('visita-vieja', borrada: haceDias(400), tipo: TipoObjetivoNota.visita);
   }
 
   SupabaseRpcTransport rpc(http.Response Function(http.Request) responder) => SupabaseRpcTransport(
@@ -129,7 +129,7 @@ void main() {
         await hora.registrar(hoy);
         final borradas = await limpiar(relojEquipo: DateTime.utc(2028, 5, 1), servidor: hora);
         expect(borradas, 2);
-        expect(await ids(), ['activa', 'lugar-vieja', 'reciente']);
+        expect(await ids(), ['activa', 'reciente', 'visita-vieja']);
       },
     );
 
@@ -159,7 +159,7 @@ void main() {
         await hora.registrar(haceDias(100));
         // Al servidor le faltan 100 días: la de 95 días (borrada DESPUÉS de esa hora) queda; la de 400, no.
         expect(await limpiar(relojEquipo: hoy), 1);
-        expect(await ids(), ['activa', 'lugar-vieja', 'reciente', 'vencida']);
+        expect(await ids(), ['activa', 'reciente', 'vencida', 'visita-vieja']);
       },
     );
 
@@ -180,7 +180,7 @@ void main() {
       await hora.registrar(hoy);
       expect(await limpiar(relojEquipo: hoy), 2);
       expect(await limpiar(relojEquipo: hoy), 0);
-      expect(await ids(), ['activa', 'lugar-vieja', 'reciente']);
+      expect(await ids(), ['activa', 'reciente', 'visita-vieja']);
     });
 
     test('dadas 40 horas registradas a la vez y desordenadas, queda la más alta', () async {

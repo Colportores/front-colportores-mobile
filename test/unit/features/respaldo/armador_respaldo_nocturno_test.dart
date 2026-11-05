@@ -51,6 +51,7 @@ final class _DriveQueExigeToken extends FakeArchive {
     required String watermark,
     DateTime? exportedAt,
     String? keyId,
+    String? firma,
   }) async {
     await _exigir();
     return super.upload(
@@ -59,6 +60,7 @@ final class _DriveQueExigeToken extends FakeArchive {
       watermark: watermark,
       exportedAt: exportedAt,
       keyId: keyId,
+      firma: firma,
     );
   }
 }

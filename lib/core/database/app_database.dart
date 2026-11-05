@@ -162,10 +162,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 30: `ticket`, la foto y los datos del comprobante del cobro con tarjeta o del depósito, que sube
   ///   y baja lo propio (HU-COB-007, #426); `ticket_foto_local`, la copia de la foto y cómo va su
   ///   subida, solo del teléfono; y `cobranza.ticket_id`, el ticket del cobro.
+  /// - 31: `cobranza` pierde `numero_cuota` (backend-supabase 0156, decisión de Cristian, 03/11): el
+  ///   cobro ya no guarda qué número de cuota paga (#608).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 30;
+  static const int versionEsquema = 31;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -454,6 +456,14 @@ class AppDatabase extends _$AppDatabase {
       await m.createTable(esquema.ticket);
       await m.createTable(esquema.ticketFotoLocal);
       await m.addColumn(esquema.cobranza, esquema.cobranza.ticketId);
+    },
+    // Saca de `cobranza` la columna `numero_cuota` (backend-supabase 0156): el cobro ya no guarda qué
+    // número de cuota paga. Se reescribe la tabla y se conserva cada cobro con el resto de sus columnas
+    // (la venta, el monto, el medio, los datos de la tarjeta y de la transferencia, el ticket, la
+    // auditoría); lo que valía `numero_cuota` se pierde (datos simulados hasta diciembre) y nada se
+    // vuelve a encolar al migrar. `alterTable` vuelve a crear el índice `cobranza_venta_idx`.
+    from30To31: (m, esquema) async {
+      await m.alterTable(TableMigration(esquema.cobranza));
     },
   );
 }

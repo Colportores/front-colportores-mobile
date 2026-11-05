@@ -142,6 +142,34 @@ void main() {
     expect((await archivo.list()).map((x) => x.keyId), ['abc123', null]);
   });
 
+  test('la firma viaja en appProperties, vuelve en list y entra en el tope de 124 bytes', () async {
+    final firma = await AesGcmCrypto(List<int>.generate(32, (i) => i)).sign('anotaciones');
+    final e = await archivo.upload(
+      payload: const [1, 2],
+      parentId: 'p' * 33,
+      watermark: 'w',
+      exportedAt: DateTime.utc(2026, 11, 3, 22, 15, 30, 123, 456),
+      keyId: 'k' * 32,
+      firma: firma,
+    );
+
+    final props = drive.archivos[e.id]!['appProperties']! as Map<String, Object?>;
+    expect(props, containsPair('firma', firma));
+    // Drive limita cada par de appProperties a 124 bytes (clave y valor juntos).
+    for (final par in props.entries) {
+      expect(utf8.encode('${par.key}${par.value}').length, lessThanOrEqualTo(124), reason: par.key);
+    }
+    expect(e.firma, firma);
+    expect((await archivo.list()).single.firma, firma);
+  });
+
+  test('un archivo subido sin firma vuelve sin firma, no con una vacía', () async {
+    final e = await archivo.upload(payload: const [1], parentId: null, watermark: 'w');
+
+    expect(drive.archivos[e.id]!['appProperties'], isNot(contains('firma')));
+    expect((await archivo.list()).single.firma, isNull);
+  });
+
   test('el hash que calculó Drive viene en la entrada y coincide con el subido', () async {
     final e = await archivo.upload(
         payload: const [9, 8, 7], parentId: null, watermark: 'w');

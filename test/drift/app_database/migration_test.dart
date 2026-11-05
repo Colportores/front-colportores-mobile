@@ -36,6 +36,7 @@ import 'generated/schema_v28.dart' as v28;
 import 'generated/schema_v29.dart' as v29;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v30.dart' as v30;
+import 'generated/schema_v31.dart' as v31;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
@@ -1809,4 +1810,86 @@ void main() {
       );
     },
   );
+
+  test('dado cobros guardados en la versión 30, cuando migra a la 31, no se pierde ninguno, '
+      'pierden numero_cuota y no se encola nada (#608)', () async {
+    // El cobro ya no guarda qué número de cuota paga: cada cobro sigue con su venta, su monto, su medio,
+    // los datos de la tarjeta y de la transferencia, su ticket y su auditoría; solo desaparece la columna.
+    const cuota = v30.CobranzaData(
+      id: 'c-1',
+      ventaId: 'v-1',
+      monto: 50000,
+      medio: 'EFECTIVO',
+      fecha: 5,
+      numeroCuota: 2,
+      createdAt: 6,
+      updatedAt: 7,
+      createdBy: 'col-1',
+      syncVersion: 4,
+    );
+    const tarjeta = v30.CobranzaData(
+      id: 'c-2',
+      ventaId: 'v-1',
+      monto: 30000,
+      medio: 'TARJETA',
+      fecha: 8,
+      tarjetaTipo: 'CREDITO',
+      tarjetaMarca: 'OCA',
+      numeroAprobacion: 'A-123',
+      ticketId: 't-1',
+      createdAt: 8,
+      updatedAt: 8,
+      deletedAt: 9,
+      syncVersion: 0,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 30,
+      newVersion: 31,
+      createOld: v30.DatabaseAtV30.new,
+      createNew: v31.DatabaseAtV31.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch.insert(viejo.cobranza, cuota);
+        batch.insert(viejo.cobranza, tarjeta);
+      },
+      validateItems: (nuevo) async {
+        final filas = await (nuevo.select(
+          nuevo.cobranza,
+        )..orderBy([(c) => OrderingTerm.asc(c.id)])).get();
+        expect(filas.map((c) => c.id), ['c-1', 'c-2']);
+        expect(filas.first.ventaId, 'v-1');
+        expect(filas.first.monto, 50000);
+        expect(filas.first.medio, 'EFECTIVO');
+        expect(filas.first.fecha, 5);
+        expect(filas.first.createdAt, 6);
+        expect(filas.first.updatedAt, 7);
+        expect(filas.first.createdBy, 'col-1');
+        expect(filas.first.syncVersion, 4);
+        expect(filas.last.tarjetaTipo, 'CREDITO');
+        expect(filas.last.tarjetaMarca, 'OCA');
+        expect(filas.last.numeroAprobacion, 'A-123');
+        expect(filas.last.ticketId, 't-1');
+        expect(filas.last.deletedAt, 9);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        final columnas = await nuevo.customSelect('PRAGMA table_info(cobranza)').get();
+        expect(columnas.map((c) => c.read<String>('name')), isNot(contains('numero_cuota')));
+        final indices = await nuevo.customSelect('PRAGMA index_list(cobranza)').get();
+        expect(indices.map((i) => i.read<String>('name')), contains('cobranza_venta_idx'));
+
+        // Los CHECK siguen; un cobro nuevo no lleva número de cuota.
+        const insertar =
+            'INSERT INTO cobranza (id, venta_id, monto, medio, fecha, created_at, updated_at) VALUES ';
+        await nuevo.customStatement("$insertar('c-3', 'v-1', 1, 'EFECTIVO', 1, 1, 1)");
+        for (final malo in [
+          "('c-4', 'v-1', 0, 'EFECTIVO', 1, 1, 1)",
+          "('c-5', 'v-1', 1, 'CHEQUE', 1, 1, 1)",
+        ]) {
+          await expectLater(nuevo.customStatement('$insertar$malo'), throwsA(anything));
+        }
+        expect(await nuevo.select(nuevo.cobranza).get(), hasLength(3));
+      },
+    );
+  });
 }

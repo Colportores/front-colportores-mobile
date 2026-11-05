@@ -170,17 +170,19 @@ void main() {
   }
 
   prueba('dadas notas de 89 y 91 días borradas, «Ver borradas» muestra solo la de 89 y la limpieza '
-      'borra solo la de 91; la activa, la de un lugar y la restaurada no se tocan', (tester) async {
+      'borra solo la de 91; la activa, la de una visita y la restaurada no se tocan', (
+    tester,
+  ) async {
     await sembrarNota(tester, 'activa', 'Sigue activa.');
     await sembrarNota(tester, 'vieja91', 'Pasó el plazo.', borrada: haceDias(91));
     await sembrarNota(tester, 'ayer89', 'Casi se va.', borrada: haceDias(89));
     await sembrarNota(
       tester,
-      'lugar200',
+      'visita200',
       'Portón roto.',
       borrada: haceDias(200),
-      tipo: TipoObjetivoNota.ubicacion,
-      objetivo: 'ub-1',
+      tipo: TipoObjetivoNota.visita,
+      objetivo: 'vis-1',
     );
     await montar(tester);
 
@@ -195,11 +197,11 @@ void main() {
       findsOneWidget,
       reason: '89 d + 1 d = 90 d: mañana 23/10',
     );
-    expect(await idsEnLaBase(tester), ['activa', 'ayer89', 'lugar200', 'vieja91']);
+    expect(await idsEnLaBase(tester), ['activa', 'ayer89', 'vieja91', 'visita200']);
 
     // Corre la limpieza con la pantalla abierta.
     await limpiar(tester);
-    expect(await idsEnLaBase(tester), ['activa', 'ayer89', 'lugar200']);
+    expect(await idsEnLaBase(tester), ['activa', 'ayer89', 'visita200']);
     expect(find.text('Casi se va.'), findsOneWidget, reason: 'la lista no parpadea ni se vacía');
     expect(find.byKey(ClavesNotas.seBorraEl), findsOneWidget);
     expect(salida.lineas.join('\n'), isNot(contains('Casi se va')));

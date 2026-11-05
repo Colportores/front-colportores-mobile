@@ -75,6 +75,7 @@ class FakeArchive implements ArchivePort {
               exportedAt: e.exportedAt,
               storedHash: _digest(_payloads[e.id]!),
               keyId: e.keyId,
+              firma: e.firma,
             )
           else
             e,
@@ -90,6 +91,7 @@ class FakeArchive implements ArchivePort {
     required String watermark,
     DateTime? exportedAt,
     String? keyId,
+    String? firma,
   }) async {
     if (subidasQueFallan > 0) {
       subidasQueFallan--;
@@ -113,6 +115,7 @@ class FakeArchive implements ArchivePort {
       bytes: payload.length,
       exportedAt: exportedAt,
       keyId: keyId,
+      firma: firma,
     );
     _payloads[id] = payload;
     entries.add(entrada);
@@ -164,6 +167,15 @@ class FakeCrypto implements CryptoPort {
 
   @override
   Future<String> keyId() async => 'id-$llave';
+
+  /// Firma de mentira pero que depende de la [llave] y del mensaje: dos
+  /// `FakeCrypto` con la misma llave firman igual, con otra no.
+  @override
+  Future<String> sign(String mensaje) async => 'f-$llave-${hashOf(utf8.encode(mensaje))}';
+
+  @override
+  Future<bool> verifySignature(String mensaje, String? firma) async =>
+      firma != null && firma == await sign(mensaje);
 
   /// Hash barato pero estable: alcanza para detectar un payload cambiado.
   static String hashOf(List<int> bytes) {
