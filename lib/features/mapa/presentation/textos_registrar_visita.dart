@@ -14,6 +14,10 @@ abstract final class TextosRegistrarVisita {
   static const entrevistaDada = 'Entrevista dada';
   static const cobranza = 'Cobranza';
 
+  /// «Vender» no está en el canvas de C·06: lo pide la decisión de Cristian del 04/11 («Vender desde el
+  /// mapa»), que manda sobre el artboard. Texto propuesto (mapa §2: texto/aviso).
+  static const vender = 'Vender';
+
   static const ayudaGuardaYVuelve = 'Guarda y vuelve al mapa';
   static const ayudaProgramar = 'Elegís día y franja';
   static const ayudaEntrevistaDada = 'Empieza a contar el tiempo';
@@ -23,6 +27,11 @@ abstract final class TextosRegistrarVisita {
   /// para cambiarlo.
   static String ayudaCobranza(String persona, int centavos) =>
       '$persona debe ${FormatoBaja.monto(centavos).replaceFirst(r'$U', r'$')}';
+
+  /// La ayuda de «Vender»: «Registrar la venta de Pedro Gómez».
+  static String ayudaVender(String persona) => persona.trim().isEmpty
+      ? 'Registrar la venta de la entrevista'
+      : 'Registrar la venta de ${persona.trim()}';
 
   // R·01 — el aviso «Guardado».
   static String guardado(String direccion, String resultado) =>

@@ -39,6 +39,9 @@ Future<void> _correr(WidgetTester tester, Duration d) async {
   }
 }
 
+/// Las cinco opciones del canvas C·06: «Vender» (decisión de Cristian, 04/11, #648) es de otra HU.
+final _delCanvas = OpcionQuePaso.values.where((o) => o != OpcionQuePaso.vender).toList();
+
 void main() {
   group('C·06 · ¿Qué pasó?: lo que se ve', () {
     testWidgets(
@@ -520,7 +523,7 @@ void main() {
         );
 
         expect(tester.takeException(), isNull);
-        for (final o in OpcionQuePaso.values) {
+        for (final o in _delCanvas) {
           await tester.ensureVisible(renglon(o));
           await tester.pump();
           expect(renglon(o), findsOneWidget);

@@ -50,6 +50,7 @@ class RecoveryReport {
     this.partsRestored = 0,
     this.partsTotal = 0,
     this.backupDates = const [],
+    this.skippedChains = 0,
   });
 
   /// De cuándo son los datos del backup restaurado. `null` si no había backup.
@@ -59,6 +60,12 @@ class RecoveryReport {
   /// De cuándo es cada cadena restaurada (una por respaldo de otro teléfono).
   /// Vacío si no se restauró ninguna en esta llamada.
   final List<DateTime> backupDates;
+
+  /// Cuántas cadenas pedidas se saltearon porque no tenían una base usable
+  /// (rota o que no se descifra). A diferencia de [backupDates], también se
+  /// informa en el reintento de una recuperación cuyo restore ya había pasado:
+  /// sale de la marca guardada con la de recuperación.
+  final int skippedChains;
 
   /// Jobs de `sync_queue` que volvieron a existir con el restore y se
   /// reenviaron al backend.
