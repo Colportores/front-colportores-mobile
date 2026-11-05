@@ -125,7 +125,7 @@ void main() {
         expect(a.entorno.ventas.recibidas.single.venta.numeroTalonario, '0039');
         expect(a.montaje.almacen.guardadas, isEmpty);
         expect(a.salidasDeEntrevista.single, isA<VentaRegistradaEnLaCasa>());
-        expect(a.resultados, [false], reason: 'R·08: la hoja de la casa queda abierta');
+        expect(a.resultados, [true], reason: 'tras guardar (05/11): la hoja de la casa se cierra');
       },
     );
 

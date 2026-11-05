@@ -7,10 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../cobranzas/presentation/providers/cobranzas_providers.dart'
     show saldoPendienteRepositoryProvider;
+import '../../../inicio/presentation/providers/navegacion_inicio_provider.dart';
 import '../../../mapa/presentation/providers/cobranza_recien_agendada_providers.dart';
 import '../../../mapa/presentation/providers/hoja_casa_providers.dart'
     show contextoDeLaCasaProvider;
-import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
 import '../../../mapa/presentation/providers/personas_providers.dart';
 import '../../../mapa/presentation/textos_personas.dart' show FormatoPersonas;
 import '../../../ventas/domain/entities/cliente_de_la_venta.dart';
@@ -153,6 +153,9 @@ abstract final class FlujoEntrevista {
           ),
         ),
       );
+      // Tras guardar, el mapa queda libre con la casa a la vista (05/11). Desde «Finalizar jornada»
+      // la colportora sigue en lo suyo: no se la saca de ahí.
+      if (!desdeLaJornada) await _volverAlMapa(ref, entrevista.espacioId);
     }
     if (resultado is QuiereRegistrarLaVenta && conVenta) {
       if (!context.mounted) return const VentaSinCompletar();
@@ -255,6 +258,8 @@ abstract final class FlujoEntrevista {
       mensajero?.showSnackBar(
         SnackBar(content: Text(TextosEntrevista.guardada(_lugar(direccion)))),
       );
+      // Tras guardar, el mapa queda libre con la casa a la vista (05/11).
+      await _volverAlMapa(ref, espacioId);
     }
     if (resultado is QuiereRegistrarLaVenta) {
       if (!context.mounted) return const VentaSinCompletar();
@@ -323,7 +328,8 @@ abstract final class FlujoEntrevista {
   ///    llega con HU-VEN-002 (#159, #160): hasta entonces no se dibuja.
   /// 4. Con saldo —lo que quedó sin cobrar—, pregunta «¿Cuándo volvés a cobrar?» y agenda la cobranza
   ///    (decisión «Agenda cobro»).
-  /// 5. R·08: vuelve a la casa, que ya muestra la cobranza pendiente y la cita con «Cambiar».
+  /// 5. R·08, tras guardar: el mapa queda libre con la casa a la vista y su color nuevo (decisión de
+  ///    Cristian, 05/11); al volver a tocarla, su hoja muestra la cobranza pendiente y la cita con «Cambiar».
   static Future<SalidaTerminoEntrevista> _registrarLaVenta(
     BuildContext context,
     ProviderContainer ref, {
@@ -380,7 +386,7 @@ abstract final class FlujoEntrevista {
   /// «Vender» de «¿Qué pasó?» (vista 39, decisión de Cristian del 04/11, «Vender desde el mapa»): la
   /// venta (vista 27) de la casa y la persona que ya tuvieron una entrevista dada, y de ahí todo lo que
   /// sigue a «Sí, registrar la venta»: «Venta registrada», el cobro, «¿Cuándo volvés a cobrar?» y R·08
-  /// (vuelve a la hoja de la casa). A diferencia de «Sí, registrar la venta», acá no hay entrevista que
+  /// (vuelve al mapa libre, con la casa a la vista). A diferencia de «Sí, registrar la venta», acá no hay entrevista que
   /// cerrar ni visita que guardar: la venta no lleva `visita_id`.
   ///
   /// Devuelve [VentaGuardadaEnLaEntrevista] si se guardó, o [VentaSinCompletar] si no (no cambió nada).
@@ -519,7 +525,7 @@ abstract final class FlujoEntrevista {
       avisarLaVenta();
     }
     if (!desdeLaJornada) {
-      await _volverALaCasa(ref, colportorId, espacioId, cobranza: cita, persona: cliente.nombre);
+      await _volverAlMapa(ref, espacioId, cobranza: cita, persona: cliente.nombre);
     }
     return VentaGuardadaEnLaEntrevista(numeroTalonario: numero);
   }
@@ -622,27 +628,27 @@ abstract final class FlujoEntrevista {
     );
   }
 
-  /// R·08: la casa de la venta queda elegida en el mapa, con su hoja abierta: ahí están la cobranza
-  /// pendiente («$ Cobrar») y, si quedó agendada ([cobranza]), su tarjeta con «Cambiar». Si el mapa
-  /// no está montado, no hace nada.
-  static Future<void> _volverALaCasa(
+  /// Tras guardar (decisión de Cristian, 05/11, que cambió el R·08 de la vista 39): lo que se hizo con la
+  /// casa [espacioId] —el fin de la entrevista o la venta— ya está guardado, así que el mapa queda
+  /// libre, con la casa a la vista y su marcador en el color nuevo, y la hoja de la casa no se vuelve a
+  /// subir (`NavegacionInicioNotifier.volverAlMapa`). Si quedó agendada una cobranza ([cobranza]), se
+  /// marca para que la hoja la muestre como tarjeta con «Cambiar» cuando la colportora la vuelva a
+  /// abrir.
+  static Future<void> _volverAlMapa(
     ProviderContainer ref,
-    String colportorId,
     String espacioId, {
     Agenda? cobranza,
     String persona = '',
   }) async {
     try {
       // La hoja que ya estaba abierta lee de nuevo: lo que la persona debe cambió con la venta (y con
-      // «Cobrar ahora»), y el contexto de la casa solo se entera si se lo pide (QA de #428, R·08).
+      // «Cobrar ahora»), y el contexto de la casa solo se entera si se lo pide (QA de #428).
       ref.invalidate(contextoDeLaCasaProvider);
-      final proveedor = mapaUbicacionesProvider(colportorId);
-      if (!ref.exists(proveedor)) return;
       final lugar = (await ref.read(espacioRepositoryProvider).buscar(espacioId)).fold<String?>(
         (_) => null,
         (c) => c?.ubicacion.id,
       );
-      if (lugar == null || !ref.exists(proveedor)) return;
+      if (lugar == null) return;
       if (cobranza != null) {
         ref.read(cobranzaRecienAgendadaProvider.notifier).marcar((
           ubicacionId: lugar,
@@ -650,9 +656,9 @@ abstract final class FlujoEntrevista {
           persona: persona,
         ));
       }
-      ref.read(proveedor.notifier).seleccionar(lugar);
+      ref.read(navegacionInicioProvider.notifier).volverAlMapa(lugar);
     } on Object {
-      // Sin la casa elegida, la colportora igual la toca en el mapa: no se rompe nada.
+      // Sin llevarla al mapa, la colportora igual lo abre y toca la casa: no se rompe nada.
     }
   }
 

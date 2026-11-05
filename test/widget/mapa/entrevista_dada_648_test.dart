@@ -9,6 +9,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart'
     show TipoResultadoVisita;
 import 'package:colportores_mobile/features/agenda/presentation/providers/entrevista_providers.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
+import 'package:colportores_mobile/features/inicio/presentation/providers/navegacion_inicio_provider.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_registrar_visita.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_que_paso.dart';
@@ -110,7 +111,7 @@ void main() {
     });
 
     testWidgets(
-      'la cadena completa: venta → «¿Cuándo volvés a cobrar?» → R·08 con la hoja abierta',
+      'la cadena completa: venta → «¿Cuándo volvés a cobrar?» → R·08: el mapa libre y la hoja se cierra',
       (tester) async {
         await a.montar(tester);
         await a.hastaLaVenta(tester);
@@ -130,9 +131,11 @@ void main() {
         expect(a.salidasDeEntrevista.single, isA<VentaRegistradaEnLaCasa>());
         expect(
           a.resultados,
-          [false],
-          reason: 'R·08: la hoja de la casa queda abierta, no se cierra ni se deselecciona la casa',
+          [true],
+          reason: 'tras guardar (05/11): la hoja de la casa se cierra y el mapa queda libre',
         );
+        expect(a.contenedor(tester).read(navegacionInicioProvider).intencion?.ubicacionId, 'ub-1');
+        expect(a.contenedor(tester).read(navegacionInicioProvider).intencion?.conSuHoja, isFalse);
         expect(find.text('Venta 0039 guardada.'), findsOneWidget);
       },
     );
@@ -432,27 +435,26 @@ void main() {
       expect(a.montaje.agenda.recibidas, isEmpty);
     });
 
-    testWidgets(
-      'la venta guardada llega a R·08 con la hoja de la casa abierta y sin visita atada',
-      (tester) async {
-        a.lector.porVinculo['ep-1'] = _ayer;
-        await a.montar(tester);
-        await a.abrirQuePaso(tester);
-        await a.elegir(tester, OpcionQuePaso.vender);
+    testWidgets('la venta guardada vuelve al mapa libre (la hoja se cierra) y sin visita atada', (
+      tester,
+    ) async {
+      a.lector.porVinculo['ep-1'] = _ayer;
+      await a.montar(tester);
+      await a.abrirQuePaso(tester);
+      await a.elegir(tester, OpcionQuePaso.vender);
 
-        await a.armarLaVenta(tester);
-        await a.registrarSinFecha(tester);
+      await a.armarLaVenta(tester);
+      await a.registrarSinFecha(tester);
 
-        final venta = a.entorno.ventas.recibidas.single.venta;
-        expect(venta.visitaId, isNull, reason: 'no hay visita: es una venta suelta de la casa');
-        expect(venta.espacioPersonaId, 'ep-1');
-        expect(venta.numeroTalonario, '0039');
-        expect(a.montaje.agenda.recibidas, isEmpty);
-        expect(a.salidasDeVenta.single, isA<VentaRegistradaEnLaCasa>());
-        expect(a.resultados, [false], reason: 'R·08: la hoja de la casa queda abierta');
-        expect(find.text('Venta 0039 guardada.'), findsOneWidget);
-      },
-    );
+      final venta = a.entorno.ventas.recibidas.single.venta;
+      expect(venta.visitaId, isNull, reason: 'no hay visita: es una venta suelta de la casa');
+      expect(venta.espacioPersonaId, 'ep-1');
+      expect(venta.numeroTalonario, '0039');
+      expect(a.montaje.agenda.recibidas, isEmpty);
+      expect(a.salidasDeVenta.single, isA<VentaRegistradaEnLaCasa>());
+      expect(a.resultados, [true], reason: 'tras guardar (05/11): la hoja de la casa se cierra');
+      expect(find.text('Venta 0039 guardada.'), findsOneWidget);
+    });
 
     testWidgets('salir de la venta sin guardar avisa y «¿Qué pasó?» se vuelve a poder usar', (
       tester,
@@ -534,7 +536,7 @@ void main() {
           TipoResultadoVisita.entrevista,
         );
         expect(a.entorno.ventas.recibidas.single.venta.visitaId, isNull);
-        expect(a.resultados, [true, false]);
+        expect(a.resultados, [true, true]);
       },
     );
 
