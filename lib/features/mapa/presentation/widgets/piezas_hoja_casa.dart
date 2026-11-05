@@ -27,6 +27,7 @@ abstract final class ClavesHojaCasa {
   static const registrarVisita = Key('hoja_casa_registrar_visita');
   static const agendar = Key('hoja_casa_agendar');
   static const cerrar = Key('hoja_casa_cerrar');
+  static const editar = Key('hoja_casa_editar');
 }
 
 /// El azul navy del botón y del avatar (canvas `#002856`).
