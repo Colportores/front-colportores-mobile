@@ -214,13 +214,19 @@ void main() {
       await _esperar();
       expect(gps.lecturas, 1);
 
+      // Volver de otra app (WhatsApp) sin haber tocado «Activar GPS» no pide nada (#651).
+      await b.notificador.reintentarGpsSiHaceFalta();
+      expect(gps.lecturas, 1);
+
+      await b.notificador.activarGps();
+      expect(gps.lecturas, 2);
       gps.respuesta = Right(lecturaGps(9));
       await b.notificador.reintentarGpsSiHaceFalta();
       expect(b.estado.gps, EstadoGps.conLectura);
-      expect(gps.lecturas, 2);
+      expect(gps.lecturas, 3);
 
       await b.notificador.reintentarGpsSiHaceFalta();
-      expect(gps.lecturas, 2);
+      expect(gps.lecturas, 3);
     });
 
     test(

@@ -392,6 +392,11 @@ void main() {
       await _montar(tester, gps: gps);
       expect(find.text('Sin GPS'), findsOneWidget);
 
+      // «Activar GPS» lo manda a los ajustes (el fake no cambia nada); solo al volver de ahí se
+      // vuelve a leer (#651: volver de otra app no puede mostrarle el diálogo del permiso).
+      await tester.tap(find.text('Activar GPS'));
+      await _asentar(tester);
+      expect(gps.activaciones, [MotivoSinGps.servicioApagado]);
       gps.respuesta = Right(lecturaGps(5));
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -1092,7 +1097,8 @@ void main() {
       expect(e.salidas, [null]);
     });
 
-    testWidgets('al reentrar arranca de cero: sin tipo y leyendo el GPS otra vez', (tester) async {
+    testWidgets('al reentrar arranca de cero: sin tipo y con la lectura del GPS único, sin leer '
+        'otra vez', (tester) async {
       final e = await _montar(tester);
       await _tocar(tester, find.text('Casa'));
       await _tocar(tester, find.byTooltip('Cerrar'));
@@ -1101,7 +1107,8 @@ void main() {
       await tester.tap(find.text('abrir'));
       await _asentar(tester);
 
-      expect(e.gps.lecturas, 2);
+      expect(e.gps.lecturas, 1, reason: 'el alta no pide el GPS ni el permiso (#651)');
+      expect(find.text('GPS ±6 m'), findsOneWidget, reason: 'parte de la última lectura');
       expect(find.byIcon(Icons.check), findsNothing);
       expect(_habilitado(tester, _registrar), isFalse);
     });

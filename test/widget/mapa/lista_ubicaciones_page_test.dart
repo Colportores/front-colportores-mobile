@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart';
+import '../../helpers/ubicacion_colportor_falsos.dart';
 import 'lista_ubicaciones_arnes.dart';
 
 const _nbsp = '\u00A0';
@@ -940,7 +941,7 @@ void main() {
     });
 
     testWidgets(
-      'dado que la pestaña no está a la vista, entonces no pide el GPS hasta que se abre',
+      'dado que el mapa todavía no pidió el GPS, entonces la Lista no lo pide al abrirse (#651)',
       (tester) async {
         final gps = GpsFalso(Right(lecturaGps(7)));
         final activa = ValueNotifier(false);
@@ -950,21 +951,73 @@ void main() {
           repo: RepoListaFalso(_muestra()),
           gps: gps,
           activaCambiante: activa,
+          gpsAbierto: false,
         );
         expect(gps.lecturas, 0);
-        expect(find.textContaining('GPS'), findsNothing);
         expect(find.text('Rivadavia 100'), findsOneWidget);
 
         activa.value = true;
         await asentarLista(tester);
 
-        expect(gps.lecturas, 1);
+        expect(gps.lecturas, 0, reason: 'solo el mapa pide el GPS y el permiso');
+        expect(gps.activaciones, isEmpty);
+        expect(find.text('Rivadavia 100'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado que el mapa todavía no pidió el GPS, entonces la Lista ofrece «Sin GPS · Activar GPS» '
+      'y tocarlo la lleva al mapa, sin diálogo sobre la Lista',
+      (tester) async {
+        final gps = GpsFalso(Right(lecturaGps(7)));
+        var alMapa = 0;
+        await montarLista(
+          tester,
+          repo: RepoListaFalso(_muestra()),
+          gps: gps,
+          gpsAbierto: false,
+          alActivarGps: () => alMapa++,
+        );
+        expect(find.text('◎ Sin GPS · Activar GPS'), findsOneWidget);
+
+        await tester.tap(find.text('◎ Sin GPS · Activar GPS'));
+        await asentarLista(tester);
+
+        expect(alMapa, 1);
+        expect(gps.lecturas, 0, reason: 'la Lista no lee el GPS: eso lo hace el mapa');
+        expect(gps.activaciones, isEmpty, reason: 'ni abre el permiso sobre la Lista');
+      },
+    );
+
+    testWidgets(
+      'dado que la Lista no tiene mapa al lado (selector de «+ Agendar»), entonces el chip solo '
+      'informa',
+      (tester) async {
+        final gps = GpsFalso(Right(lecturaGps(7)));
+        await montarLista(tester, repo: RepoListaFalso(_muestra()), gps: gps, gpsAbierto: false);
+
+        expect(find.text('◎ Sin GPS · Activar GPS'), findsOneWidget);
+        await tester.tap(find.text('◎ Sin GPS · Activar GPS'));
+        await asentarLista(tester);
+
+        expect(gps.lecturas, 0);
+        expect(gps.activaciones, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'dado que el mapa ya leyó el GPS, entonces la Lista muestra esa lectura sin pedirla',
+      (tester) async {
+        final gps = GpsFalso(Right(lecturaGps(7)));
+        await montarLista(tester, repo: RepoListaFalso(_muestra()), gps: gps);
+
+        expect(gps.lecturas, 1, reason: 'la leyó el GPS del colportor (el mapa), una sola vez');
         expect(find.text('◎ GPS ±7${_nbsp}m'), findsOneWidget);
       },
     );
 
-    testWidgets('dado que vuelve a la pestaña, entonces refresca el GPS; sin permiso no vuelve a '
-        'pedirlo en cada apertura', (tester) async {
+    testWidgets('dado que cambia de pestaña y vuelve, entonces no relee el GPS; sin permiso no '
+        'vuelve a pedirlo en cada apertura', (tester) async {
       final gps = gpsFallido();
       final activa = ValueNotifier(true);
       addTearDown(activa.dispose);
@@ -987,13 +1040,25 @@ void main() {
     testWidgets('dado que sin permiso no hay GPS, entonces la lista funciona, dice «Sin GPS» y '
         'tocarlo pide el permiso', (tester) async {
       final gps = gpsFallido();
-      await montarLista(tester, repo: RepoListaFalso(_muestra()), gps: gps);
+      var alMapa = 0;
+      await montarLista(
+        tester,
+        repo: RepoListaFalso(_muestra()),
+        gps: gps,
+        alActivarGps: () => alMapa++,
+      );
 
       expect(find.text('◎ Sin GPS'), findsOneWidget);
       expect(find.text('Rivadavia 100'), findsOneWidget);
 
+      // Tocar el chip lleva al mapa; ahí se activa el GPS (lo que hace el mapa al abrirse).
       gps.alActivar = () => gps.respuesta = Right(lecturaGps(5));
       await tester.tap(find.text('◎ Sin GPS'));
+      await asentarLista(tester);
+      expect(alMapa, 1);
+      expect(gps.activaciones, isEmpty, reason: 'no hay diálogo sobre la Lista');
+
+      await activarGpsDelColportor(tester);
       await asentarLista(tester);
 
       expect(gps.activaciones, [MotivoSinGps.permisoDenegado]);
@@ -1008,8 +1073,9 @@ void main() {
         await montarLista(tester, repo: RepoListaFalso(_muestra()), gps: gps);
         expect(find.text('◎ Sin GPS'), findsOneWidget);
 
-        // Toca «Sin GPS»: lo manda a los ajustes (el fake no cambia nada) y sigue sin GPS.
-        await tester.tap(find.text('◎ Sin GPS'));
+        // Toca «Sin GPS»: en el mapa se lo manda a los ajustes (el fake no cambia nada) y sigue
+        // sin GPS.
+        await activarGpsDelColportor(tester);
         await asentarLista(tester);
         expect(gps.activaciones, hasLength(1));
         expect(find.text('◎ Sin GPS'), findsOneWidget);

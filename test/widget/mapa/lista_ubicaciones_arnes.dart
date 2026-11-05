@@ -31,7 +31,8 @@ Future<void> asentarLista(WidgetTester tester, [int veces = 8]) async {
 /// [activa] `false` la deja montada pero fuera de vista (como las demás pestañas del
 /// `IndexedStack`); [activaCambiante] la va cambiando durante el test. [montadaCambiante] `false`
 /// la desmonta del todo (la pestaña se destruye, como al cerrar la sesión) y `true` la vuelve a
-/// montar. [escala] es el `textScaler`.
+/// montar. [escala] es el `textScaler`. [gpsAbierto] `false` es el colportor que todavía no pasó
+/// por el mapa (la única vista que pide el GPS, #651): nadie lo lee.
 Future<void> montarLista(
   WidgetTester tester, {
   RepoListaFalso? repo,
@@ -49,6 +50,8 @@ Future<void> montarLista(
   Stream<ContextoDeLaCasa> Function(ClaveDeLaCasa clave)? lecturaContexto,
   FutureOr<void> Function(ContextoDeVisita)? registrarVisita,
   List<Override> masOverrides = const [],
+  bool gpsAbierto = true,
+  VoidCallback? alActivarGps,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -56,7 +59,12 @@ Future<void> montarLista(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        ...overridesLista(repo: repo ?? RepoListaFalso(), gps: gps, ciudades: ciudades),
+        ...overridesLista(
+          repo: repo ?? RepoListaFalso(),
+          gps: gps,
+          ciudades: ciudades,
+          gpsAbierto: gpsAbierto,
+        ),
         // La hoja de la casa (vista 39) lee de la base; acá, de un contexto fijo (el del canvas).
         ...overridesHojaCasa(lectura: lecturaContexto, registrarVisita: registrarVisita),
         ...masOverrides,
@@ -83,6 +91,7 @@ Future<void> montarLista(
                       alAbrirUbicacion: alAbrir,
                       casaAbreSuHoja: casaAbreSuHoja,
                       alRegistrar: alRegistrar,
+                      alActivarGps: alActivarGps,
                     ),
                   ),
           ),

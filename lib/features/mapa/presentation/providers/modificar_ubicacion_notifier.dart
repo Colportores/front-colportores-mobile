@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
-import '../../../../core/usecases/use_case.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart' show AmbitoTrabajo;
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/espacios_activos.dart';
@@ -18,6 +17,7 @@ import '../../domain/value_objects/coordenadas.dart';
 import '../../domain/value_objects/punto_capturado.dart';
 import 'alta_ubicacion_providers.dart';
 import 'modificar_ubicacion_providers.dart';
+import 'ubicacion_colportor_provider.dart';
 
 /// Con qué se abre la edición de una ubicación (vista 07).
 final class ParametrosModificar extends Equatable {
@@ -598,7 +598,7 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
   Future<Failure?> volverAMiUbicacion() async {
     if (state.modo != ModoEdicion.moverPunto || state.guardando) return null;
     final numero = ++_secuenciaGps;
-    final resultado = await ref.read(capturarPosicionGpsUseCaseProvider)(const NoParams());
+    final resultado = await ref.read(ubicacionColportorProvider.notifier).refrescar();
     if (!ref.mounted || numero != _secuenciaGps || state.modo != ModoEdicion.moverPunto) {
       return null;
     }
