@@ -242,7 +242,7 @@ void main() {
           conAna || avisa,
           isTrue,
           reason:
-              'el gancho recibió ${a.entrevistas.single.persona.espacioPersonaId} y la entrevista '
+              'el gancho recibió ${a.entrevistas.single.persona!.espacioPersonaId} y la entrevista '
               'en curso quedó con ${a.montaje.almacen.guardadas['col-1']!.espacioPersonaId}',
         );
       },

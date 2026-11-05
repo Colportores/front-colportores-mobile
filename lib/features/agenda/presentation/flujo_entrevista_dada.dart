@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/logging/app_logger.dart';
+import '../../mapa/domain/entities/persona_de_la_entrevista.dart';
 import '../../mapa/presentation/providers/hoja_casa_providers.dart'
     show ContextoDeEntrevista, VentaRegistradaEnLaCasa;
 import '../domain/entities/entrevista_en_curso.dart';
@@ -37,12 +38,24 @@ abstract final class FlujoEntrevistaDada {
   }) async {
     final colportor = colportorId?.trim();
     if (colportor == null || colportor.isEmpty) return false;
+    // La entrevista en curso guarda con quién es: «Todavía no sé con quién» (persona `null`, #653) no
+    // tiene dónde guardarse hasta que se decida cómo se modela (pendiente de decisión, no se inventa
+    // a nadie ni se descarta en silencio: queda en el log y «¿Qué pasó?» sigue abierta).
+    final persona = datos.persona;
+    if (persona == null) {
+      AppLogger.instance.warn(
+        LogModulo.agenda,
+        'ENTREVISTA_SIN_PERSONA',
+        'la entrevista en curso todavía no admite «sin persona»; no se empezó',
+      );
+      return false;
+    }
     final contenedor = ProviderScope.containerOf(context, listen: false);
     final empezada = await contenedor
         .read(entrevistaEnCursoProvider(colportor).notifier)
         .empezar(
           espacioId: datos.espacioId,
-          espacioPersonaId: datos.persona.espacioPersonaId,
+          espacioPersonaId: persona.espacioPersonaId,
           agendaId: datos.agendaId,
           jornadaId: datos.jornadaId,
         );
@@ -57,13 +70,13 @@ abstract final class FlujoEntrevistaDada {
         {'falla': empezada.fold((f) => f.runtimeType.toString(), (_) => '')},
       );
       if (!context.mounted) return false;
-      return _sinInicio(context, contenedor, colportor, datos);
+      return _sinInicio(context, contenedor, colportor, datos, persona);
     }
     // Ya hay una entrevista en curso y es de otra casa, o de otra persona de esta casa: `empezar`
     // devolvió la vieja, y abrirla con «¿Con quién?» descartado dejaría la visita (y la venta) a
     // nombre de quien no se eligió. No se empieza otra encima.
     if (entrevista.espacioId != datos.espacioId ||
-        entrevista.espacioPersonaId != datos.persona.espacioPersonaId) {
+        entrevista.espacioPersonaId != persona.espacioPersonaId) {
       final aviso = await _avisoDeOtra(contenedor, entrevista);
       if (context.mounted) {
         ScaffoldMessenger.maybeOf(context)
@@ -116,13 +129,14 @@ abstract final class FlujoEntrevistaDada {
     ProviderContainer contenedor,
     String colportorId,
     ContextoDeEntrevista datos,
+    PersonaDeLaEntrevista persona,
   ) async {
     final salida = await FlujoEntrevista.terminarSinInicioDeLaCasa(
       context,
       contenedor,
       colportorId: colportorId,
       espacioId: datos.espacioId,
-      espacioPersonaId: datos.persona.espacioPersonaId,
+      espacioPersonaId: persona.espacioPersonaId,
       agendaId: datos.agendaId,
       jornadaId: datos.jornadaId,
     );

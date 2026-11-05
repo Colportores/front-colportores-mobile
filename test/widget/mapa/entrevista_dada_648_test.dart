@@ -41,7 +41,7 @@ void main() {
       expect(guardada.espacioId, 'esp-1');
       expect(guardada.espacioPersonaId, 'ep-1');
       expect(guardada.inicio.isAtSameMomentAs(ahoraEntrevista), isTrue);
-      expect(a.entrevistas.single.persona.espacioPersonaId, 'ep-1');
+      expect(a.entrevistas.single.persona!.espacioPersonaId, 'ep-1');
       expect(a.entrevistas.single.ubicacionId, 'ub-1');
       expect(a.resultados, isEmpty, reason: '«¿Qué pasó?» sigue esperando a que R·05 se resuelva');
     });

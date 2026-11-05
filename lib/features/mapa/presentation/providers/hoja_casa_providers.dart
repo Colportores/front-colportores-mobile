@@ -81,13 +81,15 @@ typedef ContextoDeCita = ({
   String? personaId,
 });
 
-/// Lo que recibe «Entrevista dada» (la entrevista en curso, #450) después de «¿Con quién?». [agendaId]
-/// es la agenda que la entrevista viene a cumplir (la tocada en la fila de la agenda o, desde la hoja de
-/// la casa, la programada de la casa) y [jornadaId] la jornada abierta de hoy: los dos, si los hay.
+/// Lo que recibe «Entrevista dada» (la entrevista en curso, #450) después de «¿Con quién?». Con
+/// «Todavía no sé con quién» [persona] es `null`: la entrevista sigue sin persona (el nombre es
+/// opcional, decisión de Cristian, 04/11) y no se inventa a nadie. [agendaId] es la agenda que la
+/// entrevista viene a cumplir (la tocada en la fila de la agenda o, desde la hoja de la casa, la
+/// programada de la casa) y [jornadaId] la jornada abierta de hoy: los dos, si los hay.
 typedef ContextoDeEntrevista = ({
   String ubicacionId,
   String espacioId,
-  PersonaDeLaEntrevista persona,
+  PersonaDeLaEntrevista? persona,
   String? agendaId,
   String? jornadaId,
 });
