@@ -248,29 +248,23 @@ void main() {
       },
     );
 
-    testWidgets(
-      'el aviso «La venta no se guardó» de «Vender» se ve (no queda detrás de la hoja ¿Qué pasó?)',
-      (tester) async {
-        final a = Arnes648();
-        a.lector.porVinculo['ep-1'] = ayer648;
-        await a.montar(tester, tamano: t360x640);
-        await a.abrirQuePaso(tester);
-        await a.elegir(tester, OpcionQuePaso.vender);
-        await a.tocarKey(tester, const Key('venta_atras'));
+    testWidgets('volver atrás desde «Vender» sin guardar no avisa y deja «¿Qué pasó?» como estaba', (
+      tester,
+    ) async {
+      final a = Arnes648();
+      a.lector.porVinculo['ep-1'] = ayer648;
+      await a.montar(tester, tamano: t360x640);
+      await a.abrirQuePaso(tester);
+      await a.elegir(tester, OpcionQuePaso.vender);
+      await a.tocarKey(tester, const Key('venta_atras'));
 
-        final aviso = find.text(TextosEntrevista.ventaDeLaCasaNoGuardada);
-        expect(aviso, findsOneWidget);
-        final hoja = tester.getRect(_hojaQuePaso);
-        final texto = tester.getRect(aviso);
-        expect(
-          hoja.overlaps(texto),
-          isFalse,
-          reason: 'el SnackBar vive en el Scaffold, debajo de la hoja modal: queda tapado',
-        );
-      },
-      // skip: issue #648 — el aviso de «Vender» sin guardar se dibuja en el Scaffold del mapa, detrás de la
-      // hoja «¿Qué pasó?» que sigue abierta.
-      skip: !verHallazgos648,
-    );
+      // QA de #648 P1 (decisión de #661): ningún aviso, ni tapado detrás de la hoja ni a la vista.
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.textContaining('La venta no se guardó'), findsNothing);
+      expect(find.byKey(ClavesQuePaso.falla), findsNothing);
+      expect(_hojaQuePaso, findsOneWidget);
+      expect(_vender, findsOneWidget);
+      expect(a.entorno.ventas.recibidas, isEmpty);
+    });
   });
 }

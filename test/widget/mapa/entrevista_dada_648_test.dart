@@ -9,8 +9,11 @@ import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart'
     show TipoResultadoVisita;
 import 'package:colportores_mobile/features/agenda/presentation/providers/entrevista_providers.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/textos_con_quien.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_registrar_visita.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_con_quien.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_que_paso.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -296,6 +299,135 @@ void main() {
       expect(a.resultados, isEmpty, reason: '«¿Qué pasó?» sigue abierta para elegir otra cosa');
     });
 
+    group('«Ir a la entrevista» del aviso «Ya tenés una entrevista en curso» (#661)', () {
+      Finder irALaEntrevista() => find.byKey(ClavesQuePaso.accionDeLaFalla);
+
+      // Hay una entrevista en curso en otra casa y se toca «Entrevista dada» en esta.
+      Future<void> conOtraEnCurso(WidgetTester tester) async {
+        await a.montar(tester);
+        await a
+            .contenedor(tester)
+            .read(entrevistaEnCursoProvider('col-1').notifier)
+            .empezar(espacioId: 'esp-9', espacioPersonaId: 'ep-9');
+        await a.asentar(tester);
+        await a.abrirQuePaso(tester);
+        await a.elegir(tester, OpcionQuePaso.entrevistaDada);
+      }
+
+      testWidgets('el aviso trae el botón y el texto no cambia', (tester) async {
+        await conOtraEnCurso(tester);
+
+        expect(find.byKey(ClavesQuePaso.falla), findsOneWidget);
+        expect(
+          find.textContaining('Ya tenés una entrevista en curso en Grecia 3307'),
+          findsOneWidget,
+        );
+        expect(irALaEntrevista(), findsOneWidget);
+        expect(find.text(TextosEntrevista.irALaEntrevista), findsOneWidget);
+      });
+
+      testWidgets('el botón abre la entrevista en curso de la otra casa (R·05)', (tester) async {
+        await conOtraEnCurso(tester);
+
+        await tester.ensureVisible(irALaEntrevista());
+        await tester.tap(irALaEntrevista());
+        await a.asentar(tester);
+
+        expect(find.byKey(ClavesEntrevista.hojaEnCurso), findsOneWidget);
+        expect(a.montaje.almacen.guardadas['col-1']!.espacioId, 'esp-9');
+        expect(a.entrevistas, isEmpty, reason: 'no se empezó otra');
+      });
+
+      testWidgets(
+        'volver de esa entrevista deja «¿Qué pasó?» con su aviso y su botón, sin trabar',
+        (tester) async {
+          await conOtraEnCurso(tester);
+          await tester.ensureVisible(irALaEntrevista());
+          await tester.tap(irALaEntrevista());
+          await a.asentar(tester);
+
+          await tester.binding.handlePopRoute();
+          await a.asentar(tester);
+
+          expect(find.byKey(ClavesEntrevista.hojaEnCurso), findsNothing);
+          expect(find.byKey(ClavesQuePaso.falla), findsOneWidget);
+          expect(irALaEntrevista(), findsOneWidget);
+          expect(
+            a.montaje.almacen.guardadas['col-1']!.espacioId,
+            'esp-9',
+            reason: 'sigue en curso',
+          );
+          expect(a.resultados, isEmpty, reason: '«¿Qué pasó?» sigue abierta');
+          expect(find.byKey(ClavesQuePaso.guardando), findsNothing);
+          // El botón se puede volver a tocar.
+          await tester.ensureVisible(irALaEntrevista());
+          await tester.tap(irALaEntrevista());
+          await a.asentar(tester);
+          expect(find.byKey(ClavesEntrevista.hojaEnCurso), findsOneWidget);
+        },
+      );
+
+      testWidgets('doble tap en el botón: una sola entrevista abierta', (tester) async {
+        await conOtraEnCurso(tester);
+
+        await tester.ensureVisible(irALaEntrevista());
+        await tester.tap(irALaEntrevista());
+        await tester.tap(irALaEntrevista(), warnIfMissed: false);
+        await a.asentar(tester);
+
+        expect(find.byKey(ClavesEntrevista.hojaEnCurso), findsOneWidget);
+      });
+
+      testWidgets(
+        'si la otra entrevista se termina, el aviso desaparece y se puede dar la de esta casa',
+        (tester) async {
+          await conOtraEnCurso(tester);
+          await tester.ensureVisible(irALaEntrevista());
+          await tester.tap(irALaEntrevista());
+          await a.asentar(tester);
+          await a.tocarKey(tester, ClavesEntrevista.finalizar);
+
+          await a.tocarKey(tester, ClavesEntrevista.guardarYVolver);
+
+          expect(
+            a.montaje.almacen.guardadas,
+            isEmpty,
+            reason: 'la otra entrevista ya no está en curso',
+          );
+          expect(find.byKey(ClavesQuePaso.falla), findsNothing);
+          expect(irALaEntrevista(), findsNothing);
+          expect(
+            find.byKey(ClavesQuePaso.hoja),
+            findsOneWidget,
+            reason: '«¿Qué pasó?» sigue abierta',
+          );
+          await a.elegir(tester, OpcionQuePaso.entrevistaDada);
+          expect(a.entrevistas, hasLength(1));
+          expect(find.byKey(ClavesEntrevista.hojaEnCurso), findsOneWidget);
+        },
+      );
+
+      testWidgets('textScaler 2.0 y dirección larga: el botón se ve y se toca sin desbordar', (
+        tester,
+      ) async {
+        await a.montar(tester, escala: 2, tamano: const Size(360, 640));
+        await a
+            .contenedor(tester)
+            .read(entrevistaEnCursoProvider('col-1').notifier)
+            .empezar(espacioId: 'esp-9', espacioPersonaId: 'ep-9');
+        await a.asentar(tester);
+        await a.abrirQuePaso(tester);
+        await a.elegir(tester, OpcionQuePaso.entrevistaDada);
+
+        expect(tester.takeException(), isNull);
+        await tester.ensureVisible(irALaEntrevista());
+        await tester.tap(irALaEntrevista());
+        await a.asentar(tester);
+        expect(find.byKey(ClavesEntrevista.hojaEnCurso), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    });
+
     testWidgets('con una entrevista en curso con otra persona de la MISMA casa no se descarta '
         '«¿Con quién?»: se avisa y la entrevista vieja queda como estaba', (tester) async {
       await a.montar(
@@ -396,8 +528,8 @@ void main() {
       expect(a.errorAlAbrir, isNull);
     });
 
-    testWidgets('con dos personas vende a la de la entrevista más reciente', (tester) async {
-      a.lector.porVinculo['ep-1'] = _ayer;
+    testWidgets('con una sola persona entrevistada no pregunta, aunque la casa tenga más gente: '
+        'el nombre va en la ayuda', (tester) async {
       a.lector.porVinculo['ep-2'] = _hoy;
       await a.montar(
         tester,
@@ -411,9 +543,209 @@ void main() {
       expect(find.text(TextosRegistrarVisita.ayudaVender('Ana Pérez')), findsOneWidget);
       await a.elegir(tester, OpcionQuePaso.vender);
 
+      expect(find.byType(HojaConQuien), findsNothing, reason: 'no hay a quién preguntar');
       expect(a.ventas.single.espacioPersonaId, 'ep-2');
       expect(a.ventas.single.espacioId, 'esp-1');
       expect(find.text('Ana Pérez'), findsOneWidget);
+    });
+
+    group('con más de una persona entrevistada se pregunta a quién (#661, regla R6)', () {
+      final tres = [
+        clienteDePersonas('1', 'Pedro', apellido: 'Gómez'),
+        clienteDePersonas('2', 'Ana', apellido: 'Pérez', minutos: 5),
+        clienteDePersonas('3', 'Luis', apellido: 'Díaz', minutos: 9),
+      ];
+      Finder dentroDeLaHoja(Finder f) =>
+          find.descendant(of: find.byType(HojaConQuien), matching: f);
+      Finder botonVender() => dentroDeLaHoja(find.byType(FilledButton));
+
+      // Pedro (ayer) y Ana (hoy) tuvieron entrevista; Luis, no.
+      Future<void> armar(
+        WidgetTester tester, {
+        double escala = 1,
+        List<PersonaDelEspacio>? gente,
+      }) async {
+        a.lector.porVinculo['ep-1'] = _ayer;
+        a.lector.porVinculo['ep-2'] = _hoy;
+        await a.montar(tester, personas: gente ?? tres, escala: escala);
+        await a.abrirQuePaso(tester);
+      }
+
+      testWidgets('la ayuda del renglón no elige por la colportora', (tester) async {
+        await armar(tester);
+
+        expect(find.text(TextosRegistrarVisita.ayudaVenderVarias), findsOneWidget);
+        expect(find.textContaining('Registrar la venta de'), findsNothing);
+      });
+
+      testWidgets(
+        'abre «¿Con quién?» solo con las entrevistadas, la más reciente primero y elegida',
+        (tester) async {
+          await armar(tester);
+
+          await a.elegir(tester, OpcionQuePaso.vender);
+
+          expect(find.byType(HojaConQuien), findsOneWidget);
+          expect(a.ventas, isEmpty, reason: 'todavía no se eligió');
+          expect(dentroDeLaHoja(find.text('Ana Pérez')), findsOneWidget);
+          expect(dentroDeLaHoja(find.text('Pedro Gómez')), findsOneWidget);
+          expect(dentroDeLaHoja(find.text('Luis Díaz')), findsNothing, reason: 'sin entrevista');
+          // Sin las salidas de una entrevista: a nadie se le inventa ni se le vende sin entrevista.
+          expect(find.text(TextosConQuien.alguienNuevo), findsNothing);
+          expect(find.byKey(ClavesConQuien.todaviaNoSe), findsNothing);
+          expect(find.text(TextosConQuien.empezar), findsNothing);
+          expect(
+            tester.getTopLeft(dentroDeLaHoja(find.text('Ana Pérez'))).dy,
+            lessThan(tester.getTopLeft(dentroDeLaHoja(find.text('Pedro Gómez'))).dy),
+          );
+          // Viene elegida la de la entrevista más reciente: «Vender» le vende a Ana.
+          await tester.tap(botonVender());
+          await a.asentar(tester);
+          expect(a.ventas.single.espacioPersonaId, 'ep-2');
+          expect(find.byType(HojaConQuien), findsNothing);
+          expect(_ventaPagina, findsOneWidget);
+          expect(find.text('Ana Pérez'), findsOneWidget);
+        },
+      );
+
+      testWidgets('se puede elegir a la otra persona', (tester) async {
+        await armar(tester);
+        await a.elegir(tester, OpcionQuePaso.vender);
+
+        await tester.tap(dentroDeLaHoja(find.text('Pedro Gómez')));
+        await tester.pump();
+        await tester.tap(botonVender());
+        await a.asentar(tester);
+
+        expect(a.ventas.single.espacioPersonaId, 'ep-1');
+        expect(find.text('Pedro Gómez'), findsOneWidget);
+      });
+
+      testWidgets(
+        '«Volver» regresa a «¿Qué pasó?» sin guardar nada ni avisar, y se puede reintentar',
+        (tester) async {
+          await armar(tester);
+          await a.elegir(tester, OpcionQuePaso.vender);
+
+          await tester.tap(dentroDeLaHoja(find.text(TextosConQuien.volver)));
+          await a.asentar(tester);
+
+          expect(find.byType(HojaConQuien), findsNothing);
+          expect(a.ventas, isEmpty);
+          expect(a.entorno.ventas.recibidas, isEmpty);
+          expect(a.resultados, isEmpty, reason: '«¿Qué pasó?» sigue abierta');
+          expect(find.byKey(ClavesQuePaso.falla), findsNothing);
+          expect(find.byKey(ClavesQuePaso.guardando), findsNothing);
+          expect(find.byType(SnackBar), findsNothing);
+          // Nada quedó trabado: se puede elegir de nuevo.
+          await a.elegir(tester, OpcionQuePaso.vender);
+          expect(find.byType(HojaConQuien), findsOneWidget);
+        },
+      );
+
+      testWidgets('el atrás del sistema también vuelve a «¿Qué pasó?» sin guardar', (tester) async {
+        await armar(tester);
+        await a.elegir(tester, OpcionQuePaso.vender);
+
+        await tester.binding.handlePopRoute();
+        await a.asentar(tester);
+
+        expect(find.byType(HojaConQuien), findsNothing);
+        expect(find.byKey(ClavesQuePaso.hoja), findsOneWidget);
+        expect(a.ventas, isEmpty);
+      });
+
+      testWidgets('doble tap en «Vender» de «¿Con quién?»: una sola venta abierta', (tester) async {
+        await armar(tester);
+        await a.elegir(tester, OpcionQuePaso.vender);
+
+        await tester.tap(botonVender());
+        await tester.tap(botonVender(), warnIfMissed: false);
+        await a.asentar(tester);
+
+        expect(a.ventas, hasLength(1));
+        expect(_ventaPagina, findsOneWidget);
+      });
+
+      testWidgets(
+        'la venta sin guardar vuelve a «¿Qué pasó?» sin aviso y se puede volver a empezar',
+        (tester) async {
+          await armar(tester);
+          await a.elegir(tester, OpcionQuePaso.vender);
+          await tester.tap(botonVender());
+          await a.asentar(tester);
+
+          await a.tocarKey(tester, const Key('venta_atras'));
+
+          expect(a.entorno.ventas.recibidas, isEmpty);
+          expect(find.byType(SnackBar), findsNothing);
+          expect(_vender, findsOneWidget);
+          await a.elegir(tester, OpcionQuePaso.vender);
+          expect(find.byType(HojaConQuien), findsOneWidget);
+        },
+      );
+
+      testWidgets('textScaler 2.0 y nombres largos: la lista se lee y se elige sin desbordar', (
+        tester,
+      ) async {
+        await armar(
+          tester,
+          escala: 2,
+          gente: [
+            clienteDePersonas(
+              '1',
+              'María de los Ángeles',
+              apellido: 'Fernández de la Torre y Etcheverry',
+            ),
+            clienteDePersonas(
+              '2',
+              'José Francisco',
+              apellido: 'Rodríguez Pereira de Souza',
+              minutos: 5,
+            ),
+          ],
+        );
+
+        await a.elegir(tester, OpcionQuePaso.vender);
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(HojaConQuien), findsOneWidget);
+        await tester.ensureVisible(botonVender());
+        await tester.tap(botonVender());
+        await a.asentar(tester);
+        expect(a.ventas.single.espacioPersonaId, 'ep-2');
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('muchas personas entrevistadas: la lista se desplaza y se elige la última', (
+        tester,
+      ) async {
+        final muchas = [
+          for (var i = 1; i <= 12; i++)
+            clienteDePersonas('$i', 'Persona$i', apellido: 'Largo', minutos: i),
+        ];
+        for (var i = 1; i <= 12; i++) {
+          a.lector.porVinculo['ep-$i'] = _ayer.add(Duration(hours: i));
+        }
+        await a.montar(tester, personas: muchas, tamano: const Size(360, 640));
+        await a.abrirQuePaso(tester);
+        await a.elegir(tester, OpcionQuePaso.vender);
+
+        // La más reciente (12) viene primera; la más vieja (1) queda al final de la lista que se desplaza.
+        final ultima = dentroDeLaHoja(find.text('Persona1 Largo'));
+        await tester.dragUntilVisible(
+          ultima,
+          dentroDeLaHoja(find.byType(ListView)),
+          const Offset(0, -120),
+        );
+        await tester.tap(ultima);
+        await tester.pump();
+        await tester.tap(botonVender());
+        await a.asentar(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(a.ventas.single.espacioPersonaId, 'ep-1');
+      });
     });
 
     testWidgets('abre la venta con la casa y la persona puestas, sin visita ni entrevista', (
@@ -454,7 +786,7 @@ void main() {
       },
     );
 
-    testWidgets('salir de la venta sin guardar avisa y «¿Qué pasó?» se vuelve a poder usar', (
+    testWidgets('salir de la venta sin guardar no avisa y «¿Qué pasó?» se vuelve a poder usar', (
       tester,
     ) async {
       a.lector.porVinculo['ep-1'] = _ayer;
@@ -465,8 +797,11 @@ void main() {
       await a.tocarKey(tester, const Key('venta_atras'));
 
       expect(a.entorno.ventas.recibidas, isEmpty);
-      expect(a.resultados, isEmpty, reason: '«¿Qué pasó?» sigue abierta');
-      expect(find.text(TextosEntrevista.ventaDeLaCasaNoGuardada), findsOneWidget);
+      expect(a.resultados, isEmpty, reason: '«¿Qué pasó?» sigue abierta como estaba');
+      // Volver atrás no es una falla: no hay aviso (QA de #648, P1).
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.textContaining('La venta no se guardó'), findsNothing);
+      expect(find.byKey(ClavesQuePaso.falla), findsNothing);
       expect(_vender, findsOneWidget);
       // Ningún renglón quedó apagado ni con «Guardando…».
       expect(find.byKey(ClavesQuePaso.guardando), findsNothing);

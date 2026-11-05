@@ -28,6 +28,10 @@ abstract final class TextosRegistrarVisita {
   static String ayudaCobranza(String persona, int centavos) =>
       '$persona debe ${FormatoBaja.monto(centavos).replaceFirst(r'$U', r'$')}';
 
+  /// La ayuda de «Vender» cuando en la casa hay más de una persona entrevistada: no se elige sola, se
+  /// pregunta a quién en el paso siguiente. Texto propuesto (mapa §2: texto/aviso).
+  static const ayudaVenderVarias = 'Elegís a quién le vendés';
+
   /// La ayuda de «Vender»: «Registrar la venta de Pedro Gómez».
   static String ayudaVender(String persona) => persona.trim().isEmpty
       ? 'Registrar la venta de la entrevista'

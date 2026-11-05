@@ -10,6 +10,10 @@ import '../../agenda/domain/entities/visita_guardada.dart';
 import '../../agenda/domain/usecases/registrar_resultado_visita_use_case.dart';
 import '../../agenda/presentation/flujo_entrevista_dada.dart';
 import '../../agenda/presentation/providers/agenda_providers.dart';
+import '../../agenda/presentation/widgets/flujo_entrevista.dart';
+import '../../agenda/presentation/widgets/hoja_termino_entrevista.dart'
+    show VentaGuardadaEnLaEntrevista;
+import '../../agenda/presentation/widgets/textos_entrevista.dart';
 import '../../jornada/domain/jornada_sin_cerrar.dart';
 import '../../jornada/domain/usecases/finalizar_jornada_use_case.dart';
 import '../../jornada/domain/usecases/obtener_jornada_activa_use_case.dart';
@@ -181,6 +185,31 @@ abstract final class FlujoRegistrarVisita {
       return hecho == true ? const OpcionResuelta() : const OpcionCancelada();
     }
 
+    // «Ya tenés una entrevista en curso en …» lleva «Ir a la entrevista»: abre esa entrevista (R·05) con
+    // la misma navegación del aviso fijo del mapa. Al volver, si ya no está en curso (se terminó) el
+    // aviso desaparece y se puede elegir de nuevo; si sigue en curso, el aviso vuelve con su botón.
+    OpcionFallida fallaConOtraEntrevista(String aviso, String colportor) => OpcionFallida(
+      aviso,
+      accion: (
+        etiqueta: TextosEntrevista.irALaEntrevista,
+        alTocar: () async {
+          if (!context.mounted) return const OpcionCancelada();
+          final salida = await FlujoEntrevista.abrirEn(context, contenedor, colportorId: colportor);
+          // La venta de esa entrevista quedó guardada: la hoja de la casa se queda (R·08), como en las
+          // demás.
+          if (salida is VentaGuardadaEnLaEntrevista) {
+            return salidaConVenta(const VentaRegistradaEnLaCasa())!;
+          }
+          final sigue = await FlujoEntrevistaDada.avisoSiHayOtraEnCurso(
+            contenedor,
+            colportorId: colportor,
+            espacioId: espacioId,
+          );
+          return sigue == null ? const OpcionCancelada() : fallaConOtraEntrevista(sigue, colportor);
+        },
+      ),
+    );
+
     Future<SalidaDeOpcion> darLaEntrevista() async {
       final colportor = colportorId;
       if (entrevistaDada == null || colportor == null || colportor.trim().isEmpty) {
@@ -193,7 +222,7 @@ abstract final class FlujoRegistrarVisita {
         colportorId: colportor,
         espacioId: espacioId,
       );
-      if (aviso != null) return OpcionFallida(aviso);
+      if (aviso != null) return fallaConOtraEntrevista(aviso, colportor);
       if (!context.mounted) return const OpcionCancelada();
       final eleccion = await mostrarHojaConQuien(
         context,
@@ -215,13 +244,32 @@ abstract final class FlujoRegistrarVisita {
 
     Future<SalidaDeOpcion> venderUna() async {
       final colportor = colportorId;
-      if (vender == null || venta == null || colportor == null || colportor.trim().isEmpty) {
+      if (vender == null ||
+          venta == null ||
+          venta.isEmpty ||
+          colportor == null ||
+          colportor.trim().isEmpty) {
         return const OpcionFallida(TextosRegistrarVisita.noPudimosGuardar);
+      }
+      // Una sola persona entrevistada: la venta es de ella, sin preguntar. Con más de una se pregunta a
+      // quién (regla R6: quien tiene que dar un dato lo da, no se le elige); atrás vuelve a «¿Qué
+      // pasó?» sin guardar nada.
+      var espacioPersonaId = venta.first.espacioPersonaId;
+      if (venta.length > 1) {
+        if (!context.mounted) return const OpcionCancelada();
+        final elegida = await mostrarHojaConQuienVende(
+          context,
+          espacioId: espacioId,
+          colportorId: colportor,
+          entrevistadas: [for (final q in venta) q.espacioPersonaId],
+        );
+        if (elegida == null) return const OpcionCancelada();
+        espacioPersonaId = elegida.espacioPersonaId;
       }
       final hecho = await vender((
         ubicacionId: datos.ubicacionId,
         espacioId: espacioId,
-        espacioPersonaId: venta.espacioPersonaId,
+        espacioPersonaId: espacioPersonaId,
       ));
       return salidaConVenta(hecho) ?? const OpcionCancelada();
     }
@@ -267,7 +315,7 @@ abstract final class FlujoRegistrarVisita {
       if (programar != null) OpcionQuePaso.programarEntrevista,
       if (entrevistaDada != null) OpcionQuePaso.entrevistaDada,
       if (cobro != null) OpcionQuePaso.cobranza,
-      if (venta != null) OpcionQuePaso.vender,
+      if (venta != null && venta.isNotEmpty) OpcionQuePaso.vender,
     };
 
     final resuelta = await mostrarHojaQuePaso(
@@ -275,7 +323,9 @@ abstract final class FlujoRegistrarVisita {
       direccion: direccion,
       ofrecidas: ofrecidas,
       cobro: cobro == null ? null : (persona: cobro.nombre, saldoCentavos: cobro.saldoCentavos),
-      venta: venta == null ? null : (persona: venta.nombre),
+      venta: venta == null || venta.isEmpty
+          ? null
+          : (persona: venta.length == 1 ? venta.single.nombre : null),
       alElegir: (opcion) => switch (opcion) {
         OpcionQuePaso.noContesto || OpcionQuePaso.rechazo => guardarDeUnToque(opcion),
         OpcionQuePaso.programarEntrevista => programarUna(),
@@ -364,10 +414,14 @@ abstract final class FlujoRegistrarVisita {
     }
   }
 
-  /// A quién se le vende desde «Vender»: la persona de la casa con la entrevista dada más reciente
-  /// (`visita` de resultado `ENTREVISTA`, que no esté dada de baja); `null` si en la casa nunca hubo
-  /// una (la opción no se ofrece) o no se pudo leer (no se afirma lo que no se sabe).
-  static Future<_QuienVende?> _quienVende(ProviderContainer contenedor, String espacioId) async {
+  /// A quién se le puede vender desde «Vender»: las personas de la casa con una entrevista dada
+  /// (`visita` de resultado `ENTREVISTA`, que no estén dadas de baja), la de la entrevista más reciente
+  /// primero; `null` si en la casa nunca hubo una (la opción no se ofrece) o no se pudo leer (no se
+  /// afirma lo que no se sabe). Con una sola, la venta es de ella; con más, se pregunta a quién.
+  static Future<List<_QuienVende>?> _quienVende(
+    ProviderContainer contenedor,
+    String espacioId,
+  ) async {
     try {
       final personas = await contenedor
           .read(personaRepositoryProvider)
@@ -377,20 +431,29 @@ abstract final class FlujoRegistrarVisita {
       final entrevistas = await contenedor
           .read(lectorEntrevistasDePersonasProvider)
           .ultimaEntrevistaDe(personas.map((p) => p.vinculo.id));
-      _QuienVende? mejor;
-      DateTime? fechaDelMejor;
+      final entrevistadas = <({DateTime fecha, _QuienVende quien})>[];
       for (final p in personas) {
         final fecha = entrevistas[p.vinculo.id];
         if (fecha == null) continue;
-        if (fechaDelMejor == null || fecha.isAfter(fechaDelMejor)) {
-          fechaDelMejor = fecha;
-          mejor = _QuienVende(
+        entrevistadas.add((
+          fecha: fecha,
+          quien: _QuienVende(
             espacioPersonaId: p.vinculo.id,
             nombre: FormatoPersonas.nombreCompleto(p.persona),
-          );
-        }
+          ),
+        ));
       }
-      return mejor;
+      if (entrevistadas.isEmpty) return null;
+      // `sort` de Dart no es estable: a igual fecha queda primero la que ya venía primero (el orden de
+      // la casa), que es lo que elegía el «Vender» de una sola persona.
+      final orden = entrevistadas.asMap().map((i, e) => MapEntry(e.quien.espacioPersonaId, i));
+      entrevistadas.sort((a, b) {
+        final porFecha = b.fecha.compareTo(a.fecha);
+        return porFecha != 0
+            ? porFecha
+            : orden[a.quien.espacioPersonaId]!.compareTo(orden[b.quien.espacioPersonaId]!);
+      });
+      return [for (final e in entrevistadas) e.quien];
     } on Object {
       return null;
     }
