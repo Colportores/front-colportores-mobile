@@ -188,6 +188,23 @@ void main() {
       expect(_editar, findsOneWidget);
     });
 
+    testWidgets(
+      'dado que se dio de baja desde la edición (UbicacionBajaRealizada), al volver la hoja '
+      'se cierra y no queda con las acciones de una casa activa',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          alAbrir: (e) async => UbicacionBajaRealizada(e.item.value.ubicacion),
+        );
+
+        await tester.tap(_editar);
+        await _asentar(tester);
+
+        expect(e.aperturas, hasLength(1));
+        expect(e.cierres, hasLength(1));
+      },
+    );
+
     testWidgets('dado un doble toque mientras la edición está abierta, se abre una sola vez', (
       tester,
     ) async {
