@@ -3,9 +3,6 @@
 // puede cumplir, una intención que el colportor deja atrás, que la casa quede en la parte libre del
 // mapa (no bajo la hoja) en los dos tamaños, el atrás con la hoja modal de la Lista, acciones
 // superpuestas y las guías de accesibilidad de los dos estados nuevos (hoja a un tercio y mapa libre).
-//
-// Los tests que documentan un hallazgo llevan `skip` con `QA #649`; `--dart-define=QA_HALLAZGOS=true`
-// los corre.
 import 'dart:async';
 
 import 'package:colportores_mobile/features/inicio/presentation/providers/navegacion_inicio_provider.dart';
@@ -25,7 +22,6 @@ import '../../helpers/lista_ubicaciones_falsos.dart';
 import 'lista_ubicaciones_arnes.dart' show asentarLista;
 import 'navegacion_inicio_649_arnes.dart';
 
-const _qaHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 const _mapa = 1;
 const _hoy = 0;
 const _lista = 2;
@@ -77,7 +73,6 @@ void main() {
           reason: 'la intención se consumió sin mover nada: el mapa tiene que encuadrarse solo',
         );
       },
-      skip: !_qaHallazgos,
     );
 
     testWidgets(
