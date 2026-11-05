@@ -1,5 +1,6 @@
-// HU-UBI-002: la pestaña «Lista» de la pantalla principal es la lista de ubicaciones, y el GPS
-// se pide cuando el colportor la abre, no al arrancar la app.
+// HU-UBI-002: la pestaña «Lista» de la pantalla principal es la lista de ubicaciones; no pide el GPS
+// (solo el mapa lo hace, #651) y su «Activar GPS» lleva al mapa.
+import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_page.dart';
@@ -7,6 +8,7 @@ import 'package:colportores_mobile/features/jornada/data/datasources/fakes/jorna
 import 'package:colportores_mobile/features/jornada/domain/services/disparador_backup.dart';
 import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/lista_ubicaciones_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/pages/mapa_ubicaciones_page.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -93,6 +95,60 @@ void main() {
     expect(gps.lecturas, 1, reason: 'cambiar de pestaña no relee el GPS');
     expect(find.textContaining('GPS ±8'), findsOneWidget);
   });
+
+  testWidgets(
+    'dado que nadie pidió el GPS, entonces «Activar GPS» en la Lista lleva al mapa, que lo '
+    'pide una sola vez',
+    (tester) async {
+      final gps = GpsFalso(Right(lecturaGps(8)));
+      await _montar(tester, repo: RepoListaFalso([filaLista('a')]), gps: gps);
+      await tester.tap(find.byKey(const Key('inicio_pestana_lista')));
+      await asentarLista(tester);
+      expect(find.text('◎ Sin GPS · Activar GPS'), findsOneWidget);
+
+      await tester.tap(find.text('◎ Sin GPS · Activar GPS'));
+      await asentarLista(tester);
+
+      expect(tester.widget<MapaUbicacionesPage>(find.byType(MapaUbicacionesPage)).activa, isTrue);
+      expect(gps.lecturas, 1);
+      expect(gps.activaciones, isEmpty);
+
+      await tester.tap(find.byKey(const Key('inicio_pestana_lista')));
+      await asentarLista(tester);
+      expect(find.textContaining('GPS ±8'), findsOneWidget);
+      expect(find.text('◎ Sin GPS · Activar GPS'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'dado que el permiso está denegado, entonces «Activar GPS» en la Lista lleva al mapa y '
+    'es el mapa quien abre el permiso',
+    (tester) async {
+      final gps = GpsFalso(
+        const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.permisoDenegado)),
+      );
+      await _montar(tester, repo: RepoListaFalso([filaLista('a')]), gps: gps);
+      await tester.tap(find.byKey(const Key('inicio_pestana_mapa')));
+      await asentarLista(tester);
+      expect(gps.lecturas, 1);
+      await tester.tap(find.byKey(const Key('inicio_pestana_lista')));
+      await asentarLista(tester);
+      expect(find.text('◎ Sin GPS'), findsOneWidget);
+
+      gps.alActivar = () => gps.respuesta = Right(lecturaGps(5));
+      await tester.tap(find.text('◎ Sin GPS'));
+      await asentarLista(tester);
+
+      expect(tester.widget<MapaUbicacionesPage>(find.byType(MapaUbicacionesPage)).activa, isTrue);
+      expect(gps.activaciones, [MotivoSinGps.permisoDenegado]);
+      // El permiso ya estaba dado al releer: el mapa puede refrescar una vez más, sin diálogo.
+      expect(gps.lecturas, greaterThanOrEqualTo(2));
+
+      await tester.tap(find.byKey(const Key('inicio_pestana_lista')));
+      await asentarLista(tester);
+      expect(find.textContaining('GPS ±5'), findsOneWidget);
+    },
+  );
 
   testWidgets('dado que escribe en el buscador y cambia de pestaña, entonces al volver sigue ahí', (
     tester,

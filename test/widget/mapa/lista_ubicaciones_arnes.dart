@@ -51,6 +51,7 @@ Future<void> montarLista(
   FutureOr<void> Function(ContextoDeVisita)? registrarVisita,
   List<Override> masOverrides = const [],
   bool gpsAbierto = true,
+  VoidCallback? alActivarGps,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -90,6 +91,7 @@ Future<void> montarLista(
                       alAbrirUbicacion: alAbrir,
                       casaAbreSuHoja: casaAbreSuHoja,
                       alRegistrar: alRegistrar,
+                      alActivarGps: alActivarGps,
                     ),
                   ),
           ),

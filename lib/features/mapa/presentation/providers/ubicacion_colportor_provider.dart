@@ -97,6 +97,9 @@ class UbicacionColportorNotifier extends Notifier<UbicacionColportorState> {
 
   /// «Mi ubicación» y «Volver a mi ubicación»: vuelve a leer (el colportor se movió desde la última
   /// lectura). Una lectura que falla no tira la última buena. Devuelve lo que contestó el GPS.
+  ///
+  /// Es un toque explícito de Ana: igual que «Activar GPS», puede abrir el permiso (decisión del
+  /// 05/11, #660). Nunca se llama sola al abrir una vista.
   Future<Either<Failure, LecturaGps>> refrescar() => _leer();
 
   /// «Activar GPS»: pide el permiso o abre el ajuste que corresponda y vuelve a leer. Sin un motivo

@@ -61,3 +61,9 @@ Future<void> refrescarGpsDelColportor(WidgetTester tester) async {
   final contenedor = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
   await contenedor.read(ubicacionColportorProvider.notifier).refrescar();
 }
+
+/// El Mapa activó el GPS (lo que hace «Activar GPS» una vez que se está en esa pestaña).
+Future<void> activarGpsDelColportor(WidgetTester tester) async {
+  final contenedor = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+  await contenedor.read(ubicacionColportorProvider.notifier).activarGps();
+}

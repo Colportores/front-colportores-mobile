@@ -74,6 +74,7 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
     this.alRegistrar,
     this.alRevisarDuplicados,
     this.paraElegir = false,
+    this.alActivarGps,
   });
 
   /// UUID del colportor con la sesión iniciada: la lista es «las que registré».
@@ -103,6 +104,11 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// La lista hace de selector (el de la casa de «+ Agendar», #568): tiene su estado propio, aparte
   /// del de la pestaña Lista, que sigue viva debajo con su búsqueda y sus filtros.
   final bool paraElegir;
+
+  /// «Activar GPS»: lleva al colportor a la pestaña Mapa, que es la única que pide el permiso (#651);
+  /// nunca sale un diálogo sobre la Lista. Sin esto (la Lista de «+ Agendar», sin Mapa al lado) el
+  /// chip solo informa.
+  final VoidCallback? alActivarGps;
 
   /// La clave del estado de esta lista.
   String get clave =>
@@ -441,8 +447,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
               busqueda: _busqueda,
               alEscribir: _alEscribir,
               alEnviar: _buscarYa,
-              alActivarGps: () =>
-                  unawaited(ref.read(ubicacionColportorProvider.notifier).activarGps()),
+              alActivarGps: widget.alActivarGps,
             ),
             _FilaFiltros(
               estado: estado,
@@ -539,7 +544,7 @@ class _Cabecera extends StatelessWidget {
   final TextEditingController busqueda;
   final ValueChanged<String> alEscribir;
   final ValueChanged<String> alEnviar;
-  final VoidCallback alActivarGps;
+  final VoidCallback? alActivarGps;
 
   @override
   Widget build(BuildContext context) {
@@ -580,31 +585,46 @@ class _ChipGps extends StatelessWidget {
   const _ChipGps({required this.estado, required this.alActivar});
 
   final ListaUbicacionesState estado;
-  final VoidCallback alActivar;
+  final VoidCallback? alActivar;
 
   @override
   Widget build(BuildContext context) {
     const estilo = TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: ColoresLista.grisTexto);
     final lectura = estado.lectura;
     switch (estado.gps) {
-      case EstadoGpsLista.sinPedir:
-        return const SizedBox.shrink();
       case EstadoGpsLista.buscando when lectura == null:
         return const Text('◎ Buscando GPS…', style: estilo);
+      // Todavía nadie pidió el GPS (el mapa no se abrió): se ofrece activarlo, igual que el alta.
+      case EstadoGpsLista.sinPedir:
       case EstadoGpsLista.sinGps:
-        return Semantics(
-          button: true,
-          label: 'Sin GPS. Activar GPS',
-          child: ExcludeSemantics(
-            child: TextButton(
-              onPressed: alActivar,
-              style: TextButton.styleFrom(
-                foregroundColor: ColoresLista.azul,
-                minimumSize: const Size(48, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                textStyle: estilo.copyWith(fontWeight: FontWeight.w600),
+        final texto = estado.gps == EstadoGpsLista.sinPedir
+            ? '◎ Sin GPS · Activar GPS'
+            : '◎ Sin GPS';
+        // Con el texto agrandado el chip no puede ser más ancho que la pantalla: se parte en dos
+        // renglones en vez de empujar el título fuera de los costados.
+        final tope = BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width - 40);
+        if (alActivar == null) {
+          return ConstrainedBox(
+            constraints: tope,
+            child: Text(texto, style: estilo),
+          );
+        }
+        return ConstrainedBox(
+          constraints: tope,
+          child: Semantics(
+            button: true,
+            label: 'Sin GPS. Activar GPS',
+            child: ExcludeSemantics(
+              child: TextButton(
+                onPressed: alActivar,
+                style: TextButton.styleFrom(
+                  foregroundColor: ColoresLista.azul,
+                  minimumSize: const Size(48, 48),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  textStyle: estilo.copyWith(fontWeight: FontWeight.w600),
+                ),
+                child: Text(texto, textAlign: TextAlign.center),
               ),
-              child: const Text('◎ Sin GPS'),
             ),
           ),
         );

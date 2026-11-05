@@ -17,6 +17,7 @@ import '../../../mapa/presentation/pages/mapa_ubicaciones_page.dart';
 import '../../../mapa/presentation/pages/modificar_ubicacion_page.dart'
     show UbicacionExistenteElegida;
 import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
+import '../../../mapa/presentation/providers/ubicacion_colportor_provider.dart';
 import '../../../mapa/presentation/widgets/hoja_ubicacion.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagadas.dart';
 import '../../../notificaciones/presentation/widgets/campana_notificaciones.dart';
@@ -50,6 +51,17 @@ class _InicioPageState extends ConsumerState<InicioPage> {
   PestanaInicio _actual = PestanaInicio.hoy;
 
   void _ir(PestanaInicio pestana) => setState(() => _actual = pestana);
+
+  /// «Activar GPS» de la Lista (#651): el permiso solo se pide desde el Mapa, así que lleva al
+  /// colportor ahí y es el Mapa quien lo activa; nunca sale un diálogo sobre la Lista. Si todavía
+  /// nadie pidió el GPS, al abrirse el Mapa lo lee y pide el permiso solo; si ya falló, «Activar GPS»
+  /// lo manda al permiso o a los ajustes que correspondan.
+  void _activarGpsEnElMapa() {
+    final gps = ref.read(ubicacionColportorProvider.notifier);
+    final yaPedido = ref.read(ubicacionColportorProvider).gps != EstadoGpsLista.sinPedir;
+    _ir(PestanaInicio.mapa);
+    if (yaPedido) unawaited(gps.activarGps());
+  }
 
   /// Evita abrir dos veces la hoja de una ubicación con dos toques seguidos en una fila de la Lista.
   var _abriendoUbicacion = false;
@@ -192,6 +204,7 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                       colportorId: widget.sesion.usuarioId,
                       activa: _actual == PestanaInicio.lista,
                       casaAbreSuHoja: true,
+                      alActivarGps: _activarGpsEnElMapa,
                       alAbrirUbicacion: (id, distancia) =>
                           unawaited(_abrirUbicacion(id, distancia)),
                     ),
