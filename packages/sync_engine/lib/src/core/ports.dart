@@ -352,10 +352,18 @@ abstract interface class SnapshotPort {
 
   /// Reconstruye la DB aplicando los payloads en orden, de la base a la punta.
   ///
-  /// Se arma en un archivo temporal y recién al final reemplaza la DB en uso
-  /// (ADR-003, HU-SYNC-006): un restore que falla a la mitad no puede dejar al
-  /// colportor sin la DB que tenía.
+  /// Es todo o nada (ADR-003, HU-SYNC-006): un restore que falla a la mitad no
+  /// puede dejar al colportor sin la DB que tenía.
   Future<void> restore(List<List<int>> payloadsInOrder);
+
+  /// Reconstruye la DB fusionando varias cadenas, las de cada teléfono que la
+  /// persona tuvo (HU-SYNC-006, «Varios resp.»): cada elemento de [chains] es
+  /// una cadena, de la base a la punta.
+  ///
+  /// Una fila que está en más de una cadena se queda con la de fecha más nueva,
+  /// y no se borra nada. Es todo o nada, igual que [restore]: o entran todas o la
+  /// DB queda como estaba. Con una sola cadena es lo mismo que [restore].
+  Future<void> restoreChains(List<List<List<int>>> chains);
 }
 
 /// Supabase Realtime (§5.6). Va directo, sin BFF (§6).
@@ -371,4 +379,61 @@ abstract interface class RealtimePort {
   Stream<String> subscribe(List<String> entities);
 
   Future<void> unsubscribe();
+}
+
+/// El backup viene de una versión del esquema más nueva que la de esta app
+/// (HU-SYNC-006, «Edge — backup de una versión más nueva»).
+///
+/// Lo lanza [SnapshotPort.restore] **antes de tocar nada**: la DB en uso queda
+/// intacta y la app muestra «Actualizala para seguir usando tus datos».
+class SnapshotNewerSchemaException implements Exception {
+  const SnapshotNewerSchemaException({
+    required this.backupSchema,
+    required this.appSchema,
+  });
+
+  /// La versión del esquema que exportó el backup.
+  final int backupSchema;
+
+  /// La versión del esquema de esta app.
+  final int appSchema;
+
+  @override
+  String toString() => 'SnapshotNewerSchemaException($backupSchema > $appSchema)';
+}
+
+/// El payload de un backup no se puede leer: formato desconocido o roto.
+///
+/// Igual que [SnapshotNewerSchemaException], se lanza antes de tocar la DB.
+class SnapshotUnreadableException implements Exception {
+  const SnapshotUnreadableException(this.reason);
+
+  final String reason;
+
+  @override
+  String toString() => 'SnapshotUnreadableException($reason)';
+}
+
+/// La clave del backup, envuelta con la contraseña del usuario, que viaja con
+/// él en el `appDataFolder` (ADR-006: «la DEK envuelta por la contraseña viaja
+/// junto al backup»).
+///
+/// Es un archivo chico aparte, no un eslabón de la cadena. Va identificado por
+/// el [CryptoPort.keyId] de la llave que envuelve: en un teléfono nuevo, la
+/// restauración busca el envoltorio de la cadena que va a abrir. Como la DEK es
+/// la misma, un envoltorio abre también los respaldos hechos antes de él.
+///
+/// El motor no sabe qué hay adentro (lo arma y lo abre la app, con Argon2id): lo
+/// único que hace es guardarlo y devolverlo.
+abstract interface class KeyEnvelopePort {
+  /// Guarda [bytes] como el envoltorio de [keyId], reemplazando el anterior de
+  /// esa llave. El anterior se borra **después** de confirmar el nuevo: si se
+  /// corta en el medio sigue habiendo uno que abre.
+  Future<void> putEnvelope(String keyId, List<int> bytes);
+
+  /// El envoltorio de [keyId], o `null` si no hay.
+  Future<List<int>?> getEnvelope(String keyId);
+
+  /// Las llaves que tienen envoltorio en el archivo.
+  Future<Set<String>> envelopeKeyIds();
 }

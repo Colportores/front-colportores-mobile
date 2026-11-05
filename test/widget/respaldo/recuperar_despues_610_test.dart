@@ -2,6 +2,7 @@
 // «Empezar sin recuperar», Configuración ofrece «Recuperar mi respaldo» mientras el teléfono no
 // tenga nada cargado, y vuelve a abrir el asistente.
 import 'package:colportores_mobile/app.dart';
+import 'package:colportores_mobile/core/arranque/reinicio_de_raiz.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
@@ -45,12 +46,14 @@ Future<void> _abrirApp(
   tester.platformDispatcher.textScaleFactorTestValue = escala;
   addTearDown(tester.view.reset);
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  // La base del teléfono es la misma antes y después del reinicio (es un archivo).
+  final dbDelTelefono = dbLocalYaPreparada();
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpWidget(
-    ProviderScope(
-      key: UniqueKey(),
-      overrides: [
-        dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+    // «Recuperar mi respaldo» reinicia la raíz, como en `main.dart`.
+    ReiniciadorDeRaiz(
+      overrides: () => [
+        dbLocalRepositoryProvider.overrideWithValue(dbDelTelefono),
         authRemoteDataSourceProvider.overrideWithValue(
           AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
         ),
@@ -126,6 +129,45 @@ void main() {
     expect(arnes.servicio.busquedas, busquedasAntes + 1);
     expect(textoDe(cta), 'Recuperar mis datos');
     expect(textoDe(cta2), 'Empezar sin recuperar');
+  });
+
+  testWidgets('al tocarla la app se reinicia por dentro: raíz nueva, directo en el asistente, sin '
+      'Inicio ni Configuración de por medio', (tester) async {
+    await _abrirApp(tester, telefono, arnes);
+    await _empezarSinRecuperar(tester);
+    await _irAConfiguracion(tester);
+    final raizAntes = ProviderScope.containerOf(tester.element(find.byType(ColportoresApp)));
+    await tester.ensureVisible(_filaRecuperar);
+
+    await tester.tap(_filaRecuperar);
+    // El primer cuadro tira la raíz vieja entera: ya no hay nada de ella andando.
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(ColportoresApp), findsOneWidget);
+    final raizDespues = ProviderScope.containerOf(tester.element(find.byType(ColportoresApp)));
+    expect(
+      raizDespues,
+      isNot(same(raizAntes)),
+      reason: 'un ProviderScope nuevo, como en main.dart',
+    );
+    expect(notif.principal, findsNothing, reason: 'no pasa por Hoy');
+
+    await _asentar(tester);
+    expect(_asistente, findsOneWidget);
+    expect(_configuracion, findsNothing);
+  });
+
+  testWidgets('después del reinicio, «Atrás» no devuelve a Configuración: la pila es nueva', (
+    tester,
+  ) async {
+    await _abrirApp(tester, telefono, arnes);
+    await _empezarSinRecuperar(tester);
+    await _irAConfiguracion(tester);
+    await _tocar(tester, _filaRecuperar);
+
+    final navegador = tester.state<NavigatorState>(find.byType(Navigator).first);
+
+    expect(navegador.canPop(), isFalse);
   });
 
   testWidgets('recuperar desde Configuración termina en «Ir a mi inicio» y la app sigue', (
@@ -238,7 +280,27 @@ void main() {
     expect(_asistente, findsOneWidget);
   });
 
-  testWidgets('doble toque en la fila: mira la base una sola vez y abre un solo asistente', (
+  testWidgets('si no se puede quitar la marca: avisa, no reinicia y se puede volver a probar', (
+    tester,
+  ) async {
+    await _abrirApp(tester, telefono, arnes);
+    await _empezarSinRecuperar(tester);
+    await _irAConfiguracion(tester);
+    await tester.ensureVisible(_filaRecuperar);
+    arnes.resuelta.errorAlDesmarcar = StateError('almacén cerrado');
+
+    await _tocar(tester, _filaRecuperar);
+
+    expect(_asistente, findsNothing);
+    expect(_configuracion, findsOneWidget, reason: 'la app no se reinició');
+    expect(_avisoNo, findsOneWidget);
+
+    arnes.resuelta.errorAlDesmarcar = null;
+    await _tocar(tester, _filaRecuperar);
+    expect(_asistente, findsOneWidget);
+  });
+
+  testWidgets('doble toque en la fila: reinicia una sola vez y abre un solo asistente', (
     tester,
   ) async {
     await _abrirApp(tester, telefono, arnes);
@@ -246,12 +308,16 @@ void main() {
     await _irAConfiguracion(tester);
     await tester.ensureVisible(_filaRecuperar);
     final miradasAntes = arnes.lector.miradas;
+    final busquedasAntes = arnes.servicio.busquedas;
 
     await tester.tap(_filaRecuperar);
     await tester.tap(_filaRecuperar, warnIfMissed: false);
     await _asentar(tester);
 
-    expect(arnes.lector.miradas, miradasAntes + 1);
+    // Se decide una sola vez: la marca se quita una vez y el asistente que abre es uno.
+    expect(arnes.lector.miradas, greaterThan(miradasAntes));
+    expect(arnes.resuelta.desmarcas, 1, reason: 'el segundo toque no vuelve a pedir el reinicio');
+    expect(arnes.servicio.busquedas, busquedasAntes + 1);
     expect(_asistente, findsOneWidget);
   });
 

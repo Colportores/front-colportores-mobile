@@ -324,6 +324,52 @@ void main() {
     });
   });
 
+  group('CustodiaClaveDb — envoltorio que viaja con el backup (HU-SYNC-006)', () {
+    test('sin envoltorio en el equipo, no hay texto que subir', () async {
+      expect(await custodia.leerEnvoltorioCodificado(), isNull);
+    });
+
+    test(
+      'el texto que se sube es el del archivo y otro equipo lo abre con la contraseña',
+      () async {
+        final dek = custodia.generarDek();
+        await custodia.envolverConPassword(dek, 'secreto123');
+
+        final texto = await custodia.leerEnvoltorioCodificado();
+        final recuperada = await custodia.abrirEnvoltorio(
+          EnvoltorioDek.decodificar(texto!),
+          'secreto123',
+        );
+
+        expect(texto, EnvoltorioDek.decodificar(await contenidoDelEnvoltorio()).codificar());
+        expect(texto, isNot(contains(base64Encode(dek.bytes))), reason: 'nunca la DEK en claro');
+        expect(recuperada.bytes, dek.bytes);
+      },
+    );
+
+    test('un archivo roto no se sube: lanza EnvoltorioCorruptoException', () async {
+      await File(
+        p.join(dir.path, ArchivoEnvoltorioDek.nombreArchivoPorDefecto),
+      ).writeAsString('esto no es un envoltorio');
+
+      await expectLater(
+        custodia.leerEnvoltorioCodificado(),
+        throwsA(isA<EnvoltorioCorruptoException>()),
+      );
+    });
+
+    test('con otra contraseña, el envoltorio de Drive no abre', () async {
+      await custodia.envolverConPassword(custodia.generarDek(), 'secreto123');
+      final envoltorio = EnvoltorioDek.decodificar((await custodia.leerEnvoltorioCodificado())!);
+
+      await expectLater(
+        custodia.abrirEnvoltorio(envoltorio, 'otra'),
+        throwsA(isA<EnvoltorioNoAbreException>()),
+      );
+      expect(proveedor.entregadas.every((c) => c.destruida), isTrue);
+    });
+  });
+
   group('CustodiaClaveDb — marca de inicialización', () {
     test('dado un dispositivo nuevo, no está inicializado', () async {
       expect(await custodia.dbInicializada(), isFalse);

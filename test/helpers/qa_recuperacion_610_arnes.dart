@@ -2,12 +2,12 @@
 // «Recuperar mi respaldo» de Configuración): lleva el asistente a cada estado nuevo, en cualquier
 // tamaño y escala de texto. Sobre el arnés de #175.
 import 'package:colportores_mobile/app.dart';
+import 'package:colportores_mobile/core/arranque/reinicio_de_raiz.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/respaldo/domain/services/servicio_recuperacion.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'db_local_repository_en_memoria.dart';
@@ -101,12 +101,14 @@ Future<void> abrirAppHastaConfiguracion610(
   tester.platformDispatcher.textScaleFactorTestValue = escala;
   addTearDown(tester.view.reset);
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  // La base del teléfono es la misma antes y después del reinicio (es un archivo).
+  final dbDelTelefono = dbLocalYaPreparada();
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpWidget(
-    ProviderScope(
-      key: UniqueKey(),
-      overrides: [
-        dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+    // «Recuperar mi respaldo» reinicia la raíz, como en `main.dart`.
+    ReiniciadorDeRaiz(
+      overrides: () => [
+        dbLocalRepositoryProvider.overrideWithValue(dbDelTelefono),
         authRemoteDataSourceProvider.overrideWithValue(
           AuthRemoteDataSourceEnMemoria(credenciales: const {'ana@example.com': 'secreto123'}),
         ),

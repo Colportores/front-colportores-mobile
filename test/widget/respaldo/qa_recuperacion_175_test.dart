@@ -43,6 +43,11 @@ final class ResueltaQueFalla implements RecuperacionResueltaRepository {
     marcas++;
     throw StateError('el almacén seguro no deja escribir');
   }
+
+  @override
+  Future<void> desmarcarResuelta(String usuarioId) async {
+    throw StateError('el almacén seguro no deja escribir');
+  }
 }
 
 void main() {

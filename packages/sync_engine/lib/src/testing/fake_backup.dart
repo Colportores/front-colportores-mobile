@@ -214,17 +214,55 @@ class FakeSnapshot implements SnapshotPort {
         .encode(jsonEncode({'since': since?.toIso8601String(), ...state}));
   }
 
+  /// Las cadenas que recibió el último restore, de la base a la punta.
+  List<List<List<int>>> chainsRestored = [];
+
   @override
-  Future<void> restore(List<List<int>> payloadsInOrder) async {
+  Future<void> restore(List<List<int>> payloadsInOrder) =>
+      restoreChains([payloadsInOrder]);
+
+  @override
+  Future<void> restoreChains(List<List<List<int>>> chains) async {
     if (failOnRestore) throw StateError('el restore falló');
 
     // Base primero, después cada incremental encima: el orden es la cadena.
+    // Con varias cadenas, las claves se suman (la última pisa a la anterior).
     final acumulado = <String, Object?>{};
-    for (final payload in payloadsInOrder) {
-      acumulado
-          .addAll(jsonDecode(utf8.decode(payload)) as Map<String, Object?>);
+    for (final cadena in chains) {
+      for (final payload in cadena) {
+        acumulado
+            .addAll(jsonDecode(utf8.decode(payload)) as Map<String, Object?>);
+      }
     }
+    chainsRestored = [for (final c in chains) [for (final p in c) List.of(p)]];
     restored = acumulado;
     onRestore?.call(acumulado);
   }
+}
+
+/// Los envoltorios de la clave (ADR-006) que viajan con el respaldo, en
+/// memoria. En Drive viven en el mismo `appDataFolder` que la cadena; acá van
+/// aparte porque son otro puerto.
+class FakeKeyEnvelopes implements KeyEnvelopePort {
+  /// Por llave, lo último que se subió.
+  final Map<String, List<int>> guardados = {};
+
+  /// Cuántas veces se subió uno.
+  int subidas = 0;
+
+  /// Si subir explota (Drive sin red).
+  bool failOnPut = false;
+
+  @override
+  Future<void> putEnvelope(String keyId, List<int> bytes) async {
+    if (failOnPut) throw StateError('Drive no contestó');
+    subidas++;
+    guardados[keyId] = List.of(bytes);
+  }
+
+  @override
+  Future<List<int>?> getEnvelope(String keyId) async => guardados[keyId];
+
+  @override
+  Future<Set<String>> envelopeKeyIds() async => guardados.keys.toSet();
 }

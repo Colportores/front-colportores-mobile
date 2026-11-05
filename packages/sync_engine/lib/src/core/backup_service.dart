@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'backup.dart';
 import 'ports.dart';
+import 'recover.dart';
 
 /// Cuándo la cadena de backups tiene que arrancar de una base nueva
 /// (HU-SYNC-005, «Rotación de base»; ADR-006 §Algoritmo).
@@ -314,32 +315,240 @@ class BackupService {
   /// Reconstruye la DB desde la cadena (HU-SYNC-006).
   ///
   /// Devuelve la entrada de la punta —de cuándo son los datos— o `null` si no
-  /// había nada usable.
-  Future<BackupEntry?> restore() => _encadenar(_restore);
+  /// había nada usable. Es [restoreDetailed] sin el detalle.
+  Future<BackupEntry?> restore() async => (await restoreDetailed())?.tip;
 
-  Future<BackupEntry?> _restore() async {
-    // Sin filtrar por llave: qué hacer cuando Drive tiene más de una cadena (la del teléfono viejo y
-    // la del nuevo) es de la restauración (#186, HU-SYNC-006), no de este backup.
-    // Sin la firma de las anotaciones: restaurar es el momento de recuperar
-    // lo que haya, y un respaldo hecho antes de la firma no puede quedar
-    // inservible (nunca se pierde una venta). La firma manda en la verificación,
-    // que regenera la cadena; los payloads los autentica AES-GCM al descifrar.
-    final cadena = await _verificar(
-      await _archive.list(),
-      checkContent: true,
-      verificarFirma: false,
-    );
-    if (!cadena.ok) return null;
+  /// Lo que se bajó y verificó de un restore que se cortó, por id de entrada,
+  /// para que un reintento siga desde la parte donde quedó en vez de bajar todo
+  /// de nuevo (HU-SYNC-006, «reintenta desde donde quedó»). Es el cifrado tal
+  /// como está en Drive. Se vacía al terminar el restore, bien o mal.
+  final Map<String, List<int>> _bajadas = {};
 
+  /// Las cadenas que hay en Drive, una por llave, para que la app elija cuál
+  /// restaurar cuando hay más de una (la del teléfono viejo y la que empezó el
+  /// nuevo). Solo mira los metadatos: no baja nada.
+  Future<List<ChainCandidate>> candidateChains() async =>
+      chainCandidates(await _archive.list());
+
+  /// El restore con su detalle (HU-SYNC-006).
+  ///
+  /// - [keyId] limita la cadena a la de esa llave. Sin él, se toman todas las
+  ///   entradas (lo que había antes de que Drive pudiera tener más de una).
+  /// - Cada parte se baja, se verifica contra su hash y se descifra. Si una
+  ///   parte que no es la base está dañada, **se corta ahí**: se aplica hasta la
+  ///   última buena y [RestoreOutcome.partial] lo dice. Si es la base, no hay
+  ///   nada que restaurar.
+  /// - Una caída de red a mitad de la descarga **pausa**: avisa por [onProgress],
+  ///   espera a [waitForNetwork] y reintenta esa parte (hasta [maxAttempts]
+  ///   veces). Lo ya bajado no se vuelve a bajar.
+  /// - [cancel] se mira entre parte y parte; cancelar descarta lo bajado y no
+  ///   toca la DB.
+  /// - Todo se baja **antes** de aplicar: la DB en uso solo se toca cuando están
+  ///   todas las partes buenas, y el [SnapshotPort] lo hace todo o nada.
+  Future<RestoreOutcome?> restoreDetailed({
+    String? keyId,
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+    Future<bool> Function()? waitForNetwork,
+    int maxAttempts = 3,
+  }) =>
+      _encadenar(() async {
+        final bajada = await _descargar(
+          keyId,
+          0,
+          null,
+          onProgress,
+          cancel,
+          waitForNetwork,
+          maxAttempts,
+        );
+        if (bajada == null) return null;
+        await _aplicar([bajada], onProgress, cancel);
+        return bajada.outcome;
+      });
+
+  /// Baja y verifica la cadena de [keyId] **sin aplicarla**: es la primera mitad
+  /// de [restoreDetailed], para restaurar varias cadenas juntas (las de cada
+  /// teléfono que la persona tuvo, HU-SYNC-006, «Varios resp.»). Cada cadena se
+  /// baja con el [BackupService] que tiene su llave; después se aplican todas
+  /// de una vez con [applyChains].
+  ///
+  /// [partsBefore] y [partsTotal] ubican el avance dentro del total de todas las
+  /// cadenas: el «12/15 partes» suma las de cada una. Devuelve `null` si la
+  /// cadena no tiene una base usable.
+  Future<DownloadedChain?> downloadChain({
+    String? keyId,
+    int partsBefore = 0,
+    int? partsTotal,
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+    Future<bool> Function()? waitForNetwork,
+    int maxAttempts = 3,
+  }) =>
+      _encadenar(
+        () => _descargar(
+          keyId,
+          partsBefore,
+          partsTotal,
+          onProgress,
+          cancel,
+          waitForNetwork,
+          maxAttempts,
+        ),
+      );
+
+  /// Aplica [chains] —bajadas con [downloadChain]— a la DB, todas en una sola
+  /// operación: o entra todo o la DB queda como estaba. Se llama en un solo
+  /// servicio (el que tiene el [SnapshotPort] de esta DB); las cadenas pueden
+  /// venir de otros servicios.
+  Future<void> applyChains(
+    List<DownloadedChain> chains, {
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+  }) =>
+      _encadenar(() => _aplicar(chains, onProgress, cancel));
+
+  /// El próximo backup parte de una base nueva. Después de un restore: lo
+  /// restaurado conserva su fecha de escritura vieja, y un incremental desde el
+  /// último backup no lo vería; una base completa sí.
+  void requestNewBase() => _regenerarBase = true;
+
+  Future<void> _aplicar(
+    List<DownloadedChain> cadenas,
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+  ) async {
+    if (cadenas.isEmpty) return;
+    cancel?.throwIfCancelled();
+    final partes = cadenas.fold<int>(0, (n, c) => n + c.payloads.length);
+    final total = cadenas.fold<int>(0, (n, c) => n + c.outcome.total);
+    onProgress?.call(RecoveryProgress(
+      RecoveryPhase.applying,
+      done: partes,
+      total: total,
+    ));
+    // El SnapshotPort lo aplica todo o nada: si esto falla a la mitad, la DB
+    // anterior sigue entera.
+    await _snapshot.restoreChains([for (final c in cadenas) c.payloads]);
+    // Recién aplicado, lo bajado ya no hace falta.
+    _bajadas.clear();
+  }
+
+  Future<DownloadedChain?> _descargar(
+    String? keyId,
+    int partsBefore,
+    int? partsTotal,
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+    Future<bool> Function()? waitForNetwork,
+    int maxAttempts,
+  ) async {
+    onProgress?.call(const RecoveryProgress(RecoveryPhase.searching));
+    cancel?.throwIfCancelled();
+    final todas = await _archive.list();
+    final cadena = buildRestorableChain([
+      for (final e in todas)
+        if (keyId == null || e.keyId == keyId) e,
+    ]);
+    if (cadena.ordered.isEmpty) return null;
+
+    final total = cadena.ordered.length;
+    final totalDelAvance = partsTotal ?? total;
     final payloads = <List<int>>[];
-    for (final entrada in cadena.ordered) {
-      payloads.add(await _crypto.decrypt(await _archive.download(entrada.id)));
+    var problema = cadena.problem;
+    try {
+      for (var i = 0; i < total; i++) {
+        cancel?.throwIfCancelled();
+        onProgress?.call(RecoveryProgress(
+          RecoveryPhase.downloading,
+          done: partsBefore + i,
+          total: totalDelAvance,
+        ));
+        final entrada = cadena.ordered[i];
+        final cifrado = await _bajar(
+          entrada,
+          partsBefore + i,
+          totalDelAvance,
+          onProgress,
+          cancel,
+          waitForNetwork,
+          maxAttempts,
+        );
+        // Lo que está en Drive no es lo que se subió: esa parte y las que
+        // cuelgan de ella no sirven.
+        if (_digestDe(cifrado) != entrada.contentHash ||
+            (entrada.storedHash != null &&
+                entrada.storedHash != entrada.contentHash)) {
+          problema = 'corrupt';
+          break;
+        }
+        try {
+          payloads.add(await _crypto.decrypt(cifrado));
+        } on Exception {
+          // Una base que no se descifra con su propia llave es un archivo roto:
+          // igual que la de hash corrupto, esa cadena no tiene base usable y se
+          // salta (devuelve `null`); no frena a las demás (HU-SYNC-006, «Varios
+          // resp.»). Un incremental ilegible corta la cadena ahí.
+          //
+          // Solo `Exception`: lo que hace el descifrado con un archivo malo
+          // (`BackupIlegible`, o el `FormatException` del gzip) es un error de
+          // datos. Un `Error` (el `StateError` de una clave que ya no está, un
+          // `ArgumentError`) es un bug de programa: pasa, no se disfraza de
+          // «respaldo roto» ni se lo cuenta a la persona como si lo fuera.
+          if (i == 0) return null;
+          problema = 'unreadable';
+          break;
+        }
+      }
+    } on RecoveryCancelled {
+      _bajadas.clear();
+      rethrow;
     }
+    // Si se cortó por la red, lo bajado queda para el reintento.
+    if (payloads.isEmpty) return null;
 
-    // El SnapshotPort arma un archivo temporal y recién al final reemplaza la
-    // DB en uso: si esto falla a la mitad, la DB anterior sigue entera.
-    await _snapshot.restore(payloads);
-    return cadena.tip;
+    return DownloadedChain(
+      payloads: payloads,
+      outcome: RestoreOutcome(
+        tip: cadena.ordered[payloads.length - 1],
+        applied: payloads.length,
+        total: total,
+        bytes: [for (final e in cadena.ordered.take(payloads.length)) e.bytes]
+            .fold(0, (n, b) => n + b),
+        problem: problema,
+      ),
+    );
+  }
+
+  String _digestDe(List<int> bytes) => _crypto.digest(bytes);
+
+  /// Baja una parte; ante una falla, pausa y reintenta sin perder lo ya bajado.
+  Future<List<int>> _bajar(
+    BackupEntry entrada,
+    int indice,
+    int total,
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+    Future<bool> Function()? waitForNetwork,
+    int maxAttempts,
+  ) async {
+    final guardada = _bajadas[entrada.id];
+    if (guardada != null) return guardada;
+    for (var intento = 1;; intento++) {
+      try {
+        return _bajadas[entrada.id] = await _archive.download(entrada.id);
+      } on Object catch (e) {
+        if (intento >= maxAttempts || e is Error) rethrow;
+        onProgress?.call(RecoveryProgress(
+          RecoveryPhase.downloading,
+          done: indice,
+          total: total,
+          waitingForNetwork: true,
+        ));
+        if (waitForNetwork != null && !await waitForNetwork()) rethrow;
+        cancel?.throwIfCancelled();
+      }
+    }
   }
 
   DateTime get now => _clock();

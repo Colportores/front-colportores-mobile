@@ -746,7 +746,30 @@ class SyncEngine {
   /// Precondición, del lado de la app: login en el dispositivo nuevo, sesiones
   /// del viejo revocadas y DB cifrada inicializada. El motor recibe la DB vacía
   /// y el JWT.
-  Future<RecoveryReport> recover() async {
+  ///
+  /// - [onProgress] recibe el paso en que va (el asistente de la vista 34).
+  /// - [cancel] corta la descarga del respaldo sin tocar la DB; ver
+  ///   [RecoveryCancelToken].
+  /// - [backup] es el servicio con el que se restaura, si no es el del motor:
+  ///   en un teléfono nuevo el respaldo está cifrado con la llave del teléfono
+  ///   viejo, que la persona recupera con su contraseña, y no es la que usa
+  ///   este motor para respaldar. Después del restore, el respaldo de este
+  ///   motor arranca de una base nueva.
+  /// - [keyId] limita el restore a la cadena de esa llave.
+  /// - [sources] restaura **varias cadenas juntas**, las de cada teléfono que
+  ///   la persona tuvo (contrato §7, «Varios respaldos de otros teléfonos»):
+  ///   cada una se baja con el servicio que tiene su llave, se fusionan por la
+  ///   fecha de cada fila en una sola operación, y el pull de la reconciliación
+  ///   parte del watermark de la cadena **más vieja**: tomar el más nuevo
+  ///   dejaría sin bajar lo que solo tenía la vieja. Si se pasa, [backup] y
+  ///   [keyId] se ignoran.
+  Future<RecoveryReport> recover({
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+    BackupService? backup,
+    String? keyId,
+    List<RecoverySource>? sources,
+  }) async {
     _verificarVivo();
     // Toma el mismo candado que los ciclos: si vuelve la red mientras el wizard
     // reconcilia, el trigger de conectividad no puede arrancar un pull en
@@ -757,7 +780,12 @@ class SyncEngine {
     final candado = Completer<SyncOutcome>();
     _running = candado.future;
     try {
-      return await _recuperar();
+      final fuentes = sources ??
+          [
+            if (backup ?? _backup case final servicio?)
+              RecoverySource(backup: servicio, keyId: keyId),
+          ];
+      return await _recuperar(onProgress, cancel, fuentes);
     } finally {
       _running = null;
       _correrPendiente();
@@ -767,9 +795,17 @@ class SyncEngine {
     }
   }
 
-  Future<RecoveryReport> _recuperar() async {
+  Future<RecoveryReport> _recuperar(
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+    List<RecoverySource> fuentes,
+  ) async {
     final ahora = _clock();
-    BackupEntry? punta;
+    var hayRestore = false;
+    var parcial = false;
+    var partesAplicadas = 0;
+    var partesTotales = 0;
+    final puntas = <BackupEntry>[];
     DateTime? restauradoAntes;
     var problema = '';
 
@@ -783,25 +819,72 @@ class SyncEngine {
     final yaRestaurado = await _store.watermarkOf(_scopeRecovery);
 
     if (yaRestaurado != null) {
-      punta = null;
       restauradoAntes = DateTime.tryParse(yaRestaurado);
-    } else if (_backup != null && await _backup.isAuthorized) {
-      punta = await _backup.restore();
-      if (punta == null) {
-        final estado = await _backup.verifyChain();
+    } else if (fuentes.isNotEmpty && await fuentes.first.backup.isAuthorized) {
+      // El avance suma las partes de todas las cadenas: el «12/15 partes».
+      var totalDelAvance = 0;
+      if (fuentes.every((f) => f.keyId != null)) {
+        for (final f in fuentes) {
+          for (final c in await f.backup.candidateChains()) {
+            if (c.keyId == f.keyId) totalDelAvance += c.parts;
+          }
+        }
+      }
+      final bajadas = <DownloadedChain>[];
+      var antes = 0;
+      for (final f in fuentes) {
+        final bajada = await f.backup.downloadChain(
+          keyId: f.keyId,
+          partsBefore: antes,
+          partsTotal: totalDelAvance > 0 ? totalDelAvance : null,
+          onProgress: onProgress,
+          cancel: cancel,
+          waitForNetwork: _esperarLaRed,
+        );
+        if (bajada == null) continue;
+        bajadas.add(bajada);
+        antes += bajada.outcome.total;
+      }
+      if (bajadas.isEmpty) {
+        final estado = await fuentes.first.backup.verifyChain();
         problema = estado.problems.map((p) => p.name).join(', ');
       } else {
+        await fuentes.first.backup.applyChains(
+          bajadas,
+          onProgress: onProgress,
+          cancel: cancel,
+        );
+        hayRestore = true;
+        for (final b in bajadas) {
+          puntas.add(b.outcome.tip);
+          parcial = parcial || b.outcome.partial;
+          partesAplicadas += b.outcome.applied;
+          partesTotales += b.outcome.total;
+          if (b.outcome.problem.isNotEmpty && problema.isEmpty) {
+            problema = b.outcome.problem;
+          }
+        }
+        // Lo restaurado conserva su fecha de escritura: el respaldo de este
+        // motor parte de una base completa, no de un incremental que no lo vería.
+        _backup?.requestNewBase();
         // El watermark que tenía la DB al momento del backup: desde ahí
-        // arranca la reconciliación, no desde cero.
+        // arranca la reconciliación, no desde cero. Con varias cadenas, el de la
+        // más vieja: lo que solo tenía la vieja tiene que bajar también.
+        final masVieja = puntas.reduce(
+          (a, b) => b.createdAt.isBefore(a.createdAt) ? b : a,
+        );
+        final masNueva = puntas.reduce(
+          (a, b) => b.createdAt.isAfter(a.createdAt) ? b : a,
+        );
         await _store.applyDelta(
           const {},
           scope: _scopeMirror,
-          watermark: punta.watermark,
+          watermark: masVieja.watermark,
         );
         await _store.applyDelta(
           const {},
           scope: _scopeRecovery,
-          watermark: punta.createdAt.toIso8601String(),
+          watermark: masNueva.createdAt.toIso8601String(),
         );
       }
     }
@@ -812,10 +895,12 @@ class SyncEngine {
     // `client_op_id` puede haber vencido (TTL 24 h) pero las PK son UUID v7
     // del dispositivo original, así que un insert repetido vuelve
     // `duplicate`, no una segunda venta.
-    final replay = punta == null ? null : await _pushPending();
+    onProgress?.call(const RecoveryProgress(RecoveryPhase.replaying));
+    final replay = hayRestore ? await _pushPending() : null;
 
     // Fase 3 — reconciliación: lo que subió después del backup.
     final reconciliadas = <String, int>{};
+    onProgress?.call(const RecoveryProgress(RecoveryPhase.reconciling));
     await _pullInto(_scopeMirror, _specs.pushable, reconciliadas);
 
     // Fase 4 — catálogos: réplica fresca, no se restauran del backup.
@@ -825,20 +910,47 @@ class SyncEngine {
     _lastSuccessAt = _ultimoPull = _clock();
     await _anotarMeta(lastPullAt: _ultimoPull);
     await _emit();
+    onProgress?.call(const RecoveryProgress(RecoveryPhase.done));
 
     // En un reintento, la fecha sale de la marca: el reporte tiene que decir de
     // cuándo son los datos aunque el restore haya sido en el intento anterior.
-    final fechaDelBackup = punta?.createdAt ?? restauradoAntes;
+    final fechas = [for (final p in puntas) p.createdAt];
+    final fechaDelBackup = fechas.isEmpty
+        ? restauradoAntes
+        : fechas.reduce((a, b) => b.isAfter(a) ? b : a);
     return RecoveryReport(
       backupDate: fechaDelBackup,
+      backupDates: fechas,
       replayedJobs: replay?.pushed ?? 0,
       pulledEntities: reconciliadas,
       lostWindow: fechaDelBackup == null
           ? null
           : LostWindow(from: fechaDelBackup, to: ahora),
       chainProblem: problema,
+      partial: parcial,
+      partsRestored: partesAplicadas,
+      partsTotal: partesTotales,
     );
   }
+
+  /// Espera a que vuelva la red, para que el restore siga con la parte donde
+  /// quedó. `false` si no vuelve en [_esperaMaximaDeRed]: ahí el restore falla y
+  /// la persona reintenta. Sin puerto de conectividad, no hay nada que esperar.
+  Future<bool> _esperarLaRed() async {
+    final red = _connectivity;
+    if (red == null) return true;
+    if (await red.isOnline) return true;
+    try {
+      await red.onlineChanges
+          .firstWhere((online) => online)
+          .timeout(_esperaMaximaDeRed);
+      return true;
+    } on TimeoutException {
+      return false;
+    }
+  }
+
+  static const _esperaMaximaDeRed = Duration(minutes: 10);
 
   /// Purga de `DONE` a los 7 días (§5.8).
   Future<int> purge({Duration retention = const Duration(days: 7)}) =>
