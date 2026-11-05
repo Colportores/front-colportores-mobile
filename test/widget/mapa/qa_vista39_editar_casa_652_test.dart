@@ -677,4 +677,56 @@ void main() {
     },
     skip: _hallazgo,
   );
+
+  // Decisiones del 05/11 (archivo ...-652-qa-261105-1010.md): P1 el rótulo sigue el tipo; P2 botón
+  // chico con el lápiz y el rótulo. Sin aplicar en el código al momento de este QA.
+  group('Decisiones del 05/11 · rótulo visible por tipo (P1) y botón con lápiz y rótulo (P2)', () {
+    const rotulos = {'a': 'Editar casa', 'f': 'Editar edificio', 'd': 'Editar negocio'};
+    for (final e in rotulos.entries) {
+      testWidgets(
+        'P1: la hoja de «${e.key}» dice «${e.value}» en el texto, el tooltip y el Semantics',
+        (tester) async {
+          final semantica = tester.ensureSemantics();
+          final s = await _mapa(tester);
+          s.m.mapa.tocarPunto(e.key);
+          await asentarLista(tester);
+
+          expect(
+            find.descendant(of: _editar, matching: find.text(e.value)),
+            findsOneWidget,
+            reason: 'rótulo visible',
+          );
+          final nodo = tester.getSemantics(_editar);
+          expect(nodo.label, startsWith(e.value), reason: 'Semantics');
+          expect(nodo.tooltip.isEmpty ? nodo.label : nodo.tooltip, contains(e.value));
+          semantica.dispose();
+        },
+        skip: _hallazgo,
+      );
+    }
+
+    for (final escala in [1.0, 2.0]) {
+      testWidgets(
+        'P2: el botón muestra el rótulo, mide 48 dp y no se recorta a 360×640 ×$escala',
+        (tester) async {
+          final s = await _mapa(tester, tamano: t360x640, escala: escala, fuentesReales: true);
+          s.m.mapa.tocarPunto('a');
+          await asentarLista(tester);
+
+          final rotulo = find.descendant(of: _editar, matching: find.text('Editar casa'));
+          expect(rotulo, findsOneWidget);
+          final b = tester.getRect(_editar);
+          final r = tester.getRect(rotulo);
+          expect(b.height, greaterThanOrEqualTo(48));
+          expect(b.left, greaterThanOrEqualTo(0));
+          expect(b.right, lessThanOrEqualTo(360));
+          expect(r.left, greaterThanOrEqualTo(b.left));
+          expect(r.right, lessThanOrEqualTo(b.right), reason: 'el rótulo no se recorta');
+          expect(tester.takeException(), isNull);
+          await _capturar(tester, 'p2_rotulo_360x640_x$escala');
+        },
+        skip: _hallazgo,
+      );
+    }
+  });
 }
