@@ -1,4 +1,10 @@
+import '../../agenda/domain/entities/anticipacion_recordatorio.dart';
+import '../../agenda/domain/entities/franja_horaria.dart';
+import '../../agenda/domain/entities/item_agenda.dart';
 import '../../agenda/domain/entities/visita.dart' show TipoResultadoVisita;
+import '../../agenda/presentation/formato_agenda.dart';
+import '../../agenda/presentation/formato_detalle_agenda.dart';
+import '../../notificaciones/domain/entities/preferencias_recordatorios.dart';
 import '../domain/entities/contexto_notas_persona.dart';
 import '../domain/entities/ficha_de_persona.dart';
 import '../domain/entities/nota_persona.dart';
@@ -19,6 +25,8 @@ abstract final class TextosFicha {
   static const agregarTelefono = 'Agregar';
   static const notasRotulo = 'NOTAS · SOLO EN TU TELÉFONO';
   static const masNota = '+ Nota';
+  static const proximaVisitaRotulo = 'PRÓXIMA VISITA';
+  static const masAgendar = '+ Agendar';
   static const historial = 'HISTORIAL';
   static const mostrar = 'MOSTRAR';
   static const filtroTodo = 'Todo';
@@ -50,6 +58,10 @@ abstract final class TextosFicha {
       'No pudimos abrir el teléfono de tu celular. Tocá «Ver» para ver el número y llamar a mano.';
   static const noPudimosReactivarElDepto = 'No pudimos reactivar el depto. Probá de nuevo.';
   static const noPudimosAbrir = 'No pudimos abrir esa pantalla. Probá de nuevo.';
+
+  // «PRÓXIMA VISITA» (23A·05): lo que el canvas no dibuja (a confirmar).
+  static const sinProximaVisita = 'Todavía no hay una visita agendada.';
+  static const recordatoriosApagados = 'recordatorios apagados';
   static const sinNotas = TextosNotas.sinNotas;
   static const reactivando = 'Reactivando…';
 
@@ -130,6 +142,55 @@ abstract final class TextosFicha {
 /// Cómo se escriben el teléfono, el historial y las notas de la ficha.
 abstract final class FormatoFicha {
   static const _dias = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
+
+  /// La visita que va en la tarjeta «PRÓXIMA VISITA»: la más próxima que todavía no pasó; si todas ya
+  /// pasaron de hora (siguen programadas hasta que se registre qué pasó), la más antigua, que es la que
+  /// hay que registrar. `null` si no hay ninguna.
+  static ItemAgenda? proximaVisita(List<ItemAgenda> visitas, DateTime ahora) {
+    if (visitas.isEmpty) return null;
+    final ordenadas = [...visitas]
+      ..sort((a, b) => a.agenda.fechaProgramada.compareTo(b.agenda.fechaProgramada));
+    return ordenadas.where((v) => !v.estaVencida(ahora)).firstOrNull ?? ordenadas.first;
+  }
+
+  /// «Entrevista · jue 24/10 · 14:30»: el título de la tarjeta (23A·05).
+  static String cuandoDeLaVisita(ItemAgenda item, DateTime ahora) =>
+      '${FormatoAgenda.tipo(item.agenda.tipo)} · ${FormatoAgenda.cuandoCorto(item.agenda.fechaProgramada, ahora).toLowerCase()}';
+
+  /// «Primera tarde · te avisamos a las 14:00»: la franja (si la tiene), la dirección de la cobranza
+  /// si es en otra, y a qué hora suena el aviso. Con los recordatorios apagados lo dice; si la hora del
+  /// aviso ya pasó, no dice nada del aviso. [preferencias] `null`: los valores de fábrica.
+  static String? detalleDeLaVisita(
+    ItemAgenda item,
+    DateTime ahora, {
+    PreferenciasRecordatorios? preferencias,
+    bool conAviso = true,
+  }) {
+    final visita = item.agenda.fechaProgramada.toLocal();
+    final franja = FranjaHoraria.desdeCodigo(item.agenda.slotCodigo)?.etiqueta;
+    final alternativa = item.alternativa == null ? null : FormatoAgenda.direccion(item);
+    final String? aviso;
+    if (!conAviso || item.estaVencida(ahora)) {
+      aviso = null;
+    } else if (preferencias != null && !preferencias.activados) {
+      aviso = TextosFicha.recordatoriosApagados;
+    } else {
+      final cuando = FormatoDetalleAgenda.horaDelAviso(
+        visita,
+        preferencias?.anticipacionMinutos ?? AnticipacionRecordatorio.porDefecto,
+      );
+      if (!cuando.isAfter(ahora)) {
+        aviso = null;
+      } else {
+        final frase = FormatoDetalleAgenda.avisoEnFrase(cuando, visita);
+        aviso = frase.dia == null
+            ? 'te avisamos a las ${frase.hora}'
+            : 'te avisamos el ${frase.dia} a las ${frase.hora}';
+      }
+    }
+    final partes = [?franja, if (alternativa != null) 'en $alternativa', ?aviso];
+    return partes.isEmpty ? null : partes.join(' · ');
+  }
 
   /// El largo de la vista previa de una nota (HU-UBI-009: «notas muy largas: las primeras 200
   /// caracteres»).
