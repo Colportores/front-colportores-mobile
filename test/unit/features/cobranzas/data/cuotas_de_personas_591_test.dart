@@ -59,8 +59,11 @@ void main() {
     );
   }
 
-  /// Un plan de la venta [venta] con una cuota por cada [dias] (día del mes de octubre, 10:00).
+  /// Un plan de la venta [venta] con una cuota por cada [dias] (día del mes de octubre, 10:00). Las
+  /// cuotas valen [monto] salvo la última, que es lo que falta del saldo (no se escribe a mano,
+  /// decisión del 03/11, #608).
   Future<void> plan(String venta, List<int> dias, {int monto = 50000}) async {
+    final saldo = (await cuotas.leerPlan(venta))!.venta.saldoCentavos;
     await cuotas.crearPlan(
       NuevoPlanDeCuotas(
         ventaId: venta,
@@ -71,7 +74,7 @@ void main() {
             NuevaCuota(
               agendaId: '$venta-q${i + 1}',
               fecha: DateTime(2026, 10, dias[i], 10),
-              montoCentavos: monto,
+              montoCentavos: i == dias.length - 1 ? saldo - monto * i : monto,
             ),
         ],
       ),
