@@ -9,6 +9,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart'
     show TipoResultadoVisita;
 import 'package:colportores_mobile/features/agenda/presentation/providers/entrevista_providers.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
+import 'package:colportores_mobile/features/inicio/presentation/providers/navegacion_inicio_provider.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_con_quien.dart';
@@ -113,7 +114,7 @@ void main() {
     });
 
     testWidgets(
-      'la cadena completa: venta → «¿Cuándo volvés a cobrar?» → R·08 con la hoja abierta',
+      'la cadena completa: venta → «¿Cuándo volvés a cobrar?» → R·08: el mapa libre y la hoja se cierra',
       (tester) async {
         await a.montar(tester);
         await a.hastaLaVenta(tester);
@@ -133,9 +134,11 @@ void main() {
         expect(a.salidasDeEntrevista.single, isA<VentaRegistradaEnLaCasa>());
         expect(
           a.resultados,
-          [false],
-          reason: 'R·08: la hoja de la casa queda abierta, no se cierra ni se deselecciona la casa',
+          [true],
+          reason: 'tras guardar (05/11): la hoja de la casa se cierra y el mapa queda libre',
         );
+        expect(a.contenedor(tester).read(navegacionInicioProvider).intencion?.ubicacionId, 'ub-1');
+        expect(a.contenedor(tester).read(navegacionInicioProvider).intencion?.conSuHoja, isFalse);
         expect(find.text('Venta 0039 guardada.'), findsOneWidget);
       },
     );
@@ -788,7 +791,7 @@ void main() {
     });
 
     testWidgets(
-      'la venta guardada llega a R·08 con la hoja de la casa abierta y con su visita «Venta» de hoy (#669)',
+      'la venta guardada vuelve al mapa libre (la hoja se cierra) y con su visita «Venta» de hoy (#669)',
       (tester) async {
         a.lector.porVinculo['ep-1'] = _ayer;
         await a.montar(tester);
@@ -808,7 +811,7 @@ void main() {
         expect(venta.espacioPersonaId, 'ep-1');
         expect(venta.numeroTalonario, '0039');
         expect(a.salidasDeVenta.single, isA<VentaRegistradaEnLaCasa>());
-        expect(a.resultados, [false], reason: 'R·08: la hoja de la casa queda abierta');
+        expect(a.resultados, [true], reason: 'tras guardar (05/11): la hoja de la casa se cierra');
         expect(find.text('Venta 0039 guardada.'), findsOneWidget);
       },
     );
@@ -900,7 +903,7 @@ void main() {
           a.montaje.agenda.recibidas.last.visita.id,
           reason: 'la venta lleva la visita «Venta», no la de la entrevista de antes',
         );
-        expect(a.resultados, [true, false]);
+        expect(a.resultados, [true, true]);
       },
     );
 

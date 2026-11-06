@@ -107,10 +107,10 @@ typedef ContextoDeVenta = ({
   String? jornadaId,
 });
 
-/// Lo que contesta el gancho de «Entrevista dada» o el de «Vender» cuando **la venta ya quedó guardada**:
-/// la colportora vuelve a la hoja de la casa (R·08), que ya muestra la cobranza pendiente. Quien lo
-/// recibe resuelve «¿Qué pasó?» pero **no** cierra la hoja de la casa: cerrarla sacaría la casa elegida
-/// de R·08.
+/// Lo que contesta el gancho de «Entrevista dada» o el de «Vender» cuando **la venta ya quedó guardada**.
+/// Quien lo recibe resuelve «¿Qué pasó?» y la hoja de la casa se cierra: tras guardar, el mapa queda
+/// libre con la casa a la vista y su color nuevo (decisión de Cristian, 05/11, que cambió el R·08 de
+/// la vista 39, donde la colportora volvía a la hoja de la casa).
 final class VentaRegistradaEnLaCasa {
   const VentaRegistradaEnLaCasa();
 }
@@ -131,7 +131,7 @@ final programarEntrevistaDesdeLaCasaProvider =
 
 /// A dónde lleva «Entrevista dada» (#450: «Empieza a contar el tiempo»). Devuelve `true` si la
 /// entrevista quedó guardada o en curso (la hoja de la casa se cierra y el mapa muestra el color nuevo o
-/// el aviso fijo) y [VentaRegistradaEnLaCasa] si terminó en una venta (la hoja de la casa sigue abierta).
+/// el aviso fijo) y [VentaRegistradaEnLaCasa] si terminó en una venta (también se cierra la hoja).
 /// Sin destino, la opción no se ofrece en «¿Qué pasó?».
 final entrevistaDadaDesdeLaCasaProvider =
     Provider<FutureOr<Object?> Function(ContextoDeEntrevista)?>((ref) => null);

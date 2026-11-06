@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../agenda/presentation/providers/entrevista_providers.dart';
 import '../../../agenda/presentation/widgets/aviso_entrevista_en_curso.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
+import '../../../inicio/presentation/providers/navegacion_inicio_provider.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart' show AmbitoTrabajo;
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/entities/ubicacion.dart' show TipoUbicacion;
@@ -92,6 +93,10 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   Size _tamano = Size.zero;
   var _altura = AlturaHoja.minimizada;
   var _encuadre = _Encuadre.ninguno;
+
+  /// Una intención del shell (`irALaCasa`, `volverAlMapa`) ya movió la cámara: el encuadre automático
+  /// de la primera vez (el GPS, o todas las ubicaciones) no se la vuelve a sacar.
+  var _camaraDirigida = false;
 
   /// Cuántos gestos del colportor movieron el mapa: sirve para no tirarle la cámara de las manos.
   var _gestos = 0;
@@ -229,7 +234,72 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   void _alCrearseElMapa(ControladorMapaBase mapa) {
     _mapa = mapa;
+    // Si el shell ya pidió algo, se atiende al terminar el cuadro: acá se está construyendo y no se
+    // puede tocar ningún provider. La cámara la mueve la intención si le toca (`_atenderIntencion`);
+    // si no la mueve, el encuadre de la primera vez sigue como siempre.
+    if (ref.read(navegacionInicioProvider).intencion != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _atenderIntencion());
+    }
     _encuadrarSiHaceFalta(ref.read(_proveedor));
+  }
+
+  /// Lo que el shell le pidió al mapa principal (`navegacionInicioProvider`): «ir a la casa» (centrarla,
+  /// elegirla y subir su hoja, C·01) o «volver al mapa tras guardar» (cerrar la hoja y dejar la casa a
+  /// la vista, con su color nuevo). Es la **única** forma en que algo de afuera mueve la cámara: un
+  /// cambio de datos nunca lo hace.
+  ///
+  /// Si el mapa todavía no está listo (la pestaña se arma al abrirse, el mapa nativo tarda y la lista
+  /// puede estar leyéndose) la intención queda pendiente y se vuelve a intentar cuando llega lo que
+  /// faltaba.
+  void _atenderIntencion() {
+    if (!mounted) return;
+    final navegacion = ref.read(navegacionInicioProvider);
+    final intencion = navegacion.intencion;
+    if (intencion == null) return;
+    final estado = ref.read(_proveedor);
+    final lista = estado.lista;
+    // Sin lista no se sabe dónde está la casa; si la lista no se pudo leer no llega nunca y la
+    // intención no puede quedar colgada.
+    if (_mapa == null || _tamano.isEmpty || (lista == null && !estado.fallaLectura)) return;
+    ItemListaUbicacion? casa;
+    for (final item in lista?.items ?? const <ItemListaUbicacion>[]) {
+      if (item.ubicacion.id == intencion.ubicacionId) casa = item;
+    }
+    ref.read(navegacionInicioProvider.notifier).atendida(intencion);
+    if (intencion.conSuHoja) {
+      // Una casa que no está entre las del colportor no tiene hoja que subir ni cámara que mover.
+      if (casa != null) {
+        _camaraDirigida = true;
+        _elegir(intencion.ubicacionId, zoomMinimo: MapaAlta.zoomCalle);
+      }
+      return;
+    }
+    _notificador.cerrarSeleccion();
+    if (casa == null) return;
+    // Mapa recién armado, todavía sin encuadre (con la vista del país entera «todo se ve» y no sirve):
+    // la casa a un zoom de calle. Si ya estaba encuadrado, solo se mueve si la casa quedó fuera.
+    final sinEncuadrar = _encuadre == _Encuadre.ninguno;
+    if (sinEncuadrar || !_estaALaVista(casa.ubicacion.coordenadas)) {
+      _camaraDirigida = true;
+      _centrarEn(casa.ubicacion.coordenadas, _altura, zoomMinimo: MapaAlta.zoomCalle);
+    }
+  }
+
+  /// ¿[punto] se ve en la parte del mapa que la hoja no tapa? Con un margen: un marcador pegado al
+  /// borde no cuenta como «a la vista».
+  bool _estaALaVista(Coordenadas punto) {
+    final mapa = _mapa;
+    if (mapa == null || _tamano.isEmpty) return false;
+    final camara = mapa.camara;
+    final casa = ProyeccionMercator.aPixeles(punto, camara.zoom);
+    final centro = ProyeccionMercator.aPixeles(camara.centro, camara.zoom);
+    const margen = 40.0;
+    final x = _tamano.width / 2 + (casa.x - centro.x);
+    final y = _tamano.height / 2 + (casa.y - centro.y);
+    return x >= margen &&
+        x <= _tamano.width - margen &&
+        y >= margen &&
+        y <= _tamano.height - _altoHoja(_altura) - margen;
   }
 
   /// Al abrir el mapa, una sola vez y mientras el colportor no lo haya movido: sobre su GPS, y si
@@ -237,7 +307,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   /// todavía no se conoce: #274.)
   void _encuadrarSiHaceFalta(MapaUbicacionesState estado) {
     final mapa = _mapa;
-    if (mapa == null || _gestos > 0 || _tamano.isEmpty) return;
+    if (mapa == null || _gestos > 0 || _camaraDirigida || _tamano.isEmpty) return;
     final lectura = estado.lectura;
     if (lectura != null) {
       if (_encuadre == _Encuadre.gps) return;
@@ -607,6 +677,9 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     final ahora = ref.watch(relojListaUbicacionesProvider)();
     final avisoVisible = ref.watch(avisoMapaVisibleProvider(ambito));
     final zonas = ref.watch(zonasParaElMapaProvider(widget.colportorId));
+    ref.listen(navegacionInicioProvider.select((n) => n.intencion), (_, intencion) {
+      if (intencion != null) _atenderIntencion();
+    });
     ref.listen(ubicacionColportorProvider, _alCambiarElGps);
     ref.listen(_proveedor, (anterior, nuevo) {
       // Sin ubicaciones o sin poder leerlas, la hoja sube sola para decir qué hacer: minimizada solo
@@ -617,6 +690,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       final sube = (sinUbicaciones || fallo) && _altura == AlturaHoja.minimizada;
       if (sube) setState(() => _altura = AlturaHoja.mitad);
       final encuadradoAntes = _encuadre == _Encuadre.gps;
+      // Lo que el shell pidió y esperaba a que llegara la lista (sin pedido no hace nada).
+      _atenderIntencion();
       _encuadrarSiHaceFalta(nuevo);
       // La hoja más alta tapa más del mapa: si el mapa ya estaba sobre el GPS y el colportor no lo
       // movió, el punto azul se vuelve a poner en la parte libre.

@@ -224,7 +224,7 @@ void main() {
         expect(venta.visitaId, visita.id);
         expect(a.montaje.almacen.guardadas, isEmpty, reason: 'la entrevista se cerró con la venta');
         expect(a.salidasDeEntrevista.single, isA<VentaRegistradaEnLaCasa>());
-        expect(a.resultados, [false], reason: 'R·08: la hoja de la casa queda abierta');
+        expect(a.resultados, [true], reason: 'tras guardar (05/11): la hoja de la casa se cierra');
       },
     );
 
