@@ -609,7 +609,7 @@ final class _DestinoLento implements ResolverDestinoDeEntrevista {
   @override
   Future<DestinoDeEntrevista?> resolver({
     required String espacioId,
-    required String espacioPersonaId,
+    String? espacioPersonaId,
   }) async {
     await compuerta.future;
     return null;

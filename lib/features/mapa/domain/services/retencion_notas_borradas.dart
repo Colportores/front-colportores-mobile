@@ -1,6 +1,6 @@
 import '../entities/nota_de_texto.dart';
 
-/// Cuánto vive una nota de persona en «Ver borradas» (HU-UBI-012, decisión de Cristian del 27/10): 90
+/// Cuánto vive una nota de persona o de lugar en «Ver borradas» (HU-UBI-012, decisión de Cristian del 27/10): 90
 /// días desde que se borró, como el historial del centro de notificaciones. Pasado ese plazo la nota se
 /// borra para siempre del teléfono.
 ///

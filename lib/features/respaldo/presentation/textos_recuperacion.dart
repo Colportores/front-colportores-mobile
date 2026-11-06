@@ -55,6 +55,13 @@ abstract final class TextosRecuperacion {
   static String confirmacionPrevia(String megas) =>
       'Vamos a restaurar $megas. La operación puede tardar varios minutos.';
 
+  /// 34·08 (y 34·07) cuando [n] respaldos de los que había no se pudieron abrir (decisión del
+  /// 04/11, #610 P1): solo se dice lo que es verdad —la recuperación no borra ni pisa ningún
+  /// respaldo—. Propuesta de texto, mapa §2.
+  static String respaldosSinAbrir(int n) => n == 1
+      ? 'No pudimos abrir 1 respaldo con tu contraseña. Sigue en tu Google Drive, sin tocar.'
+      : 'No pudimos abrir $n respaldos con tu contraseña. Siguen en tu Google Drive, sin tocar.';
+
   // 34·05.
   static const infoRestaurando =
       'Lo que había en este teléfono no se toca hasta que termine. Si se corta, no se pierde nada.';
@@ -116,6 +123,24 @@ abstract final class TextosRecuperacion {
       'Google, probá con esa.';
   static const probarConOtraCuenta = 'Probar con otra cuenta';
 
+  // «Empezar sin recuperar» (decisión de Cristian, 03/11, «Recup. luego», #610): se puede recuperar
+  // después, desde Configuración, mientras el teléfono no tenga nada cargado.
+  static const tituloEmpezarSinRecuperar = '¿Empezar sin recuperar?';
+  static const avisoEmpezarSinRecuperar =
+      'Podés traer tu respaldo después desde Configuración, en «Recuperar mi respaldo», mientras no '
+      'hayas cargado nada en este teléfono. Una vez que cargues datos, ya no vas a poder traerlo.';
+  static const volver = 'Volver';
+
+  // La fila de Configuración «Recuperar mi respaldo» (#610). El canvas de Configuración (vista 16)
+  // todavía no la dibuja: mapa §2, retoque pedido al diseño.
+  static const filaConfiguracion = 'Recuperar mi respaldo';
+  static const filaConfiguracionDetalle =
+      'Traé lo que tenías en otro teléfono. Solo mientras no hayas cargado nada acá.';
+  static const yaNoSePuedeRecuperar =
+      'Ya hay datos cargados en este teléfono, así que no se puede traer el respaldo.';
+  static const noSePudoRevisar =
+      'No pudimos revisar si este teléfono tiene datos. Probá de nuevo en unos minutos.';
+
   // 34·10.
   static const necesitaConexion = 'Necesitás conexión (mejor Wi-Fi) para traer tu respaldo.';
 
@@ -125,9 +150,19 @@ abstract final class TextosRecuperacion {
       'Algo falló al mirar tu Google Drive. Probá de nuevo; si sigue pasando, podés empezar sin '
       'recuperar.';
   static const tituloVariosRespaldos = 'Encontramos más de un respaldo';
-  static const variosRespaldos =
-      'Hay respaldos de más de un teléfono en tu Drive y todavía no sabemos cuál traerte. Todavía '
-      'no los tocamos: podés reintentar más tarde o empezar sin recuperar.';
+
+  /// Varios respaldos (decisión de Cristian, 03/11, #610): se traen todos juntos y se fusionan, sin
+  /// borrar nada. Avisa antes de empezar que tarda más porque se descarga todo.
+  static String variosRespaldos(int n) =>
+      'Encontramos $n respaldos de teléfonos que usaste antes. Los traemos todos juntos y los '
+      'juntamos en este teléfono: no se borra nada. Tarda más porque se descarga todo.';
+  static const recuperarTodos = 'Recuperar todos mis datos';
+  static const tituloContrasenaVarios = 'Abrí tus copias';
+  static const ayudaContrasenaVarios = 'La que usabas cuando se hicieron estos respaldos.';
+  static const contrasenaNoAbreVarios =
+      'Esta contraseña no abre tus copias; probá la que usabas cuando hiciste los últimos '
+      'respaldos.';
+  static const abrirCopias = 'Abrir copias';
   static const tituloVersionMasNueva = 'Actualizá la app';
 
   /// El texto de la HU, tal cual.

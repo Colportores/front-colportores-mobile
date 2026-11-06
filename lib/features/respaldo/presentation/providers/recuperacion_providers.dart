@@ -1,29 +1,53 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../catalogo.dart';
+import '../../../../core/conectividad/conectividad_providers.dart';
+import '../../../../core/database/database_providers.dart';
+import '../../../../core/secure_storage/secure_storage_providers.dart';
+import '../../../../core/sync/armado_del_motor.dart';
+import '../../../../core/sync/sync_providers.dart';
+import '../../../../datos/drift_snapshot.dart';
+import '../../../../plataforma/conectividad_del_motor.dart';
+import '../../../tiles/domain/services/puertos_descarga.dart';
+import '../../data/services/servicio_recuperacion_motor.dart';
 import '../../domain/services/servicio_recuperacion.dart';
+import 'respaldo_drive_providers.dart';
 
 /// El asistente de recuperación de datos en un teléfono sin datos (HU-SYNC-006, vista 34). Lo usa la
 /// pantalla del asistente (#175).
 ///
-/// **Hasta que llegue la integración I4 (#186) no hay motor que recuperar**: este valor responde
-/// «no se pudo» a todo y la pantalla lo dice, con «Reintentar» y «Empezar sin recuperar». #186 lo
-/// reemplaza por `ServicioRecuperacionMotor` sobre `SyncEngine.recover()`; al integrar las dos
-/// ramas, este archivo se resuelve con el de #186.
-final servicioRecuperacionProvider = Provider<ServicioRecuperacion>(
-  (ref) => const _ServicioRecuperacionSinMotor(),
-);
+/// Se rearma con la DB: sin DB abierta no hay con qué recuperar y todo pedido vuelve fallido. Trae su
+/// propio motor de sync (con la misma receta que la app, `armarMotorDeSync`) y lo cierra al terminar:
+/// mientras el asistente está abierto, el de la app no existe (`motorSyncProvider` es `null`).
+final servicioRecuperacionProvider = Provider<ServicioRecuperacion>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  final archivo = ref.watch(archivoDriveProvider);
+  final token = ref.watch(tokenDriveProvider);
+  final monitor = ref.watch(monitorConectividadProvider);
+  final cripto = ref.watch(criptoConDekProvider);
+  final custodia = ref.watch(custodiaClaveDbProvider);
 
-final class _ServicioRecuperacionSinMotor implements ServicioRecuperacion {
-  const _ServicioRecuperacionSinMotor();
-
-  @override
-  Future<BusquedaRespaldo> buscar() async => const BusquedaFallida();
-
-  @override
-  Future<ResultadoRecuperacion> recuperar({
-    required RespaldoEnDrive respaldo,
-    required String password,
-    void Function(ProgresoRecuperacion progreso)? alAvanzar,
-    CancelacionRecuperacion? cancelar,
-  }) async => const RecuperacionFallida();
-}
+  return ServicioRecuperacionMotor(
+    armarMotor: () => db == null
+        ? null
+        : armarMotorDeSync(
+            db: db,
+            leerDek: custodia.leerDek,
+            tokenDrive: token,
+            transporte: ref.read(transporteSyncProvider),
+            conectividad: ConectividadDelMotor(monitor),
+          ),
+    archivo: () async => await token() == null ? null : (archivo, archivo),
+    llavePropia: () async {
+      try {
+        return await cripto.keyId();
+      } on Object {
+        // Sin DEK legible no se sabe cuál cadena es la de este teléfono; la búsqueda sigue.
+        return null;
+      }
+    },
+    abrirEnvoltorio: custodia.abrirEnvoltorio,
+    snapshot: () => DriftSnapshot(db!, tablas: entidadesDelBackup),
+    hayConexion: () async => await monitor.actual() != TipoConexion.sinConexion,
+  );
+});

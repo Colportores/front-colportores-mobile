@@ -102,6 +102,15 @@ abstract final class TextosEntrevista {
       ? 'La venta no se guardó. La entrevista sigue en curso.'
       : 'La venta no se guardó. La entrevista con ${persona.trim()} sigue en curso.';
 
+  /// El botón del aviso «Ya tenés una entrevista en curso en …» de «¿Qué pasó?»: abre esa entrevista.
+  static const irALaEntrevista = 'Ir a la entrevista';
+
+  /// «Entrevista dada» con otra entrevista en curso en otra casa: no se empieza una segunda encima.
+  /// Propuesta (mapa §2: caso límite de UI).
+  static String yaHayUnaEnCurso(String direccion) => direccion.trim().isEmpty
+      ? 'Ya tenés una entrevista en curso en otra casa. Terminala antes de empezar otra.'
+      : 'Ya tenés una entrevista en curso en ${direccion.trim()}. Terminala antes de empezar otra.';
+
   /// Lo mismo cuando se vino de «Finalizar jornada»: la jornada no se cierra con una entrevista abierta.
   static String ventaNoGuardadaEnLaJornada(String persona) =>
       '${ventaNoGuardada(persona)} Terminala para poder cerrar la jornada.';

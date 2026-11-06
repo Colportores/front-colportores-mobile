@@ -177,17 +177,22 @@ class PestanaPersonasDeLaCasa extends StatelessWidget {
             texto: guardada!,
           ),
         if (filas.isEmpty)
-          const Padding(
+          Padding(
             key: ClavesHojaCasa.sinPersonas,
-            padding: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-            child: Text(
-              TextosPestanasHojaCasa.sinPersonas,
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 14,
-                height: 1.4,
-                color: ColoresLista.grisTexto,
-              ),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 4,
+              children: [
+                const Text(TextosPestanasHojaCasa.sinPersonas, style: _estiloVacio),
+                // Solo si se puede agregar: en una casa de baja «para después» no tiene sentido.
+                if (alAgregar != null)
+                  const Text(
+                    TextosPestanasHojaCasa.sinPersonasParaDespues,
+                    key: ClavesHojaCasa.sinPersonasParaDespues,
+                    style: _estiloVacio,
+                  ),
+              ],
             ),
           ),
         for (final fila in filas)
@@ -207,6 +212,13 @@ class PestanaPersonasDeLaCasa extends StatelessWidget {
     );
   }
 }
+
+const _estiloVacio = TextStyle(
+  fontFamily: 'Inter',
+  fontSize: 14,
+  height: 1.4,
+  color: ColoresLista.grisTexto,
+);
 
 /// «+ Agregar persona» (canvas: texto azul de 13,5), con un objetivo táctil de 48 dp.
 class _EnlaceAgregar extends StatelessWidget {

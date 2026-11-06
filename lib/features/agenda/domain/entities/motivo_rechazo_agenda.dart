@@ -45,6 +45,14 @@ enum MotivoRechazoAgenda {
     'agenda',
     'Esta cobranza es una cuota del plan de la venta: podés cambiar el día y la hora, pero no el '
         'tipo.',
+  ),
+
+  /// La cobranza es la última cuota abierta del plan de su venta: siempre es lo que falta, así que no
+  /// se cancela (decisión del 03/11, #608).
+  ultimaCuotaDelPlan(
+    'agenda',
+    'Esta es la última cuota del plan y siempre es lo que falta: no se cancela. Reprogramala con '
+        '«Modificar» o cambiá las cuotas anteriores desde la lista de cuotas.',
   );
 
   const MotivoRechazoAgenda(this.campo, this.mensaje);

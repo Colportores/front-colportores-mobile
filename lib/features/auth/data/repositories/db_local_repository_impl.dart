@@ -30,6 +30,7 @@ final class DbLocalRepositoryImpl implements DbLocalRepository {
     required this._seguridad,
     required this._helper,
     required this._dbLocal,
+    this._alEnvolver,
     AppLogger? logger,
   }) : _log = logger ?? AppLogger.instance;
 
@@ -37,6 +38,10 @@ final class DbLocalRepositoryImpl implements DbLocalRepository {
   final SeguridadDispositivo _seguridad;
   final DatabaseHelper _helper;
   final DbLocalNotifier _dbLocal;
+
+  /// Se llama cuando el envoltorio por contraseña se rehízo (creación de la DB, cambio de contraseña):
+  /// el de Drive tiene que ser el nuevo (HU-SYNC-006). No espera y no puede fallar la operación.
+  final void Function()? _alEnvolver;
   final AppLogger _log;
 
   /// `ENOSPC` en Linux/Android y en iOS/macOS.
@@ -114,8 +119,20 @@ final class DbLocalRepositoryImpl implements DbLocalRepository {
   Future<Either<Failure, Unit>> envolverConPassword(ClaveDb dek, String password) =>
       _intentar('envolver', () async {
         await _custodia.envolverConPassword(dek, password);
+        _avisarQueSeEnvolvio();
         return unit;
       });
+
+  /// Lo que pase acá no cambia cómo terminó el envoltorio: ya está en el archivo.
+  void _avisarQueSeEnvolvio() {
+    try {
+      _alEnvolver?.call();
+    } on Object catch (e) {
+      _log.warn(LogModulo.db, 'ENVOLTORIO_AVISO', 'no se pudo avisar que se rehízo el envoltorio', {
+        'error': e.runtimeType.toString(),
+      });
+    }
+  }
 
   @override
   Future<Either<Failure, Unit>> marcarEnvoltorioDesactualizado(String usuarioId) =>

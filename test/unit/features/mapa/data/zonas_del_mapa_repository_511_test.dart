@@ -83,7 +83,7 @@ void main() {
       expect(zonas.first.color, '#336699');
     });
 
-    test('sin zona asignada ninguna es propia: se ven todas como las demás', () async {
+    test('sin zona asignada ninguna es propia: la lectura las trae todas igual', () async {
       await sembrar([_zona('z-a', 'Centro'), _zona('z-b', 'Cordón', lonOeste: -56.15)]);
 
       final zonas = (await escuchar()).single;

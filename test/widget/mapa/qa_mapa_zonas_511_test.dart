@@ -22,7 +22,7 @@ void main() {
       (const Size(412, 915), 1.0),
       (const Size(412, 915), 2.0),
     ]) {
-      testWidgets('dada la zona propia, otras y casas agrupadas a ${tamano.width.toInt()}×'
+      testWidgets('dada la zona propia, ajenas y casas agrupadas a ${tamano.width.toInt()}×'
           '${tamano.height.toInt()} texto $escala, entonces no desborda, los botones tienen 48/44 dp, '
           'etiqueta y contraste', (tester) async {
         final semantica = tester.ensureSemantics();
@@ -40,12 +40,8 @@ void main() {
         );
 
         expect(tester.takeException(), isNull);
-        expect(
-          find.bySemanticsLabel(
-            'Mapa de ubicaciones. Tu zona: Cerro Norte. 2 zonas más en el mapa.',
-          ),
-          findsOneWidget,
-        );
+        expect(find.bySemanticsLabel('Mapa de ubicaciones. Tu zona: Cerro Norte.'), findsOneWidget);
+        expect(find.textContaining('La Teja', findRichText: true), findsNothing);
         await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
         await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
         await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
@@ -70,11 +66,9 @@ void main() {
           escala: 2,
         );
 
-        expect(m.mapa.config!.zonas, hasLength(2));
+        expect(m.mapa.config!.zonas, hasLength(1));
         expect(
-          find.bySemanticsLabel(
-            'Mapa de ubicaciones. Tu zona: Ñandú 🌳 <b>&"\'. Otra zona en el mapa.',
-          ),
+          find.bySemanticsLabel('Mapa de ubicaciones. Tu zona: Ñandú 🌳 <b>&"\'.'),
           findsOneWidget,
         );
         expect(tester.takeException(), isNull);

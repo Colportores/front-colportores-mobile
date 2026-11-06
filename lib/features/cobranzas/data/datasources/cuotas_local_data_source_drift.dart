@@ -119,6 +119,10 @@ final class CuotasLocalDataSourceDrift {
     if (!RepartoDeCuotas.montosValidos(montos, actual.venta.saldoCentavos)) {
       throw const CuotasRechazadasException(MotivoPlanDeCuotas.montos);
     }
+    // La última cuota es lo que falta del saldo: no se escribe a mano (decisión del 03/11, #608).
+    if (!RepartoDeCuotas.ultimaEsLoQueFalta(montos, actual.venta.saldoCentavos)) {
+      throw const CuotasRechazadasException(MotivoPlanDeCuotas.ultimaCuota);
+    }
 
     for (final cuota in plan.cuotas) {
       final agenda = Agenda(
@@ -181,6 +185,12 @@ final class CuotasLocalDataSourceDrift {
       suma += monto;
     }
     if (suma > porRepartir) throw const CuotasRechazadasException(MotivoPlanDeCuotas.montos);
+    // La última cuota abierta es lo que falta: si las cuotas no suman justo lo que hay por repartir,
+    // alguien escribió la última a mano (o no la recalculó al cambiar una anterior) y no se guarda
+    // (decisión del 03/11, #608).
+    if (nuevos.isNotEmpty && suma != porRepartir) {
+      throw const CuotasRechazadasException(MotivoPlanDeCuotas.ultimaCuota);
+    }
 
     var escribio = false;
     for (final cuota in abiertas) {
@@ -218,6 +228,20 @@ final class CuotasLocalDataSourceDrift {
       );
     }
     return estado.aCerrar.length;
+  }
+
+  /// Si la cita [agendaId] es la última cuota abierta del plan de su venta (la abierta de mayor
+  /// número): esa siempre es lo que falta y no se cancela, se reprograma (decisión del 03/11, #608).
+  /// `false` si no es una cuota, si ya está cubierta o si hay otra abierta después. Se llama dentro de
+  /// la transacción de cancelar.
+  Future<bool> esLaUltimaCuotaAbierta(String agendaId) async {
+    final fila = await (_db.select(_db.agendas)..where((a) => a.id.equals(agendaId))).getSingle();
+    final ventaId = fila.ventaId;
+    if (ventaId == null || fila.montoPrevisto == null || fila.tipo != TipoAgenda.cobranza.codigo) {
+      return false;
+    }
+    final estado = await _estado(ventaId);
+    return RepartoDeCuotas.ultimaAbierta(estado.cuotas)?.agendaId == agendaId;
   }
 
   /// La cuota [agendaId] se canceló: lo que le falta cobrar (su monto menos lo ya cobrado) pasa a las

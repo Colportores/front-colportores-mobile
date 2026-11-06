@@ -146,10 +146,31 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
 
   /// Las ventas vivas de la casa: las ventas cuelgan del vínculo persona ↔ espacio, y el espacio tiene
   /// que seguir activo.
-  Future<List<VentaFila>> _ventasVivas(String ubicacionId) {
+  Future<List<VentaFila>> _ventasVivas(String ubicacionId) =>
+      _ventasVivasDe(_espaciosDe(ubicacionId));
+
+  /// Las ventas vivas de los espacios **dados de baja** de la casa (los deptos): lo que se debe en
+  /// ellos sigue contando para el color (decisión de Cristian, 03/11, «Color y baja»).
+  Future<List<VentaFila>> _ventasVivasDeLosDeptosDeBaja(String ubicacionId) => _ventasVivasDe(
+    _db.selectOnly(_db.espacios)
+      ..addColumns([_db.espacios.id])
+      ..where(_db.espacios.ubicacionId.equals(ubicacionId) & _db.espacios.deletedAt.isNotNull()),
+    // Igual que el saldo de la ubicación: cuenta las personas vinculadas que siguen vivas.
+    soloVinculosVivos: true,
+  );
+
+  Future<List<VentaFila>> _ventasVivasDe(
+    JoinedSelectStatement<HasResultSet, dynamic> espacios, {
+    bool soloVinculosVivos = false,
+  }) {
     final vinculos = _db.selectOnly(_db.espacioPersonas)
       ..addColumns([_db.espacioPersonas.id])
-      ..where(_db.espacioPersonas.espacioId.isInQuery(_espaciosDe(ubicacionId)));
+      ..where(
+        soloVinculosVivos
+            ? _db.espacioPersonas.espacioId.isInQuery(espacios) &
+                  _db.espacioPersonas.deletedAt.isNull()
+            : _db.espacioPersonas.espacioId.isInQuery(espacios),
+      );
     return (_db.select(
       _db.ventas,
     )..where((v) => v.espacioPersonaId.isInQuery(vinculos) & v.deletedAt.isNull())).get();
@@ -159,10 +180,17 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
   /// HU-COB-001, HU-VEN-004): son las cuentas de [CuentaDeLaVenta], la misma fórmula del saldo —lo
   /// devuelto baja lo que se queda—. Los cobros dados de baja no
   /// cuentan (`CobroValido`). Una venta devuelta por completo no pinta por sí sola (queda en 0).
+  ///
+  /// Además de las de los espacios activos, cuentan **las ventas con saldo de los deptos de baja**
+  /// (decisión de Cristian, 03/11, «Color y baja»), como ya lo hace la hoja de la casa: dar de baja un
+  /// depto no esconde lo que se debe. Las saldadas de un depto de baja no pintan nada.
   Future<List<({int montoCentavos, int cobradoCentavos, bool entregada})>> _ventas(
     String ubicacionId,
   ) async {
-    final filas = await _ventasVivas(ubicacionId);
+    final activas = await _ventasVivas(ubicacionId);
+    final deBaja = await _ventasVivasDeLosDeptosDeBaja(ubicacionId);
+    final filas = [...activas, ...deBaja];
+    final idsDeBaja = {for (final f in deBaja) f.id};
     final devoluciones = await EstadoDeDevolucion.resumenesDe(_db, [for (final f in filas) f.id]);
     final salida = <({int montoCentavos, int cobradoCentavos, bool entregada})>[];
     for (final fila in filas) {
@@ -170,6 +198,10 @@ final class HouseStatusUpdaterDrift implements HouseStatusUpdater {
         montoTotalCentavos: fila.montoTotal,
         cobradoCentavos: await CobroValido.cobradoDe(_db, fila.id),
       );
+      // Un depto de baja pinta solo por lo que se le debe: saldada o sin nada para cobrar, no.
+      if (idsDeBaja.contains(fila.id) && cuenta.seQuedaConCentavos <= cuenta.yaPagoCentavos) {
+        continue;
+      }
       // Entregada = todo lo vendido y no devuelto tiene su entrega hecha (HU-VEN-002,
       // `EstadoDeEntrega`): la misma cuenta que usa «Entregar ahora». Sin entrega registrada, la venta
       // sigue pendiente.

@@ -221,21 +221,25 @@ void main() {
     testWidgets(
       'se ve debajo del botón, como en el canvas, y con el teclado abierto no se pierde',
       (tester) async {
-        await _montar(tester, _Artboard.gpsPreciso, escala: 2);
-        expect(find.text(TextosAlta.elegiElTipo), findsOneWidget);
+        await _montar(tester, _Artboard.sinGps, escala: 2);
+        expect(find.text(TextosAlta.marcaElPunto), findsOneWidget);
         expect(
-          tester.getRect(find.text(TextosAlta.elegiElTipo)).top,
+          tester.getRect(find.text(TextosAlta.marcaElPunto)).top,
           greaterThanOrEqualTo(tester.getRect(_registrar).bottom),
           reason: 'el motivo va debajo del botón, como en el canvas',
         );
 
         await _abrirTeclado(tester);
-        expect(find.text(TextosAlta.elegiElTipo), findsOneWidget, reason: 'también con el teclado');
+        expect(
+          find.text(TextosAlta.marcaElPunto),
+          findsOneWidget,
+          reason: 'también con el teclado',
+        );
         _registrarEntero(tester, alto: 640 - _teclado, donde: 'con el teclado');
 
         await _cerrarTeclado(tester);
         expect(
-          tester.getRect(find.text(TextosAlta.elegiElTipo)).top,
+          tester.getRect(find.text(TextosAlta.marcaElPunto)).top,
           greaterThanOrEqualTo(tester.getRect(_registrar).bottom),
           reason: 'al cerrar el teclado el motivo vuelve a su lugar, debajo del botón',
         );
@@ -305,9 +309,8 @@ void main() {
   });
 
   group('#320 · el motivo de «Registrar» apagado también se ve con el teclado abierto', () {
-    // Los tres motivos que el canvas dibuja bajo el botón apagado, con el estado que los provoca.
+    // Los motivos que el canvas dibuja bajo el botón apagado, con el estado que los provoca.
     final motivos = <(_Artboard, String)>[
-      (_Artboard.gpsPreciso, TextosAlta.elegiElTipo),
       (_Artboard.gpsImpreciso, TextosAlta.elegiPrecision),
       (_Artboard.sinGps, TextosAlta.marcaElPunto),
     ];
@@ -382,7 +385,7 @@ void main() {
             const alto = 640 - _teclado;
 
             _registrarEntero(tester, alto: alto, donde: 'teclado abierto');
-            expect(_habilitado(tester), isFalse, reason: 'sin tipo elegido no se registra');
+            expect(_habilitado(tester), isFalse, reason: 'con el motivo a la vista no se registra');
             expect(find.text(texto), findsOneWidget, reason: 'el motivo está');
 
             // Se escribe el número (como lo haría el colportor): la hoja lleva el campo a la vista,
@@ -404,9 +407,9 @@ void main() {
     testWidgets('a 360×640 y texto 1x el motivo queda debajo del botón también con el teclado', (
       tester,
     ) async {
-      await _montar(tester, _Artboard.gpsPreciso, teclado: true);
+      await _montar(tester, _Artboard.sinGps, teclado: true);
 
-      final motivo = find.text(TextosAlta.elegiElTipo);
+      final motivo = find.text(TextosAlta.marcaElPunto);
       expect(find.descendant(of: _desplazable, matching: motivo), findsNothing);
       expect(
         tester.getRect(motivo).top,
@@ -422,7 +425,7 @@ void main() {
       (tester) async {
         // Un teclado cada vez más alto achica la hoja: el motivo está siempre y, mientras va debajo
         // del botón, lo que se desplaza todavía deja ver un campo entero.
-        await _montar(tester, _Artboard.gpsPreciso);
+        await _montar(tester, _Artboard.sinGps);
         final campo = tester.getRect(_campoNumero).height;
         var debajo = 0;
         var enLoQueSeDesplaza = 0;
@@ -431,7 +434,7 @@ void main() {
           await tester.pumpAndSettle();
           final donde = 'teclado de ${teclado.toInt()} dp';
 
-          final motivo = find.text(TextosAlta.elegiElTipo);
+          final motivo = find.text(TextosAlta.marcaElPunto);
           expect(motivo, findsOneWidget, reason: '$donde: el motivo está');
           final seDesplaza = find
               .descendant(of: _desplazable, matching: motivo)
@@ -478,16 +481,16 @@ void main() {
     });
 
     testWidgets(
-      'elegido el tipo con el teclado abierto, el motivo se va y «Registrar» se habilita',
+      'decidida la precisión con el teclado abierto, el motivo se va y «Registrar» se habilita',
       (tester) async {
-        final repo = await _montar(tester, _Artboard.gpsPreciso, escala: 2, teclado: true);
-        expect(find.text(TextosAlta.elegiElTipo), findsOneWidget);
+        final repo = await _montar(tester, _Artboard.gpsImpreciso, escala: 2, teclado: true);
+        expect(find.text(TextosAlta.elegiPrecision), findsOneWidget);
 
-        await tocar(tester, find.text('Casa'));
+        await tocar(tester, find.text(TextosAlta.continuar));
 
-        expect(find.text(TextosAlta.elegiElTipo), findsNothing);
+        expect(find.text(TextosAlta.elegiPrecision), findsNothing);
         expect(_habilitado(tester), isTrue);
-        _registrarEntero(tester, alto: 640 - _teclado, donde: 'con «Casa» y el teclado');
+        _registrarEntero(tester, alto: 640 - _teclado, donde: 'con «Continuar» y el teclado');
 
         await tester.tap(_registrar);
         await asentar(tester);
@@ -499,16 +502,24 @@ void main() {
       'abrir y cerrar el teclado dos veces seguidas: el motivo no se duplica ni se pierde y '
       '«Registrar» no se mueve del pie',
       (tester) async {
-        await _montar(tester, _Artboard.gpsPreciso, escala: 2);
+        await _montar(tester, _Artboard.sinGps, escala: 2);
         final sinTeclado = tester.getRect(_registrar);
 
         for (var vez = 0; vez < 2; vez++) {
           await _abrirTeclado(tester);
-          expect(find.text(TextosAlta.elegiElTipo), findsOneWidget, reason: 'abierto, vuelta $vez');
+          expect(
+            find.text(TextosAlta.marcaElPunto),
+            findsOneWidget,
+            reason: 'abierto, vuelta $vez',
+          );
           _registrarEntero(tester, alto: 640 - _teclado, donde: 'abierto, vuelta $vez');
 
           await _cerrarTeclado(tester);
-          expect(find.text(TextosAlta.elegiElTipo), findsOneWidget, reason: 'cerrado, vuelta $vez');
+          expect(
+            find.text(TextosAlta.marcaElPunto),
+            findsOneWidget,
+            reason: 'cerrado, vuelta $vez',
+          );
           expect(tester.getRect(_registrar), sinTeclado, reason: 'cerrado, vuelta $vez');
         }
       },
@@ -517,7 +528,7 @@ void main() {
     testWidgets('volver atrás y reentrar con el teclado abierto: el motivo está de nuevo', (
       tester,
     ) async {
-      await _montar(tester, _Artboard.gpsPreciso, escala: 2, teclado: true);
+      await _montar(tester, _Artboard.sinGps, escala: 2, teclado: true);
       await tester.enterText(_campoNumero, '1240');
       await asentar(tester);
 
@@ -531,14 +542,14 @@ void main() {
 
       expect(find.text(TextosAlta.titulo), findsOneWidget);
       expect(find.widgetWithText(TextField, '1240'), findsNothing, reason: 'arranca de cero');
-      expect(find.text(TextosAlta.elegiElTipo), findsOneWidget);
+      expect(find.text(TextosAlta.marcaElPunto), findsOneWidget);
       _registrarEntero(tester, alto: 640 - _teclado, donde: 'al reentrar con el teclado');
     });
 
     testWidgets(
       'datos límite: calle de 120 caracteres y número de 20 a texto 2x con el teclado abierto',
       (tester) async {
-        await _montar(tester, _Artboard.gpsPreciso, escala: 2, teclado: true);
+        await _montar(tester, _Artboard.sinGps, escala: 2, teclado: true);
         await tester.enterText(
           _campoCalle,
           List.filled(12, 'Avenida Ñandú').join(' ').substring(0, 120),
@@ -550,7 +561,7 @@ void main() {
         campoEntero(tester, _campoNumero, donde: 'con textos largos y teclado');
         await motivoALaVista(
           tester,
-          TextosAlta.elegiElTipo,
+          TextosAlta.marcaElPunto,
           alto: 640 - _teclado,
           donde: 'con textos largos y teclado',
         );
@@ -730,7 +741,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text(TextosAlta.titulo), findsOneWidget);
-      expect(find.text(TextosAlta.elegiElTipo), findsOneWidget, reason: 'sin tipo elegido');
+      expect(_habilitado(tester), isTrue, reason: 'el tipo vuelve a «Casa»: se puede registrar');
       expect(find.widgetWithText(TextField, '1240'), findsNothing);
       _registrarEntero(tester, alto: 640, donde: 'al reentrar');
     });

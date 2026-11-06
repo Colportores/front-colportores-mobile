@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/arranque/reinicio_de_raiz.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
@@ -41,6 +42,21 @@ final recuperacionPendienteProvider = AsyncNotifierProvider<RecuperacionPendient
   retry: _sinReintentos,
 );
 
+/// Cómo terminó el intento de volver a abrir el asistente desde Configuración.
+enum ReaperturaDeLaRecuperacion {
+  /// Se reinició la app, que abre en el asistente.
+  abierta,
+
+  /// El teléfono ya tiene datos: la recuperación no los pisa.
+  hayDatos,
+
+  /// No se pudo mirar la base: no se abre sobre algo que no se vio.
+  noSePudoMirar,
+
+  /// No hay asistente, sesión o pantalla para abrirlo.
+  noDisponible,
+}
+
 class RecuperacionPendiente extends AsyncNotifier<bool> {
   String? _usuarioId;
 
@@ -68,6 +84,50 @@ class RecuperacionPendiente extends AsyncNotifier<bool> {
     }
   }
 
+  /// «Recuperar mi respaldo» de Configuración (#610, «Recup. luego»): vuelve a ofrecer el asistente
+  /// mientras el teléfono no tenga nada cargado. Dice si lo abrió o por qué no: la recuperación nunca
+  /// se ofrece sobre algo que no se pudo mirar ni pisa lo que hay. Nunca lanza.
+  ///
+  /// Abrirlo es **reiniciar la app por dentro** (decisión de Cristian, 04/11, «Motor vivo»): se quita
+  /// la marca de «resuelto» de esta persona y se reinicia la raíz (`reiniciarRaizProvider`); la app
+  /// arranca como la primera vez, sin sync ni lecturas andando, y abre directo en el asistente. La
+  /// marca quitada es lo que hace que el arranque nuevo lo ofrezca; si no se pudo quitar, no se
+  /// reinicia (devuelve [ReaperturaDeLaRecuperacion.noDisponible]).
+  Future<ReaperturaDeLaRecuperacion> reabrir() async {
+    final usuarioId = _usuarioId;
+    if (!ref.read(asistenteDeRecuperacionHabilitadoProvider) || usuarioId == null) {
+      return ReaperturaDeLaRecuperacion.noDisponible;
+    }
+    try {
+      if (!await ref.read(lectorDeLoRecuperadoProvider).baseSinDatos()) {
+        return ReaperturaDeLaRecuperacion.hayDatos;
+      }
+    } on Object catch (e) {
+      AppLogger.instance.warn(
+        LogModulo.backup,
+        'RECUPERACION_REABRIR',
+        'no se pudo mirar la base para reabrir la recuperación: no se abre',
+        {'error': e.runtimeType.toString()},
+      );
+      return ReaperturaDeLaRecuperacion.noSePudoMirar;
+    }
+    if (!ref.mounted) return ReaperturaDeLaRecuperacion.noDisponible;
+    try {
+      await ref.read(recuperacionResueltaRepositoryProvider).desmarcarResuelta(usuarioId);
+    } on Object catch (e) {
+      AppLogger.instance.warn(
+        LogModulo.backup,
+        'RECUPERACION_REABRIR',
+        'no se pudo quitar la marca de «resuelto»: no se reinicia',
+        {'error': e.runtimeType.toString()},
+      );
+      return ReaperturaDeLaRecuperacion.noDisponible;
+    }
+    if (!ref.mounted) return ReaperturaDeLaRecuperacion.noDisponible;
+    ref.read(reiniciarRaizProvider)();
+    return ReaperturaDeLaRecuperacion.abierta;
+  }
+
   /// El asistente terminó (recuperó, o la persona eligió «Empezar sin recuperar»): se anota para este
   /// usuario y la raíz sigue a la pantalla siguiente. Nunca lanza.
   Future<void> terminar() async {
@@ -89,3 +149,17 @@ class RecuperacionPendiente extends AsyncNotifier<bool> {
     if (ref.mounted) state = const AsyncData(false);
   }
 }
+
+/// Si Configuración muestra «Recuperar mi respaldo» (#610, «Recup. luego»): mientras el teléfono no
+/// tenga nada cargado y el asistente no esté abierto. Se vuelve a mirar cada vez que se abre
+/// Configuración. Si no se pudo mirar, no se muestra.
+final recuperarDespuesDisponibleProvider = FutureProvider.autoDispose<bool>((ref) async {
+  if (!ref.watch(asistenteDeRecuperacionHabilitadoProvider)) return false;
+  final usuarioId = ref.watch(sesionProvider.select((s) => s.value?.usuarioId));
+  if (usuarioId == null) return false;
+  try {
+    return await ref.read(lectorDeLoRecuperadoProvider).baseSinDatos();
+  } on Object {
+    return false;
+  }
+}, retry: _sinReintentos);

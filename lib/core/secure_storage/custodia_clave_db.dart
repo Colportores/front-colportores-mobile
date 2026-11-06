@@ -159,6 +159,15 @@ final class CustodiaClaveDb {
   Future<ClaveDb> desenvolverConPassword(String password) async {
     final envoltorio = await _archivo.leer();
     if (envoltorio == null) throw const SinEnvoltorioException();
+    return abrirEnvoltorio(envoltorio, password);
+  }
+
+  /// Desenvuelve la DEK de [envoltorio] —uno que no es el de este equipo: el que viaja con el backup
+  /// en Drive (ADR-006)— con Argon2id([password]), con los parámetros y la sal de su cabecera.
+  ///
+  /// Lanza [EnvoltorioCorruptoException] si es de un algoritmo que esta app no conoce y
+  /// [EnvoltorioNoAbreException] si la contraseña no es la que lo armó.
+  Future<ClaveDb> abrirEnvoltorio(EnvoltorioDek envoltorio, String password) async {
     if (envoltorio.algoritmo != EnvoltorioDek.algoritmoActual) {
       throw const EnvoltorioCorruptoException('algoritmo desconocido');
     }
@@ -179,6 +188,11 @@ final class CustodiaClaveDb {
       clave.destruir();
     }
   }
+
+  /// El envoltorio de este equipo tal como está en el archivo (el texto que viaja con el backup),
+  /// o `null` si no hay. Lanza [EnvoltorioCorruptoException] si no se puede interpretar: un archivo
+  /// roto no se sube a Drive.
+  Future<String?> leerEnvoltorioCodificado() async => (await _archivo.leer())?.codificar();
 
   // --- Marca de inicialización ---
 

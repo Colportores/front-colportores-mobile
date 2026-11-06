@@ -106,6 +106,19 @@ void main() {
       expect(memoria.guardadas, hasLength(1));
     });
 
+    test(
+      'una entrevista sin persona (#669) no tiene a quién venderle hasta que se pide el nombre',
+      () async {
+        await memoria.guardar(entrevistaDePrueba(espacioPersonaId: null));
+
+        final r = await caso.preparar(params(espacioPersonaId: ''));
+
+        expect(r.swap().getOrElse(() => throw StateError('debía fallar')), ventaSinPersona);
+        expect(agenda.recibidas, isEmpty);
+        expect(memoria.guardadas, hasLength(1), reason: 'la entrevista sigue en curso');
+      },
+    );
+
     test('una salida antes de la entrada no se acepta', () async {
       await memoria.guardar(entrevistaDePrueba());
 

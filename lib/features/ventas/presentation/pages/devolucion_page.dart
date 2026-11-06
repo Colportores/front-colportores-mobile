@@ -223,11 +223,13 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
     final cuenta = _cuenta(venta);
     return [
       DatoDeDevolucion(TextosDevolucion.devuelve, TextosDevolucion.loQueVuelve(venta, _elegidas)),
-      DatoDeDevolucion(
-        TextosDevolucion.saldoNuevo,
-        FormatoVenta.monto(cuenta.saldoNuevoCentavos),
-        fuerte: true,
-      ),
+      // Una venta de $ 0 no mueve plata: la hoja no dice ningún monto.
+      if (venta.montoTotalCentavos > 0)
+        DatoDeDevolucion(
+          TextosDevolucion.saldoNuevo,
+          FormatoVenta.monto(cuenta.saldoNuevoCentavos),
+          fuerte: true,
+        ),
     ];
   }
 
@@ -398,7 +400,7 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
             ),
           ],
         ),
-        _Lectura.lista when venta != null && venta.estaSaldada && !venta.estaTodoDevuelto =>
+        _Lectura.lista when venta != null && venta.rechazaDevoluciones && !venta.estaTodoDevuelto =>
           _saldada(venta),
         _Lectura.lista when venta != null && _fueraDePlazo => _fueraDelPlazo(venta),
         _Lectura.lista when venta != null && venta.estaTodoDevuelto => _yaDevuelta(venta),
@@ -575,25 +577,32 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
           ),
         ] else if (!cuenta.estaVacia) ...[
           const SizedBox(height: 4),
-          TarjetaDeDatos(
-            key: const Key('devolucion_cuentas'),
-            datos: [
-              DatoDeDevolucion(
-                TextosDevolucion.seQuedaCon,
-                FormatoVenta.monto(cuenta.seQuedaConCentavos),
-              ),
-              if (cuenta.yaPagoCentavos > 0)
+          if (venta.montoTotalCentavos == 0)
+            const Text(
+              TextosDevolucion.ventaDeCero,
+              key: Key('devolucion_venta_de_cero'),
+              style: TextStyle(fontSize: 14, height: 1.4, color: ColoresAgenda.tinta),
+            )
+          else
+            TarjetaDeDatos(
+              key: const Key('devolucion_cuentas'),
+              datos: [
                 DatoDeDevolucion(
-                  TextosDevolucion.yaPago,
-                  FormatoVenta.monto(cuenta.yaPagoCentavos),
+                  TextosDevolucion.seQuedaCon,
+                  FormatoVenta.monto(cuenta.seQuedaConCentavos),
                 ),
-              DatoDeDevolucion(
-                TextosDevolucion.saldoNuevo,
-                FormatoVenta.monto(cuenta.saldoNuevoCentavos),
-                fuerte: true,
-              ),
-            ],
-          ),
+                if (cuenta.yaPagoCentavos > 0)
+                  DatoDeDevolucion(
+                    TextosDevolucion.yaPago,
+                    FormatoVenta.monto(cuenta.yaPagoCentavos),
+                  ),
+                DatoDeDevolucion(
+                  TextosDevolucion.saldoNuevo,
+                  FormatoVenta.monto(cuenta.saldoNuevoCentavos),
+                  fuerte: true,
+                ),
+              ],
+            ),
           if (cuenta.haySinDevolver) ...[
             const SizedBox(height: 8),
             Semantics(
@@ -633,17 +642,24 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
         titulo: TextosDevolucion.tituloRegistrada,
       ),
       hijos: [
-        TarjetaDeDatos(
-          key: const Key('devolucion_resumen'),
-          datos: [
-            DatoDeDevolucion(
-              TextosDevolucion.totalDeLaVenta,
-              FormatoVenta.monto(registrada.totalCentavos),
-            ),
-            DatoDeDevolucion(TextosDevolucion.saldo, FormatoVenta.monto(registrada.saldoCentavos)),
-          ],
-        ),
-        const SizedBox(height: 12),
+        // Una devolución sin plata (venta de $ 0) no muestra montos: queda solo el aviso (decisión del
+        // orquestador, 06/11, por el mapa §2: coherencia con la pantalla de elegir y la hoja).
+        if (venta == null || venta.montoTotalCentavos > 0) ...[
+          TarjetaDeDatos(
+            key: const Key('devolucion_resumen'),
+            datos: [
+              DatoDeDevolucion(
+                TextosDevolucion.totalDeLaVenta,
+                FormatoVenta.monto(registrada.totalCentavos),
+              ),
+              DatoDeDevolucion(
+                TextosDevolucion.saldo,
+                FormatoVenta.monto(registrada.saldoCentavos),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
         AvisoDeDevolucionHecha(
           texto: TextosDevolucion.registramos(_titulosDevueltos, todo: registrada.eraTotal),
         ),

@@ -115,7 +115,6 @@ final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     inicio: jornada.inicio,
     fin: Value(jornada.fin),
     acompananteId: Value(jornada.acompananteId),
-    tipoAcompanamiento: Value(jornada.tipoAcompanamiento),
     totalVisitas: Value(jornada.totalVisitas),
     totalVentas: Value(jornada.totalVentas),
     createdAt: jornada.auditoria.createdAt,
@@ -131,7 +130,6 @@ final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     inicio: fila.inicio,
     fin: fila.fin,
     acompananteId: fila.acompananteId,
-    tipoAcompanamiento: fila.tipoAcompanamiento,
     totalVisitas: fila.totalVisitas,
     totalVentas: fila.totalVentas,
     auditoria: Auditoria(

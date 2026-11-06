@@ -7,12 +7,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../cobranzas/presentation/providers/cobranzas_providers.dart'
     show saldoPendienteRepositoryProvider;
+import '../../../mapa/presentation/pages/alta_persona_page.dart';
 import '../../../mapa/presentation/providers/cobranza_recien_agendada_providers.dart';
 import '../../../mapa/presentation/providers/hoja_casa_providers.dart'
     show contextoDeLaCasaProvider;
 import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
 import '../../../mapa/presentation/providers/personas_providers.dart';
-import '../../../mapa/presentation/textos_personas.dart' show FormatoPersonas;
+import '../../../mapa/presentation/textos_personas.dart' show FormatoPersonas, TextosPersonas;
 import '../../../ventas/domain/entities/cliente_de_la_venta.dart';
 import '../../../ventas/domain/entities/nueva_venta.dart' show VentaGuardada;
 import '../../../ventas/presentation/flujo_cuando_cobrar.dart';
@@ -41,6 +42,15 @@ abstract final class FlujoEntrevista {
     BuildContext context,
     WidgetRef ref, {
     required String colportorId,
+  }) =>
+      abrirEn(context, ProviderScope.containerOf(context, listen: false), colportorId: colportorId);
+
+  /// Lo mismo que [abrir] para quien no es un widget (el gancho de «Entrevista dada» de la hoja de la
+  /// casa, que se abre sobre el navegador de la app): lee del [ref] que le pasan, el contenedor.
+  static Future<SalidaTerminoEntrevista?> abrirEn(
+    BuildContext context,
+    ProviderContainer ref, {
+    required String colportorId,
   }) async {
     final notificador = ref.read(entrevistaEnCursoProvider(colportorId).notifier);
     final estado = await notificador.esperarLectura();
@@ -59,7 +69,7 @@ abstract final class FlujoEntrevista {
       reloj: ref.read(relojEntrevistaProvider),
     );
     if (finalizar != true || !context.mounted) return null;
-    return terminar(context, ref, colportorId: colportorId, pedirSalida: estado.recuperada);
+    return terminarEn(context, ref, colportorId: colportorId, pedirSalida: estado.recuperada);
   }
 
   /// R·06: «Terminó la entrevista» de la que [colportorId] tiene en curso.
@@ -83,6 +93,23 @@ abstract final class FlujoEntrevista {
     bool pedirSalida = false,
     bool desdeLaJornada = false,
     bool conVenta = true,
+  }) => terminarEn(
+    context,
+    ProviderScope.containerOf(context, listen: false),
+    colportorId: colportorId,
+    pedirSalida: pedirSalida,
+    desdeLaJornada: desdeLaJornada,
+    conVenta: conVenta,
+  );
+
+  /// Lo mismo que [terminar] para quien no es un widget: lee del [ref] que le pasan, el contenedor.
+  static Future<SalidaTerminoEntrevista?> terminarEn(
+    BuildContext context,
+    ProviderContainer ref, {
+    required String colportorId,
+    bool pedirSalida = false,
+    bool desdeLaJornada = false,
+    bool conVenta = true,
   }) async {
     final notificador = ref.read(entrevistaEnCursoProvider(colportorId).notifier);
     final estado = await notificador.esperarLectura();
@@ -92,31 +119,64 @@ abstract final class FlujoEntrevista {
     if (!context.mounted) return null;
 
     final reloj = ref.read(relojEntrevistaProvider);
-    final salida = pedirSalida ? null : reloj();
     final mensajero = ScaffoldMessenger.maybeOf(context);
     // «Sin salida» (25/10): si la casa ya no está en el teléfono no hay dónde guardar la visita; la
     // entrevista se suelta y la hoja se cierra con un aviso, para no dejar trabado el cierre de la
     // jornada.
     var sinLugar = false;
-    final resultado = await mostrarHojaTerminoEntrevista(
-      context,
-      direccion: rotulo.direccion,
-      persona: rotulo.persona,
-      entrada: entrevista.inicio,
-      salida: salida,
-      entradaInferida: false,
-      reloj: reloj,
-      alGuardar: (entrada, salida) async {
-        final guardado = await notificador.finalizar(entrada: entrada, salida: salida);
-        // `null`: ya había un guardado en curso (no pasa con la hoja, que lo impide).
-        if (guardado == null) return const FailureInesperado();
-        return guardado.fold<Failure?>((falla) {
-          if (falla != entrevistaSinLugar) return falla;
-          sinLugar = true;
-          return null;
-        }, (_) => null);
-      },
-    );
+    // Las horas con las que se (re)abre la hoja: las de la entrevista, o las que la colportora ya
+    // confirmó si vuelve con atrás desde el nombre de la venta.
+    var entradaVista = entrevista.inicio;
+    DateTime? salidaVista = pedirSalida ? null : reloj();
+    var persona = rotulo.persona;
+    SalidaTerminoEntrevista? resultado;
+    while (true) {
+      if (!context.mounted) return null;
+      final r = resultado = await mostrarHojaTerminoEntrevista(
+        context,
+        direccion: rotulo.direccion,
+        persona: persona,
+        entrada: entradaVista,
+        salida: salidaVista,
+        entradaInferida: false,
+        reloj: reloj,
+        alGuardar: (entrada, salida) async {
+          final guardado = await notificador.finalizar(entrada: entrada, salida: salida);
+          // `null`: ya había un guardado en curso (no pasa con la hoja, que lo impide).
+          if (guardado == null) return const FailureInesperado();
+          return guardado.fold<Failure?>((falla) {
+            if (falla != entrevistaSinLugar) return falla;
+            sinLugar = true;
+            return null;
+          }, (_) => null);
+        },
+      );
+      if (r is! QuiereRegistrarLaVenta || !conVenta || !context.mounted) break;
+      // La venta necesita a quién: una entrevista sin persona pide el nombre antes (decisión de
+      // Cristian, 05/11, «Entrev. s/n»). Atrás vuelve a esta hoja con las horas ya confirmadas.
+      final enCurso = ref.read(entrevistaEnCursoProvider(colportorId)).entrevista;
+      if (enCurso == null || enCurso.espacioPersonaId != null) break;
+      final pedida = await _pedirLaPersona(
+        context,
+        ref,
+        colportorId: colportorId,
+        espacioId: enCurso.espacioId,
+      );
+      if (!context.mounted) return const VentaSinCompletar();
+      if (pedida == null) {
+        entradaVista = r.entrada;
+        salidaVista = r.salida;
+        continue;
+      }
+      final vinculo = pedida.vinculo;
+      if (vinculo == null) {
+        _avisar(mensajero, TextosEntrevista.ventaNoGuardada(pedida.nombre));
+        return const VentaSinCompletar();
+      }
+      await notificador.ponerPersona(vinculo);
+      persona = pedida.nombre;
+      break;
+    }
     if (resultado is EntrevistaGuardada) {
       mensajero?.showSnackBar(
         SnackBar(
@@ -128,17 +188,17 @@ abstract final class FlujoEntrevista {
         ),
       );
     }
-    if (resultado is QuiereRegistrarLaVenta && conVenta) {
+    final quiere = resultado;
+    if (quiere is QuiereRegistrarLaVenta && conVenta) {
       if (!context.mounted) return const VentaSinCompletar();
       return _registrarLaVenta(
         context,
         ref,
         colportorId: colportorId,
-        persona: rotulo.persona,
+        persona: persona,
         direccion: rotulo.direccion,
         desdeLaJornada: desdeLaJornada,
-        preparar: () =>
-            notificador.prepararVenta(entrada: resultado.entrada, salida: resultado.salida),
+        preparar: () => notificador.prepararVenta(entrada: quiere.entrada, salida: quiere.salida),
         guardarVisita: notificador.guardarVisitaDeLaVenta,
         soltar: notificador.soltarTrasLaVenta,
       );
@@ -155,85 +215,154 @@ abstract final class FlujoEntrevista {
     WidgetRef ref, {
     required String colportorId,
     required String espacioId,
-    required String espacioPersonaId,
+    String? espacioPersonaId,
+    required String direccion,
+    required String persona,
+    String? agendaId,
+    String? jornadaId,
+  }) => terminarSinInicioEn(
+    context,
+    ProviderScope.containerOf(context, listen: false),
+    colportorId: colportorId,
+    espacioId: espacioId,
+    espacioPersonaId: espacioPersonaId,
+    direccion: direccion,
+    persona: persona,
+    agendaId: agendaId,
+    jornadaId: jornadaId,
+  );
+
+  /// Lo mismo que [terminarSinInicio] para quien no es un widget: lee del [ref] que le pasan, el
+  /// contenedor.
+  static Future<SalidaTerminoEntrevista?> terminarSinInicioEn(
+    BuildContext context,
+    ProviderContainer ref, {
+    required String colportorId,
+    required String espacioId,
+    String? espacioPersonaId,
     required String direccion,
     required String persona,
     String? agendaId,
     String? jornadaId,
   }) async {
     final notificador = ref.read(entrevistaEnCursoProvider(colportorId).notifier);
-    final entrada = await notificador.horaDeLaVisitaAnterior();
+    final entradaPrevia = await notificador.horaDeLaVisitaAnterior();
     if (!context.mounted) return null;
     final reloj = ref.read(relojEntrevistaProvider);
     final ids = ref.read(registrarResultadoVisitaUseCaseProvider).nuevosIds();
     final mensajero = ScaffoldMessenger.maybeOf(context);
-    final resultado = await mostrarHojaTerminoEntrevista(
-      context,
-      direccion: direccion,
-      persona: persona,
-      entrada: entrada,
-      salida: reloj(),
-      entradaInferida: entrada != null,
-      reloj: reloj,
-      alGuardar: (entrada, salida) async {
-        final guardado = await notificador.finalizarSinInicio(
-          FinalizarEntrevistaParams(
-            ids: ids,
-            espacioId: espacioId,
-            espacioPersonaId: espacioPersonaId,
-            colportorId: colportorId,
-            entrada: entrada,
-            salida: salida,
-            agendaId: agendaId,
-            jornadaId: jornadaId,
-            nota: ref.read(entrevistaEnCursoProvider(colportorId)).notaBorrador,
-          ),
+    final inferida = entradaPrevia != null;
+    // Con quién es la entrevista: sin persona hasta que, si hay venta, se pide el nombre.
+    var vinculo = espacioPersonaId;
+    var nombre = persona;
+    FinalizarEntrevistaParams parametros(DateTime entrada, DateTime salida) =>
+        FinalizarEntrevistaParams(
+          ids: ids,
+          espacioId: espacioId,
+          espacioPersonaId: vinculo,
+          colportorId: colportorId,
+          entrada: entrada,
+          salida: salida,
+          agendaId: agendaId,
+          jornadaId: jornadaId,
+          nota: ref.read(entrevistaEnCursoProvider(colportorId)).notaBorrador,
         );
-        // Sin entrevista en curso no hay nada que «se cierre»: lo que no se guardó es la visita.
-        return guardado.fold<Failure?>(
-          (falla) => falla == entrevistaSinLugar
-              ? const FailureValidacion(
-                  campos: {'espacio': TextosEntrevista.sinLugarSinInicio},
-                  mensaje: TextosEntrevista.sinLugarSinInicio,
-                )
-              : falla,
-          (_) => null,
-        );
-      },
-    );
+    var entradaVista = entradaPrevia;
+    var salidaVista = reloj();
+    SalidaTerminoEntrevista? resultado;
+    while (true) {
+      final r = resultado = await mostrarHojaTerminoEntrevista(
+        context,
+        direccion: direccion,
+        persona: nombre,
+        entrada: entradaVista,
+        salida: salidaVista,
+        entradaInferida: inferida,
+        reloj: reloj,
+        alGuardar: (entrada, salida) async {
+          final guardado = await notificador.finalizarSinInicio(parametros(entrada, salida));
+          // Sin entrevista en curso no hay nada que «se cierre»: lo que no se guardó es la visita.
+          return guardado.fold<Failure?>(
+            (falla) => falla == entrevistaSinLugar
+                ? const FailureValidacion(
+                    campos: {'espacio': TextosEntrevista.sinLugarSinInicio},
+                    mensaje: TextosEntrevista.sinLugarSinInicio,
+                  )
+                : falla,
+            (_) => null,
+          );
+        },
+      );
+      if (r is! QuiereRegistrarLaVenta || !context.mounted || vinculo != null) break;
+      // La venta necesita a quién (decisión de Cristian, 05/11, «Entrev. s/n»); atrás vuelve a esta hoja.
+      final pedida = await _pedirLaPersona(
+        context,
+        ref,
+        colportorId: colportorId,
+        espacioId: espacioId,
+      );
+      if (!context.mounted) return const VentaSinCompletar();
+      if (pedida == null) {
+        entradaVista = r.entrada;
+        salidaVista = r.salida;
+        continue;
+      }
+      if (pedida.vinculo == null) {
+        _avisar(mensajero, TextosEntrevista.ventaNoGuardada(pedida.nombre));
+        return const VentaSinCompletar();
+      }
+      vinculo = pedida.vinculo;
+      nombre = pedida.nombre;
+      break;
+    }
     if (resultado is EntrevistaGuardada) {
       mensajero?.showSnackBar(
         SnackBar(content: Text(TextosEntrevista.guardada(_lugar(direccion)))),
       );
     }
-    if (resultado is QuiereRegistrarLaVenta) {
+    final quiere = resultado;
+    if (quiere is QuiereRegistrarLaVenta) {
       if (!context.mounted) return const VentaSinCompletar();
       final casoDeUso = ref.read(cerrarEntrevistaConVentaUseCaseProvider);
       return _registrarLaVenta(
         context,
         ref,
         colportorId: colportorId,
-        persona: persona,
+        persona: nombre,
         direccion: direccion,
         desdeLaJornada: false,
         // Sin entrevista en curso no hay nada que soltar: la visita se guarda con la venta.
-        preparar: () => casoDeUso.preparar(
-          FinalizarEntrevistaParams(
-            ids: ids,
-            espacioId: espacioId,
-            espacioPersonaId: espacioPersonaId,
-            colportorId: colportorId,
-            entrada: resultado.entrada,
-            salida: resultado.salida,
-            agendaId: agendaId,
-            jornadaId: jornadaId,
-            nota: ref.read(entrevistaEnCursoProvider(colportorId)).notaBorrador,
-          ),
-        ),
+        preparar: () => casoDeUso.preparar(parametros(quiere.entrada, quiere.salida)),
         guardarVisita: casoDeUso.guardarVisita,
       );
     }
     return resultado;
+  }
+
+  /// R·07 cuando «Empezar entrevista» no se pudo guardar (vista 39, R·04): lo mismo que
+  /// [terminarSinInicioEn], con la dirección y el nombre leídos de lo que hay en el teléfono.
+  static Future<SalidaTerminoEntrevista?> terminarSinInicioDeLaCasa(
+    BuildContext context,
+    ProviderContainer ref, {
+    required String colportorId,
+    required String espacioId,
+    String? espacioPersonaId,
+    String? agendaId,
+    String? jornadaId,
+  }) async {
+    final rotulo = await _rotuloDe(ref, espacioId: espacioId, espacioPersonaId: espacioPersonaId);
+    if (!context.mounted) return null;
+    return terminarSinInicioEn(
+      context,
+      ref,
+      colportorId: colportorId,
+      espacioId: espacioId,
+      espacioPersonaId: espacioPersonaId,
+      direccion: rotulo.direccion,
+      persona: rotulo.persona,
+      agendaId: agendaId,
+      jornadaId: jornadaId,
+    );
   }
 
   /// «Sí, registrar la venta» (R·06 / R·07 → vista 27 → R·08; #428).
@@ -250,7 +379,7 @@ abstract final class FlujoEntrevista {
   /// 5. R·08: vuelve a la casa, que ya muestra la cobranza pendiente y la cita con «Cambiar».
   static Future<SalidaTerminoEntrevista> _registrarLaVenta(
     BuildContext context,
-    WidgetRef ref, {
+    ProviderContainer ref, {
     required String colportorId,
     required String persona,
     required String direccion,
@@ -258,17 +387,10 @@ abstract final class FlujoEntrevista {
     required Future<Either<Failure, VentaDeLaEntrevista>> Function() preparar,
     required Future<void> Function(VentaDeLaEntrevista) guardarVisita,
     Future<Either<Failure, Unit>> Function(VentaDeLaEntrevista)? soltar,
+    bool avisarSiNoSeGuardo = true,
   }) async {
     final mensajero = ScaffoldMessenger.maybeOf(context);
     final navegador = Navigator.of(context);
-    // Al guardar la venta la entrevista se suelta y el aviso fijo del mapa (de donde puede venir este
-    // flujo) sale del árbol: su `context` y su `ref` se desmontan a mitad de camino. Lo que sigue usa
-    // el contexto del navegador y el contenedor, que duran lo que dura la app.
-    final contenedor = ProviderScope.containerOf(context);
-    final contextoFirme = navegador.context;
-    void avisar(String texto) => mensajero
-      ?..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text(texto)));
     final noSeGuardo = desdeLaJornada
         ? TextosEntrevista.ventaNoGuardadaEnLaJornada(persona)
         : TextosEntrevista.ventaNoGuardada(persona);
@@ -284,24 +406,184 @@ abstract final class FlujoEntrevista {
     if (preparada == null) {
       // Las fallas de validación ya dicen qué pasó y qué hacer; cualquier otra, el aviso común.
       final f = falla;
-      avisar(f is FailureValidacion ? TextosEntrevista.ventaNoGuardadaCon(f.mensaje) : noSeGuardo);
+      _avisar(
+        mensajero,
+        f is FailureValidacion ? TextosEntrevista.ventaNoGuardadaCon(f.mensaje) : noSeGuardo,
+      );
       return const VentaSinCompletar();
     }
+    if (!context.mounted) return const VentaSinCompletar();
+    return _venderYSeguir(
+      context,
+      ref,
+      mensajero: mensajero,
+      navegador: navegador,
+      colportorId: colportorId,
+      espacioId: preparada.espacioId,
+      espacioPersonaId: preparada.espacioPersonaId,
+      persona: persona,
+      direccion: direccion,
+      desdeLaJornada: desdeLaJornada,
+      visitaId: preparada.visitaId,
+      antesDeGuardar: () => guardarVisita(preparada),
+      soltar: soltar == null ? null : () => soltar(preparada),
+      // Volver atrás desde la venta sin guardar no avisa nada si no hay entrevista que siga en curso.
+      noSeGuardo: avisarSiNoSeGuardo ? noSeGuardo : null,
+    );
+  }
 
-    final cliente = await _cliente(ref, preparada, persona: persona, direccion: direccion);
+  /// El paso del nombre de la venta de una entrevista **sin persona** (decisión de Cristian, 05/11,
+  /// «Entrev. s/n»): el alta corta (32 A) de la casa de la entrevista. Devuelve a la persona dada de
+  /// alta (su vínculo y su nombre), o `null` si la colportora volvió atrás sin guardar a nadie: no se
+  /// guardó nada y la entrevista sigue como estaba. Si la persona quedó guardada pero no se pudo leer
+  /// su vínculo, `vinculo` viene `null` (la persona está; la venta no sigue).
+  static Future<({String? vinculo, String nombre})?> _pedirLaPersona(
+    BuildContext context,
+    ProviderContainer ref, {
+    required String colportorId,
+    required String espacioId,
+  }) async {
+    final nueva = await AltaPersonaPage.abrir(
+      context,
+      espacioId: espacioId,
+      colportorId: colportorId,
+      ayuda: TextosPersonas.altaParaVender,
+    );
+    if (nueva == null) return null;
+    final nombre = FormatoPersonas.nombreCompleto(nueva);
+    String? vinculo;
+    try {
+      final personas = await ref
+          .read(personaRepositoryProvider)
+          .observarDelEspacio(espacioId)
+          .first
+          .timeout(const Duration(seconds: 2));
+      for (final p in personas) {
+        if (p.persona.id == nueva.id) {
+          vinculo = p.vinculo.id;
+          break;
+        }
+      }
+    } on Object {
+      // Sin el vínculo no se sigue a la venta: la persona ya quedó guardada en la casa.
+    }
+    return (vinculo: vinculo, nombre: nombre);
+  }
+
+  /// «Vender» de «¿Qué pasó?» (vista 39, decisión de Cristian del 04/11, «Vender desde el mapa»): la
+  /// venta (vista 27) de la casa y la persona que ya tuvieron una entrevista dada, y de ahí todo lo que
+  /// sigue a «Sí, registrar la venta»: «Venta registrada», el cobro, «¿Cuándo volvés a cobrar?» y R·08
+  /// (vuelve a la hoja de la casa).
+  ///
+  /// Además de la venta guarda una visita «Venta» de hoy (decisión de Cristian, 05/11, «Vender visita»),
+  /// con la misma regla de «Sí, registrar la venta» (R44): la visita se guarda **en la misma
+  /// transacción** que la venta, así que si la venta no se guarda no queda la visita. Lleva la jornada
+  /// abierta ([jornadaId]) y la agenda que cumple ([agendaId]), si las hay; no hay entrevista que
+  /// cerrar. Si la casa o la persona ya no están, no se vende y un aviso dice qué hacer.
+  ///
+  /// Devuelve [VentaGuardadaEnLaEntrevista] si se guardó, o [VentaSinCompletar] si no (no cambió nada).
+  static Future<SalidaTerminoEntrevista> venderDesdeLaCasa(
+    BuildContext context,
+    ProviderContainer ref, {
+    required String colportorId,
+    required String espacioId,
+    required String espacioPersonaId,
+    String? agendaId,
+    String? jornadaId,
+  }) async {
+    final rotulo = await _rotuloDe(ref, espacioId: espacioId, espacioPersonaId: espacioPersonaId);
+    if (!context.mounted) return const VentaSinCompletar();
+    final casoDeUso = ref.read(cerrarEntrevistaConVentaUseCaseProvider);
+    final ahora = ref.read(relojEntrevistaProvider)();
+    // Los ids de la visita se fijan una vez: el reintento de la venta no la guarda dos veces.
+    final ids = ref.read(registrarResultadoVisitaUseCaseProvider).nuevosIds();
+    return _registrarLaVenta(
+      context,
+      ref,
+      colportorId: colportorId,
+      persona: rotulo.persona,
+      direccion: rotulo.direccion,
+      desdeLaJornada: false,
+      preparar: () async {
+        final preparada = await casoDeUso.preparar(
+          FinalizarEntrevistaParams(
+            ids: ids,
+            espacioId: espacioId,
+            espacioPersonaId: espacioPersonaId,
+            colportorId: colportorId,
+            // No hay entrevista con horas: la visita es del momento en que se vende.
+            entrada: ahora,
+            salida: ahora,
+            agendaId: agendaId,
+            jornadaId: jornadaId,
+          ),
+        );
+        // Los avisos de la entrevista hablan de «la entrevista»: acá no hay ninguna en curso.
+        return preparada.leftMap(
+          (f) => f == ventaSinLugar
+              ? ventaDeLaCasaSinLugar
+              : f == ventaSinPersona
+              ? ventaDeLaCasaSinPersona
+              : f,
+        );
+      },
+      guardarVisita: casoDeUso.guardarVisita,
+      // Volver atrás desde la venta sin guardar no avisa nada (QA de #648, P1): «¿Qué pasó?» queda
+      // abierta como estaba y no cambió nada, no hay qué decir.
+      avisarSiNoSeGuardo: false,
+    );
+  }
+
+  static void _avisar(ScaffoldMessengerState? mensajero, String texto) => mensajero
+    ?..clearSnackBars()
+    ..showSnackBar(SnackBar(content: Text(texto)));
+
+  /// Desde la venta hacia adelante (vista 27 → 27A·14 → cobro → «¿Cuándo volvés a cobrar?» → R·08), con
+  /// la casa y la persona ya resueltas. [antesDeGuardar] y [visitaId] solo los trae la venta que sale de
+  /// una entrevista; [soltar] cierra esa entrevista una vez guardada la venta. [noSeGuardo] es el aviso de
+  /// la venta que no se completó (la entrevista sigue en curso); `null` = sin aviso.
+  static Future<SalidaTerminoEntrevista> _venderYSeguir(
+    BuildContext context,
+    ProviderContainer ref, {
+    required ScaffoldMessengerState? mensajero,
+    required NavigatorState navegador,
+    required String colportorId,
+    required String espacioId,
+    required String espacioPersonaId,
+    required String persona,
+    required String direccion,
+    required bool desdeLaJornada,
+    required String? noSeGuardo,
+    String? visitaId,
+    Future<void> Function()? antesDeGuardar,
+    Future<Either<Failure, Unit>> Function()? soltar,
+  }) async {
+    // Al guardar la venta la entrevista se suelta y el aviso fijo del mapa (de donde puede venir este
+    // flujo) sale del árbol: su `context` se desmonta a mitad de camino. Lo que sigue usa el contexto
+    // del navegador y el contenedor, que duran lo que dura la app.
+    final contextoFirme = navegador.context;
+    void avisar(String texto) => _avisar(mensajero, texto);
+
+    final cliente = await _cliente(
+      ref,
+      espacioId: espacioId,
+      espacioPersonaId: espacioPersonaId,
+      persona: persona,
+      direccion: direccion,
+    );
     if (!context.mounted) return const VentaSinCompletar();
     final guardada = await navegador.push(
       NuevaVentaPage.ruta(
         argumentos: ArgumentosDeVenta(
           colportorId: colportorId,
           cliente: cliente,
-          visitaId: preparada.visitaId,
+          visitaId: visitaId,
         ),
-        antesDeGuardar: () => guardarVisita(preparada),
+        antesDeGuardar: antesDeGuardar,
       ),
     );
     if (guardada == null) {
-      avisar(noSeGuardo);
+      if (noSeGuardo != null) avisar(noSeGuardo);
       return const VentaSinCompletar();
     }
 
@@ -309,7 +591,7 @@ abstract final class FlujoEntrevista {
     var cerrada = true;
     if (soltar != null) {
       try {
-        cerrada = (await soltar(preparada)).isRight();
+        cerrada = (await soltar()).isRight();
       } on Object {
         cerrada = false;
       }
@@ -325,7 +607,7 @@ abstract final class FlujoEntrevista {
 
     Agenda? cita;
     if (contextoFirme.mounted) {
-      final cobrar = contenedor.read(cobrarDespuesDeLaVentaProvider);
+      final cobrar = ref.read(cobrarDespuesDeLaVentaProvider);
       final seguimiento = await _ventaRegistrada(
         contextoFirme,
         guardada: guardada,
@@ -335,11 +617,11 @@ abstract final class FlujoEntrevista {
       var saldo = guardada.totalCentavos;
       if (seguimiento?.cobrarAhora == true && cobrar != null) {
         saldo = await _cobrarAhora(
-          contenedor,
+          ref,
           cobrar,
           guardada: guardada,
-          espacioId: preparada.espacioId,
-          espacioPersonaId: preparada.espacioPersonaId,
+          espacioId: espacioId,
+          espacioPersonaId: espacioPersonaId,
           colportorId: colportorId,
         );
       }
@@ -347,10 +629,10 @@ abstract final class FlujoEntrevista {
       if (contextoFirme.mounted) {
         await FlujoCuandoCobrar.preguntar(
           contextoFirme,
-          contenedor,
+          ref,
           guardada: guardada,
-          espacioId: preparada.espacioId,
-          espacioPersonaId: preparada.espacioPersonaId,
+          espacioId: espacioId,
+          espacioPersonaId: espacioPersonaId,
           colportorId: colportorId,
           persona: cliente.nombre,
           direccion: cliente.direccion,
@@ -362,13 +644,7 @@ abstract final class FlujoEntrevista {
       avisarLaVenta();
     }
     if (!desdeLaJornada) {
-      await _volverALaCasa(
-        contenedor,
-        colportorId,
-        preparada.espacioId,
-        cobranza: cita,
-        persona: cliente.nombre,
-      );
+      await _volverALaCasa(ref, colportorId, espacioId, cobranza: cita, persona: cliente.nombre);
     }
     return VentaGuardadaEnLaEntrevista(numeroTalonario: numero);
   }
@@ -426,15 +702,16 @@ abstract final class FlujoEntrevista {
   /// A quién y dónde se le vende: el nombre y «Mataojo 2044 · Depto 3B» de lo que hoy hay en el
   /// teléfono; si no se pueden leer, lo que ya mostraba la entrevista.
   static Future<ClienteDeLaVenta> _cliente(
-    WidgetRef ref,
-    VentaDeLaEntrevista venta, {
+    ProviderContainer ref, {
+    required String espacioId,
+    required String espacioPersonaId,
     required String persona,
     required String direccion,
   }) async {
     var nombre = persona.trim();
     var lugar = direccion.trim();
     try {
-      final contexto = (await ref.read(espacioRepositoryProvider).buscar(venta.espacioId)).fold(
+      final contexto = (await ref.read(espacioRepositoryProvider).buscar(espacioId)).fold(
         (_) => null,
         (c) => c,
       );
@@ -447,11 +724,11 @@ abstract final class FlujoEntrevista {
     try {
       final personas = await ref
           .read(personaRepositoryProvider)
-          .observarDelEspacio(venta.espacioId)
+          .observarDelEspacio(espacioId)
           .first
           .timeout(const Duration(seconds: 2));
       for (final p in personas) {
-        if (p.vinculo.id == venta.espacioPersonaId) {
+        if (p.vinculo.id == espacioPersonaId) {
           final leido = [
             p.persona.nombre,
             p.persona.apellido,
@@ -464,7 +741,7 @@ abstract final class FlujoEntrevista {
       // Se queda con el nombre que ya mostraba la entrevista.
     }
     return ClienteDeLaVenta(
-      espacioPersonaId: venta.espacioPersonaId,
+      espacioPersonaId: espacioPersonaId,
       nombre: nombre.isEmpty ? TextosEntrevista.sinNombre : nombre,
       direccion: lugar,
     );
@@ -504,9 +781,30 @@ abstract final class FlujoEntrevista {
     }
   }
 
-  static Future<RotuloEntrevista> _rotulo(WidgetRef ref, EntrevistaEnCurso entrevista) async {
+  static Future<RotuloEntrevista> _rotulo(
+    ProviderContainer ref,
+    EntrevistaEnCurso entrevista,
+  ) async {
     try {
       return await ref.read(rotuloDeEntrevistaProvider(entrevista).future);
+    } on Object {
+      return (direccion: '', persona: '');
+    }
+  }
+
+  /// Lo mismo para un lugar y una persona que todavía no tienen una entrevista guardada.
+  static Future<RotuloEntrevista> _rotuloDe(
+    ProviderContainer ref, {
+    required String espacioId,
+    String? espacioPersonaId,
+  }) async {
+    try {
+      return await ref.read(
+        rotuloDelLugarYLaPersonaProvider((
+          espacioId: espacioId,
+          espacioPersonaId: espacioPersonaId,
+        )).future,
+      );
     } on Object {
       return (direccion: '', persona: '');
     }

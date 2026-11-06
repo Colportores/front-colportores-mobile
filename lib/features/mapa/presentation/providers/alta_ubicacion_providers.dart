@@ -23,6 +23,7 @@ import '../../domain/services/encolador_marcar_duplicado.dart';
 import '../../domain/services/geocodificador_inverso.dart';
 import '../../domain/services/inscripciones_colportor.dart';
 import '../../domain/services/proveedor_gps.dart';
+import '../../domain/services/seguidor_gps.dart';
 import '../../domain/services/ubicador_zona.dart';
 import '../../domain/usecases/capturar_posicion_gps_use_case.dart';
 import '../../domain/usecases/registrar_ubicacion_use_case.dart';
@@ -99,6 +100,11 @@ final proveedorGpsPlataformaProvider = Provider<ProveedorGpsPlataforma>(
 );
 
 final proveedorGpsProvider = Provider<ProveedorGps>(
+  (ref) => ref.watch(proveedorGpsPlataformaProvider),
+);
+
+/// El GPS mientras la colportora se mueve (#670): lo abre solo el GPS único del colportor.
+final seguidorGpsProvider = Provider<SeguidorGps>(
   (ref) => ref.watch(proveedorGpsPlataformaProvider),
 );
 

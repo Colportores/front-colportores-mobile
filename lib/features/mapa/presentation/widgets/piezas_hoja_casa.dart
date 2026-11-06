@@ -20,6 +20,7 @@ abstract final class ClavesHojaCasa {
   static const pestanas = Key('hoja_casa_pestanas');
   static const agregarPersona = Key('hoja_casa_agregar_persona');
   static const sinPersonas = Key('hoja_casa_sin_personas');
+  static const sinPersonasParaDespues = Key('hoja_casa_sin_personas_para_despues');
   static const personaGuardada = Key('hoja_casa_persona_guardada');
   static const listaDePersonas = Key('hoja_casa_lista_de_personas');
   static Key pestana(String id) => Key('hoja_casa_pestana_$id');
@@ -27,6 +28,7 @@ abstract final class ClavesHojaCasa {
   static const registrarVisita = Key('hoja_casa_registrar_visita');
   static const agendar = Key('hoja_casa_agendar');
   static const cerrar = Key('hoja_casa_cerrar');
+  static const editar = Key('hoja_casa_editar');
 }
 
 /// El azul navy del botón y del avatar (canvas `#002856`).

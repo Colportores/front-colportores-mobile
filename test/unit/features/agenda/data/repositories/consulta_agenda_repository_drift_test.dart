@@ -182,6 +182,52 @@ void main() {
     expect(item.lugar?.calle, 'Rivera');
   });
 
+  test('dado una dirección alternativa dada de baja, la cobranza sigue en la agenda y la dirección '
+      'viene marcada (#608, «Alt. de baja»)', () async {
+    await sembrarUbicacion(db, id: 'ub-alt');
+    await (db.update(db.ubicaciones)..where((u) => u.id.equals('ub-alt'))).write(
+      UbicacionesCompanion(
+        calle: const Value('Rivera'),
+        numero: const Value('77'),
+        deletedAt: Value(DateTime.utc(2026, 10, 27)),
+      ),
+    );
+    await agendar(
+      'age-1',
+      DateTime.utc(2026, 10, 29, 12),
+      tipo: TipoAgenda.cobranza,
+      alternativa: 'ub-alt',
+    );
+
+    final item = (await leer()).single;
+
+    expect(item.agenda.id, 'age-1');
+    expect(item.alternativa?.deBaja, isTrue);
+    expect(item.lugarDadoDeBaja, isTrue);
+    expect(item.casa?.deBaja, isFalse);
+  });
+
+  test('dado una alternativa viva, la dirección no lleva marca; con la casa de baja la agenda '
+      'sigue oculta (Agenda baja)', () async {
+    await sembrarUbicacion(db, id: 'ub-alt');
+    await agendar(
+      'viva',
+      DateTime.utc(2026, 10, 29, 12),
+      tipo: TipoAgenda.cobranza,
+      alternativa: 'ub-alt',
+    );
+    await agendar('sin-alt', DateTime.utc(2026, 10, 29, 13));
+
+    final items = await leer();
+
+    expect(items.map((i) => i.lugarDadoDeBaja), [false, false]);
+
+    await (db.update(db.ubicaciones)..where((u) => u.id.equals('ub-1'))).write(
+      UbicacionesCompanion(deletedAt: Value(DateTime.utc(2026, 10, 27))),
+    );
+    expect(await leer(), isEmpty);
+  });
+
   test('una agenda sin persona o con el espacio todavía sin bajar se muestra igual', () async {
     await agendar('sin-persona', DateTime.utc(2026, 10, 29, 12), vinculo: null);
     await agendar('huerfana', DateTime.utc(2026, 10, 29, 13), espacio: 'esp-que-no-llego');

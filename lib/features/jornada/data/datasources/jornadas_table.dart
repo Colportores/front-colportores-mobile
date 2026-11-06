@@ -15,7 +15,9 @@ import '../../../../core/database/fecha_utc_converter.dart';
 ///   en 0).
 ///
 /// Los nombres de columna son las claves de `JornadaModel.toJson()` —el payload de sync—; un test
-/// fija que coincidan. `acompaniante_id` y `tipo_acompaniamiento` van sin `ñ`, como en el cloud.
+/// fija que coincidan. `acompaniante_id` va sin `ñ`, como en el cloud. La jornada ya no guarda el
+/// tipo de acompañamiento (backend-supabase 0169, decisión de Cristian, 04/11): queda quién
+/// acompaña, y el origen y la nota los pone el servidor.
 ///
 /// "Una sola jornada activa por colportor" **no** es una restricción de esta tabla: el cloud no
 /// la tiene, y un índice único local podría hacer fallar la recuperación de dispositivo.
@@ -42,8 +44,6 @@ class Jornadas extends Table {
   IntColumn get fin => integer().nullable().map(const FechaUtcConverter())();
 
   TextColumn get acompananteId => text().named('acompaniante_id').nullable()();
-
-  TextColumn get tipoAcompanamiento => text().named('tipo_acompaniamiento').nullable()();
 
   IntColumn get totalVisitas => integer().withDefault(const Constant(0))();
 

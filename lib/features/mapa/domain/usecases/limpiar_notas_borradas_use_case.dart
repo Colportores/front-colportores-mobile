@@ -4,8 +4,8 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../repositories/limpieza_notas_borradas_repository.dart';
 
-/// Borra para siempre las notas de persona que pasaron más de 90 días en «Ver borradas» (HU-UBI-012,
-/// escenario «Nota borrada hace más de 90 días»). Se corre al abrir la app.
+/// Borra para siempre las notas de persona y de lugar que pasaron más de 90 días en «Ver borradas»
+/// (HU-UBI-012, escenario «Nota borrada hace más de 90 días»; las del lugar, vista 39, mismo plazo). Se corre al abrir la app.
 ///
 /// El «ahora» de la limpieza es el **menor** entre dos horas, y las dos hay que tenerlas:
 /// - [_ahora], el reloj de la sesión, que no puede retroceder (`RelojSesion`: el instante del equipo o

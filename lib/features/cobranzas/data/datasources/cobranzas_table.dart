@@ -35,9 +35,6 @@ class Cobranzas extends Table {
   /// Cuándo pagó el cliente (`fecha_pago`).
   IntColumn get fecha => integer().map(const FechaUtcConverter())();
 
-  /// Número de cuota (HU-COB-004); `null` si el cobro no es de una cuota.
-  IntColumn get numeroCuota => integer().nullable()();
-
   /// `DEBITO` o `CREDITO`; solo con TARJETA. Opcional.
   TextColumn get tarjetaTipo => text().nullable()();
 
@@ -52,6 +49,10 @@ class Cobranzas extends Table {
 
   /// El banco de origen, como texto de 1 a 60 caracteres; solo con TRANSFERENCIA. Opcional.
   TextColumn get bancoOrigen => text().nullable()();
+
+  /// El ticket del cobro con tarjeta (HU-COB-007, #426): el id de una fila de `ticket`. Opcional; se
+  /// completa cuando el colportor carga el ticket. Es un id opaco, sin dato del cliente.
+  TextColumn get ticketId => text().nullable()();
 
   IntColumn get createdAt => integer().map(const FechaUtcConverter())();
 

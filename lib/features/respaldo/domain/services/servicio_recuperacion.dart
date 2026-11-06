@@ -7,14 +7,19 @@ abstract interface class ServicioRecuperacion {
   /// la vista 34). No baja nada: mira los metadatos.
   Future<BusquedaRespaldo> buscar();
 
-  /// Restaura [respaldo] abriéndolo con [password] (pasos 3 a 8 de la vista 34): baja y verifica la
-  /// cadena, la arma aparte de la DB en uso y recién entonces la pasa; después reenvía lo que había
-  /// en la cola y trae de Supabase lo que subió después del respaldo.
+  /// Restaura [respaldos] abriéndolos con [password] (pasos 3 a 8 de la vista 34): baja y verifica
+  /// cada cadena, las arma aparte de la DB en uso y recién entonces las pasa; después reenvía lo que
+  /// había en la cola y trae de Supabase lo que subió después de los respaldos.
+  ///
+  /// Con más de un respaldo (el de cada teléfono que la persona tuvo; decisión de Cristian, 03/11,
+  /// #610) se recuperan **todos** y se fusionan por fecha de fila, sin borrar nada: [respaldos] trae
+  /// los que encontró [buscar] y `ProgresoRecuperacion.total` suma las partes de todos. Con uno solo
+  /// es la recuperación de siempre.
   ///
   /// [alAvanzar] recibe el paso en que va. [cancelar] corta la descarga sin tocar la DB; una vez
   /// que empezó a aplicarse, ya no se puede cancelar ([ProgresoRecuperacion.sePuedeCancelar]).
   Future<ResultadoRecuperacion> recuperar({
-    required RespaldoEnDrive respaldo,
+    required List<RespaldoEnDrive> respaldos,
     required String password,
     void Function(ProgresoRecuperacion progreso)? alAvanzar,
     CancelacionRecuperacion? cancelar,
@@ -73,9 +78,9 @@ final class SinRespaldoEnDrive extends BusquedaRespaldo {
   const SinRespaldoEnDrive();
 }
 
-/// Hay más de un respaldo que se podría abrir (el de cada teléfono que la persona tuvo). Qué se
-/// ofrece en ese caso **no está decidido**: la restauración no elige por la persona y la pantalla
-/// queda a la espera de la decisión.
+/// Hay más de un respaldo que se podría abrir (el de cada teléfono que la persona tuvo). Se
+/// recuperan todos juntos y se fusionan, sin borrar nada (decisión de Cristian, 03/11, #610): la
+/// pantalla no le pide que elija.
 final class VariosRespaldosEnDrive extends BusquedaRespaldo {
   const VariosRespaldosEnDrive(this.respaldos);
 
@@ -158,6 +163,7 @@ final class InformeRecuperacion {
     required this.trabajosReenviados,
     required this.filasTraidas,
     required this.ahora,
+    this.respaldosSinAbrir = 0,
   });
 
   /// De cuándo son los datos restaurados: hasta acá llega la copia. Si es [parcial], es la última
@@ -179,6 +185,11 @@ final class InformeRecuperacion {
 
   /// El momento de la recuperación.
   final DateTime ahora;
+
+  /// Cuántos de los respaldos pedidos no se pudieron abrir —la contraseña no los abre, no tienen su
+  /// clave envuelta en Drive o no tenían una base que leer— y quedaron afuera (decisión del 04/11,
+  /// #610 P1, «Varios resp.»). La recuperación no borra ni pisa ninguno: siguen en Drive, sin tocar.
+  final int respaldosSinAbrir;
 
   /// La ventana que no se pudo recuperar: lo creado entre el respaldo y la pérdida que tampoco
   /// llegó a subir. Existe siempre que hubo respaldo (contrato §7, «Lo que no se puede recuperar»).

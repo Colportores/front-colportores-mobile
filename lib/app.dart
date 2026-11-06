@@ -32,6 +32,7 @@ import 'features/inicio/presentation/pages/inicio_page.dart';
 import 'features/jornada/presentation/pages/jornadas_por_cerrar_page.dart';
 import 'features/jornada/presentation/providers/jornadas_por_cerrar_providers.dart';
 import 'features/mapa/presentation/providers/limpieza_notas_borradas_providers.dart';
+import 'features/mapa/presentation/providers/pantallas_sobre_el_mapa.dart';
 import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
 import 'features/notificaciones/presentation/providers/alarmas_exactas_providers.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
@@ -42,6 +43,7 @@ import 'features/notificaciones/presentation/widgets/aviso_push_en_app.dart';
 import 'features/respaldo/presentation/pages/recuperacion_page.dart';
 import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
+import 'features/tickets/presentation/providers/tickets_providers.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
 /// del árbol de widgets (el listener de deep link de verificación de email, más abajo), ya que
@@ -113,7 +115,7 @@ class ColportoresApp extends ConsumerWidget {
     return _RevisionAlVolver(
       child: MaterialApp(
         navigatorKey: navigatorKeyColportores,
-        navigatorObservers: [routeObserverColportores],
+        navigatorObservers: [routeObserverColportores, ref.read(pantallasSobreElMapaProvider)],
         title: 'Colportores',
         theme: temaClaro(),
         // HU-NOT-003 (24C·08): el aviso de una push que llega con la app abierta va arriba de
@@ -359,6 +361,9 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.watch(cicloDeVidaSyncProvider);
     // El respaldo en Drive al volver a la app y la verificación semanal (HU-SYNC-005, HU-SYNC-009).
     ref.watch(respaldoAlVolverProvider);
+    // HU-SYNC-005 (#583): con Drive conectado queda programado el respaldo de la noche con la app
+    // cerrada (03:00, Wi-Fi y cargando); al desconectar se saca.
+    ref.watch(respaldoNocturnoProgramadoProvider);
     // HU-NOT-002: el recordatorio que se tocó (o que abrió la app) lleva al detalle de la visita.
     ref.watch(aperturasDesdeRecordatorioProvider);
     // HU-NOT-005: los recordatorios que sonaron con la app cerrada se guardan en el historial.
@@ -372,6 +377,8 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.watch(limpiezaNotasBorradasProvider);
     // HU-VIS-002 («Agenda baja»): la agenda de una casa o un depto dados de baja no suena.
     ref.watch(recordatoriosPorBajaProvider);
+    // HU-COB-007: las fotos de los tickets suben cuando hay red y el ticket ya llegó al servidor.
+    ref.watch(colaDeSubidaDeFotosProvider);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
     final estado = ref.watch(estadoCuentaProvider);
     if (estado case AsyncData(value: EstadoCuenta.pendienteAsignacion)) _vioPendiente = true;

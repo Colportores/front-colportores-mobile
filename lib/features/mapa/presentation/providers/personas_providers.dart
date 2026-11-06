@@ -6,6 +6,7 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../data/datasources/persona_local_data_source_drift.dart';
 import '../../data/datasources/ubicacion_local_data_source_drift.dart';
+import '../../data/datasources/ultima_visita_de_la_ubicacion_drift.dart';
 import '../../data/datasources/ultima_visita_del_espacio_drift.dart';
 import '../../data/repositories/espacio_repository_impl.dart';
 import '../../data/repositories/persona_repository_impl.dart';
@@ -15,6 +16,7 @@ import '../../domain/repositories/espacio_repository.dart';
 import '../../domain/repositories/persona_repository.dart';
 import '../../domain/services/contador_personas_espacio.dart';
 import '../../domain/services/cuotas_de_personas.dart';
+import '../../domain/services/lector_ultima_visita_de_la_ubicacion.dart';
 import '../../domain/services/lector_ultima_visita_del_espacio.dart';
 import '../../domain/services/saldos_de_personas.dart';
 import '../../domain/usecases/registrar_persona_use_case.dart';
@@ -96,6 +98,14 @@ final ultimaVisitaDelEspacioProvider = StreamProvider.autoDispose
       (ref, espacioId) => ref.watch(lectorUltimaVisitaDelEspacioProvider).observar(espacioId),
       retry: _sinReintentos,
     );
+
+/// La última visita de cualquier espacio de la ubicación (el renglón «Última visita» de «Reactivar»,
+/// vista 09·03, #330). Sin DB abierta no hay dónde leer: lanza, y quien lo pide no dibuja el renglón.
+final lectorUltimaVisitaDeLaUbicacionProvider = Provider<LectorUltimaVisitaDeLaUbicacion>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return UltimaVisitaDeLaUbicacionDrift(db);
+});
 
 /// De dónde sale lo que debe cada persona (la línea «Saldo» de «¿Con quién?»). Sin ventas locales
 /// todavía (S9) no hay fuente: [SaldosDePersonasSinFuente]. Un test o el S9 lo reemplazan.
