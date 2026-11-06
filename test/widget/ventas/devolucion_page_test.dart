@@ -64,6 +64,25 @@ VentaParaDevolver _ventaDelCanvas({
   );
 }
 
+/// Un regalo: la venta vale \$ 0 aunque el libro tenga su precio de lista, y no hay cobros.
+VentaParaDevolver _ventaDeRegalo({int unidades = 2, int devueltas = 0}) => VentaParaDevolver(
+  ventaId: 'v-1',
+  numeroTalonario: '0043',
+  fecha: _fechaDeLaVenta,
+  montoTotalCentavos: 0,
+  cobradoCentavos: 0,
+  renglones: [
+    RenglonDeLaVenta(
+      ventaItemId: 'i-regalo',
+      titulo: 'Regalo',
+      productoId: 'p-regalo',
+      cantidad: unidades,
+      precioUnitarioCentavos: 190000,
+      unidadesDevueltas: devueltas,
+    ),
+  ],
+);
+
 class _RepoFalso implements DevolucionRepository {
   _RepoFalso(this.venta);
 
@@ -487,6 +506,78 @@ void main() {
     });
   });
 
+  group('venta de \$ 0 (un regalo): solo vuelve el libro, sin montos (#642)', () {
+    testWidgets('elige el libro, sigue y registra: sin plata que devolver ni saldo', (
+      tester,
+    ) async {
+      final repo = _RepoFalso(_ventaDeRegalo());
+      final m = await _montar(tester, repo);
+      await tocar(tester, _mas('Regalo'));
+      await _seguir(tester);
+
+      // Cómo queda: se queda con \$ 0, saldo nuevo \$ 0, y nada de «ese dinero no se devuelve».
+      expect(find.byKey(const Key('devolucion_cuentas')), findsOneWidget);
+      expect(find.text('Saldo nuevo'), findsOneWidget);
+      expect(find.byKey(const Key('devolucion_sin_devolver')), findsNothing);
+
+      await _confirmarEnLaHoja(tester);
+
+      expect(repo.pedidos.single.unidadesPorRenglon, {'i-regalo': 1});
+      expect(find.text('Devolución registrada'), findsOneWidget);
+      expect(find.text(_m(0)), findsWidgets);
+      await tocar(tester, find.byKey(const Key('devolucion_listo')));
+      expect(m.resultados, [true]);
+    });
+
+    testWidgets('el doble toque en «Registrar» manda un solo pedido', (tester) async {
+      final repo = _RepoFalso(_ventaDeRegalo());
+      await _montar(tester, repo);
+      await tocar(tester, _mas('Regalo'));
+      await _seguir(tester);
+      await tocar(tester, _cta);
+
+      final registrar = find.byKey(const Key('devolucion_hoja_registrar'));
+      await tester.tap(registrar);
+      await tester.tap(registrar, warnIfMissed: false);
+      await asentar(tester);
+
+      expect(repo.pedidos, hasLength(1));
+    });
+
+    testWidgets('si falla al registrar, vuelve a poder registrar y el reintento sale bien', (
+      tester,
+    ) async {
+      final repo = _RepoFalso(_ventaDeRegalo())
+        ..respuestas.add(() async => const Left(FailureDevolucionNoGuardada(causa: 'x')));
+      await _montar(tester, repo);
+      await tocar(tester, _mas('Regalo'));
+      await _seguir(tester);
+
+      await _confirmarEnLaHoja(tester);
+      expect(find.byKey(const Key('devolucion_error')), findsOneWidget);
+      expect(find.text('Registrando…'), findsNothing);
+      expect(_boton(tester).onPressed, isNotNull);
+
+      await tocar(tester, _cta);
+      expect(repo.pedidos.map((p) => p.id), ['d-1', 'd-1']);
+      expect(find.text('Devolución registrada'), findsOneWidget);
+    });
+
+    testWidgets('un regalo con todo devuelto ya no deja devolver más', (tester) async {
+      await _montar(tester, _RepoFalso(_ventaDeRegalo(devueltas: 2)));
+
+      expect(find.byKey(const Key('devolucion_ya_devuelta')), findsOneWidget);
+      expect(find.byKey(const Key('devolucion_saldada')), findsNothing);
+    });
+
+    testWidgets('con la letra al 200 % en 320 dp se arma entero', (tester) async {
+      await _montar(tester, _RepoFalso(_ventaDeRegalo()), escala: 2, tamano: const Size(320, 568));
+
+      expect(find.byKey(const Key('devolucion_saldada')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('venta saldada: no se aceptan devoluciones', () {
     testWidgets('dice por qué, no deja elegir y solo ofrece «Volver»', (tester) async {
       final m = await _montar(tester, _RepoFalso(_ventaDelCanvas(cobrado: 450000)));
@@ -515,22 +606,14 @@ void main() {
       expect(_mas('Salud y Hogar'), findsNothing);
     });
 
-    testWidgets('una venta de \$ 0 también está saldada', (tester) async {
-      final venta = _ventaDelCanvas(
-        cobrado: 0,
-        renglones: const [
-          RenglonDeLaVenta(
-            ventaItemId: 'i-a',
-            titulo: 'Regalo',
-            productoId: 'p-a',
-            cantidad: 1,
-            precioUnitarioCentavos: 0,
-          ),
-        ],
-      );
-      await _montar(tester, _RepoFalso(venta));
+    testWidgets('una venta de \$ 0 NO está cerrada: acepta la devolución del libro', (
+      tester,
+    ) async {
+      await _montar(tester, _RepoFalso(_ventaDeRegalo()));
 
-      expect(find.byKey(const Key('devolucion_saldada')), findsOneWidget);
+      expect(find.byKey(const Key('devolucion_saldada')), findsNothing);
+      expect(find.text('¿Qué te devuelve?'), findsOneWidget);
+      expect(_mas('Regalo'), findsOneWidget);
     });
 
     testWidgets('saldada y fuera de plazo: dice que está saldada, que es lo que el servidor dice', (

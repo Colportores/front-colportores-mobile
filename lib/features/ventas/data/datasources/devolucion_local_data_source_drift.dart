@@ -105,8 +105,11 @@ final class DevolucionLocalDataSourceDrift {
 
     final antes = await _leer(venta);
     // Una venta saldada no acepta devoluciones (la misma regla que el servidor, 0157), pasen o no las
-    // 72 h. Una que ya volvió entera tampoco, pero esa la dice `de_mas`.
-    if (antes.estaSaldada && !antes.estaTodoDevuelto) throw const DevolucionVentaSaldadaException();
+    // 72 h. Una que ya volvió entera tampoco, pero esa la dice `de_mas`. Una venta de $ 0 sí las
+    // acepta (0166): solo vuelve el libro, sin montos.
+    if (antes.rechazaDevoluciones && !antes.estaTodoDevuelto) {
+      throw const DevolucionVentaSaldadaException();
+    }
     if (ReglasDeDevolucion.estaFueraDePlazo(venta.fecha, pedido.ahora)) {
       throw const DevolucionFueraDePlazoException();
     }

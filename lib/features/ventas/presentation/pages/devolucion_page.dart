@@ -398,7 +398,7 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
             ),
           ],
         ),
-        _Lectura.lista when venta != null && venta.estaSaldada && !venta.estaTodoDevuelto =>
+        _Lectura.lista when venta != null && venta.rechazaDevoluciones && !venta.estaTodoDevuelto =>
           _saldada(venta),
         _Lectura.lista when venta != null && _fueraDePlazo => _fueraDelPlazo(venta),
         _Lectura.lista when venta != null && venta.estaTodoDevuelto => _yaDevuelta(venta),

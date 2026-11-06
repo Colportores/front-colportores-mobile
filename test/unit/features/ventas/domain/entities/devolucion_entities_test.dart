@@ -114,6 +114,31 @@ void main() {
       expect(_venta(cobrado: 100000).saldoCentavos, 420000);
       expect(_venta(cobrado: 100000).yaPagoCentavos, 100000);
     });
+
+    test('una venta que costó algo y se pagó entera rechaza devoluciones; una de \$ 0 no', () {
+      expect(_venta(cobrado: 520000).rechazaDevoluciones, isTrue);
+      expect(_venta(cobrado: 100000).rechazaDevoluciones, isFalse);
+      final regalo = VentaParaDevolver(
+        ventaId: 'v-0',
+        numeroTalonario: '0043',
+        fecha: _t,
+        montoTotalCentavos: 0,
+        cobradoCentavos: 0,
+        renglones: const [
+          RenglonDeLaVenta(
+            ventaItemId: 'i-1',
+            titulo: 'Regalo',
+            productoId: 'p-1',
+            cantidad: 1,
+            precioUnitarioCentavos: 190000,
+          ),
+        ],
+      );
+      // Está «saldada» (no debe nada) pero acepta devoluciones: solo vuelve el libro.
+      expect(regalo.estaSaldada, isTrue);
+      expect(regalo.rechazaDevoluciones, isFalse);
+      expect(regalo.cuenta.rechazaDevoluciones, isFalse);
+    });
   });
 
   group('CuentaDeLaDevolucion', () {
