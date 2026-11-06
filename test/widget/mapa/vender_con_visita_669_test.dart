@@ -64,7 +64,7 @@ void main() {
         final venta = a.entorno.ventas.recibidas.single.venta;
         expect(venta.visitaId, visita.id);
         expect(a.salidasDeVenta.single, isA<VentaRegistradaEnLaCasa>());
-        expect(a.resultados, [false], reason: 'R·08: la hoja de la casa queda abierta');
+        expect(a.resultados, [true], reason: 'tras guardar (05/11): la hoja de la casa se cierra');
         expect(
           a.montaje.almacen.guardadas,
           isEmpty,

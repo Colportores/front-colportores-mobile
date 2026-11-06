@@ -50,10 +50,9 @@ import 'widgets/hoja_que_paso.dart';
 /// un reintento tras una falla no guarda la visita dos veces.
 abstract final class FlujoRegistrarVisita {
   /// Abre «¿Qué pasó?» para [datos]. Devuelve `true` si algo se resolvió y la hoja de la casa puede
-  /// cerrarse; `false` si la colportora cerró «¿Qué pasó?» sin elegir, o no hay dónde registrar.
-  /// También devuelve `false` cuando «Entrevista dada» o «Vender» terminaron en una venta guardada:
-  /// «¿Qué pasó?» se resolvió, pero la hoja de la casa **queda abierta** (R·08: ahí está la cobranza
-  /// pendiente) y cerrarla sacaría la casa elegida.
+  /// cerrarse (también cuando «Entrevista dada» o «Vender» terminaron en una venta guardada: tras
+  /// guardar vuelve al mapa libre, decisión de Cristian del 05/11); `false` si la colportora cerró
+  /// «¿Qué pasó?» sin elegir, o no hay dónde registrar.
   /// Lanza si no puede leer la casa (la hoja de la casa lo dice).
   static Future<bool> abrir(
     BuildContext context,
@@ -101,13 +100,9 @@ abstract final class FlujoRegistrarVisita {
     VisitaGuardada? guardada;
     String? resultadoDicho;
 
-    // «Entrevista dada» o «Vender» terminaron en una venta: la hoja de la casa se queda.
-    var ventaRegistrada = false;
-    SalidaDeOpcion? salidaConVenta(Object? hecho) {
-      if (hecho is! VentaRegistradaEnLaCasa) return null;
-      ventaRegistrada = true;
-      return const OpcionResuelta();
-    }
+    // «Entrevista dada» o «Vender» terminaron en una venta: «¿Qué pasó?» se resolvió.
+    SalidaDeOpcion? salidaConVenta(Object? hecho) =>
+        hecho is VentaRegistradaEnLaCasa ? const OpcionResuelta() : null;
 
     // La agenda que la visita viene a cerrar, de mejor esfuerzo: la tocada en la fila de la agenda
     // (23B) o la programada de la casa. Sin la lectura, la visita se guarda igual, como espontánea.
@@ -356,8 +351,7 @@ abstract final class FlujoRegistrarVisita {
         deshacer: deshacer,
       );
     }
-    // La venta quedó guardada: la hoja de la casa sigue abierta, en R·08.
-    return resuelta && !ventaRegistrada;
+    return resuelta;
   }
 
   /// La jornada abierta de [colportorId] **en el momento de guardar** (no al abrir la hoja: la

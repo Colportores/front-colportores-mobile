@@ -25,6 +25,9 @@ import 'package:colportores_mobile/features/cobranzas/domain/entities/venta_con_
 import 'package:colportores_mobile/features/cobranzas/domain/repositories/saldo_pendiente_repository.dart';
 import 'package:colportores_mobile/features/cobranzas/presentation/providers/cobranzas_providers.dart'
     show saldoPendienteRepositoryProvider;
+import 'package:colportores_mobile/features/inicio/presentation/providers/navegacion_inicio_provider.dart';
+import 'package:colportores_mobile/features/inicio/presentation/widgets/barra_pestanas_inicio.dart'
+    show PestanaInicio;
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart' show TipoUbicacion;
 import 'package:colportores_mobile/features/mapa/presentation/providers/cobranza_recien_agendada_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
@@ -551,19 +554,23 @@ void main() {
   });
 
   group('R·08: volver a la casa', () {
-    String? seleccionada(WidgetTester tester) =>
-        contenedor(tester).read(mapaUbicacionesProvider('col-1')).seleccionadaId;
+    // Tras guardar (decisión de Cristian, 05/11) el shell lleva a la colportora al mapa libre: la
+    // intención «volver al mapa» sin hoja, que atiende la pestaña Mapa.
+    IntencionDelMapa? intencion(WidgetTester tester) =>
+        contenedor(tester).read(navegacionInicioProvider).intencion;
 
-    testWidgets('con la venta guardada la casa queda elegida en el mapa, con su hoja', (
+    testWidgets('con la venta guardada el shell lleva al mapa libre con la casa a la vista', (
       tester,
     ) async {
       await montar(tester, conMapa: true);
-      expect(seleccionada(tester), isNull);
+      expect(intencion(tester), isNull);
 
       await hastaLaPregunta(tester);
       await elegirCuando(tester, CuandoCobrar.sinFecha);
 
-      expect(seleccionada(tester), 'ub-1');
+      expect(intencion(tester)!.ubicacionId, 'ub-1');
+      expect(intencion(tester)!.conSuHoja, isFalse, reason: 'sin subir la hoja de la casa');
+      expect(contenedor(tester).read(navegacionInicioProvider).actual, PestanaInicio.mapa);
     });
 
     testWidgets('si la venta no se completa, el mapa queda como estaba', (tester) async {
@@ -573,7 +580,8 @@ void main() {
       await tocar(tester, find.byKey(const Key('venta_atras')));
       await tester.pumpAndSettle();
 
-      expect(seleccionada(tester), isNull);
+      expect(intencion(tester), isNull);
+      expect(contenedor(tester).read(navegacionInicioProvider).actual, PestanaInicio.hoy);
     });
 
     testWidgets('sin el mapa montado no pasa nada', (tester) async {
@@ -608,7 +616,7 @@ void main() {
       expect(salida, isNot(isA<EntrevistaGuardada>()));
       expect(montaje.almacen.guardadas, isEmpty);
       expect(
-        contenedor(tester).read(mapaUbicacionesProvider('col-1')).seleccionadaId,
+        contenedor(tester).read(navegacionInicioProvider).intencion,
         isNull,
         reason: 'desde la jornada no se vuelve a la casa en el mapa',
       );
@@ -1055,7 +1063,7 @@ void main() {
         expect(agendas.recibidas.single.agenda.tipo, TipoAgenda.cobranza);
         expect(tester.takeException(), isNull);
         expect(find.textContaining('Cobranza agendada para'), findsOneWidget);
-        expect(contenedor(tester).read(mapaUbicacionesProvider('col-1')).seleccionadaId, 'ub-1');
+        expect(contenedor(tester).read(navegacionInicioProvider).intencion!.ubicacionId, 'ub-1');
       },
     );
   });

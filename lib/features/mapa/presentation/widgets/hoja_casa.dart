@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../agenda/presentation/formato_agenda.dart' show TextosAgenda;
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart'
     show frenaPorCuentaRestringida;
+import '../../../inicio/presentation/providers/navegacion_inicio_provider.dart';
 import '../../domain/entities/contexto_de_la_casa.dart';
 import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
@@ -75,6 +76,11 @@ import 'visitas_agendadas_de_la_casa.dart';
 /// Una sola acción a la vez: «Registrar visita» y «$ Cobrar» comparten la guarda, así que un doble
 /// toque, o dos botones seguidos, abren una sola vez; si la acción falla la hoja avisa y los botones
 /// vuelven a poder tocarse.
+///
+/// **Tras guardar, vuelve al mapa** (decisión de Cristian, 05/11, «Tras guardar»): cuando una acción de
+/// la hoja se guarda —el resultado de la visita, el fin de la entrevista, una venta, un cobro, una
+/// agenda— la hoja se cierra y queda el mapa libre, con la casa a la vista y su color nuevo
+/// (`NavegacionInicioNotifier.volverAlMapa`). Para seguir con la misma casa, se la vuelve a tocar.
 class HojaCasa extends ConsumerStatefulWidget {
   const HojaCasa({
     super.key,
@@ -149,6 +155,13 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
         if (_falla != null) _mostrarLaFalla();
       }
     }
+  }
+
+  /// La acción se guardó: el mapa queda libre y la hoja se cierra (ver el comentario de la clase). Es
+  /// el shell quien lleva la pestaña Mapa a la vista, también si esta hoja es la modal de la Lista.
+  void _volverAlMapa() {
+    ref.read(navegacionInicioProvider.notifier).volverAlMapa(widget.item.ubicacion.id);
+    widget.alCerrar();
   }
 
   /// La hoja se desplaza: si el aviso de la falla quedó fuera de la vista, se lo trae.
@@ -286,8 +299,9 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
         espacioId: contexto.espacioId,
         agendaId: null,
       ));
-      // Se guardó o siguió a otro flujo: la hoja de la casa se va y el mapa muestra el color nuevo.
-      if (resuelta == true && mounted) widget.alCerrar();
+      // Se guardó o siguió a otro flujo: la hoja de la casa se va y el mapa queda libre, con el color
+      // nuevo.
+      if (resuelta == true && mounted) _volverAlMapa();
     }, TextosHojaCasa.noPudimosAbrirVisita);
   }
 
@@ -317,7 +331,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
         colportorId: colportorId,
       );
       if (eleccion == null || !mounted) return;
-      await destino((
+      final agendada = await destino((
         ubicacionId: widget.item.ubicacion.id,
         espacioId: espacioId,
         espacioPersonaId: eleccion.espacioPersonaId,
@@ -326,6 +340,8 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
           CitaSinPersona() => null,
         },
       ));
+      // Agendada: el mapa queda libre con la casa en su color nuevo (si se canceló, la hoja sigue).
+      if (agendada == true && mounted) _volverAlMapa();
     }, TextosAgenda.noPudimosAbrir);
   }
 
@@ -375,14 +391,15 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
     final destino = ref.watch(cobrarDesdeLaCasaProvider);
     return (personaId) {
       if (destino == null || widget.item.esBaja) return null;
-      return () => _correr(
-        () => destino((
+      return () => _correr(() async {
+        final cobrado = await destino((
           ubicacionId: widget.item.ubicacion.id,
           espacioId: contexto.espacioId,
           personaId: personaId,
-        )),
-        TextosHojaCasa.noPudimosAbrirCobro,
-      );
+        ));
+        // Cobrado: el mapa queda libre con la casa en su color nuevo (si no se cobró, la hoja sigue).
+        if (cobrado == true && mounted) _volverAlMapa();
+      }, TextosHojaCasa.noPudimosAbrirCobro);
     };
   }
 }
