@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:sync_engine/sync_engine.dart';
 import 'package:sync_engine/testing.dart';
 import 'package:test/test.dart';
@@ -37,6 +39,88 @@ class _Banco {
 
   Future<void> encolar(String entidad, String id) =>
       motor.stage(entidad, Op.insert, {'id': id}, clientOpId: 'op-$id');
+}
+
+/// Un timer que no corre solo: el test lo dispara cuando mueve el reloj.
+class _TimerFalso implements Timer {
+  _TimerFalso(this.vence, this._callback);
+
+  final DateTime vence;
+  final void Function() _callback;
+  bool cancelado = false;
+  bool disparado = false;
+
+  void disparar() {
+    disparado = true;
+    _callback();
+  }
+
+  @override
+  void cancel() => cancelado = true;
+
+  @override
+  bool get isActive => !cancelado && !disparado;
+
+  @override
+  int get tick => 0;
+}
+
+/// Un motor cuyos timers (el debounce de `critical` y la reanudación del 429)
+/// son de mentira y avanzan con el reloj inyectado, para probar que la subida
+/// se reanuda sola al vencer la espera sin esperar de verdad.
+class _BancoConReloj {
+  _BancoConReloj() {
+    motor = runZoned(
+      () => SyncEngine(
+        specs: SpecRegistry([
+          SyncSpec.push('venta', critical: true),
+        ], allEntities: const {'venta'}),
+        transport: transport,
+        jobs: jobs,
+        store: InMemoryLocalStore(),
+        clock: () => ahora,
+      ),
+      zoneSpecification: ZoneSpecification(
+        createTimer: (self, parent, zone, duracion, callback) {
+          final t = _TimerFalso(ahora.add(duracion), callback);
+          timers.add(t);
+          return t;
+        },
+      ),
+    );
+  }
+
+  final jobs = InMemoryJobStore();
+  final transport = FakeSyncTransport();
+  final timers = <_TimerFalso>[];
+  late final SyncEngine motor;
+  DateTime ahora = DateTime.utc(2026, 11, 5, 12);
+
+  Future<void> venta(String id) =>
+      motor.stage('venta', Op.insert, {'id': id}, clientOpId: 'op-$id');
+
+  /// Mueve el reloj [d] y dispara, en orden, los timers que vencieron.
+  Future<void> avanza(Duration d) async {
+    final meta = ahora.add(d);
+    while (true) {
+      final vencidos = timers.where((t) => t.isActive && !t.vence.isAfter(meta))
+          .toList()
+        ..sort((a, b) => a.vence.compareTo(b.vence));
+      if (vencidos.isEmpty) break;
+      final t = vencidos.first;
+      if (t.vence.isAfter(ahora)) ahora = t.vence;
+      t.disparar();
+      await _asentar();
+    }
+    ahora = meta;
+  }
+
+  /// Deja terminar los ciclos que dispararon los timers.
+  Future<void> _asentar() async {
+    for (var i = 0; i < 20; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
 }
 
 void main() {
@@ -276,6 +360,110 @@ void main() {
       await b.motor.syncNow();
       expect(b.transport.rowsOf('venta'), hasLength(4));
       expect(b.jobs.withState(JobState.pending), isEmpty);
+      await b.motor.dispose();
+    });
+  });
+
+  group('reanudación al vencer la espera', () {
+    test('dos ventas critical dentro de la espera suben solas a los 65 s',
+        () async {
+      final b = _BancoConReloj();
+      await b.venta('v0');
+      b.transport.failWith(429, retryAfter: const Duration(seconds: 30));
+      await b.motor.syncNow();
+      expect(b.transport.batches, hasLength(1));
+
+      // Dos ventas critical dentro de la espera: sus triggers se descartan
+      // porque la subida está frenada.
+      await b.venta('v1');
+      await b.venta('v2');
+      await b.avanza(const Duration(seconds: 10));
+      expect(b.transport.batches, hasLength(1), reason: 'sigue frenada');
+
+      // Sin ningún trigger más, el motor despierta solo al vencer.
+      await b.avanza(const Duration(seconds: 55));
+      expect(b.transport.rowsOf('venta'), hasLength(3));
+      expect(b.jobs.withState(JobState.pending), isEmpty);
+      expect(b.transport.batches, hasLength(2), reason: 'un solo intento');
+      await b.motor.dispose();
+    });
+
+    test('un trigger durante la espera no sube, pero la reanudación sí',
+        () async {
+      final b = _BancoConReloj();
+      await b.venta('v1');
+      b.transport.failWith(429, retryAfter: const Duration(seconds: 30));
+      await b.motor.syncNow();
+
+      b.ahora = b.ahora.add(const Duration(seconds: 5));
+      for (final t in [SyncTrigger.appResumed, SyncTrigger.criticalWrite]) {
+        await b.motor.trigger(t);
+      }
+      expect(b.transport.batches, hasLength(1));
+
+      await b.avanza(const Duration(seconds: 26));
+      expect(b.transport.rowsOf('venta'), hasLength(1));
+      await b.motor.dispose();
+    });
+
+    test('sin Retry-After también despierta, a los 5 s', () async {
+      final b = _BancoConReloj();
+      await b.venta('v1');
+      b.transport.failWith(429);
+      await b.motor.syncNow();
+
+      await b.avanza(const Duration(seconds: 4));
+      expect(b.transport.batches, hasLength(1));
+      await b.avanza(const Duration(seconds: 1));
+      expect(b.transport.rowsOf('venta'), hasLength(1));
+      await b.motor.dispose();
+    });
+
+    test('si al volver hay otro 429, espera de nuevo: nunca una ráfaga',
+        () async {
+      final b = _BancoConReloj();
+      await b.venta('v1');
+      b.transport.failWith(429, retryAfter: const Duration(seconds: 10));
+      await b.motor.syncNow();
+      b.transport.failWith(429, retryAfter: const Duration(seconds: 20));
+
+      await b.avanza(const Duration(seconds: 10));
+      expect(b.transport.batches, hasLength(2), reason: 'un intento al vencer');
+      expect(b.transport.rowsOf('venta'), isEmpty);
+
+      await b.avanza(const Duration(seconds: 19));
+      expect(b.transport.batches, hasLength(2), reason: 'espera renovada');
+      await b.avanza(const Duration(seconds: 1));
+      expect(b.transport.batches, hasLength(3));
+      expect(b.transport.rowsOf('venta'), hasLength(1));
+      expect(b.jobs.withState(JobState.pending), isEmpty);
+      await b.motor.dispose();
+    });
+
+    test('dispose cancela la reanudación pendiente', () async {
+      final b = _BancoConReloj();
+      await b.venta('v1');
+      b.transport.failWith(429, retryAfter: const Duration(seconds: 30));
+      await b.motor.syncNow();
+      await b.motor.dispose();
+
+      expect(b.timers.where((t) => t.isActive), isEmpty,
+          reason: 'ningún timer queda vivo tras dispose');
+      await b.avanza(const Duration(seconds: 65));
+      expect(b.transport.batches, hasLength(1));
+    });
+
+    test('un reloj que retrocede no deja la subida frenada horas', () async {
+      final b = _BancoConReloj();
+      await b.venta('v1');
+      b.transport.failWith(429, retryAfter: const Duration(seconds: 30));
+      await b.motor.syncNow();
+
+      // La hora del teléfono se corrige 3 h hacia atrás.
+      b.ahora = b.ahora.subtract(const Duration(hours: 3));
+      final r = await b.motor.syncNow();
+      expect(r.pushPausedUntil, isNull);
+      expect(b.transport.rowsOf('venta'), hasLength(1));
       await b.motor.dispose();
     });
   });

@@ -275,8 +275,11 @@ subida. Un `429` del pull también frena la subida.
 
 La espera frena **toda** la subida y no solo la entidad que rebotó: retener un
 alta y dejar salir lo que la nombra termina en `23503` y en jobs `INVALID`. Vive
-solo en memoria (reabrir la app empieza sin espera) y no hay un timer que
-reintente al vencer: sube en el primer trigger posterior. Decisión de Cristian
+solo en memoria (reabrir la app empieza sin espera). Un solo timer despierta al
+motor cuando vence la espera y corre un ciclo que sube lo que haya `PENDING`
+(también lo que entró durante la espera): hay a lo sumo un intento por
+`Retry-After`, y si vuelve otro `429` la espera se renueva. Si el reloj del
+teléfono retrocede, una espera más lejana que el tope se descarta. Decisión de Cristian
 del 04/11; la prueba está en
 [`test/espera_del_429_test.dart`](test/espera_del_429_test.dart).
 

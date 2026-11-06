@@ -201,6 +201,12 @@ class SyncEngine {
   Timer? _realtimeTimer;
   Timer? _criticalTimer;
 
+  /// Despierta al motor cuando vence la espera de un `429`: lo que llegó
+  /// durante la espera (una venta, volver al frente) se descartó y no
+  /// vuelve a avisar, así que sin este timer quedaría `PENDING` hasta el
+  /// próximo trigger. Uno solo: cada espera nueva reemplaza al anterior.
+  Timer? _esperaTimer;
+
   /// La zona donde se construyó el motor, para programar sus timers.
   ///
   /// En Dart el callback de un `Timer` corre en la zona donde el timer se
@@ -1007,6 +1013,7 @@ class SyncEngine {
     if (_disposed) return;
     _disposed = true;
     _criticalTimer?.cancel();
+    _esperaTimer?.cancel();
     _realtimeTimer?.cancel();
     await _realtimeSub?.cancel();
     await _realtimePort?.unsubscribe();
@@ -1152,19 +1159,26 @@ class SyncEngine {
   }
 
   /// Hasta cuándo sigue frenada la subida por un `429`, o `null` si no lo está.
-  /// Una espera vencida se descarta acá mismo.
+  /// Una espera vencida se descarta acá mismo, y también una que quedó más
+  /// lejos que [maxRetryAfter] (la hora del teléfono retrocedió: sin esto la
+  /// subida quedaría frenada horas).
   DateTime? _subidaFrenada() {
     final hasta = _subidaFrenadaHasta;
     if (hasta == null) return null;
-    if (_clock().isBefore(hasta)) return hasta;
+    final ahora = _clock();
+    if (ahora.isBefore(hasta) && !hasta.isAfter(ahora.add(maxRetryAfter))) {
+      return hasta;
+    }
     _subidaFrenadaHasta = null;
+    _esperaTimer?.cancel();
+    _esperaTimer = null;
     return null;
   }
 
   /// Un `429` frena la subida hasta su `Retry-After`, con el tope de
   /// [maxRetryAfter]; sin encabezado (o en cero) espera [defaultRetryAfter].
   /// Cualquier otra falla se ignora acá. Si ya había una espera más larga, no
-  /// se acorta.
+  /// se acorta. Deja armado el timer que reanuda la subida al vencer.
   void _frenarSubidaSi429(TransportFailure falla) {
     if (falla.status != 429) return;
     final pedido = falla.retryAfter;
@@ -1174,6 +1188,33 @@ class SyncEngine {
     final hasta = _clock().add(espera > maxRetryAfter ? maxRetryAfter : espera);
     final actual = _subidaFrenadaHasta;
     if (actual == null || hasta.isAfter(actual)) _subidaFrenadaHasta = hasta;
+    _armarReanudacion();
+  }
+
+  /// Programa un solo ciclo para cuando venza la espera. El ciclo sube lo que
+  /// haya `PENDING` (incluido lo que entró durante la espera); si el servidor
+  /// vuelve a contestar `429`, la espera nueva arma el siguiente timer, así
+  /// que hay a lo sumo un intento por cada `Retry-After` y nunca una ráfaga.
+  void _armarReanudacion() {
+    _esperaTimer?.cancel();
+    _esperaTimer = null;
+    final hasta = _subidaFrenadaHasta;
+    if (hasta == null || _disposed) return;
+    final falta = hasta.difference(_clock());
+    _esperaTimer = _zona.createTimer(
+      falta > Duration.zero ? falta : Duration.zero,
+      () {
+        _esperaTimer = null;
+        if (_disposed) return;
+        // Si el reloj todavía no llegó (se atrasó, o la espera se renovó),
+        // se vuelve a esperar lo que falta en vez de perder el aviso.
+        if (_subidaFrenada() != null) {
+          _armarReanudacion();
+          return;
+        }
+        unawaited(trigger(SyncTrigger.connectivity));
+      },
+    );
   }
 
   /// HU-SYNC-008: con el ahorro de datos activo y solo datos móviles, el ciclo
