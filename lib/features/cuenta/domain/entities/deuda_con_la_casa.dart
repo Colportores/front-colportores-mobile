@@ -62,6 +62,7 @@ final class DeudaConLaCasa extends Equatable {
     required this.sumaDeSaldosCentavos,
     required this.depositosValidadosCentavos,
     required this.pedidos,
+    this.deudaHace7DiasCentavos,
   });
 
   /// La deuda real. Negativa = quedó a favor (se pagó de más): se descuenta de la próxima deuda del
@@ -77,6 +78,19 @@ final class DeudaConLaCasa extends Equatable {
 
   /// Solo los pedidos con saldo, el más viejo primero.
   final List<PedidoConSaldo> pedidos;
+
+  /// La deuda que figuraba hace 7 días (7 × 24 h), la que registró el servidor (backend-supabase 0168).
+  /// `null` = el servidor no tiene registro de esa fecha (cuenta nueva, o menos de una semana desde que
+  /// empezó a registrarlas): no es «igual», es «no se puede comparar». Negativa = estaba a favor.
+  final int? deudaHace7DiasCentavos;
+
+  /// Cuánto cambió la deuda contra la semana pasada: negativo = bajó, positivo = subió, 0 = igual.
+  /// `null` si no hay con qué comparar. Es la cuenta del servidor sobre su propio historial:
+  /// «deuda_total − deuda_hace_7_dias» (decisión de Cristian, 04/11, «Del servidor, todo cuenta»).
+  int? get variacionCentavos {
+    final hace7 = deudaHace7DiasCentavos;
+    return hace7 == null ? null : deudaTotalCentavos - hace7;
+  }
 
   /// No debe nada y nada la explica (33B·02).
   bool get sinDeuda => deudaTotalCentavos == 0 && pedidos.isEmpty;
@@ -95,6 +109,7 @@ final class DeudaConLaCasa extends Equatable {
     sumaDeSaldosCentavos,
     depositosValidadosCentavos,
     pedidos,
+    deudaHace7DiasCentavos,
   ];
 }
 

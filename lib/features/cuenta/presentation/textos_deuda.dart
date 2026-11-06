@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import '../domain/entities/deuda_con_la_casa.dart';
+import '../domain/entities/resumen_de_cuenta.dart' show CifraDeCuenta;
 import 'providers/deuda_casa_providers.dart' show FalloDeLaDeuda;
 import 'textos_cuenta.dart';
 
@@ -23,6 +26,10 @@ abstract final class TextosDeuda {
 
   /// Lo que lee el lector de pantalla mientras se pide (33A·03 lo dibuja sin texto).
   static const cargando = 'Cargando tu deuda con la casa editora';
+
+  /// La tarjeta de Mi Cuenta con la primera lectura que falla en la red (decisión del orquestador,
+  /// 04/11, por el mapa: estados que no se saben): el mismo tono que 33B·03, con lo que falta.
+  static const tarjetaNoDisponible = 'No pudimos traer tu deuda con la casa editora.';
 
   /// Decisión de Cristian (25/10, «Pago de más»): la deuda no queda en $ 0, se ve «a favor $ X».
   static const aFavor = 'A favor';
@@ -73,6 +80,22 @@ abstract final class FormatoDeuda {
   static String totalHablado(DeudaConLaCasa deuda) => deuda.aFavor
       ? 'Total, a favor ${FormatoCuenta.monto(-deuda.deudaTotalCentavos)}'
       : 'Total, ${FormatoCuenta.monto(deuda.deudaTotalCentavos)}';
+
+  /// La cifra de la deuda contra la de hace 7 días, con el formato de las otras tarjetas de Mi Cuenta:
+  /// «▼ $ 2.100 contra la semana pasada» o «Sin datos de la semana anterior» (33A·01 y 33A·04).
+  /// Quedar a favor cuenta como deuda negativa: la diferencia es siempre `hoy − hace 7 días`.
+  static CifraDeCuenta cifraDeLaVariacion(DeudaConLaCasa deuda) => CifraDeCuenta(
+    totalCentavos: math.max(0, deuda.deudaTotalCentavos),
+    variacionCentavos: deuda.variacionCentavos,
+  );
+
+  /// La línea de abajo del total de la tarjeta (33A·01).
+  static String lineaDeVariacion(DeudaConLaCasa deuda) =>
+      FormatoCuenta.lineaDeVariacion(cifraDeLaVariacion(deuda));
+
+  /// Lo mismo para el lector de pantalla: «Bajó $ 2.100 contra la semana pasada».
+  static String variacionHablada(DeudaConLaCasa deuda) =>
+      FormatoCuenta.variacionHablada(cifraDeLaVariacion(deuda));
 
   /// Lo que dice el lector de pantalla de un pedido, de una vez.
   static String pedidoHablado(PedidoConSaldo pedido) {
