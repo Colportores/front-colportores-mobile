@@ -642,17 +642,24 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
         titulo: TextosDevolucion.tituloRegistrada,
       ),
       hijos: [
-        TarjetaDeDatos(
-          key: const Key('devolucion_resumen'),
-          datos: [
-            DatoDeDevolucion(
-              TextosDevolucion.totalDeLaVenta,
-              FormatoVenta.monto(registrada.totalCentavos),
-            ),
-            DatoDeDevolucion(TextosDevolucion.saldo, FormatoVenta.monto(registrada.saldoCentavos)),
-          ],
-        ),
-        const SizedBox(height: 12),
+        // Una devolución sin plata (venta de $ 0) no muestra montos: queda solo el aviso (decisión del
+        // orquestador, 06/11, por el mapa §2: coherencia con la pantalla de elegir y la hoja).
+        if (venta == null || venta.montoTotalCentavos > 0) ...[
+          TarjetaDeDatos(
+            key: const Key('devolucion_resumen'),
+            datos: [
+              DatoDeDevolucion(
+                TextosDevolucion.totalDeLaVenta,
+                FormatoVenta.monto(registrada.totalCentavos),
+              ),
+              DatoDeDevolucion(
+                TextosDevolucion.saldo,
+                FormatoVenta.monto(registrada.saldoCentavos),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
         AvisoDeDevolucionHecha(
           texto: TextosDevolucion.registramos(_titulosDevueltos, todo: registrada.eraTotal),
         ),

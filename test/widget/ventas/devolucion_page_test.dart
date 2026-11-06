@@ -533,7 +533,11 @@ void main() {
 
       expect(repo.pedidos.single.unidadesPorRenglon, {'i-regalo': 1});
       expect(find.text('Devolución registrada'), findsOneWidget);
-      expect(find.text(_m(0)), findsWidgets);
+      // 31-05 sin tarjeta de montos: queda solo el aviso de lo que volvió.
+      expect(find.byKey(const Key('devolucion_resumen')), findsNothing);
+      expect(find.text('Total de la venta'), findsNothing);
+      expect(find.text('Saldo'), findsNothing);
+      expect(find.text('Registramos la devolución de Regalo.'), findsOneWidget);
       await tocar(tester, find.byKey(const Key('devolucion_listo')));
       expect(m.resultados, [true]);
     });
@@ -551,6 +555,19 @@ void main() {
         expect(find.text('Saldo nuevo'), findsWidgets);
       },
     );
+
+    testWidgets('una venta de más de \$ 0 devuelta entera conserva la tarjeta de 31-05', (
+      tester,
+    ) async {
+      await _montar(tester, _RepoFalso(_ventaDelCanvas(cobrado: 0)));
+      await tocar(tester, _mas('Salud y Hogar'));
+      await tocar(tester, _mas('Nuestros Hijos'));
+      await _seguir(tester);
+      await _confirmarEnLaHoja(tester);
+
+      expect(find.byKey(const Key('devolucion_resumen')), findsOneWidget);
+      expect(find.text('Total de la venta'), findsOneWidget);
+    });
 
     testWidgets('el doble toque en «Registrar» manda un solo pedido', (tester) async {
       final repo = _RepoFalso(_ventaDeRegalo());
