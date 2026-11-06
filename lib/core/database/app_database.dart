@@ -164,10 +164,12 @@ class AppDatabase extends _$AppDatabase {
   ///   subida, solo del teléfono; y `cobranza.ticket_id`, el ticket del cobro.
   /// - 31: `cobranza` pierde `numero_cuota` (backend-supabase 0156, decisión de Cristian, 03/11): el
   ///   cobro ya no guarda qué número de cuota paga (#608).
+  /// - 32: `jornada` pierde `tipo_acompaniamiento` (backend-supabase 0169, decisión de Cristian, 04/11):
+  ///   ninguna pantalla lo pide; el acompañamiento queda con quién acompaña (#642).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 31;
+  static const int versionEsquema = 32;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -464,6 +466,14 @@ class AppDatabase extends _$AppDatabase {
     // vuelve a encolar al migrar. `alterTable` vuelve a crear el índice `cobranza_venta_idx`.
     from30To31: (m, esquema) async {
       await m.alterTable(TableMigration(esquema.cobranza));
+    },
+    // Saca de `jornada` la columna `tipo_acompaniamiento` (backend-supabase 0169): ninguna pantalla la
+    // pide y el servidor ya no la tiene. Se reescribe la tabla y se conserva cada jornada con el resto
+    // de sus columnas (inicio, fin, quién acompaña, totales, auditoría); lo que valía la columna se
+    // pierde (nadie la escribía) y nada se vuelve a encolar al migrar. `alterTable` vuelve a crear el
+    // índice `jornada_colportor_idx` y deja los `CHECK`.
+    from31To32: (m, esquema) async {
+      await m.alterTable(TableMigration(esquema.jornada));
     },
   );
 }

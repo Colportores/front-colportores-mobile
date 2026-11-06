@@ -26,7 +26,6 @@ Map<String, Object?> _jornada(String id, String actualizada) => {
   'inicio': '2026-10-16T08:00:00.000Z',
   'fin': null,
   'acompaniante_id': null,
-  'tipo_acompaniamiento': null,
   'total_visitas': 7,
   'total_ventas': 2,
   'created_at': '2026-10-16T08:00:00.000Z',
