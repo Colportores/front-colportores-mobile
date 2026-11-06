@@ -263,6 +263,23 @@ funde un `delete`, ni nada que ya esté `IN_FLIGHT`, `DONE` o enviado (el
 servidor ya lo vio). Es la decisión de «Fusión cola» (23/10) y la prueba está en
 [`test/version_de_vuelta_test.dart`](test/version_de_vuelta_test.dart).
 
+## Un `429` frena la subida (#188)
+
+Si el backend contesta `429`, el motor **no sube nada** hasta que pasa el
+`Retry-After` del encabezado, con un tope de 60 segundos (`maxRetryAfter`); sin
+encabezado, o en cero, espera 5 segundos (`defaultRetryAfter`). Los jobs
+vuelven a `PENDING` como en cualquier falla transitoria y los triggers que
+lleguen durante la espera no llaman al transporte: no hay ráfaga de reintentos.
+El pull sigue, y `SyncOutcome.pushPausedUntil` dice hasta cuándo espera la
+subida. Un `429` del pull también frena la subida.
+
+La espera frena **toda** la subida y no solo la entidad que rebotó: retener un
+alta y dejar salir lo que la nombra termina en `23503` y en jobs `INVALID`. Vive
+solo en memoria (reabrir la app empieza sin espera) y no hay un timer que
+reintente al vencer: sube en el primer trigger posterior. Decisión de Cristian
+del 04/11; la prueba está en
+[`test/espera_del_429_test.dart`](test/espera_del_429_test.dart).
+
 ## Dependencias entre entidades — un agujero abierto
 
 §2 declara `venta` y `venta_item` como dos entidades `push` separadas, pero el

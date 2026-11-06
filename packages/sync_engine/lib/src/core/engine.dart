@@ -42,6 +42,7 @@ class SyncOutcome {
     this.pulled = 0,
     this.skipped = false,
     this.pausedReason,
+    this.pushPausedUntil,
     this.failure,
   });
 
@@ -58,6 +59,12 @@ class SyncOutcome {
   /// (HU-SYNC-008). El ciclo no falló —lo pendiente subió— y el pull espera a
   /// que haya Wi-Fi, a un sync manual o a un evento de realtime.
   final String? pausedReason;
+
+  /// Hasta cuándo la subida está frenada por un `429` (§5.1): el servidor pidió
+  /// esperar y el motor no sube nada hasta esa hora. El ciclo no falló por eso
+  /// —la cola quedó en `PENDING` y el pull corrió—, pero este ciclo no subió.
+  /// Es solo memoria: si se cierra la app, la espera se pierde.
+  final DateTime? pushPausedUntil;
 
   /// La falla transitoria que lo cortó. Los jobs volvieron a `PENDING`.
   final TransportFailure? failure;
@@ -84,6 +91,8 @@ class SyncEngine {
     this.realtimeDebounce = const Duration(milliseconds: 300),
     this.criticalDebounce = const Duration(seconds: 2),
     this.inFlightLease = const Duration(minutes: 10),
+    this.maxRetryAfter = const Duration(seconds: 60),
+    this.defaultRetryAfter = const Duration(seconds: 5),
   }) : _specs = specs,
        _uuid = uuid ?? UuidV7(),
        _adapters = {for (final a in adapters) a.remoteName: a},
@@ -176,6 +185,16 @@ class SyncEngine {
   /// como el reclamo corre en cada ciclo, no hace falta reiniciar la app.
   final Duration inFlightLease;
 
+  /// Lo más que el motor frena la subida por un `429`, venga lo que venga en el
+  /// `Retry-After`: un encabezado de una hora dejaría al colportor sin respaldo
+  /// de sus ventas toda la jornada.
+  final Duration maxRetryAfter;
+
+  /// Cuánto frena la subida un `429` sin `Retry-After` (o con uno en cero): una
+  /// espera corta en vez de reintentar al instante contra un servidor que ya
+  /// dijo que no da abasto.
+  final Duration defaultRetryAfter;
+
   StreamSubscription<bool>? _conn;
   StreamSubscription<bool>? _wifiSub;
   StreamSubscription<String>? _realtimeSub;
@@ -220,6 +239,14 @@ class SyncEngine {
 
   /// Por qué el último ciclo dejó el pull esperando (HU-SYNC-008), o `null`.
   String? _pullEnPausa;
+
+  /// Hasta cuándo no se sube nada porque el backend contestó `429`, o `null`.
+  ///
+  /// Solo en memoria, a propósito: la cola no cambia (los jobs siguen en
+  /// `PENDING`) y reabrir la app empieza sin espera. Frena **toda** la subida y
+  /// no solo la entidad que rebotó: retener un alta y dejar salir lo que la
+  /// nombra termina en `23503` y en jobs `INVALID`. El pull sigue.
+  DateTime? _subidaFrenadaHasta;
 
   /// Desde cuándo el backend contesta `401`. Ver [SyncStatus.unauthorizedSince].
   DateTime? _sinSesionDesde;
@@ -911,7 +938,11 @@ class SyncEngine {
     // del dispositivo original, así que un insert repetido vuelve
     // `duplicate`, no una segunda venta.
     onProgress?.call(const RecoveryProgress(RecoveryPhase.replaying));
-    final replay = hayRestore ? await _pushPending() : null;
+    // Con la subida frenada por un 429 no se reenvía ahora: la cola restaurada
+    // queda en PENDING y sale cuando venza la espera.
+    final replay = hayRestore && _subidaFrenada() == null
+        ? await _pushPending()
+        : null;
 
     // Fase 3 — reconciliación: lo que subió después del backup.
     final reconciliadas = <String, int>{};
@@ -1050,7 +1081,11 @@ class SyncEngine {
     // §5.6: el evento solo dice que algo cambió allá. Subir la cola por eso
     // convertiría cada cambio de precio del administrador en tráfico de subida
     // desde todos los celulares a la vez.
-    final subida = trigger == SyncTrigger.realtime
+    //
+    // Tras un 429 no se sube nada hasta que venza su Retry-After (§5.1), y el
+    // ciclo sigue con el pull.
+    final frenada = trigger == SyncTrigger.realtime ? null : _subidaFrenada();
+    final subida = trigger == SyncTrigger.realtime || frenada != null
         ? (pushed: 0, invalidated: 0, conflicts: 0, failure: null)
         : await _pushPending();
     if (subida.failure != null) {
@@ -1061,6 +1096,7 @@ class SyncEngine {
         pushed: subida.pushed,
         invalidated: subida.invalidated,
         conflicts: subida.conflicts,
+        pushPausedUntil: _subidaFrenada(),
         failure: subida.failure,
       );
     }
@@ -1077,6 +1113,7 @@ class SyncEngine {
         invalidated: subida.invalidated,
         conflicts: subida.conflicts,
         pausedReason: motivo,
+        pushPausedUntil: frenada,
       );
     }
 
@@ -1084,6 +1121,9 @@ class SyncEngine {
     try {
       pulled = await _pull(_scopeReplica, _specs.pullable);
     } on TransportFailure catch (falla) {
+      // Un 429 del pull también pide esperar: lo que sube después va al mismo
+      // servidor.
+      _frenarSubidaSi429(falla);
       _anotarSesion(falla);
       await _emit();
       return SyncOutcome(
@@ -1091,6 +1131,7 @@ class SyncEngine {
         pushed: subida.pushed,
         invalidated: subida.invalidated,
         conflicts: subida.conflicts,
+        pushPausedUntil: _subidaFrenada(),
         failure: falla,
       );
     }
@@ -1106,7 +1147,33 @@ class SyncEngine {
       invalidated: subida.invalidated,
       conflicts: subida.conflicts,
       pulled: pulled,
+      pushPausedUntil: frenada,
     );
+  }
+
+  /// Hasta cuándo sigue frenada la subida por un `429`, o `null` si no lo está.
+  /// Una espera vencida se descarta acá mismo.
+  DateTime? _subidaFrenada() {
+    final hasta = _subidaFrenadaHasta;
+    if (hasta == null) return null;
+    if (_clock().isBefore(hasta)) return hasta;
+    _subidaFrenadaHasta = null;
+    return null;
+  }
+
+  /// Un `429` frena la subida hasta su `Retry-After`, con el tope de
+  /// [maxRetryAfter]; sin encabezado (o en cero) espera [defaultRetryAfter].
+  /// Cualquier otra falla se ignora acá. Si ya había una espera más larga, no
+  /// se acorta.
+  void _frenarSubidaSi429(TransportFailure falla) {
+    if (falla.status != 429) return;
+    final pedido = falla.retryAfter;
+    final espera = pedido == null || pedido <= Duration.zero
+        ? defaultRetryAfter
+        : pedido;
+    final hasta = _clock().add(espera > maxRetryAfter ? maxRetryAfter : espera);
+    final actual = _subidaFrenadaHasta;
+    if (actual == null || hasta.isAfter(actual)) _subidaFrenadaHasta = hasta;
   }
 
   /// HU-SYNC-008: con el ahorro de datos activo y solo datos móviles, el ciclo
@@ -1260,7 +1327,9 @@ class SyncEngine {
             continue;
           }
           // Transitorio: vuelven a PENDING y el ciclo se corta acá. Lo que quedó
-          // sin intentar ya está en PENDING, así que sube al próximo trigger.
+          // sin intentar ya está en PENDING, así que sube al próximo trigger
+          // (con un 429, el primero que llegue después de su Retry-After).
+          _frenarSubidaSi429(falla);
           await _jobs.markPending(sinResolver);
           sinResolver.clear();
           return (
