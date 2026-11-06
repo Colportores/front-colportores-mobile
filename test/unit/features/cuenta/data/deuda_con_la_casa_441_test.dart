@@ -160,6 +160,30 @@ void main() {
       }
     });
 
+    test('deuda_hace_7_dias (backend-supabase 0168): un entero, `null` o sin la clave', () {
+      final con7 = _respuestaDelCanvas()..['deuda_hace_7_dias'] = 2050000;
+      final deuda = DeudaConLaCasaModel.desdeJson(con7);
+      expect(deuda.deudaHace7DiasCentavos, 2050000);
+      expect(deuda.variacionCentavos, -210000);
+
+      // Nada registrado hace 7 días: no es «igual», es «sin datos».
+      final nula = _respuestaDelCanvas()..['deuda_hace_7_dias'] = null;
+      expect(DeudaConLaCasaModel.desdeJson(nula).deudaHace7DiasCentavos, isNull);
+      expect(DeudaConLaCasaModel.desdeJson(nula).variacionCentavos, isNull);
+
+      // Una respuesta guardada antes de la migración no trae la clave.
+      expect(DeudaConLaCasaModel.desdeJson(_respuestaDelCanvas()).deudaHace7DiasCentavos, isNull);
+
+      // Estaba a favor hace 7 días (negativa): también es un entero válido.
+      final aFavor = _respuestaDelCanvas()..['deuda_hace_7_dias'] = -50000;
+      expect(DeudaConLaCasaModel.desdeJson(aFavor).variacionCentavos, 1890000);
+
+      for (final mala in <Object?>['20500', 20500.5, true, <Object?>[]]) {
+        final r = _respuestaDelCanvas()..['deuda_hace_7_dias'] = mala;
+        expect(() => DeudaConLaCasaModel.desdeJson(r), throwsFormatException, reason: '$mala');
+      }
+    });
+
     test('un pedido sin líneas se lee con la lista vacía', () {
       final r = _respuestaDelCanvas();
       ((r['pedidos']! as List).first as Map<String, Object?>)['lineas'] = <Object?>[];
@@ -184,6 +208,27 @@ void main() {
             lineas: const [],
           ),
       ],
+    );
+
+    test(
+      'la variación es la deuda de hoy menos la de hace 7 días, y sin la de hace 7 días no hay',
+      () {
+        DeudaConLaCasa de({int? hace7}) => DeudaConLaCasa(
+          deudaTotalCentavos: 1840000,
+          sumaDeSaldosCentavos: 1840000,
+          depositosValidadosCentavos: 0,
+          pedidos: const [],
+          deudaHace7DiasCentavos: hace7,
+        );
+
+        expect(de(hace7: 2050000).variacionCentavos, -210000);
+        expect(de(hace7: 1500000).variacionCentavos, 340000);
+        expect(de(hace7: 1840000).variacionCentavos, 0);
+        expect(de().variacionCentavos, isNull);
+        // La deuda de hace 7 días cuenta en la igualdad.
+        expect(de(hace7: 1), isNot(equals(de(hace7: 2))));
+        expect(de(hace7: 1), equals(de(hace7: 1)));
+      },
     );
 
     test('sin deuda: cero y ningún pedido', () {

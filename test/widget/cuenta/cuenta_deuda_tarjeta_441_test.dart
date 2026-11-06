@@ -105,7 +105,10 @@ void main() {
       await _montar(tester, repo);
 
       final semantica = tester.getSemantics(find.byKey(tarjeta));
-      expect(semantica.label, r'Deuda con la casa editora, $ 18.400');
+      expect(
+        semantica.label,
+        r'Deuda con la casa editora, $ 18.400. Sin datos de la semana anterior',
+      );
       expect(semantica.flagsCollection.isButton, isTrue);
       manejador.dispose();
     });

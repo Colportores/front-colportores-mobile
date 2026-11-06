@@ -363,6 +363,112 @@ void main() {
     });
   });
 
+  /// Una colección vendida a \$ 0 (un regalo): los renglones conservan su precio de lista, la venta
+  /// vale 0 y no hay cobros.
+  Future<void> vendidaARegalo({int precio = 190000}) async {
+    await ventas.registrar(ventaDe('v-1', monto: 0, fecha: _venta), [
+      itemDe('i-salud', 'v-1', productoId: 'p-salud', cantidad: 1, precio: precio),
+      itemDe('i-hijos', 'v-1', productoId: 'p-hijos', cantidad: 1, precio: precio),
+    ]);
+    encolador.encolados.clear();
+  }
+
+  group('venta de \$ 0 (un regalo): solo vuelve el libro (backend-supabase 0166)', () {
+    test(
+      'dado una venta de \$ 0, acepta la devolución: anota el libro, sin montos ni cobros',
+      () async {
+        await vendidaARegalo();
+
+        final r = await local.registrar(pedido({'i-hijos': 1}, motivo: 'no lo quiso'));
+
+        final fila = (await filas()).single;
+        expect(fila.ventaId, 'v-1');
+        expect(fila.productosDevueltos, [
+          {'producto_id': 'p-hijos', 'cantidad': 1, 'venta_item_id': 'i-hijos'},
+        ]);
+        expect(fila.motivo, 'no lo quiso');
+        expect(r.totalCentavos, 0);
+        expect(r.saldoCentavos, 0);
+        expect(r.eraTotal, isFalse);
+        expect(await saldoDeLaVenta(), 0);
+        expect(cola().first, 'devolucion:insert');
+        // No se crea ningún cobro ni se mueve plata.
+        expect(await db.select(db.cobranzas).get(), isEmpty);
+        expect(await db.select(db.auditLogLocal).get(), hasLength(1));
+      },
+    );
+
+    test('dado una venta de \$ 0 con libros de precio 0, también acepta la devolución', () async {
+      await vendidaARegalo(precio: 0);
+
+      final r = await local.registrar(pedido({'i-hijos': 1, 'i-salud': 1}));
+
+      expect(r.eraTotal, isTrue);
+      expect((await filas()).single.productosDevueltos, hasLength(2));
+      expect(await saldoDeLaVenta(), 0);
+    });
+
+    test('dado una venta de \$ 0, acepta devolver de a un libro y después el otro', () async {
+      await vendidaARegalo();
+
+      final primera = await local.registrar(pedido({'i-hijos': 1}));
+      final segunda = await local.registrar(pedido({'i-salud': 1}, id: 'd-2'));
+
+      expect(primera.eraTotal, isFalse);
+      expect(segunda.eraTotal, isTrue);
+      expect(await filas(), hasLength(2));
+      expect(await db.select(db.cobranzas).get(), isEmpty);
+    });
+
+    test('dado una venta de \$ 0 que ya volvió entera, no deja devolver de más', () async {
+      await vendidaARegalo();
+      await local.registrar(pedido({'i-hijos': 1, 'i-salud': 1}));
+
+      await expectLater(
+        local.registrar(pedido({'i-hijos': 1}, id: 'd-2')),
+        throwsA(isA<DevolucionInvalidaException>()),
+      );
+
+      expect(await filas(), hasLength(1));
+    });
+
+    test(
+      'dado el mismo pedido repetido (doble toque), responde que ya estaba y no duplica',
+      () async {
+        await vendidaARegalo();
+        await local.registrar(pedido({'i-hijos': 1}));
+        encolador.encolados.clear();
+
+        final otra = await local.registrar(pedido({'i-hijos': 1}));
+
+        expect(otra.yaEstaba, isTrue);
+        expect(await filas(), hasLength(1));
+        expect(encolador.encolados, isEmpty);
+      },
+    );
+
+    test('dado que el motor de sync falla, no queda fila y el reintento deja una', () async {
+      await vendidaARegalo();
+      encolador.fallarCon = StateError('motor apagado');
+
+      await expectLater(local.registrar(pedido({'i-hijos': 1})), throwsA(isA<StateError>()));
+      expect(await filas(), isEmpty);
+
+      encolador.fallarCon = null;
+      await local.registrar(pedido({'i-hijos': 1}));
+      expect(await filas(), hasLength(1));
+    });
+
+    test('dado una venta de más de \$ 0 pagada entera, sigue rechazando la devolución', () async {
+      await venderElCanvas(cobrado: 450000);
+
+      await expectLater(
+        local.registrar(pedido({'i-hijos': 1})),
+        throwsA(isA<DevolucionVentaSaldadaException>()),
+      );
+    });
+  });
+
   group('rechazos', () {
     test(
       'dado que la venta está saldada, lanza DevolucionVentaSaldadaException y no escribe nada',
@@ -412,15 +518,15 @@ void main() {
       );
     });
 
-    test('dado una venta de \$ 0, está saldada y no acepta devoluciones', () async {
-      await ventas.registrar(ventaDe('v-1', monto: 0, fecha: _venta), [
-        itemDe('i-hijos', 'v-1', productoId: 'p-hijos', cantidad: 1, precio: 0),
-      ]);
+    test('dado una venta de \$ 0 que ya no se acepta por plazo, sigue rechazándola', () async {
+      await vendidaARegalo();
 
       await expectLater(
-        local.registrar(pedido({'i-hijos': 1})),
-        throwsA(isA<DevolucionVentaSaldadaException>()),
+        local.registrar(pedido({'i-hijos': 1}, ahora: _venta.add(const Duration(hours: 73)))),
+        throwsA(isA<DevolucionFueraDePlazoException>()),
       );
+
+      expect(await filas(), isEmpty);
     });
 
     test(
