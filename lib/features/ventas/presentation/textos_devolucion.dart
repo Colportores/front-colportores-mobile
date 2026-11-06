@@ -54,6 +54,10 @@ abstract final class TextosDevolucion {
       'Esta venta ya está saldada: el cliente pagó todo lo que se queda comprando, así que no se '
       'puede devolver nada. Si hay un error, pedile a tu coordinador que lo revise.';
   static const devuelve = 'Devuelve';
+
+  /// Una venta de $ 0 (un regalo): la devolución solo anota el libro (decisión del orquestador, 06/11,
+  /// por el mapa §2: decir la verdad y guiar).
+  static const ventaDeCero = 'Esta venta fue de \$ 0: solo vuelve el libro, no se mueve plata.';
   static const eligeAhora = 'Registrá la devolución para ver cómo queda.';
 
   /// «DEVOLUCIÓN · VENTA 0042».

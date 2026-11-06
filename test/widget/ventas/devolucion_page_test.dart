@@ -515,12 +515,21 @@ void main() {
       await tocar(tester, _mas('Regalo'));
       await _seguir(tester);
 
-      // Cómo queda: se queda con \$ 0, saldo nuevo \$ 0, y nada de «ese dinero no se devuelve».
-      expect(find.byKey(const Key('devolucion_cuentas')), findsOneWidget);
-      expect(find.text('Saldo nuevo'), findsOneWidget);
+      // Una venta de $ 0 no tiene cuentas: dice que solo vuelve el libro, sin montos ni aviso de plata.
+      expect(find.byKey(const Key('devolucion_venta_de_cero')), findsOneWidget);
+      expect(
+        find.text('Esta venta fue de \$ 0: solo vuelve el libro, no se mueve plata.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('devolucion_cuentas')), findsNothing);
+      expect(find.text('Saldo nuevo'), findsNothing);
       expect(find.byKey(const Key('devolucion_sin_devolver')), findsNothing);
 
-      await _confirmarEnLaHoja(tester);
+      // La hoja de confirmar dice qué vuelve y ningún monto.
+      await tocar(tester, _cta);
+      expect(find.text('Devuelve'), findsOneWidget);
+      expect(find.text('Saldo nuevo'), findsNothing);
+      await tocar(tester, find.byKey(const Key('devolucion_hoja_registrar')));
 
       expect(repo.pedidos.single.unidadesPorRenglon, {'i-regalo': 1});
       expect(find.text('Devolución registrada'), findsOneWidget);
@@ -528,6 +537,20 @@ void main() {
       await tocar(tester, find.byKey(const Key('devolucion_listo')));
       expect(m.resultados, [true]);
     });
+
+    testWidgets(
+      'una venta con total mayor que 0 sigue mostrando sus cuentas, no el texto de \$ 0',
+      (tester) async {
+        await _montar(tester, _RepoFalso(_ventaDelCanvas()));
+        await tocar(tester, _mas('Nuestros Hijos'));
+        await _seguir(tester);
+
+        expect(find.byKey(const Key('devolucion_cuentas')), findsOneWidget);
+        expect(find.byKey(const Key('devolucion_venta_de_cero')), findsNothing);
+        await tocar(tester, _cta);
+        expect(find.text('Saldo nuevo'), findsWidgets);
+      },
+    );
 
     testWidgets('el doble toque en «Registrar» manda un solo pedido', (tester) async {
       final repo = _RepoFalso(_ventaDeRegalo());
@@ -574,6 +597,9 @@ void main() {
       await _montar(tester, _RepoFalso(_ventaDeRegalo()), escala: 2, tamano: const Size(320, 568));
 
       expect(find.byKey(const Key('devolucion_saldada')), findsNothing);
+      await tocar(tester, _mas('Regalo'));
+      await _seguir(tester);
+      expect(find.byKey(const Key('devolucion_venta_de_cero')), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
