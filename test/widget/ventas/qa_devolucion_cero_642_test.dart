@@ -446,26 +446,28 @@ void main() {
   });
 
   group('casos límite del flujo', () {
-    testWidgets(
-      'falla a mitad: el error avisa, «Registrar» vuelve y el reintento usa el mismo id',
-      (tester) async {
-        final repo = _Repo(_regalo());
-        await _llevarA(
-          tester,
-          _Estado.error,
-          tamano: const Size(360, 640),
-          escala: 2,
-          repoPropio: repo,
-        );
-        expect(find.byKey(const Key('devolucion_error')), findsOneWidget);
-        expect(find.text('Registrando…'), findsNothing);
-        final boton = tester.widget<FilledButton>(_cta);
-        expect(boton.onPressed, isNotNull);
-        await tocar(tester, _cta);
-        expect(repo.pedidos.map((p) => p.id), ['d-1', 'd-1']);
-        expect(find.text('Devolución registrada'), findsOneWidget);
-      },
-    );
+    testWidgets('falla a mitad: el error avisa, «Registrar» vuelve y el reintento usa el mismo id', (
+      tester,
+    ) async {
+      // Con las fuentes reales, no con Ahem: a 200 % la letra de prueba es ancha como una caja y
+      // empuja el aviso bajo el borde de la pantalla (esté o no cargada por otro test del archivo).
+      await _cargarFuentes(tester);
+      final repo = _Repo(_regalo());
+      await _llevarA(
+        tester,
+        _Estado.error,
+        tamano: const Size(360, 640),
+        escala: 2,
+        repoPropio: repo,
+      );
+      expect(find.byKey(const Key('devolucion_error')), findsOneWidget);
+      expect(find.text('Registrando…'), findsNothing);
+      final boton = tester.widget<FilledButton>(_cta);
+      expect(boton.onPressed, isNotNull);
+      await tocar(tester, _cta);
+      expect(repo.pedidos.map((p) => p.id), ['d-1', 'd-1']);
+      expect(find.text('Devolución registrada'), findsOneWidget);
+    });
 
     testWidgets('lo elegido y lo escrito en el motivo no se pierden tras el error', (tester) async {
       final repo = _Repo(_regalo());
