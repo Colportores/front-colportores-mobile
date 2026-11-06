@@ -24,6 +24,12 @@ class _RepoFalso implements EntregaRepository {
   }
 
   @override
+  Future<Either<Failure, EntregaRegistrada>> registrarEntrega(
+    String ventaId,
+    List<Entrega> filas,
+  ) => throw UnimplementedError('Lo cubre entregar_lo_tildado_use_case_test.dart');
+
+  @override
   Future<Either<Failure, List<Entrega>>> deLaVenta(String ventaId) async => const Right([]);
 }
 
