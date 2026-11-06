@@ -31,7 +31,7 @@ final inicioEntrevista = DateTime(2026, 10, 23, 14, 23);
 EntrevistaEnCurso entrevistaDePrueba({
   String colportorId = 'col-1',
   String espacioId = 'esp-1',
-  String espacioPersonaId = 'ep-1',
+  String? espacioPersonaId = 'ep-1',
   String visitaId = 'vis-1',
   String notaId = 'not-1',
   DateTime? inicio,
@@ -155,12 +155,12 @@ final class DestinoFalso implements ResolverDestinoDeEntrevista {
   /// Que devuelva `null`: ni la casa ni el depto siguen en el teléfono.
   bool sinDestino = false;
   bool falla = false;
-  final consultas = <({String espacioId, String espacioPersonaId})>[];
+  final consultas = <({String espacioId, String? espacioPersonaId})>[];
 
   @override
   Future<DestinoDeEntrevista?> resolver({
     required String espacioId,
-    required String espacioPersonaId,
+    String? espacioPersonaId,
   }) async {
     consultas.add((espacioId: espacioId, espacioPersonaId: espacioPersonaId));
     if (falla) throw StateError('no se puede leer');

@@ -59,7 +59,6 @@ final _jornada = JornadaModel.fromJson(const {
   'inicio': '2026-10-16T08:00:00.000Z',
   'fin': null,
   'acompaniante_id': null,
-  'tipo_acompaniamiento': null,
   'total_visitas': 0,
   'total_ventas': 0,
   'created_at': '2026-10-16T08:00:00.000Z',

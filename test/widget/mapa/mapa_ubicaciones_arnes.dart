@@ -17,6 +17,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_cas
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_ubicaciones_notifier.dart'
     show mapaUbicacionesProvider;
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_ubicaciones_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/pantallas_sobre_el_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/situacion_mapa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_mapa_ubicaciones.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
@@ -134,22 +135,25 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
             (_) => AmbitoFijo(ambito ?? const AmbitoTrabajo()),
           ),
       ],
-      child: MaterialApp(
-        theme: temaClaro(),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(escala), alwaysUse24HourFormat: true),
-          child: child!,
-        ),
-        home: Scaffold(
-          body: ValueListenableBuilder<bool>(
-            valueListenable: montaje.activa,
-            builder: (context, estaActiva, _) => MapaUbicacionesPage(
-              key: const Key('pestana_mapa'),
-              colportorId: 'col-1',
-              activa: estaActiva,
-              alAbrirAlta: altaReal ? null : montaje.abrirAlta,
+      child: Consumer(
+        builder: (context, ref, _) => MaterialApp(
+          navigatorObservers: [ref.read(pantallasSobreElMapaProvider)],
+          theme: temaClaro(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(escala), alwaysUse24HourFormat: true),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: ValueListenableBuilder<bool>(
+              valueListenable: montaje.activa,
+              builder: (context, estaActiva, _) => MapaUbicacionesPage(
+                key: const Key('pestana_mapa'),
+                colportorId: 'col-1',
+                activa: estaActiva,
+                alAbrirAlta: altaReal ? null : montaje.abrirAlta,
+              ),
             ),
           ),
         ),

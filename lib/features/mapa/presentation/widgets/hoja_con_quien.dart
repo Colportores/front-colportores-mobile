@@ -8,6 +8,7 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/eleccion_de_entrevista.dart';
+import '../../domain/entities/eleccion_de_venta.dart';
 import '../../domain/entities/persona.dart';
 import '../../domain/entities/persona_de_la_entrevista.dart';
 import '../../domain/entities/persona_del_espacio.dart';
@@ -125,9 +126,11 @@ Future<Object?> _abrir(
 /// más reciente primero: es la que viene elegida.
 ///
 /// Solo las entrevistadas, y nada más: sin «+ Alguien nuevo» ni «Todavía no sé con quién» (a quien no
-/// tuvo entrevista no se le vende desde acá, y a nadie se le inventa). Devuelve a la elegida, o `null`
-/// si la colportora tocó «Volver» o cerró sin elegir (no se guarda nada).
-Future<PersonaDeLaEntrevista?> mostrarHojaConQuienVende(
+/// tuvo entrevista no se le vende desde acá, y a nadie se le inventa). Devuelve a la elegida
+/// ([VenderA]); [NadieParaVender] si ya no queda ninguna de las entrevistadas (se dieron de baja
+/// mientras tanto: quien llama lo dice); o `null` si la colportora tocó «Volver» o cerró sin elegir (no
+/// se guarda nada).
+Future<EleccionDeVenta?> mostrarHojaConQuienVende(
   BuildContext context, {
   required String espacioId,
   required String colportorId,
@@ -145,7 +148,11 @@ Future<PersonaDeLaEntrevista?> mostrarHojaConQuienVende(
     builder: (_) =>
         HojaConQuien(espacioId: espacioId, colportorId: colportorId, entrevistadas: entrevistadas),
   );
-  return r is EleccionDeEntrevista ? r.persona : null;
+  return switch (r) {
+    EleccionDeEntrevista(:final persona?) => VenderA(persona),
+    NadieParaVender() => r,
+    _ => null,
+  };
 }
 
 enum _Modo { formulario, lista }
@@ -353,9 +360,9 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
     if (_modo == null && personas != null) {
       switch (PasoConQuien.de(personas)) {
         // «Vender»: sin ninguna de las entrevistadas (ya no están) no hay a quién vender: se cierra
-        // sin elegir, nada se guarda.
+        // diciéndolo (quien abrió el paso avisa qué pasó y qué hacer), nada se guarda.
         case SinPersonas() when widget.entrevistadas != null:
-          _saltar(null);
+          _saltar(const NadieParaVender());
         case SinPersonas() when widget.paraProgramar:
           _saltar(const CitaSinPersona());
         case SinPersonas():

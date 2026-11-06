@@ -790,26 +790,31 @@ void main() {
       expect(a.montaje.agenda.recibidas, isEmpty);
     });
 
-    testWidgets('la venta guardada vuelve al mapa libre (la hoja se cierra) y sin visita atada', (
-      tester,
-    ) async {
-      a.lector.porVinculo['ep-1'] = _ayer;
-      await a.montar(tester);
-      await a.abrirQuePaso(tester);
-      await a.elegir(tester, OpcionQuePaso.vender);
+    testWidgets(
+      'la venta guardada vuelve al mapa libre (la hoja se cierra) y con su visita «Venta» de hoy (#669)',
+      (tester) async {
+        a.lector.porVinculo['ep-1'] = _ayer;
+        await a.montar(tester);
+        await a.abrirQuePaso(tester);
+        await a.elegir(tester, OpcionQuePaso.vender);
 
-      await a.armarLaVenta(tester);
-      await a.registrarSinFecha(tester);
+        await a.armarLaVenta(tester);
+        await a.registrarSinFecha(tester);
 
-      final venta = a.entorno.ventas.recibidas.single.venta;
-      expect(venta.visitaId, isNull, reason: 'no hay visita: es una venta suelta de la casa');
-      expect(venta.espacioPersonaId, 'ep-1');
-      expect(venta.numeroTalonario, '0039');
-      expect(a.montaje.agenda.recibidas, isEmpty);
-      expect(a.salidasDeVenta.single, isA<VentaRegistradaEnLaCasa>());
-      expect(a.resultados, [true], reason: 'tras guardar (05/11): la hoja de la casa se cierra');
-      expect(find.text('Venta 0039 guardada.'), findsOneWidget);
-    });
+        final venta = a.entorno.ventas.recibidas.single.venta;
+        // Decisión de Cristian, 05/11, «Vender visita»: la venta deja también una visita «Venta» de hoy.
+        final visita = a.montaje.agenda.recibidas.single.visita;
+        expect(visita.tipoResultado, TipoResultadoVisita.venta);
+        expect(venta.visitaId, visita.id, reason: 'la venta lleva el id de su visita');
+        expect(visita.espacioPersonaId, 'ep-1');
+        expect(visita.espacioId, 'esp-1');
+        expect(venta.espacioPersonaId, 'ep-1');
+        expect(venta.numeroTalonario, '0039');
+        expect(a.salidasDeVenta.single, isA<VentaRegistradaEnLaCasa>());
+        expect(a.resultados, [true], reason: 'tras guardar (05/11): la hoja de la casa se cierra');
+        expect(find.text('Venta 0039 guardada.'), findsOneWidget);
+      },
+    );
 
     testWidgets('salir de la venta sin guardar no avisa y «¿Qué pasó?» se vuelve a poder usar', (
       tester,
@@ -889,11 +894,15 @@ void main() {
         await a.armarLaVenta(tester);
         await a.registrarSinFecha(tester);
 
-        expect(
-          a.montaje.agenda.recibidas.single.visita.tipoResultado,
+        expect(a.montaje.agenda.recibidas.map((r) => r.visita.tipoResultado), [
           TipoResultadoVisita.entrevista,
+          TipoResultadoVisita.venta,
+        ]);
+        expect(
+          a.entorno.ventas.recibidas.single.venta.visitaId,
+          a.montaje.agenda.recibidas.last.visita.id,
+          reason: 'la venta lleva la visita «Venta», no la de la entrevista de antes',
         );
-        expect(a.entorno.ventas.recibidas.single.venta.visitaId, isNull);
         expect(a.resultados, [true, true]);
       },
     );

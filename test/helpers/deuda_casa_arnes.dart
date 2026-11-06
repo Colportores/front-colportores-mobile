@@ -35,17 +35,20 @@ PedidoConSaldo pedido(
   lineas: lineas,
 );
 
-/// La deuda con los montos en pesos.
+/// La deuda con los montos en pesos. [haceUnaSemana] es la deuda de hace 7 días que registra el
+/// servidor; `null` = no hay registro.
 DeudaConLaCasa deuda({
   required int total,
   int? suma,
   int depositos = 0,
+  int? haceUnaSemana,
   List<PedidoConSaldo> pedidos = const [],
 }) => DeudaConLaCasa(
   deudaTotalCentavos: total * 100,
   sumaDeSaldosCentavos: (suma ?? pedidos.fold<int>(0, (s, p) => s + p.saldoCentavos ~/ 100)) * 100,
   depositosValidadosCentavos: depositos * 100,
   pedidos: pedidos,
+  deudaHace7DiasCentavos: haceUnaSemana == null ? null : haceUnaSemana * 100,
 );
 
 /// Una lectura de [deuda] que llegó a las [leidaEn].

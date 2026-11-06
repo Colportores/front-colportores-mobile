@@ -32,6 +32,7 @@ import 'features/inicio/presentation/pages/inicio_page.dart';
 import 'features/jornada/presentation/pages/jornadas_por_cerrar_page.dart';
 import 'features/jornada/presentation/providers/jornadas_por_cerrar_providers.dart';
 import 'features/mapa/presentation/providers/limpieza_notas_borradas_providers.dart';
+import 'features/mapa/presentation/providers/pantallas_sobre_el_mapa.dart';
 import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
 import 'features/notificaciones/presentation/providers/alarmas_exactas_providers.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
@@ -114,7 +115,7 @@ class ColportoresApp extends ConsumerWidget {
     return _RevisionAlVolver(
       child: MaterialApp(
         navigatorKey: navigatorKeyColportores,
-        navigatorObservers: [routeObserverColportores],
+        navigatorObservers: [routeObserverColportores, ref.read(pantallasSobreElMapaProvider)],
         title: 'Colportores',
         theme: temaClaro(),
         // HU-NOT-003 (24C·08): el aviso de una push que llega con la app abierta va arriba de

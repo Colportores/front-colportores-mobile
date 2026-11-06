@@ -162,7 +162,10 @@ void main() {
 
       expect(a.salidasDeVenta.single, isA<VentaRegistradaEnLaCasa>());
       expect(a.montaje.almacen.guardadas['col-1']!.espacioId, 'esp-9');
-      expect(a.montaje.agenda.recibidas, isEmpty, reason: '«Vender» no guarda visita');
+      // La visita «Venta» es de esta casa, no de la otra donde hay una entrevista en curso.
+      final visita = a.montaje.agenda.recibidas.single.visita;
+      expect(visita.tipoResultado, TipoResultadoVisita.venta);
+      expect(visita.espacioId, 'esp-1');
     });
 
     testWidgets(

@@ -12,6 +12,7 @@ import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_pag
 import 'package:colportores_mobile/features/jornada/data/datasources/fakes/jornada_local_data_source_en_memoria.dart';
 import 'package:colportores_mobile/features/jornada/domain/services/disparador_backup.dart';
 import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart'
     show LecturaGps;
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
@@ -181,8 +182,8 @@ void main() {
     );
 
     testWidgets(
-      'dado permiso otorgado, cuando abre la Lista y el alta después del Mapa, entonces ninguna '
-      'vuelve a leer y el alta arranca en la lectura del mapa',
+      'dado permiso otorgado, cuando abre la Lista y el alta después del Mapa, entonces la Lista no '
+      'lee y el alta lee una vez (#670: nunca parte de una lectura vieja) sin pedir el permiso',
       (tester) async {
         final gps = GpsFalso(Right(lecturaGps(6)));
         await _montar(tester, gps: gps);
@@ -194,8 +195,9 @@ void main() {
         await asentarLista(tester);
 
         expect(find.byType(AltaUbicacionPage), findsOneWidget);
-        expect(gps.lecturas, 1, reason: 'abrir el alta no relee el GPS');
-        expect(find.textContaining('±6'), findsWidgets, reason: 'el alta usa la lectura del mapa');
+        expect(gps.lecturas, 2, reason: 'solo el alta lee, una vez; la Lista no');
+        expect(gps.activaciones, isEmpty, reason: 'sin diálogo: el permiso ya estaba dado');
+        expect(find.textContaining('±6'), findsWidgets, reason: 'el alta usa la lectura nueva');
         expect(find.text('Activar GPS'), findsNothing);
       },
     );
@@ -487,19 +489,20 @@ void main() {
 
     testWidgets(
       'dado que el colportor se movió desde la última lectura del mapa, cuando abre el alta, '
-      'entonces el pin arranca en la posición vieja (documenta la pregunta de frescura)',
+      'entonces el pin arranca en la posición de ahora (decisión #670: nunca una lectura vieja)',
       (tester) async {
         final gps = GpsFalso(Right(lecturaGps(6)));
         await _montar(tester, gps: gps);
         await _irA(tester, 'mapa');
-        gps.respuesta = Right(lecturaGps(6, punto: puntoItalia));
+        gps.respuesta = Right(lecturaGps(6, punto: const Coordenadas(lat: -34.88, lon: -56.1302)));
         final antes = gps.lecturas;
 
         await _irA(tester, 'lista');
         await tester.tap(find.byKey(const Key('lista_nueva')));
         await asentarLista(tester);
 
-        expect(gps.lecturas, antes, reason: 'el alta no relee: usa la lectura que ya había');
+        expect(gps.lecturas, antes + 1, reason: 'el alta lee una vez al abrirse');
+        expect(find.text('-34.88000, -56.13020'), findsOneWidget, reason: 'el pin sale de ahora');
       },
     );
   });

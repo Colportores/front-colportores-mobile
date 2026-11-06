@@ -383,7 +383,7 @@ void main() {
         b.notificador.moverPunto(_otroPunto);
         final camara = b.estado.movimientosCamara;
 
-        b.notificador.volverAMiUbicacion();
+        await b.notificador.volverAMiUbicacion();
 
         expect(b.estado.punto, puntoItalia);
         expect(b.estado.origen, OrigenCoordenadas.gps);

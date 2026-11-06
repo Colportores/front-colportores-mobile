@@ -37,6 +37,7 @@ import 'generated/schema_v29.dart' as v29;
 import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v30.dart' as v30;
 import 'generated/schema_v31.dart' as v31;
+import 'generated/schema_v32.dart' as v32;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
@@ -1889,6 +1890,86 @@ void main() {
           await expectLater(nuevo.customStatement('$insertar$malo'), throwsA(anything));
         }
         expect(await nuevo.select(nuevo.cobranza).get(), hasLength(3));
+      },
+    );
+  });
+
+  test('dado jornadas guardadas en la versión 31, cuando migra a la 32, no se pierde ninguna, '
+      'pierden tipo_acompaniamiento y no se encola nada (#642)', () async {
+    // El tipo de acompañamiento se saca del esquema (backend-supabase 0169): cada jornada sigue con su
+    // colportor, su inicio y su fin, quién acompaña, sus totales y su auditoría; solo desaparece la columna.
+    const abierta = v31.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      syncVersion: 0,
+    );
+    const cerrada = v31.JornadaData(
+      id: 'jor-2',
+      colportorId: 'col-1',
+      inicio: 1758600000000,
+      fin: 1758620000000,
+      acompanianteId: 'col-2',
+      tipoAcompaniamiento: 'CAPACITACION',
+      totalVisitas: 12,
+      totalVentas: 3,
+      createdAt: 1758600000000,
+      updatedAt: 1758620000000,
+      createdBy: 'col-1',
+      deletedAt: 1758630000000,
+      syncVersion: 4,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 31,
+      newVersion: 32,
+      createOld: v31.DatabaseAtV31.new,
+      createNew: v32.DatabaseAtV32.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch.insert(viejo.jornada, abierta);
+        batch.insert(viejo.jornada, cerrada);
+      },
+      validateItems: (nuevo) async {
+        final filas = await (nuevo.select(
+          nuevo.jornada,
+        )..orderBy([(j) => OrderingTerm.asc(j.id)])).get();
+        expect(filas.map((j) => j.id), ['jor-1', 'jor-2']);
+        expect(filas.first.fin, isNull);
+        expect(filas.first.acompanianteId, isNull);
+        expect(filas.first.syncVersion, 0);
+        expect(filas.last.colportorId, 'col-1');
+        expect(filas.last.inicio, 1758600000000);
+        expect(filas.last.fin, 1758620000000);
+        expect(filas.last.acompanianteId, 'col-2');
+        expect(filas.last.totalVisitas, 12);
+        expect(filas.last.totalVentas, 3);
+        expect(filas.last.createdBy, 'col-1');
+        expect(filas.last.deletedAt, 1758630000000);
+        expect(filas.last.syncVersion, 4);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        final columnas = await nuevo.customSelect('PRAGMA table_info(jornada)').get();
+        expect(
+          columnas.map((c) => c.read<String>('name')),
+          isNot(contains('tipo_acompaniamiento')),
+        );
+        final indices = await nuevo.customSelect('PRAGMA index_list(jornada)').get();
+        expect(indices.map((i) => i.read<String>('name')), contains('jornada_colportor_idx'));
+
+        // Los CHECK siguen: una jornada que termina antes de empezar no entra.
+        const insertar =
+            'INSERT INTO jornada (id, colportor_id, inicio, fin, created_at, updated_at) VALUES ';
+        await nuevo.customStatement("$insertar('jor-3', 'col-1', 10, 20, 1, 1)");
+        await expectLater(
+          nuevo.customStatement("$insertar('jor-4', 'col-1', 20, 10, 1, 1)"),
+          throwsA(anything),
+        );
+        expect(await nuevo.select(nuevo.jornada).get(), hasLength(3));
       },
     );
   });
