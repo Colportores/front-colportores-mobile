@@ -20,6 +20,9 @@ abstract final class ClavesFicha {
   static const opcionEditar = Key('ficha_opcion_editar');
   static const opcionBaja = Key('ficha_opcion_baja');
   static const cuenta = Key('ficha_cuenta');
+  static const acciones = Key('ficha_acciones');
+  static const botonAgendarCobranza = Key('ficha_agendar_cobranza');
+  static const botonRegistrarEntrega = Key('ficha_registrar_entrega');
   static const sinMovimientos = Key('ficha_sin_movimientos');
   static const notas = Key('ficha_notas');
   static const botonNota = Key('ficha_boton_nota');
@@ -341,6 +344,80 @@ class TarjetaCuenta extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Las acciones rápidas bajo la cuenta (32B·01, HU-VEN-005): «+ Agendar cobranza» y «Registrar entrega»,
+/// sin salir de la ficha. Con [ocupado] (ya se está abriendo algo) quedan apagadas: un segundo toque no
+/// abre otra pantalla encima. [conEntrega] en `false`: «Registrar entrega» no se dibuja, porque un botón
+/// sin a dónde llevar no se muestra (HU-UBI-003).
+class AccionesRapidasDeLaFicha extends StatelessWidget {
+  const AccionesRapidasDeLaFicha({
+    super.key,
+    required this.alAgendarCobranza,
+    required this.alRegistrarEntrega,
+    this.conCobranza = true,
+    this.conEntrega = true,
+    this.ocupado = false,
+  });
+
+  final VoidCallback alAgendarCobranza;
+  final VoidCallback alRegistrarEntrega;
+
+  /// Hay saldo que cobrar; sin él no se ofrece «+ Agendar cobranza».
+  final bool conCobranza;
+
+  /// Hay entregas pendientes y el caso de uso está disponible; si no, no se ofrece «Registrar entrega».
+  final bool conEntrega;
+  final bool ocupado;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      key: ClavesFicha.acciones,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        if (conCobranza)
+          _AccionRapida(
+            clave: ClavesFicha.botonAgendarCobranza,
+            texto: TextosFicha.agendarCobranza,
+            alTocar: ocupado ? null : alAgendarCobranza,
+          ),
+        if (conEntrega)
+          _AccionRapida(
+            clave: ClavesFicha.botonRegistrarEntrega,
+            texto: TextosFicha.registrarEntrega,
+            alTocar: ocupado ? null : alRegistrarEntrega,
+          ),
+      ],
+    );
+  }
+}
+
+class _AccionRapida extends StatelessWidget {
+  const _AccionRapida({required this.clave, required this.texto, required this.alTocar});
+
+  final Key clave;
+  final String texto;
+  final VoidCallback? alTocar;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      key: clave,
+      label: Text(texto),
+      onPressed: alTocar,
+      backgroundColor: Colors.white,
+      side: const BorderSide(color: ColoresAlta.grisBorde),
+      labelStyle: const TextStyle(
+        color: ColoresAlta.tinta,
+        fontWeight: FontWeight.w500,
+        fontSize: 14,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      materialTapTargetSize: MaterialTapTargetSize.padded,
     );
   }
 }
