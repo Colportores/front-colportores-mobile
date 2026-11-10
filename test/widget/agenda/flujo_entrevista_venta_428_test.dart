@@ -135,6 +135,18 @@ Finder get _cta => find.byKey(const Key('venta_cta'));
 Finder _campo(String clave) =>
     find.descendant(of: find.byKey(Key(clave)), matching: find.byType(TextField));
 
+/// Sin entregar nada, el hilo pide la fecha de la entrega (27C·01, #435, 42B·01F/01G): se vuelve sin
+/// elegirla y sigue a «¿Cuándo volvés a cobrar?» o al cierre.
+Future<void> _saltarFechaDeEntrega(WidgetTester tester) async {
+  await tester.pumpAndSettle();
+  final pagina = find.byKey(const Key('otro_dia_pagina'));
+  if (pagina.evaluate().isEmpty) return;
+  final atras = find.descendant(of: pagina, matching: find.byKey(const Key('venta_atras')));
+  await tester.ensureVisible(atras);
+  await tester.tap(atras);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   late MontajeEntrevista montaje;
   late EntornoDeVenta entorno;
@@ -303,6 +315,10 @@ void main() {
   Future<void> listo(WidgetTester tester) async {
     if (find.byKey(const Key('venta_terminar')).evaluate().isEmpty) return;
     await tocarKey(tester, const Key('venta_terminar'));
+    // Sin entregar nada, el hilo pide la fecha de la entrega (27C·01, #435): se vuelve sin elegirla.
+    if (find.byKey(const Key('otro_dia_pagina')).evaluate().isNotEmpty) {
+      await tocarKey(tester, const Key('venta_atras'));
+    }
   }
 
   /// «Volver al mapa» de «Así quedó la venta» (42B·01D a 01G), si está.
@@ -955,6 +971,7 @@ void main() {
       expect(find.text(TextosVenta.cobrarAhora), findsNothing);
 
       await tocarKey(tester, const Key('venta_terminar'));
+      await _saltarFechaDeEntrega(tester);
       expect(find.byKey(ClavesCuandoCobrar.pagina), findsOneWidget);
     });
 
@@ -979,6 +996,7 @@ void main() {
       await tocar(tester, find.text(TextosVenta.continuar));
 
       expect(cobros, isEmpty);
+      await _saltarFechaDeEntrega(tester);
       expect(find.byKey(ClavesCuandoCobrar.pagina), findsOneWidget);
     });
 
@@ -993,6 +1011,7 @@ void main() {
       await tocar(tester, find.text(TextosVenta.cobrarAhora));
       await tocar(tester, find.text(TextosVenta.continuar));
 
+      await _saltarFechaDeEntrega(tester);
       expect(cobros, hasLength(1));
       expect(cobros.single.ventaId, entorno.ventas.recibidas.single.venta.id);
       expect(cobros.single.espacioId, 'esp-1');
@@ -1012,6 +1031,7 @@ void main() {
       await tocar(tester, find.text(TextosVenta.cobrarAhora));
       await tocar(tester, find.text(TextosVenta.continuar));
 
+      await _saltarFechaDeEntrega(tester);
       expect(find.byKey(ClavesCuandoCobrar.pagina), findsNothing);
       expect(find.byKey(ClavesCierreDeVenta.pagina), findsOneWidget);
       await cerrarCierre(tester);
@@ -1030,6 +1050,7 @@ void main() {
       await tocar(tester, find.text(TextosVenta.cobrarAhora));
       await tocar(tester, find.text(TextosVenta.continuar));
 
+      await _saltarFechaDeEntrega(tester);
       expect(tester.takeException(), isNull);
       expect(find.text(TextosCuandoCobrar.personaYSaldo('Pedro Gómez', 300000)), findsOneWidget);
       await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
@@ -1107,14 +1128,14 @@ void main() {
       );
     }
 
-    testWidgets('se ofrece «Entregar ahora» y no «Entregar otro día» (es de #435)', (tester) async {
+    testWidgets('se ofrecen «Entregar ahora» y «Entregar otro día» (#435)', (tester) async {
       conEntrega();
       await montar(tester);
       await hastaVentaRegistrada(tester);
 
       expect(find.text(TextosVenta.entrega), findsOneWidget);
       expect(find.text(TextosVenta.entregarAhora), findsOneWidget);
-      expect(find.text(TextosVenta.entregarOtroDia), findsNothing);
+      expect(find.text(TextosVenta.entregarOtroDia), findsOneWidget);
     });
 
     testWidgets('abre 27B·01 con la venta; entregar todo sigue derecho a «¿Cuándo volvés a '
@@ -1193,6 +1214,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(entrega.entregas.recibidas, isEmpty);
+      await _saltarFechaDeEntrega(tester);
       expect(find.byKey(ClavesCuandoCobrar.pagina), findsOneWidget);
       await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
       await tocarKey(tester, ClavesCuandoCobrar.guardar);

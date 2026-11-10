@@ -28,6 +28,8 @@ final class EntregaPendiente extends Equatable {
     required this.lineas,
     this.fechaPrevista,
     this.agendaId,
+    this.espacioId,
+    this.numeroTalonario,
   });
 
   final String ventaId;
@@ -45,6 +47,13 @@ final class EntregaPendiente extends Equatable {
   /// canceló a mano).
   final String? agendaId;
 
+  /// La casa o el depto de la venta (`espacio.id`), con que la lista resuelve la dirección y el
+  /// nombre en el teléfono; `null` si el vínculo ya no está.
+  final String? espacioId;
+
+  /// El talonario de la venta («0042»), para el encabezado «VENTA 0042».
+  final String? numeroTalonario;
+
   /// No tiene fecha prevista.
   bool get sinFecha => fechaPrevista == null;
 
@@ -59,5 +68,13 @@ final class EntregaPendiente extends Equatable {
   }
 
   @override
-  List<Object?> get props => [ventaId, espacioPersonaId, lineas, fechaPrevista, agendaId];
+  List<Object?> get props => [
+    ventaId,
+    espacioPersonaId,
+    lineas,
+    fechaPrevista,
+    agendaId,
+    espacioId,
+    numeroTalonario,
+  ];
 }

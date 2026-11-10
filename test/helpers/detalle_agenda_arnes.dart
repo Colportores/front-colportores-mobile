@@ -45,6 +45,7 @@ Agenda agendaDelDetalle({
   DateTime? cuando,
   String? slot = 'early_afternoon',
   String? ventaId,
+  String? entregaId,
   int? montoPrevistoCentavos,
 }) => Agenda(
   id: id,
@@ -56,6 +57,7 @@ Agenda agendaDelDetalle({
   estado: estado,
   colportorId: 'col-1',
   ventaId: ventaId,
+  entregaId: entregaId,
   montoPrevistoCentavos: montoPrevistoCentavos,
   auditoria: Auditoria(
     createdAt: DateTime.utc(2026, 10, 23),

@@ -90,6 +90,9 @@ void main() {
       await tester.tap(terminar, warnIfMissed: false);
       await tester.pumpAndSettle();
 
+      // Sin entregar nada, primero la fecha de la entrega (27C·01, #435), una sola vez.
+      expect(find.byKey(const Key('otro_dia_pagina')), findsOneWidget);
+      await a.saltarFechaDeEntrega(tester);
       expect(find.byKey(ClavesCuandoCobrar.pagina), findsOneWidget);
       await a.sinFecha(tester);
       expect(a.salida, isA<VentaGuardadaEnLaEntrevista>());
@@ -110,6 +113,7 @@ void main() {
       expect(find.byKey(_registrada), findsOneWidget);
       expect(find.byKey(ClavesCuandoCobrar.pagina), findsNothing);
       await a.tocarKey(tester, const Key('venta_terminar'));
+      await a.saltarFechaDeEntrega(tester);
       expect(find.byKey(ClavesCuandoCobrar.pagina), findsOneWidget);
       expect(find.textContaining(r'saldo $ 3.000'), findsOneWidget);
     });
@@ -121,6 +125,7 @@ void main() {
       await tocar(tester, find.text('Cobrar ahora'));
       await tocar(tester, find.text('Continuar'));
       await tester.pumpAndSettle();
+      await a.saltarFechaDeEntrega(tester);
 
       expect(find.byKey(ClavesCuandoCobrar.pagina), findsOneWidget);
       await a.sinFecha(tester);
@@ -137,6 +142,7 @@ void main() {
     ) async {
       await hastaLaRegistrada(tester, alCobrar: () async => false);
       await a.tocarKey(tester, const Key('venta_terminar'));
+      await a.saltarFechaDeEntrega(tester);
 
       await tester.pump(const Duration(seconds: 6));
       await a.sinFecha(tester);
@@ -149,6 +155,7 @@ void main() {
       (tester) async {
         await hastaLaRegistrada(tester, alCobrar: () async => false);
         await a.tocarKey(tester, const Key('venta_terminar'));
+        await a.saltarFechaDeEntrega(tester);
 
         await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.manana));
         await a.listoYGuardar(tester);

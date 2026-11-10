@@ -230,7 +230,15 @@ final class Arnes428 {
     await tester.pumpAndSettle();
     if (find.byKey(const Key('venta_terminar')).evaluate().isNotEmpty) {
       await tocarKey(tester, const Key('venta_terminar'));
+      await saltarFechaDeEntrega(tester);
     }
+  }
+
+  /// Sin entregar nada, el hilo pide la fecha de la entrega (27C·01, #435, 42B·01G): se vuelve sin
+  /// elegirla y sigue a «¿Cuándo volvés a cobrar?».
+  Future<void> saltarFechaDeEntrega(WidgetTester tester) async {
+    if (find.byKey(const Key('otro_dia_pagina')).evaluate().isEmpty) return;
+    await tocarKey(tester, const Key('venta_atras'));
   }
 
   /// «Volver al mapa» en «Así quedó la venta» (42B·01D a 01G), si está.

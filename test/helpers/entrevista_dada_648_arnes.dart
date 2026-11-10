@@ -243,7 +243,15 @@ final class Arnes648 {
     await asentar(tester);
     if (find.byKey(const Key('venta_terminar')).evaluate().isNotEmpty) {
       await tocarKey(tester, const Key('venta_terminar'));
+      await saltarFechaDeEntrega(tester);
     }
+  }
+
+  /// Sin entregar nada, el hilo pide la fecha de la entrega (27C·01, #435, 42B·01G): se vuelve sin
+  /// elegirla y sigue a «¿Cuándo volvés a cobrar?».
+  Future<void> saltarFechaDeEntrega(WidgetTester tester) async {
+    if (find.byKey(const Key('otro_dia_pagina')).evaluate().isEmpty) return;
+    await tocarKey(tester, const Key('venta_atras'));
   }
 
   /// «Registrar» y, sin saldo a la vista, «¿Cuándo volvés a cobrar?» → «Sin fecha» → «Guardar», y
