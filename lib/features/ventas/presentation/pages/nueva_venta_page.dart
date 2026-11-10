@@ -477,9 +477,10 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
         return TarjetaDeRenglon(
           key: Key('venta_renglon_${r.clave}'),
           rotulo: null,
-          titulo: r.titulo,
+          // 42B·08G: el misionero va «El camino a Cristo × 1», «Misionero · sin cobrar», a $ 0.
+          titulo: sinCobrar ? '${r.titulo} × $cantidad' : r.titulo,
           detalle: sinCobrar
-              ? '$cantidad · sin cobrar'
+              ? TextosVenta.misioneroSinCobrar
               : '$cantidad × ${FormatoVenta.monto(precioCentavos)}',
           precio: FormatoVenta.monto(r.subtotalCentavos),
           alQuitar: alQuitar,

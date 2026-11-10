@@ -139,7 +139,7 @@ void main() {
         );
         expect(a.contenedor(tester).read(navegacionInicioProvider).intencion?.ubicacionId, 'ub-1');
         expect(a.contenedor(tester).read(navegacionInicioProvider).intencion?.conSuHoja, isFalse);
-        expect(find.text('Venta 0039 guardada.'), findsOneWidget);
+        expect(find.text('Venta 0039 guardada. Cobranza sin fecha.'), findsOneWidget);
       },
     );
 
@@ -812,7 +812,7 @@ void main() {
         expect(venta.numeroTalonario, '0039');
         expect(a.salidasDeVenta.single, isA<VentaRegistradaEnLaCasa>());
         expect(a.resultados, [true], reason: 'tras guardar (05/11): la hoja de la casa se cierra');
-        expect(find.text('Venta 0039 guardada.'), findsOneWidget);
+        expect(find.text('Venta 0039 guardada. Cobranza sin fecha.'), findsOneWidget);
       },
     );
 

@@ -31,6 +31,9 @@ import '../widgets/piezas_venta.dart';
 /// [saldoCentavos] es lo que la venta todavía debe (después de «Cobrar ahora» en 27A·14, lo que quedó
 /// sin cobrar): con la entrega completa y saldo 0, la venta está completa (27B·03). Sin él, el monto
 /// entero de la venta.
+///
+/// Con [alEntregar] (el hilo de la venta, vista 42, 42B·01) no hay 27B·03 ni 27B·04: apenas queda
+/// registrada la entrega (o si ya estaba), sigue el hilo con ella, que termina en «Así quedó la venta».
 class EntregarAhoraPage extends ConsumerStatefulWidget {
   const EntregarAhoraPage({
     super.key,
@@ -38,6 +41,7 @@ class EntregarAhoraPage extends ConsumerStatefulWidget {
     required this.nombreDelCliente,
     this.alCobrar,
     this.alAgendarCobranza,
+    this.alEntregar,
     this.saldoCentavos,
   });
 
@@ -45,6 +49,7 @@ class EntregarAhoraPage extends ConsumerStatefulWidget {
   final String nombreDelCliente;
   final ValueChanged<EntregaRegistrada>? alCobrar;
   final ValueChanged<EntregaRegistrada>? alAgendarCobranza;
+  final ValueChanged<EntregaRegistrada>? alEntregar;
   final int? saldoCentavos;
 
   static Route<EntregaRegistrada> ruta({
@@ -92,6 +97,9 @@ class _EntregarAhoraPageState extends ConsumerState<EntregarAhoraPage> {
           salida(registrada);
         };
 
+  /// Sigue el hilo de la venta con la entrega registrada, una sola vez.
+  void _seguir(EntregaRegistrada registrada) => _unaVez(widget.alEntregar)?.call(registrada);
+
   @override
   Widget build(BuildContext context) {
     final datos = ref.watch(datosDeLaEntregaProvider(_guardada));
@@ -128,10 +136,12 @@ class _EntregarAhoraPageState extends ConsumerState<EntregarAhoraPage> {
           data: (datos) {
             if (datos.previas.isNotEmpty) {
               // Ya se entregó (volvió atrás y reentró, o un reintento): se muestra cómo quedó, sin
-              // entregar de nuevo.
+              // entregar de nuevo; en el hilo de la venta, sigue con lo que ya estaba.
+              final registrada = EntregaRegistrada(entregas: datos.previas, yaEstaba: true);
+              if (widget.alEntregar != null) return _Siguiendo(alSeguir: () => _seguir(registrada));
               return _Resultado(
                 guardada: _guardada,
-                registrada: EntregaRegistrada(entregas: datos.previas, yaEstaba: true),
+                registrada: registrada,
                 nombres: datos.nombres,
                 eyebrow: _eyebrow,
                 saldo: _saldo,
@@ -159,6 +169,7 @@ class _EntregarAhoraPageState extends ConsumerState<EntregarAhoraPage> {
               saldo: _saldo,
               alCobrar: _unaVez(widget.alCobrar),
               alAgendarCobranza: _unaVez(widget.alAgendarCobranza),
+              alEntregar: widget.alEntregar == null ? null : _seguir,
               alVolver: _cerrar,
             );
           },
@@ -226,6 +237,7 @@ class _Formulario extends ConsumerStatefulWidget {
     required this.alVolver,
     this.alCobrar,
     this.alAgendarCobranza,
+    this.alEntregar,
   });
 
   final ArgumentosDeEntrega args;
@@ -236,6 +248,7 @@ class _Formulario extends ConsumerStatefulWidget {
   final void Function([EntregaRegistrada?]) alVolver;
   final ValueChanged<EntregaRegistrada>? alCobrar;
   final ValueChanged<EntregaRegistrada>? alAgendarCobranza;
+  final ValueChanged<EntregaRegistrada>? alEntregar;
 
   @override
   ConsumerState<_Formulario> createState() => _FormularioState();
@@ -261,6 +274,10 @@ class _FormularioState extends ConsumerState<_Formulario> {
     final notifier = ref.read(entregarAhoraProvider(args).notifier);
 
     final registrada = estado.registrada;
+    final alEntregar = widget.alEntregar;
+    if (registrada != null && alEntregar != null) {
+      return _Siguiendo(alSeguir: () => alEntregar(registrada));
+    }
     if (registrada != null) {
       return _Resultado(
         guardada: args.guardada,
@@ -332,6 +349,32 @@ class _FormularioState extends ConsumerState<_Formulario> {
         ),
       ],
     );
+  }
+}
+
+/// La entrega ya está registrada y el hilo de la venta sigue (42B·01): una ruedita mientras se va.
+class _Siguiendo extends StatefulWidget {
+  const _Siguiendo({required this.alSeguir});
+
+  final VoidCallback alSeguir;
+
+  @override
+  State<_Siguiendo> createState() => _SiguiendoState();
+}
+
+class _SiguiendoState extends State<_Siguiendo> {
+  @override
+  void initState() {
+    super.initState();
+    // Después del cuadro: no se navega mientras se construye.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.alSeguir();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(key: Key('entrega_siguiendo'), child: CircularProgressIndicator());
   }
 }
 

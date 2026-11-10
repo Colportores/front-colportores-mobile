@@ -40,6 +40,9 @@ abstract final class TextosVenta {
   static const tituloAgregar = 'Agregar productos';
   static const sinCobrar = 'Sin cobrar';
 
+  /// El renglón de un misionero en 27A·05 (42B·08G).
+  static const misioneroSinCobrar = 'Misionero · sin cobrar';
+
   static const volver = 'Volver';
   static const tituloRegistrada = 'Venta registrada';
   static const entrega = 'ENTREGA';

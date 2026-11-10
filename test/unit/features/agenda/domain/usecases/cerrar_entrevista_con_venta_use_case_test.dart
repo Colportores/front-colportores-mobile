@@ -90,7 +90,7 @@ void main() {
         final r = await caso.preparar(params());
 
         expect(r.swap().getOrElse(() => throw StateError('debía fallar')), ventaSinLugar);
-        expect(ventaSinLugar.mensaje, contains('cerrala con «No, guardar y volver al mapa»'));
+        expect(ventaSinLugar.mensaje, contains('cerrala con «No hubo venta»'));
         expect(agenda.recibidas, isEmpty);
         expect(memoria.guardadas, hasLength(1));
       },

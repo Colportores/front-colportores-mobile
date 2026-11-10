@@ -238,7 +238,9 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
     }
   }
 
-  Future<void> _guardar() async {
+  /// Guarda la entrevista: [conMisioneros] manda lo anotado en «Lo que dejaste»; «No dejé nada» (y
+  /// «No hubo venta» sin misioneros en el catálogo) guardan sin misioneros.
+  Future<void> _guardar({bool conMisioneros = false}) async {
     final entrada = _entrada;
     final salida = _salida;
     if (entrada == null || salida == null || _guardando) return;
@@ -248,8 +250,9 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
     Failure? falla;
     try {
       falla = await widget.alGuardar(entrada, salida, {
-        for (final e in _dejados.entries)
-          if (e.value > 0) e.key: e.value,
+        if (conMisioneros)
+          for (final e in _dejados.entries)
+            if (e.value > 0) e.key: e.value,
       });
     } on Object {
       falla = const FailureInesperado();
@@ -268,7 +271,8 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
     });
   }
 
-  /// «No, guardar y volver al mapa»: con misioneros en el catálogo, primero «Lo que dejaste».
+  /// «No hubo venta» (42B·08A, decisión del 10/11: una sola salida «No»): con misioneros en el
+  /// catálogo lleva a «Lo que dejaste», vacío, sin guardar todavía; sin ninguno, guarda en ese toque.
   void _noHuboVenta() {
     if (!_completa || _guardando) return;
     if (widget.misioneros.isEmpty) {
@@ -276,15 +280,17 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
       return;
     }
     setState(() {
+      _dejados.clear();
       _enLoQueDejaste = true;
       _error = null;
     });
   }
 
-  /// Del paso «Lo que dejaste» a las horas, sin perder lo anotado.
+  /// Atrás desde «Lo que dejaste»: a R·06, y las cantidades marcadas se descartan (42B·06).
   void _volverALasHoras() {
     if (_guardando || !_enLoQueDejaste) return;
     setState(() {
+      _dejados.clear();
       _enLoQueDejaste = false;
       _error = null;
     });
@@ -416,8 +422,9 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
     );
   }
 
-  /// «Lo que dejaste» (#608): los misioneros que dejó sin venta, con el selector de 27A·08 y sin
-  /// montos. **Diseño provisorio** hasta el artboard de la vista 42.
+  /// «Lo que dejaste» (vista 42, 42B·08B y 08C, #608): los misioneros que dejó sin venta, con el
+  /// selector de 27A·08 sin precios. Sin «Tenés N en mano» ni 08D: el stock queda para después
+  /// (decisión de Cristian del 09/11, «Stock/avisos»).
   Widget _pasoLoQueDejaste(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
@@ -430,33 +437,17 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const _Asa(),
-          const SizedBox(height: 6),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(
-              key: ClavesEntrevista.volverALasHoras,
-              onPressed: _guardando ? null : _volverALasHoras,
-              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-              icon: const Icon(Icons.arrow_back),
-              label: const Text(TextosEntrevista.volverALasHoras),
-            ),
-          ),
+          const SizedBox(height: 14),
           Semantics(
             header: true,
             child: Text(TextosEntrevista.loQueDejasteTitulo, style: theme.textTheme.headlineMedium),
           ),
-          if (lugar.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(lugar, style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris)),
-          ],
-          const SizedBox(height: 12),
-          const AvisoAlta(
-            key: ClavesEntrevista.avisoLoQueDejaste,
-            color: ColoresAlta.tinta,
-            glyph: 'i',
-            texto: TextosEntrevista.loQueDejasteAyuda,
+          const SizedBox(height: 4),
+          Text(
+            TextosEntrevista.loQueDejasteLugar(lugar),
+            style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           // Mientras guarda, las cantidades no se tocan: lo que se guarda es lo que se ve.
           IgnorePointer(
             ignoring: _guardando,
@@ -483,6 +474,15 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
             ),
           ),
           const SizedBox(height: 4),
+          Text(
+            total > 0 ? TextosEntrevista.dejas(total) : TextosEntrevista.loQueDejasteVacio,
+            key: ClavesEntrevista.avisoLoQueDejaste,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: total > 0 ? null : colores.gris,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 14),
           if (_error != null) ...[
             AvisoAlta(
               key: ClavesEntrevista.avisoError,
@@ -494,14 +494,18 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
           ],
           FilledButton(
             key: ClavesEntrevista.guardarLoQueDejaste,
-            onPressed: _guardando ? null : () => unawaited(_guardar()),
+            onPressed: _guardando || total == 0
+                ? null
+                : () => unawaited(_guardar(conMisioneros: true)),
             child: Text(
-              _guardando
-                  ? TextosEntrevista.guardando
-                  : total > 0
-                  ? TextosEntrevista.guardarLoQueDejaste(total)
-                  : TextosEntrevista.noDejeNinguno,
+              _guardando ? TextosEntrevista.guardando : TextosEntrevista.guardarLoQueDejaste,
             ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton(
+            key: ClavesEntrevista.noDejeNada,
+            onPressed: _guardando ? null : () => unawaited(_guardar()),
+            child: const Text(TextosEntrevista.noDejeNada),
           ),
         ],
       ),

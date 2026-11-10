@@ -1,7 +1,7 @@
 // QA de #432 / #608: el paso «Lo que dejaste» de la hoja «Terminó la entrevista» (vista 39 R·06 →
 // 42B·08). Matriz 360×640 / 412×915 × 1,0 / 2,0 con las fuentes reales, guías de toque y etiquetas,
-// el aviso de error, y los textos literales del artboard 42B·08 que el diseño provisorio no tiene
-// (hallazgos con `skip`, `--dart-define=QA_HALLAZGOS=true` los corre).
+// el aviso de error, y los textos literales del artboard 42B·08 (los hallazgos que siguen abiertos
+// van con `skip`, `--dart-define=QA_HALLAZGOS=true` los corre).
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -92,6 +92,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// «No hubo venta» (42B·08A → 08B).
   Future<void> alPaso2(WidgetTester tester) async {
     await tester.ensureVisible(find.byKey(ClavesEntrevista.guardarYVolver));
     await tester.tap(find.byKey(ClavesEntrevista.guardarYVolver));
@@ -250,19 +251,18 @@ void main() {
       expect(guardados, 1);
     });
 
-    testWidgets('«Volver a las horas» en vuelo no se puede tocar y no pierde lo anotado', (
-      tester,
-    ) async {
+    testWidgets('«No dejé nada» en vuelo no se puede tocar y no pierde lo anotado', (tester) async {
       compuerta = Completer<void>();
       await montar(tester);
       await alPaso2(tester);
       await unoMas(tester, _camino, veces: 3);
       await tester.tap(find.byKey(ClavesEntrevista.guardarLoQueDejaste));
       await tester.pump();
-      await tester.tap(find.byKey(ClavesEntrevista.volverALasHoras), warnIfMissed: false);
+      await tester.tap(find.byKey(ClavesEntrevista.noDejeNada), warnIfMissed: false);
       await tester.pump();
 
       expect(find.byKey(ClavesEntrevista.loQueDejaste), findsOneWidget);
+      expect(guardados, 1);
       compuerta!.complete();
       await tester.pumpAndSettle();
     });
@@ -277,7 +277,7 @@ void main() {
       }
       await tester.pumpAndSettle();
 
-      expect(find.text(TextosEntrevista.guardarLoQueDejaste(999)), findsOneWidget);
+      expect(find.text(TextosEntrevista.dejas(999)), findsOneWidget);
     });
 
     testWidgets('el título del paso es un encabezado y el hint de cada fila dice cuántos', (
@@ -297,26 +297,31 @@ void main() {
     });
   });
 
-  group('42B·08 · textos literales del artboard (el paso es provisorio)', () {
-    // skip: QA #432 — 42B·08B/C: el pie lleva «Guardar» (apagado sin nada elegido) y «No dejé nada»; la
-    // app tiene un solo botón que cambia de rótulo («Guardar N misioneros» / «No dejé ninguno, guardar»).
+  group('42B·08 · textos literales del artboard', () {
+    // QA #432 — 42B·08B/C: el pie lleva «Guardar» (apagado sin nada elegido) y «No dejé nada».
     testWidgets('el pie tiene «Guardar» y «No dejé nada»', (tester) async {
       await montar(tester);
       await alPaso2(tester);
 
       expect(find.text('Guardar'), findsOneWidget);
       expect(find.text('No dejé nada'), findsOneWidget);
-    }, skip: !verHallazgos);
+      expect(
+        tester
+            .widget<ButtonStyleButton>(find.byKey(ClavesEntrevista.guardarLoQueDejaste))
+            .onPressed,
+        isNull,
+      );
+    });
 
-    // skip: QA #432 — 42B·08B: sin nada elegido dice «Sumá lo que dejaste o tocá «No dejé nada».».
+    // QA #432 — 42B·08B: sin nada elegido dice «Sumá lo que dejaste o tocá «No dejé nada».».
     testWidgets('vacío: «Sumá lo que dejaste o tocá «No dejé nada».»', (tester) async {
       await montar(tester);
       await alPaso2(tester);
 
       expect(find.text('Sumá lo que dejaste o tocá «No dejé nada».'), findsOneWidget);
-    }, skip: !verHallazgos);
+    });
 
-    // skip: QA #432 — 42B·08C: con 3 elegidos dice «Dejás 3 misioneros. No es una venta: no lleva
+    // QA #432 — 42B·08C: con 3 elegidos dice «Dejás 3 misioneros. No es una venta: no lleva
     // talonario ni monto.» y la ayuda de arriba es «Grecia 3305 · Rosa Díaz. A colaboración, sin precio.».
     testWidgets('con 3 elegidos: «Dejás 3 misioneros. No es una venta…»', (tester) async {
       await montar(tester);
@@ -329,6 +334,6 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Grecia 3305 · Rosa Díaz. A colaboración, sin precio.'), findsOneWidget);
-    }, skip: !verHallazgos);
+    });
   });
 }

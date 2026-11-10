@@ -75,6 +75,8 @@ void main() {
     await montar(tester, conError: true);
     await tester.tap(find.byKey(ClavesEntrevista.guardarYVolver));
     await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Uno más de El camino a Cristo'));
+    await tester.pump();
     await tester.tap(find.byKey(ClavesEntrevista.guardarLoQueDejaste));
     await tester.pumpAndSettle();
     await expectLater(tester, meetsGuideline(textContrastGuideline));
