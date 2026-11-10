@@ -75,46 +75,52 @@ void main() {
       expect(a.resultados, isEmpty);
     });
 
-    testWidgets('«Sí, anotar la visita»: UNA visita «Cobranza» sin cobro y sin agenda, la cita sigue '
-        'PROGRAMADA y el flujo devuelve CobranzaAnotadaSinCobro', (tester) async {
-      final agenda = _agendaConCita();
-      final a = await montarCobrarDesdeLaCasa(tester, repo: _unaVenta(), agenda: agenda);
+    testWidgets(
+      '«Sí, anotar la visita»: UNA visita «Cobranza» sin cobro y sin agenda, la cita sigue '
+      'PROGRAMADA y el flujo devuelve CobranzaAnotadaSinCobro',
+      (tester) async {
+        final agenda = _agendaConCita();
+        final a = await montarCobrarDesdeLaCasa(tester, repo: _unaVenta(), agenda: agenda);
 
-      await tocarCobro(tester, cerrarCobro);
-      await _tocar(tester, _anotar);
+        await tocarCobro(tester, cerrarCobro);
+        await _tocar(tester, _anotar);
 
-      final visita = agenda.recibidas.single;
-      expect(visita.visita.tipoResultado, TipoResultadoVisita.cobranza);
-      expect(visita.visita.espacioId, 'esp-1');
-      expect(visita.visita.espacioPersonaId, 'ep-p1');
-      expect(visita.agendaId, isNull);
-      expect(agenda.programada!.estado, EstadoAgenda.programada);
-      expect(agenda.canceladas, isEmpty);
-      expect(a.repo.base.recibidos, isEmpty, reason: 'no hay cobro');
-      expect(a.resultados.single, isA<CobranzaAnotadaSinCobro>());
-      expect(_dialogo, findsNothing);
-      expect(find.text(TextosQueVenta.visitaAnotada), findsOneWidget);
-      expect(a.rutas.aperturas - 1, a.rutas.cierres, reason: 'no queda ninguna ruta colgada');
-    });
+        final visita = agenda.recibidas.single;
+        expect(visita.visita.tipoResultado, TipoResultadoVisita.cobranza);
+        expect(visita.visita.espacioId, 'esp-1');
+        expect(visita.visita.espacioPersonaId, 'ep-p1');
+        expect(visita.agendaId, isNull);
+        expect(agenda.programada!.estado, EstadoAgenda.programada);
+        expect(agenda.canceladas, isEmpty);
+        expect(a.repo.base.recibidos, isEmpty, reason: 'no hay cobro');
+        expect(a.resultados.single, isA<CobranzaAnotadaSinCobro>());
+        expect(_dialogo, findsNothing);
+        expect(find.text(TextosQueVenta.visitaAnotada), findsOneWidget);
+        expect(a.rutas.aperturas - 1, a.rutas.cierres, reason: 'no queda ninguna ruta colgada');
+      },
+    );
 
-    testWidgets('atrás del sistema en el cobro también pregunta; «No, me equivoqué» no escribe nada '
-        'y vuelve a donde estaba (false)', (tester) async {
-      final agenda = _agendaConCita();
-      final a = await montarCobrarDesdeLaCasa(tester, repo: _unaVenta(), agenda: agenda);
+    testWidgets(
+      'atrás del sistema en el cobro también pregunta; «No, me equivoqué» no escribe nada '
+      'y vuelve a donde estaba (false)',
+      (tester) async {
+        final agenda = _agendaConCita();
+        final a = await montarCobrarDesdeLaCasa(tester, repo: _unaVenta(), agenda: agenda);
 
-      await _atrasDelSistema(tester);
-      expect(find.text('¿Pedro no te pagó?'), findsOneWidget);
+        await _atrasDelSistema(tester);
+        expect(find.text('¿Pedro no te pagó?'), findsOneWidget);
 
-      await _tocar(tester, _noMeEquivoque);
+        await _tocar(tester, _noMeEquivoque);
 
-      expect(a.resultados, [false]);
-      expect(_dialogo, findsNothing);
-      expect(pagina, findsNothing);
-      expect(find.text('cobrar'), findsOneWidget);
-      expect(agenda.recibidas, isEmpty);
-      expect(agenda.programada!.estado, EstadoAgenda.programada);
-      expect(find.text(TextosQueVenta.visitaAnotada), findsNothing);
-    });
+        expect(a.resultados, [false]);
+        expect(_dialogo, findsNothing);
+        expect(pagina, findsNothing);
+        expect(find.text('cobrar'), findsOneWidget);
+        expect(agenda.recibidas, isEmpty);
+        expect(agenda.programada!.estado, EstadoAgenda.programada);
+        expect(find.text(TextosQueVenta.visitaAnotada), findsNothing);
+      },
+    );
 
     testWidgets('atrás en la pregunta es «No»: nada escrito', (tester) async {
       final agenda = _agendaConCita();
@@ -132,12 +138,7 @@ void main() {
       tester,
     ) async {
       final agenda = _agendaConCita();
-      await montarCobrarDesdeLaCasa(
-        tester,
-        repo: _unaVenta(),
-        agenda: agenda,
-        personas: const [],
-      );
+      await montarCobrarDesdeLaCasa(tester, repo: _unaVenta(), agenda: agenda, personas: const []);
 
       await tocarCobro(tester, cerrarCobro);
       expect(find.text('¿No te pagaron?'), findsOneWidget);
