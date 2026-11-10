@@ -44,6 +44,8 @@ void main() {
     String espacio = 'esp-1',
     String? vinculo = 'ep-1',
     DateTime? baja,
+    DateTime? entrada,
+    DateTime? salida,
   }) => db
       .into(db.visitas)
       .insert(
@@ -57,6 +59,8 @@ void main() {
           createdAt: t0,
           updatedAt: t0,
           deletedAt: Value(baja),
+          entrevistaEntrada: Value(entrada),
+          entrevistaSalida: Value(salida),
         ),
       );
 
@@ -222,6 +226,69 @@ void main() {
     expect(visita1.persona?.nombreCompleto, 'Pedro Gómez');
     expect(visita1.persona?.nombreDePila, 'Pedro');
     expect(visita1.duracion, isNull);
+  });
+
+  group('la duración de la entrevista (C·03, #466)', () {
+    test('con la entrada y la salida guardadas, es la salida menos la entrada', () async {
+      await visita(
+        'vis-1',
+        'ENTREVISTA',
+        DateTime.utc(2026, 10, 5, 17, 36),
+        entrada: DateTime.utc(2026, 10, 5, 17, 14),
+        salida: DateTime.utc(2026, 10, 5, 17, 36),
+      );
+
+      final visita1 = (await historial.leer('esp-1')).single as VisitaDeLaCasa;
+
+      expect(visita1.duracion, const Duration(minutes: 22));
+    });
+
+    test('sin la salida (o sin la entrada) no se inventa una duración', () async {
+      await visita(
+        'vis-1',
+        'ENTREVISTA',
+        DateTime.utc(2026, 10, 5, 17),
+        entrada: DateTime.utc(2026, 10, 5, 16, 40),
+      );
+      await visita(
+        'vis-2',
+        'ENTREVISTA',
+        DateTime.utc(2026, 10, 6, 17),
+        salida: DateTime.utc(2026, 10, 6, 17),
+      );
+
+      final eventos = await historial.leer('esp-1');
+
+      expect([for (final e in eventos) (e as VisitaDeLaCasa).duracion], [null, null]);
+    });
+
+    test('una salida antes de la entrada no da una duración negativa', () async {
+      await visita(
+        'vis-1',
+        'ENTREVISTA',
+        DateTime.utc(2026, 10, 5, 17),
+        entrada: DateTime.utc(2026, 10, 5, 17, 30),
+        salida: DateTime.utc(2026, 10, 5, 17),
+      );
+
+      final visita1 = (await historial.leer('esp-1')).single as VisitaDeLaCasa;
+
+      expect(visita1.duracion, isNull);
+    });
+
+    test('solo la entrevista lleva duración: otra visita con horas no', () async {
+      await visita(
+        'vis-1',
+        'COBRANZA',
+        DateTime.utc(2026, 10, 5, 17),
+        entrada: DateTime.utc(2026, 10, 5, 16, 40),
+        salida: DateTime.utc(2026, 10, 5, 17),
+      );
+
+      final visita1 = (await historial.leer('esp-1')).single as VisitaDeLaCasa;
+
+      expect(visita1.duracion, isNull);
+    });
   });
 
   test('la nota más nueva de la visita se ve; la borrada y la vacía no', () async {

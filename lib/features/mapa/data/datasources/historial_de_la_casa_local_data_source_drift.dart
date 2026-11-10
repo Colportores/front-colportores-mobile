@@ -28,8 +28,9 @@ import 'notas_table.dart';
 /// - Lo dado de baja (visitas, ventas, cobros, notas) no se muestra.
 /// - **Qué cuotas cubrió un cobro**: si la venta tiene plan (citas de cobranza con monto), se calcula
 ///   con [RepartoDeCuotas.cuotasDeCadaCobro], el mismo reparto que la vista 30 A.
-/// - La duración de la entrevista queda en `null`: la visita no guarda la entrada ni la salida hasta
-///   #466.
+/// - **La duración de la entrevista** (#466) es la salida menos la entrada que la visita guarda
+///   (`entrevista_entrada` y `entrevista_salida`, esquema v34). Sin alguna de las dos (una visita de
+///   antes, o sin entrevista) o con la salida antes de la entrada queda en `null`: no se inventa.
 ///
 /// **local-only — PII**: los nombres y las notas viven solo en el teléfono y no van a ningún log.
 final class HistorialDeLaCasaLocalDataSourceDrift implements HistorialDeLaCasa {
@@ -61,6 +62,12 @@ final class HistorialDeLaCasaLocalDataSourceDrift implements HistorialDeLaCasa {
       },
     );
     return cambios.watch().asyncMap((_) => leer(espacioId)).distinct((a, b) => listEquals(a, b));
+  }
+
+  /// Cuánto duró la entrevista: [salida] menos [entrada]; `null` si falta alguna o no cierra.
+  static Duration? _duracion(DateTime? entrada, DateTime? salida) {
+    if (entrada == null || salida == null || salida.isBefore(entrada)) return null;
+    return salida.difference(entrada);
   }
 
   /// Ver [observar], una sola vez.
@@ -103,6 +110,9 @@ final class HistorialDeLaCasaLocalDataSourceDrift implements HistorialDeLaCasa {
             resultado: TipoResultadoVisita.desdeCodigo(v.tipoResultado),
             persona: porVinculo[v.espacioPersonaId],
             nota: notas[v.id],
+            duracion: v.tipoResultado == TipoResultadoVisita.entrevista.codigo
+                ? _duracion(v.entrevistaEntrada, v.entrevistaSalida)
+                : null,
           ),
       for (final v in ventas)
         VentaDeLaCasa(
