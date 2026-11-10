@@ -23,6 +23,10 @@ import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagad
 import '../../../notificaciones/presentation/widgets/campana_notificaciones.dart';
 import '../../../respaldo/presentation/widgets/aviso_sin_respaldo.dart';
 import '../../../tiles/presentation/widgets/hoja_sugerencia_mapa.dart';
+import '../../../ventas/presentation/formato_entrega_diferida.dart' show TextosEntregaDiferida;
+import '../../../ventas/presentation/pages/elegir_persona_para_vender_page.dart';
+import '../../../ventas/presentation/pages/entregas_pendientes_page.dart';
+import '../../../ventas/presentation/textos_elegir_persona.dart';
 import '../providers/navegacion_inicio_provider.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
@@ -122,6 +126,43 @@ class _InicioPageState extends ConsumerState<InicioPage> {
       if (pestana != null && mounted) _ir(pestana);
     } finally {
       _abriendoPrecios = false;
+    }
+  }
+
+  /// Evita abrir dos veces «¿A quién le vendés?» con dos toques seguidos en «+ Registrar venta».
+  var _abriendoVenta = false;
+
+  /// «+ Registrar venta» (HU-VEN-001, #546), desde la pestaña Ventas: elige a la persona y abre la
+  /// venta. Devuelve la pestaña elegida (si no hay personas, «Ir al mapa»), o `null` al terminar o
+  /// con «volver».
+  Future<void> _registrarVenta() async {
+    if (_abriendoVenta) return;
+    _abriendoVenta = true;
+    try {
+      final pestana = await Navigator.of(
+        context,
+      ).push(ElegirPersonaParaVenderPage.ruta(colportorId: widget.sesion.usuarioId));
+      if (pestana != null && mounted) _ir(pestana);
+    } finally {
+      _abriendoVenta = false;
+    }
+  }
+
+  /// Evita abrir dos veces «Entregas pendientes» con dos toques seguidos.
+  var _abriendoEntregas = false;
+
+  /// «Entregas pendientes» (vista 27, 27C·02, HU-VEN-003), desde la pestaña Ventas. Como «Precios»,
+  /// devuelve la pestaña elegida en su barra inferior, o `null` con «volver».
+  Future<void> _abrirEntregas() async {
+    if (_abriendoEntregas) return;
+    _abriendoEntregas = true;
+    try {
+      final pestana = await Navigator.of(
+        context,
+      ).push(EntregasPendientesPage.ruta(colportorId: widget.sesion.usuarioId));
+      if (pestana != null && mounted) _ir(pestana);
+    } finally {
+      _abriendoEntregas = false;
     }
   }
 
@@ -236,11 +277,14 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                       colportorId: widget.sesion.usuarioId,
                       activa: actual == PestanaInicio.cuenta,
                     ),
-                    // Ventas todavía no tiene su pantalla (vista 27): por ahora solo lleva a «Precios».
+                    // Ventas todavía no tiene su pantalla: por ahora lleva a «Precios» (vista 26) y a
+                    // «Entregas pendientes» (vista 27, grupo C).
                     PestanaInicio.ventas => PestanaProvisoria(
                       key: Key('pestana_${pestana.name}'),
                       pestana: pestana,
+                      alRegistrarVenta: () => unawaited(_registrarVenta()),
                       alAbrirPrecios: () => unawaited(_abrirPrecios()),
+                      alAbrirEntregas: () => unawaited(_abrirEntregas()),
                     ),
                     _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
                   },
@@ -356,13 +400,26 @@ class _EstadoTeclado extends InheritedWidget {
 /// Pantalla de una pestaña cuya HU todavía no está: el ícono de la sección y «Esta sección llega
 /// pronto.», sin contenido inventado. Se reemplaza en el issue de cada HU.
 class PestanaProvisoria extends StatelessWidget {
-  const PestanaProvisoria({super.key, required this.pestana, this.alAbrirPrecios});
+  const PestanaProvisoria({
+    super.key,
+    required this.pestana,
+    this.alRegistrarVenta,
+    this.alAbrirPrecios,
+    this.alAbrirEntregas,
+  });
 
   final PestanaInicio pestana;
+
+  /// Solo Ventas: «+ Registrar venta» (vista 27, `00 Navegacion`: Ventas → 27A·01). Abre la lista para
+  /// elegir a la persona. `null`: sin botón.
+  final VoidCallback? alRegistrarVenta;
 
   /// Solo Ventas: abre la consulta de precios (vista 26, «Ventas → Precios»), que es lo único que
   /// tiene esa pestaña hasta que llegue su pantalla (vista 27). `null`: sin botón.
   final VoidCallback? alAbrirPrecios;
+
+  /// Solo Ventas: abre «Entregas pendientes» (vista 27, grupo C). `null`: sin botón.
+  final VoidCallback? alAbrirEntregas;
 
   @override
   Widget build(BuildContext context) {
@@ -371,7 +428,8 @@ class PestanaProvisoria extends StatelessWidget {
       label: pestana.etiqueta,
       container: true,
       child: Center(
-        child: Padding(
+        // Con Ventas lleva tres botones: con la letra grande en un teléfono chico no entran sin scroll.
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(26),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -388,12 +446,26 @@ class PestanaProvisoria extends StatelessWidget {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (alRegistrarVenta != null)
+                FilledButton(
+                  key: const Key('ventas_registrar'),
+                  onPressed: alRegistrarVenta,
+                  style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+                  child: const Text(TextosElegirPersona.registrarVenta),
+                ),
               if (alAbrirPrecios != null)
                 OutlinedButton(
                   key: const Key('ventas_precios'),
                   onPressed: alAbrirPrecios,
                   style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
                   child: const Text(TextosPrecios.titulo),
+                ),
+              if (alAbrirEntregas != null)
+                OutlinedButton(
+                  key: const Key('ventas_entregas'),
+                  onPressed: alAbrirEntregas,
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
+                  child: const Text(TextosEntregaDiferida.tituloPendientes),
                 ),
             ],
           ),
