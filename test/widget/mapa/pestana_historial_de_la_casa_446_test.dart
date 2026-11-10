@@ -52,6 +52,7 @@ final ventaDelDoce = VentaDeLaCasa(
   pagadoCentavos: 360000,
   lineas: const [LineaDeFicha(nombre: 'Salud y Hogar', cantidad: 1)],
   persona: pedro,
+  espacioPersonaId: 'ep-pedro',
   nota: 'quiere Nuestros Hijos',
 );
 
@@ -112,7 +113,7 @@ void main() {
     List<EventoDeLaCasa>? eventos,
     HistorialFalso? fuente,
     FutureOr<Object?> Function(String)? verCobro,
-    FutureOr<Object?> Function(String)? verVenta,
+    FutureOr<Object?> Function(ContextoDeVentaDeLaCasa)? verVenta,
     double escala = 1,
     Size tamano = const Size(412, 915),
     String espacio = 'esp-1',
@@ -632,13 +633,15 @@ void main() {
 
   group('«Ver la venta»', () {
     testWidgets(
-      'dado que hay a dónde llevar, el detalle de la venta la ofrece y la abre con su id',
+      'dado que hay a dónde llevar, el detalle de la venta la ofrece y la abre con su id, el espacio '
+      'de la hoja y su cliente',
       (tester) async {
-        final abiertas = <String>[];
+        final abiertas = <ContextoDeVentaDeLaCasa>[];
         await montar(
           tester,
-          verVenta: (id) {
-            abiertas.add(id);
+          espacio: 'esp-9',
+          verVenta: (venta) {
+            abiertas.add(venta);
             return true;
           },
         );
@@ -648,10 +651,67 @@ void main() {
         await tester.tap(find.byKey(ClavesDetalleDeVisita.verLaVenta));
         await asentar(tester);
 
-        expect(abiertas, ['ven-1']);
+        expect(abiertas, [(ventaId: 'ven-1', espacioId: 'esp-9', espacioPersonaId: 'ep-pedro')]);
         expect(find.byKey(ClavesDetalleDeVisita.hoja), findsNothing);
       },
     );
+
+    testWidgets(
+      'dado dos ventas con saldo en la casa, «Ver la venta» abre la que se tocó y no la otra',
+      (tester) async {
+        final ana = VentaDeLaCasa(
+          id: 'ven-2',
+          fecha: local(10, 20, 11),
+          numeroTalonario: '0041',
+          montoCentavos: 200000,
+          pagadoCentavos: 50000,
+          lineas: const [LineaDeFicha(nombre: 'El Deseado', cantidad: 1)],
+          persona: const PersonaDelEvento(nombre: 'Ana'),
+          espacioPersonaId: 'ep-ana',
+        );
+        final abiertas = <ContextoDeVentaDeLaCasa>[];
+        await montar(
+          tester,
+          eventos: [ana, ventaDelDoce],
+          verVenta: (venta) {
+            abiertas.add(venta);
+            return true;
+          },
+        );
+
+        await tester.tap(fila('ven-2'));
+        await asentar(tester);
+        await tester.tap(find.byKey(ClavesDetalleDeVisita.verLaVenta));
+        await asentar(tester);
+        await tester.tap(fila('ven-1'));
+        await asentar(tester);
+        await tester.tap(find.byKey(ClavesDetalleDeVisita.verLaVenta));
+        await asentar(tester);
+
+        expect(abiertas, [
+          (ventaId: 'ven-2', espacioId: 'esp-1', espacioPersonaId: 'ep-ana'),
+          (ventaId: 'ven-1', espacioId: 'esp-1', espacioPersonaId: 'ep-pedro'),
+        ]);
+      },
+    );
+
+    testWidgets('dado que cierro el detalle con «Cerrar», no se abre la venta', (tester) async {
+      final abiertas = <ContextoDeVentaDeLaCasa>[];
+      await montar(
+        tester,
+        verVenta: (venta) {
+          abiertas.add(venta);
+          return true;
+        },
+      );
+
+      await tester.tap(fila('ven-1'));
+      await asentar(tester);
+      await tester.tap(find.byKey(ClavesDetalleDeVisita.cerrar));
+      await asentar(tester);
+
+      expect(abiertas, isEmpty);
+    });
 
     testWidgets('dado que hay a dónde llevar, el detalle de una entrevista no lo ofrece', (
       tester,
@@ -669,8 +729,8 @@ void main() {
       final lenta = Completer<Object?>();
       await montar(
         tester,
-        verVenta: (id) {
-          abiertas.add(id);
+        verVenta: (venta) {
+          abiertas.add(venta.ventaId);
           return lenta.future;
         },
       );
@@ -707,6 +767,8 @@ void main() {
         await tester.tap(find.byKey(ClavesDetalleDeVisita.verLaVenta));
         await asentar(tester);
         expect(find.byKey(ClavesHistorialDeLaCasa.aviso), findsOneWidget);
+        expect(find.text(TextosHistorialDeLaCasa.noPudimosAbrirLaVenta), findsOneWidget);
+        expect(find.text(TextosHistorialDeLaCasa.noPudimosAbrirElCobro), findsNothing);
         expect(find.textContaining('sin sesión'), findsNothing);
 
         await tester.tap(fila('ven-1'));

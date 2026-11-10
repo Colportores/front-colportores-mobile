@@ -37,8 +37,10 @@ abstract final class ClavesHistorialDeLaCasa {
 /// - Cargando, vacío, filtro sin resultados y error al leer son estados propios. Sin conexión funciona
 ///   igual: todo sale del teléfono. Una casa dada de baja se lee igual (el historial no se esconde).
 /// - Una sola cosa se abre a la vez: un doble toque sobre una fila, o un segundo toque sobre otra
-///   mientras la primera se abre, no abre dos veces. Si abrir el cobro falla, el aviso queda en la
-///   pestaña (no en un `SnackBar`: la hoja puede ser una ruta modal que lo taparía).
+///   mientras la primera se abre, no abre dos veces. Si abrir el cobro o la venta falla, el aviso queda
+///   en la pestaña (no en un `SnackBar`: la hoja puede ser una ruta modal que lo taparía).
+/// - «Ver la venta» del detalle de una venta abre las cuotas de ESA venta (vista 30 A) por
+///   [verVentaDesdeLaCasaProvider].
 ///
 /// **local-only — PII**: los nombres y las notas viven solo en el teléfono y no van a ningún log.
 class PestanaHistorialDeLaCasa extends ConsumerStatefulWidget {
@@ -65,7 +67,8 @@ class _PestanaHistorialDeLaCasaState extends ConsumerState<PestanaHistorialDeLaC
   /// campo: corta aunque el toque llegue antes de que se vuelva a dibujar.
   var _abriendo = false;
 
-  bool _noPudimosAbrir = false;
+  /// El aviso de que no se pudo abrir el cobro o la venta; `null` sin aviso.
+  String? _noPudimosAbrir;
 
   void _elegirFiltro(FiltroDeLaCasa filtro) {
     if (filtro == _filtro) return;
@@ -79,7 +82,7 @@ class _PestanaHistorialDeLaCasaState extends ConsumerState<PestanaHistorialDeLaC
     if (_abriendo) return;
     _abriendo = true;
     try {
-      if (_noPudimosAbrir) setState(() => _noPudimosAbrir = false);
+      if (_noPudimosAbrir != null) setState(() => _noPudimosAbrir = null);
       switch (evento) {
         case CobroDeLaCasa():
           await _abrirElCobro(evento);
@@ -98,7 +101,9 @@ class _PestanaHistorialDeLaCasaState extends ConsumerState<PestanaHistorialDeLaC
       await Future<Object?>.sync(() => ver(cobro.id));
     } on Object {
       // Nada de la excepción al aviso: puede traer datos de la persona (convenciones §7.5).
-      if (mounted) setState(() => _noPudimosAbrir = true);
+      if (mounted) {
+        setState(() => _noPudimosAbrir = TextosHistorialDeLaCasa.noPudimosAbrirElCobro);
+      }
     }
   }
 
@@ -112,11 +117,24 @@ class _PestanaHistorialDeLaCasaState extends ConsumerState<PestanaHistorialDeLaC
       ahora: ahora,
       conVerLaVenta: verVenta != null,
     );
-    if (!mounted || accion != AccionDelDetalle.verLaVenta || verVenta == null) return;
+    if (!mounted ||
+        accion != AccionDelDetalle.verLaVenta ||
+        verVenta == null ||
+        evento is! VentaDeLaCasa) {
+      return;
+    }
+    // La venta tocada, no otra de la casa: su `id`, el espacio de la hoja y su cliente.
+    final venta = (
+      ventaId: evento.id,
+      espacioId: widget.espacioId,
+      espacioPersonaId: evento.espacioPersonaId,
+    );
     try {
-      await Future<Object?>.sync(() => verVenta(evento.id));
+      await Future<Object?>.sync(() => verVenta(venta));
     } on Object {
-      if (mounted) setState(() => _noPudimosAbrir = true);
+      if (mounted) {
+        setState(() => _noPudimosAbrir = TextosHistorialDeLaCasa.noPudimosAbrirLaVenta);
+      }
     }
   }
 
@@ -197,12 +215,12 @@ class _PestanaHistorialDeLaCasaState extends ConsumerState<PestanaHistorialDeLaC
       mainAxisSize: MainAxisSize.min,
       spacing: 10,
       children: [
-        if (_noPudimosAbrir)
-          const AvisoAlta(
+        if (_noPudimosAbrir case final texto?)
+          AvisoAlta(
             key: ClavesHistorialDeLaCasa.aviso,
             color: ColoresAlta.rojo,
             glyph: '!',
-            texto: TextosHistorialDeLaCasa.noPudimosAbrirElCobro,
+            texto: texto,
           ),
         ...cuerpo,
       ],

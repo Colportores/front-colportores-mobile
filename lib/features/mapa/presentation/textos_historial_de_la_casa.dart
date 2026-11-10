@@ -41,6 +41,7 @@ abstract final class TextosHistorialDeLaCasa {
   static const cargando = 'Cargando el historial';
   static const noPudimosLeer = 'No pudimos leer el historial de esta casa en tu teléfono.';
   static const noPudimosAbrirElCobro = 'No pudimos abrir el cobro. Probá de nuevo.';
+  static const noPudimosAbrirLaVenta = 'No pudimos abrir la venta. Probá de nuevo.';
 
   static String etiquetaDelFiltro(FiltroDeLaCasa filtro) => switch (filtro) {
     FiltroDeLaCasa.todo => todo,

@@ -38,10 +38,15 @@ final verCobroDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(String c
   (ref) => null,
 );
 
-/// A dónde lleva «Ver la venta» del detalle de una venta (vista 39, C·04): recibe el `id` de la venta
-/// y devuelve cuando se cerró. **Sin destino**: mientras sea `null` el detalle no ofrece el botón. Hoy
-/// no existe una pantalla que muestre una venta ya registrada (el canvas no la dibuja: pendiente en
-/// `front-colportores-mobile-446-impl-261110-1000.md`).
-final verVentaDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(String ventaId)?>(
+/// Lo que recibe «Ver la venta» del detalle de una venta del Historial: la venta tocada, el espacio de
+/// la hoja (las ventas del Historial son las de los vínculos de ESE espacio) y el cliente de la venta.
+typedef ContextoDeVentaDeLaCasa = ({String ventaId, String espacioId, String? espacioPersonaId});
+
+/// A dónde lleva «Ver la venta» del detalle de una venta (vista 39, C·04): las cuotas de esa venta
+/// (`CuotasDeLaVentaPage`, vista 30 A: el resumen, el plan o «sin saldo»), igual que desde el detalle
+/// de la Agenda (decisión del 10/11, P2 de #446). Devuelve cuando se cerró; si no hay a dónde abrir
+/// lanza y la pestaña lo avisa. **Sin destino**: mientras sea `null` el detalle no ofrece el botón.
+/// Lo engancha `main.dart` con `FlujoVerVentaDesdeLaCasa.enganche`.
+final verVentaDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDeVentaDeLaCasa)?>(
   (ref) => null,
 );

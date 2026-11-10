@@ -104,6 +104,7 @@ final class HistorialDeLaCasaLocalDataSourceDrift implements HistorialDeLaCasa {
           pagadoCentavos: pagado[v.id] ?? 0,
           lineas: lineas[v.id] ?? const [],
           persona: porVinculo[v.espacioPersonaId],
+          espacioPersonaId: v.espacioPersonaId,
           nota: notas[v.visitaId],
         ),
       for (final c in cobros)

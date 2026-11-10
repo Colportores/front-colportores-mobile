@@ -86,6 +86,7 @@ final class VentaDeLaCasa extends EventoDeLaCasa {
     required this.pagadoCentavos,
     required this.lineas,
     this.persona,
+    this.espacioPersonaId,
     this.nota,
   });
 
@@ -104,6 +105,10 @@ final class VentaDeLaCasa extends EventoDeLaCasa {
 
   final PersonaDelEvento? persona;
 
+  /// El vínculo persona–espacio (`espacio_persona`) de la venta: el cliente con el que «Ver la venta»
+  /// abre sus cuotas (vista 30 A). `null` si no se sabe.
+  final String? espacioPersonaId;
+
   /// La nota de la visita de la venta, si la tiene.
   final String? nota;
 
@@ -116,6 +121,7 @@ final class VentaDeLaCasa extends EventoDeLaCasa {
     pagadoCentavos,
     lineas,
     persona,
+    espacioPersonaId,
     nota,
   ];
 }
