@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import '../../../agenda/presentation/widgets/aviso_entrevista_en_curso.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../inicio/presentation/providers/navegacion_inicio_provider.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart' show AmbitoTrabajo;
+import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/entities/ubicacion.dart' show TipoUbicacion;
 import '../../domain/services/cuadrados_del_mapa.dart';
@@ -20,9 +22,11 @@ import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../../domain/value_objects/modo_seguimiento.dart';
 import '../formato_mapa_ubicaciones.dart';
+import '../formato_ubicaciones.dart';
 import '../mapa_base/mapa_base.dart';
 import '../mapa_base/marcador_estado.dart' show VarianteMarcador;
 import '../mapa_base/modelo_mapa_base.dart';
+import '../providers/alta_ubicacion_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import '../providers/mapa_base_providers.dart';
 import '../providers/mapa_principal_provider.dart';
@@ -32,9 +36,11 @@ import '../providers/pantallas_sobre_el_mapa.dart';
 import '../providers/situacion_mapa_providers.dart';
 import '../providers/ubicacion_colportor_provider.dart';
 import '../providers/zonas_del_mapa_providers.dart';
+import '../widgets/alta_sobre_el_mapa.dart';
 import '../widgets/aviso_mapa.dart';
 import '../widgets/hoja_mapa_ubicaciones.dart';
 import '../widgets/mapa_alta.dart';
+import '../widgets/piezas_alta.dart' show PinAlta;
 import '../widgets/piezas_mapa_ubicaciones.dart';
 import 'alta_ubicacion_page.dart';
 
@@ -76,9 +82,9 @@ class MapaUbicacionesPage extends ConsumerStatefulWidget {
   /// La pestaña está a la vista.
   final bool activa;
 
-  /// Cómo se abre el alta («Nueva», mantener el dedo en el mapa y «Registrar tu primera
-  /// ubicación»), con el punto donde se mantuvo el dedo si lo hay. Por defecto abre
-  /// `AltaUbicacionPage`; un test lo reemplaza.
+  /// Cómo se abre el alta (el pin, mantener el dedo en el mapa y «Registrar tu primera
+  /// ubicación»), con el punto donde se mantuvo el dedo o se soltó el pin si lo hay. Por defecto es
+  /// el alta sobre este mismo mapa (vista 41, `AltaSobreElMapa`); un test lo reemplaza.
   final Future<SalidaAltaUbicacion?> Function(Coordenadas? puntoInicial)? alAbrirAlta;
 
   @override
@@ -91,6 +97,16 @@ enum _Encuadre { ninguno, todas, gps }
 class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     with WidgetsBindingObserver {
   ControladorMapaBase? _mapa;
+
+  /// La vista del mapa: con ella se sabe dónde está en la pantalla (para soltar el pin y para las
+  /// hojas de encima).
+  final _claveMapa = GlobalKey();
+
+  /// La cámara de ahora, también durante un gesto: el pin del alta y las etiquetas la siguen.
+  final _camaraViva = ValueNotifier<CamaraMapa?>(null);
+
+  /// Cuántas altas se abrieron: cada una arranca de cero ([ParametrosAlta.apertura]).
+  var _aperturasAlta = 0;
 
   /// El dueño del mapa principal (#655): las capas de encima mueven la cámara por él. Se guarda al
   /// montar (en `dispose` no se lee `ref`).
@@ -194,6 +210,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     _pantallas.cambios.removeListener(_alCambiarLaPila);
     final mapa = _mapa;
     if (mapa != null) _mapaPrincipal.soltar(mapa);
+    _camaraViva.dispose();
     // El mapa deja de estar a la vista: el seguimiento no sigue gastando batería sin pantalla. Fuera
     // del desmontaje (un provider no se toca mientras se arma o se desarma el árbol).
     final gps = _gpsAlDescartar;
@@ -242,7 +259,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   void _alCrearseElMapa(ControladorMapaBase mapa) {
     _mapa = mapa;
-    _mapaPrincipal.registrar(mapa);
+    _mapaPrincipal.registrar(mapa, area: _areaDelMapa);
+    _camaraViva.value = mapa.camara;
     // Si el shell ya pidió algo, se atiende al terminar el cuadro: acá se está construyendo y no se
     // puede tocar ningún provider. La cámara la mueve la intención si le toca (`_atenderIntencion`);
     // si no la mueve, el encuadre de la primera vez sigue como siempre.
@@ -294,6 +312,19 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     }
   }
 
+  /// Dónde está la vista del mapa en la pantalla (coordenadas globales), o `null` si no se dibujó.
+  Rect? _areaDelMapa() {
+    final caja = _claveMapa.currentContext?.findRenderObject();
+    if (caja is! RenderBox || !caja.hasSize || !caja.attached) return null;
+    return caja.localToGlobal(Offset.zero) & caja.size;
+  }
+
+  /// El alta que está abierta sobre el mapa (vista 41), o `null`.
+  ParametrosAlta? get _altaEnCurso => switch (ref.read(mapaPrincipalProvider)) {
+    ColocandoPin(:final alta) => alta,
+    _ => null,
+  };
+
   /// ¿[punto] se ve en la parte del mapa que la hoja no tapa? Con un margen: un marcador pegado al
   /// borde no cuenta como «a la vista».
   bool _estaALaVista(Coordenadas punto) {
@@ -317,6 +348,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   void _encuadrarSiHaceFalta(MapaUbicacionesState estado) {
     final mapa = _mapa;
     if (mapa == null || _gestos > 0 || _camaraDirigida || _tamano.isEmpty) return;
+    // Con un alta abierta el mapa no se mueve solo (vista 41).
+    if (_altaEnCurso != null) return;
     final lectura = estado.lectura;
     if (lectura != null) {
       if (_encuadre == _Encuadre.gps) return;
@@ -344,10 +377,9 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     unawaited(mapa.moverCamara(camara));
   }
 
-  /// Lo que ocupan los botones flotantes («Mi ubicación» y «Nueva», con 10 entre ellos y 14 de
-  /// margen abajo) sobre la hoja.
-  double _altoBotones() =>
-      52 + 10 + math.max(52.0, MediaQuery.textScalerOf(context).scale(22)) + 14;
+  /// Lo que ocupan los botones flotantes («Mi ubicación» y el pin, con 10 entre ellos y 14 de margen
+  /// abajo) sobre la hoja.
+  double _altoBotones() => 52 + 10 + BotonPinCasaNueva.lado + 14;
 
   /// Lo que tiene que quedar libre sobre la hoja: los botones, y arriba el chip «Referencias» (48 dp
   /// de alto con 8 de margen arriba y 8 de aire hasta los botones). En un teléfono chico la hoja a 1/2
@@ -388,6 +420,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   void _seguirConLaCamara(UbicacionColportorState gps, {bool alEntrar = false}) {
     final lectura = gps.lectura;
     if (!gps.modo.sigue || lectura == null) return;
+    // Con una hoja de alta abierta el seguimiento se pausa: la cámara no se mueve sola (41E·03C).
+    if (_altaEnCurso != null) return;
     final rumbo = gps.modo.gira ? lectura.rumboGrados ?? _mapa?.camara.rumbo ?? 0 : 0.0;
     _centrarEn(
       lectura.coordenadas,
@@ -484,6 +518,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   /// El mapa quedó quieto: si con esta cámara cambia entre puntos y cuadrados, se vuelve a dibujar.
   void _alQuedarQuieto(CamaraMapa camara, AreaMapa area) {
     _camaraQuieta = camara;
+    _camaraViva.value = camara;
     if (!mounted) return;
     if (_entranLosCuadrados(ref.read(_proveedor)) != _cuadradosPintados) setState(() {});
   }
@@ -550,8 +585,92 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     if (tocada != null) _centrarEn(tocada.ubicacion.coordenadas, nueva);
   }
 
-  /// «Nueva» o el dedo mantenido en un lugar vacío del mapa: el alta, y al volver la ubicación
-  /// registrada (o la que se reutilizó) queda seleccionada.
+  /// El pin, el dedo mantenido en un lugar vacío o «Registrar tu primera ubicación»: el alta sobre este
+  /// mismo mapa (vista 41, 41A y 41B). Con [punto] el pin arranca ahí (se soltó o se mantuvo el dedo);
+  /// sin él, en la ubicación de la colportora, o sin GPS espera a que toque el mapa (41A·02).
+  ///
+  /// Al registrar, la casa nueva queda elegida con su hoja (C·01) y el mapa solo se mueve si no está
+  /// a la vista. «Reutilizar esta» y «Abrir la existente» eligen la que ya estaba.
+  Future<void> _empezarAlta([Coordenadas? punto]) async {
+    if (widget.alAbrirAlta != null) return _abrirAlta(punto);
+    if (_abriendoAlta || _altaEnCurso != null) return;
+    // Con la cuenta restringida mientras esta pantalla estaba abierta no se empieza un alta nueva.
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    _abriendoAlta = true;
+    final parametros = ParametrosAlta(
+      colportorId: widget.colportorId,
+      puntoInicial: punto,
+      apertura: ++_aperturasAlta,
+    );
+    _notificador.cerrarSeleccion();
+    _mapaPrincipal.cambiarModo(ColocandoPin(parametros));
+    SalidaAltaUbicacion? salida;
+    try {
+      salida = await abrirAltaSobreElMapa(context, parametros: parametros);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(const SnackBar(content: Text(TextosMapaUbicaciones.noPudimosAbrirAlta)));
+      }
+    } finally {
+      _abriendoAlta = false;
+      if (ref.read(mapaPrincipalProvider) == ColocandoPin(parametros)) {
+        _mapaPrincipal.volverAExplorar();
+      }
+    }
+    if (!mounted) return;
+    switch (salida) {
+      case UbicacionCreada(:final ubicacion):
+        _notificador.seleccionar(ubicacion.id);
+        final nueva = _altura == AlturaHoja.minimizada ? AlturaHoja.tercio : _altura;
+        if (nueva != _altura) setState(() => _altura = nueva);
+        _soltarElSeguimiento();
+        // La hoja de la casa vuelve a dibujarse: recién ahí se sabe si la casa quedó a la vista.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _estaALaVista(ubicacion.coordenadas)) return;
+          _centrarEn(ubicacion.coordenadas, _altura, zoomMinimo: MapaAlta.zoomCalle);
+        });
+      case UbicacionReutilizada(:final ubicacionId):
+        _alReutilizar(ubicacionId);
+      case null:
+        break;
+    }
+  }
+
+  /// Se soltó el pin arrastrado desde su botón: si la punta cayó sobre el mapa, el alta arranca ahí.
+  void _alSoltarElPin(Offset puntaGlobal) {
+    final mapa = _mapa;
+    final caja = _claveMapa.currentContext?.findRenderObject();
+    if (mapa == null || caja is! RenderBox || !caja.hasSize) return;
+    final local = caja.globalToLocal(puntaGlobal);
+    if (!(Offset.zero & caja.size).contains(local)) return;
+    final punto = ProyeccionMercator.dePantalla(
+      local.dx,
+      local.dy,
+      mapa.camara,
+      ancho: caja.size.width,
+      alto: caja.size.height,
+    );
+    unawaited(_empezarAlta(punto));
+  }
+
+  /// Un toque en un lugar vacío del mapa: con el alta abierta en N·01, el pin va ahí (41A).
+  void _alTocarElMapa(Coordenadas punto) {
+    final alta = _altaEnCurso;
+    if (alta == null) return;
+    ref.read(altaUbicacionProvider(alta).notifier).marcarPunto(punto);
+  }
+
+  /// El dedo mantenido: con el alta abierta mueve el pin; si no, abre el alta ahí.
+  void _alTocarLargo(Coordenadas punto) {
+    if (_altaEnCurso != null) return _alTocarElMapa(punto);
+    unawaited(_empezarAlta(punto));
+  }
+
+  /// La vista 03 (pantalla propia, con su mapa): solo cuando un test la pide con
+  /// [MapaUbicacionesPage.alAbrirAlta]. Al volver la ubicación registrada (o la que se reutilizó)
+  /// queda seleccionada.
   Future<void> _abrirAlta([Coordenadas? punto]) async {
     if (_abriendoAlta) return;
     // Con la cuenta restringida mientras esta pantalla estaba abierta no se empieza un alta nueva.
@@ -639,14 +758,47 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   // ---------------------------------------------------------------- dibujo
 
-  List<PuntoMapa> _puntos(MapaUbicacionesState estado, {required bool cuadrados}) {
+  List<PuntoMapa> _puntos(
+    MapaUbicacionesState estado, {
+    required bool cuadrados,
+    AltaUbicacionState? alta,
+  }) {
     final seleccionada = estado.seleccionada?.ubicacion.id;
+    final candidatas = alta?.candidatas ?? const <CandidataDuplicado>[];
+    final ids = {for (final c in candidatas) c.ubicacion.id};
     return [
       for (final item in estado.lista?.items ?? const <ItemListaUbicacion>[])
-        _punto(item, seleccionada: item.ubicacion.id == seleccionada, cuadrados: cuadrados),
+        if (!ids.contains(item.ubicacion.id))
+          _punto(item, seleccionada: item.ubicacion.id == seleccionada, cuadrados: cuadrados),
+      for (var i = 0; i < candidatas.length; i++)
+        _puntoCandidata(candidatas[i], i, varias: candidatas.length > 1, alta: alta!),
       if (estado.lectura != null)
         PuntoMapa(id: 'gps', coordenadas: estado.lectura!.coordenadas, estilo: EstiloPunto.gps),
     ];
+  }
+
+  /// Una candidata a duplicado del alta (41B): resaltada con su número (una sola, o la fila que se
+  /// tocó) o con su letra (A, B…), para unir cada fila de la hoja con su marcador.
+  PuntoMapa _puntoCandidata(
+    CandidataDuplicado candidata,
+    int indice, {
+    required bool varias,
+    required AltaUbicacionState alta,
+  }) {
+    final ubicacion = candidata.ubicacion;
+    final letra = FormatoUbicaciones.rotuloCandidata(indice);
+    final resaltada = !varias || alta.resaltada == ubicacion.id;
+    return PuntoMapa(
+      id: ubicacion.id,
+      coordenadas: ubicacion.coordenadas,
+      estilo: resaltada ? EstiloPunto.seleccionado : EstiloPunto.candidata,
+      letra: varias ? letra : null,
+      etiqueta: varias ? letra : FormatoMapaUbicaciones.etiquetaPuerta(ubicacion),
+      variante: VarianteMarcador.de(
+        candidata.estado,
+        edificio: ubicacion.tipo == TipoUbicacion.edificio,
+      ),
+    );
   }
 
   /// El marcador de una casa: con [cuadrados] el cuadrado de M·02 (con el aro si es la elegida); si
@@ -682,6 +834,9 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   Widget build(BuildContext context) {
     if (!_abierta) return const SizedBox.expand();
     final estado = ref.watch(_proveedor);
+    final modoMapa = ref.watch(mapaPrincipalProvider);
+    final parametrosAlta = modoMapa is ColocandoPin ? modoMapa.alta : null;
+    final alta = parametrosAlta == null ? null : ref.watch(altaUbicacionProvider(parametrosAlta));
     final ambito = ref.watch(ambitoMapaUbicacionesProvider(widget.colportorId));
     final ahora = ref.watch(relojListaUbicacionesProvider)();
     final avisoVisible = ref.watch(avisoMapaVisibleProvider(ambito));
@@ -719,7 +874,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       onPopInvokedWithResult: (salio, _) {
         if (!salio && widget.activa) _notificador.cerrarSeleccion();
       },
-      child: _contenido(context, estado, ambito, ahora, avisoVisible, zonas),
+      child: _contenido(context, estado, ambito, ahora, avisoVisible, zonas, parametrosAlta, alta),
     );
   }
 
@@ -730,13 +885,18 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     DateTime ahora,
     bool avisoVisible,
     ZonasParaElMapa zonas,
+    ParametrosAlta? parametrosAlta,
+    AltaUbicacionState? alta,
   ) {
     final lectura = estado.lectura;
     final modo = ref.watch(ubicacionColportorProvider.select((g) => g.modo));
+    // Con el alta abierta (vista 41) la capa de encima tiene su hoja: la de «Cercanía», los botones y
+    // lo de arriba se apartan y el mapa queda libre para el pin.
+    final enAlta = parametrosAlta != null && alta != null;
     return LayoutBuilder(
       builder: (context, restricciones) {
         _tamano = restricciones.biggest;
-        final hoja = _altoHoja(_altura);
+        final hoja = enAlta ? 0.0 : _altoHoja(_altura);
         final cuadrados = _cuadradosPintados = _entranLosCuadrados(estado);
         // Lo que queda libre arriba, sobre los botones y la hoja: ahí caben el aviso de conexión y
         // «Referencias». La tarjeta del aviso no puede pasar de ahí (con el texto grande se
@@ -746,6 +906,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
         return Stack(
           children: [
             Positioned.fill(
+              key: _claveMapa,
               child: Semantics(
                 // Las zonas son capas del estilo, no widgets: el lector de pantalla las oye acá.
                 label: [TextosMapaUbicaciones.mapa, ?zonas.paraElLector].join('. '),
@@ -759,7 +920,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                   zoomMinimo: MapaAlta.zoomMinimo,
                   zoomMaximo: MapaAlta.zoomMaximo,
                   agruparPuntos: true,
-                  puntos: _puntos(estado, cuadrados: cuadrados),
+                  puntos: _puntos(estado, cuadrados: cuadrados, alta: alta),
                   zonas: zonas.dibujo,
                   precision: lectura != null
                       ? CirculoPrecision(
@@ -779,108 +940,126 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                   // Siguiendo, un pellizco acerca o aleja sin soltar a la colportora (como en Maps).
                   zoomSobreCentro: modo.sigue,
                   alCrearse: _alCrearseElMapa,
-                  alMoverCamara: (_) => _alMoverElMapa(),
+                  alMoverCamara: (camara) {
+                    _camaraViva.value = camara;
+                    _alMoverElMapa();
+                  },
                   alQuedarQuieto: _alQuedarQuieto,
-                  alTocarLargo: (punto) => unawaited(_abrirAlta(punto)),
-                  alTocarPunto: _alTocarPunto,
+                  alTocar: _alTocarElMapa,
+                  alTocarLargo: _alTocarLargo,
+                  // Con el alta abierta, tocar una casa no abre su hoja: el pin es lo que se mueve.
+                  alTocarPunto: (id) {
+                    if (_altaEnCurso == null) _alTocarPunto(id);
+                  },
                 ),
               ),
             ),
-            // Todo hijo del `Stack` va posicionado: uno sin posición (el aviso, que sin aviso es un
-            // `SizedBox.shrink`) le da su tamaño al `Stack`, y un `Stack` de 0 x 0 no recibe toques.
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              height: libre,
-              // Con una entrevista en curso, su aviso fijo ocupa el borde de arriba y «Referencias»
-              // y el aviso del mapa quedan debajo, en lo que sobra (decisión de Cristian, 23/10,
-              // #450). Sin entrevista el `Expanded` ocupa todo: el mismo dibujo de siempre.
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _AvisoDeLaEntrevista(colportorId: widget.colportorId, alturaMaxima: libre),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, restricciones) => Stack(
-                        children: [
-                          // «Referencias» y el aviso comparten el borde de arriba: con el aviso a
-                          // la vista (la tarjeta o la píldora) el chip se corre, el canvas no los
-                          // dibuja juntos.
-                          if (!avisoVisible)
-                            Positioned(
-                              top: 8,
-                              right: 14,
-                              child: ChipReferencias(
-                                key: ClavesMapaUbicaciones.referencias,
-                                alPresionar: () => unawaited(_abrirReferencias()),
+            if (enAlta)
+              Positioned.fill(
+                child: _PinDelAlta(
+                  camara: _camaraViva,
+                  estado: alta,
+                  alMover: ref.read(altaUbicacionProvider(parametrosAlta).notifier).moverPunto,
+                ),
+              ),
+            if (!enAlta) ...[
+              // Todo hijo del `Stack` va posicionado: uno sin posición (el aviso, que sin aviso es un
+              // `SizedBox.shrink`) le da su tamaño al `Stack`, y un `Stack` de 0 x 0 no recibe toques.
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                height: libre,
+                // Con una entrevista en curso, su aviso fijo ocupa el borde de arriba y «Referencias»
+                // y el aviso del mapa quedan debajo, en lo que sobra (decisión de Cristian, 23/10,
+                // #450). Sin entrevista el `Expanded` ocupa todo: el mismo dibujo de siempre.
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _AvisoDeLaEntrevista(colportorId: widget.colportorId, alturaMaxima: libre),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, restricciones) => Stack(
+                          children: [
+                            // «Referencias» y el aviso comparten el borde de arriba: con el aviso a
+                            // la vista (la tarjeta o la píldora) el chip se corre, el canvas no los
+                            // dibuja juntos.
+                            if (!avisoVisible)
+                              Positioned(
+                                top: 8,
+                                right: 14,
+                                child: ChipReferencias(
+                                  key: ClavesMapaUbicaciones.referencias,
+                                  alPresionar: () => unawaited(_abrirReferencias()),
+                                ),
+                              ),
+                            Positioned.fill(
+                              child: AvisoMapaConectado(
+                                ambito: ambito,
+                                modo: AvisoMapaModo.flotante,
+                                altoLibre: restricciones.maxHeight,
                               ),
                             ),
-                          Positioned.fill(
-                            child: AvisoMapaConectado(
-                              ambito: ambito,
-                              modo: AvisoMapaModo.flotante,
-                              altoLibre: restricciones.maxHeight,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(0, 0, 14, 14),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          spacing: 10,
+                          children: [
+                            BotonMiUbicacion(
+                              key: ClavesMapaUbicaciones.miUbicacion,
+                              gps: estado.gps,
+                              modo: modo,
+                              // Sin una lectura no hay a dónde ir: no está disponible (HU-UBI-003,
+                              // «Edge: sin GPS»).
+                              alPresionar: lectura == null ? null : _alTocarMiUbicacion,
                             ),
-                          ),
-                        ],
+                            BotonPinCasaNueva(
+                              key: ClavesMapaUbicaciones.nueva,
+                              alTocar: () => unawaited(_empezarAlta()),
+                              alSoltar: _alSoltarElPin,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(0, 0, 14, 14),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        spacing: 10,
-                        children: [
-                          BotonMiUbicacion(
-                            key: ClavesMapaUbicaciones.miUbicacion,
-                            gps: estado.gps,
-                            modo: modo,
-                            // Sin una lectura no hay a dónde ir: no está disponible (HU-UBI-003,
-                            // «Edge: sin GPS»).
-                            alPresionar: lectura == null ? null : _alTocarMiUbicacion,
-                          ),
-                          BotonNuevaUbicacion(
-                            key: ClavesMapaUbicaciones.nueva,
-                            alPresionar: () => unawaited(_abrirAlta()),
-                          ),
-                        ],
-                      ),
+                    HojaMapaUbicaciones(
+                      estado: estado,
+                      altura: _altura,
+                      alturaDisponible: _tamano.height,
+                      reservaLibre: _reservaSobreLaHoja(),
+                      ahora: ahora,
+                      alCambiarAltura: _cambiarAltura,
+                      alElegir: (id) => _elegir(id, zoomMinimo: MapaAlta.zoomCalle),
+                      alCerrarVistaPrevia: _notificador.cerrarSeleccion,
+                      alElegirDelPunto: (id) => _elegir(id),
+                      alReintentar: _notificador.reintentar,
+                      alActivarGps: () => unawaited(_gps.activarGps()),
+                      alRegistrar: () => unawaited(_empezarAlta()),
+                      colportorId: widget.colportorId,
                     ),
-                  ),
-                  HojaMapaUbicaciones(
-                    estado: estado,
-                    altura: _altura,
-                    alturaDisponible: _tamano.height,
-                    reservaLibre: _reservaSobreLaHoja(),
-                    ahora: ahora,
-                    alCambiarAltura: _cambiarAltura,
-                    alElegir: (id) => _elegir(id, zoomMinimo: MapaAlta.zoomCalle),
-                    alCerrarVistaPrevia: _notificador.cerrarSeleccion,
-                    alElegirDelPunto: (id) => _elegir(id),
-                    alReintentar: _notificador.reintentar,
-                    alActivarGps: () => unawaited(_gps.activarGps()),
-                    alRegistrar: () => unawaited(_abrirAlta()),
-                    colportorId: widget.colportorId,
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
         );
       },
@@ -914,6 +1093,154 @@ class _AvisoDeLaEntrevista extends ConsumerWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
           child: AvisoEntrevistaEnCurso(colportorId: colportorId),
+        ),
+      ),
+    );
+  }
+}
+
+/// El pin del alta sobre el mapa (vista 41) y las etiquetas de 41B («La nueva», «Ya registrada · a
+/// 12 m», «A · a 12 m»). El pin se arrastra en N·01 (41A); en los otros pasos queda quieto. Lo que no
+/// es el pin deja pasar los toques al mapa.
+class _PinDelAlta extends StatefulWidget {
+  const _PinDelAlta({required this.camara, required this.estado, required this.alMover});
+
+  final ValueListenable<CamaraMapa?> camara;
+  final AltaUbicacionState estado;
+  final ValueChanged<Coordenadas> alMover;
+
+  /// Lo que dice el lector de pantalla del pin (canvas: «Casa nueva»).
+  static const etiqueta = 'Casa nueva';
+
+  /// Lo que puede hacer con él en N·01.
+  static const pista = 'Arrastralo para moverlo';
+
+  @override
+  State<_PinDelAlta> createState() => _PinDelAltaState();
+}
+
+class _PinDelAltaState extends State<_PinDelAlta> {
+  /// Dónde está la punta mientras se arrastra (en la vista del mapa), o `null` sin arrastre.
+  Offset? _arrastre;
+
+  bool get _sePuedeMover => widget.estado.paso == PasoAlta.posicion && !widget.estado.guardando;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, caja) {
+        final tamano = caja.biggest;
+        return ValueListenableBuilder<CamaraMapa?>(
+          valueListenable: widget.camara,
+          builder: (context, camara, _) {
+            if (camara == null || tamano.isEmpty) return const SizedBox.shrink();
+            Offset enPantalla(Coordenadas punto) {
+              final (:x, :y) = ProyeccionMercator.aPantalla(
+                punto,
+                camara,
+                ancho: tamano.width,
+                alto: tamano.height,
+              );
+              return Offset(x, y);
+            }
+
+            final punto = widget.estado.punto;
+            final candidatas = widget.estado.candidatas;
+            final punta = _arrastre ?? (punto == null ? null : enPantalla(punto));
+            return Stack(
+              clipBehavior: Clip.hardEdge,
+              children: [
+                for (var i = 0; i < candidatas.length; i++)
+                  _etiqueta(
+                    enPantalla(candidatas[i].ubicacion.coordenadas),
+                    candidatas.length > 1
+                        ? TextosAltaMapa.candidataA(
+                            FormatoUbicaciones.rotuloCandidata(i),
+                            FormatoUbicaciones.distancia(candidatas[i].distanciaMetros),
+                          )
+                        : TextosAltaMapa.yaRegistradaA(
+                            FormatoUbicaciones.distancia(candidatas[i].distanciaMetros),
+                          ),
+                    sobre: 30,
+                  ),
+                if (punta != null && candidatas.isNotEmpty)
+                  _etiqueta(punta, TextosAltaMapa.laNueva, sobre: 54),
+                if (punta != null)
+                  Positioned(
+                    left: punta.dx - 24,
+                    top: punta.dy - 56,
+                    width: 48,
+                    height: 56,
+                    child: Semantics(
+                      label: _PinDelAlta.etiqueta,
+                      hint: _sePuedeMover ? _PinDelAlta.pista : null,
+                      excludeSemantics: true,
+                      child: GestureDetector(
+                        key: const Key('alta_mapa_pin'),
+                        behavior: HitTestBehavior.opaque,
+                        onPanStart: _sePuedeMover ? (_) => setState(() => _arrastre = punta) : null,
+                        onPanUpdate: _sePuedeMover
+                            ? (d) => setState(() => _arrastre = (_arrastre ?? punta) + d.delta)
+                            : null,
+                        onPanEnd: _sePuedeMover
+                            ? (_) {
+                                final fin = _arrastre;
+                                setState(() => _arrastre = null);
+                                if (fin == null) return;
+                                widget.alMover(
+                                  ProyeccionMercator.dePantalla(
+                                    fin.dx,
+                                    fin.dy,
+                                    camara,
+                                    ancho: tamano.width,
+                                    alto: tamano.height,
+                                  ),
+                                );
+                              }
+                            : null,
+                        onPanCancel: () => setState(() => _arrastre = null),
+                        child: const Align(
+                          alignment: Alignment.bottomCenter,
+                          child: PinAlta(etiqueta: _PinDelAlta.etiqueta),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Una etiqueta centrada [sobre] dp por encima de [punto]. No atrapa toques.
+  Widget _etiqueta(Offset punto, String texto, {required double sobre}) {
+    return Positioned(
+      left: punto.dx - 90,
+      top: punto.dy - sobre - 28,
+      width: 180,
+      height: 28,
+      child: IgnorePointer(
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0E1A2B),
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Text(
+              texto,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textScaler: TextScaler.noScaling,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         ),
       ),
     );

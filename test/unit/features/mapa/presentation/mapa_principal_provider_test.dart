@@ -1,6 +1,7 @@
 import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_notifier.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/mapa_principal_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -66,7 +67,7 @@ void main() {
       ..cambiarModo(const CasaElegida('u-1'))
       ..cambiarModo(const MoviendoPunto(ubicacionId: 'u-1', antes: _montevideo, nueva: _grecia))
       ..cambiarModo(const ComparandoDuplicado(a: 'u-1', b: 'u-2'))
-      ..cambiarModo(const ColocandoPin())
+      ..cambiarModo(const ColocandoPin(ParametrosAlta(colportorId: 'col-1')))
       ..volverAExplorar();
 
     expect(controlador.movimientos, isEmpty);
@@ -104,7 +105,10 @@ void main() {
       const MoviendoPunto(ubicacionId: 'a', antes: _montevideo),
       isNot(const MoviendoPunto(ubicacionId: 'a', antes: _montevideo, nueva: _grecia)),
     );
-    expect(const ColocandoPin(punto: _grecia), const ColocandoPin(punto: _grecia));
+    expect(
+      const ColocandoPin(ParametrosAlta(colportorId: 'col-1', puntoInicial: _grecia)),
+      const ColocandoPin(ParametrosAlta(colportorId: 'col-1', puntoInicial: _grecia)),
+    );
     expect(
       const ComparandoDuplicado(a: 'x', b: 'y'),
       isNot(const ComparandoDuplicado(a: 'y', b: 'x')),

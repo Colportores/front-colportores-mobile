@@ -82,7 +82,8 @@ void main() {
       expect(find.descendant(of: pestana, matching: find.text('6')), findsOneWidget);
       expect(botonMiUbicacion, findsOneWidget);
       expect(botonNueva, findsOneWidget);
-      expect(find.descendant(of: botonNueva, matching: find.text('Nueva')), findsOneWidget);
+      // El pin para sumar una casa (vista 39, M·01; vista 41): un botón redondo con la gota.
+      expect(find.bySemanticsLabel('Arrastrá para sumar una casa'), findsOneWidget);
       expect(chipReferencias, findsOneWidget);
       expect(find.text('Referencias'), findsOneWidget);
       // Minimizada solo se ve la pestaña: ninguna fila, ninguna vista previa.

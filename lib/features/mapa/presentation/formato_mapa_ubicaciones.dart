@@ -38,6 +38,11 @@ abstract final class TextosMapaUbicaciones {
   // Lo que dice el lector de pantalla donde el canvas dibuja solo un ícono o un número.
   static const mapa = 'Mapa de ubicaciones';
   static const nuevaUbicacion = 'Nueva ubicación';
+
+  /// El pin para sumar una casa (vista 39, M·01; vista 41): se arrastra al lugar o se toca para
+  /// dejarlo en la ubicación de la colportora.
+  static const pinCasaNueva = 'Arrastrá para sumar una casa';
+  static const pinCasaNuevaPista = 'Tocalo para ponerlo en tu ubicación';
   static const miUbicacionSinGps = 'No disponible: no hay GPS.';
   static const miUbicacionBuscandoGps = 'No disponible: buscando GPS…';
   static const alturaMinimizada = 'Minimizada';

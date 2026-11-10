@@ -77,6 +77,9 @@ final class RepoListaFalso with UbicacionRepositorySinModificar implements Ubica
   List<UbicacionConResumen> _filas;
   final _activos = <MultiStreamController<List<UbicacionConResumen>>>[];
 
+  /// El alta sobre el mapa (vista 41) registra acá: sin él, `registrar` no está implementado.
+  RepoAltaFalso? alta;
+
   /// Cuántas veces se pidió la lista, con lo que se pidió.
   final pedidos = <({String colportorId, bool incluirBajas})>[];
 
@@ -215,7 +218,17 @@ final class RepoListaFalso with UbicacionRepositorySinModificar implements Ubica
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
     String? justificacion,
-  }) => throw UnimplementedError();
+  }) {
+    final repoAlta = alta;
+    if (repoAlta == null) throw UnimplementedError();
+    return repoAlta.registrar(
+      ubicacion,
+      espacio: espacio,
+      origen: origen,
+      duplicados: duplicados,
+      justificacion: justificacion,
+    );
+  }
 
   @override
   Stream<List<Ubicacion>> observarDelColportor({
