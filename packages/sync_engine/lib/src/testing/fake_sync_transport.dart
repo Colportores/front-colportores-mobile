@@ -223,6 +223,8 @@ class FakeSyncTransport implements SyncTransport {
 
     appliedOpIds.add(job.clientOpId);
 
+    if (job.op == Op.marcarComoDuplicado) return _marcarComoDuplicado(job);
+
     final campoPk = _pkFieldDe(job.entity);
     final pk = job.payload[campoPk];
     if (pk == null) {
@@ -285,7 +287,54 @@ class FakeSyncTransport implements SyncTransport {
           outcome: JobOutcome.accepted,
           syncVersion: fila.version,
         );
+
+      case Op.marcarComoDuplicado:
+        return _marcarComoDuplicado(job);
     }
+  }
+
+  /// La unión de duplicados de §6.2, lo justo para el motor: B (la duplicada)
+  /// queda de baja y vuelve su `sync_version`. No mueve lo que cuelga de B: eso
+  /// es del servidor de verdad y no cambia nada de lo que hace el motor.
+  ///
+  /// - `UB004` si B = A; `UB003` si A está de baja; `FILA_INEXISTENTE` si
+  ///   alguna de las dos no existe.
+  /// - `duplicate` si B ya estaba de baja (ya unida), `accepted` si no.
+  JobResult _marcarComoDuplicado(SyncJob job) {
+    JobResult invalida(String code) => JobResult(
+          clientOpId: job.clientOpId,
+          outcome: JobOutcome.invalid,
+          code: code,
+        );
+    final b = job.payload['duplicada_id'];
+    final a = job.payload['conservada_id'];
+    if (b == null || a == null) return invalida('PAYLOAD_VACIO');
+    if (b == a) return invalida('UB004');
+    final tabla = _tables[job.entity] ?? const <String, _Row>{};
+    final duplicada = tabla['$b'];
+    final conservada = tabla['$a'];
+    if (duplicada == null || conservada == null) {
+      return invalida('FILA_INEXISTENTE');
+    }
+    if (conservada.deleted) return invalida('UB003');
+    if (duplicada.deleted) {
+      return JobResult(
+        clientOpId: job.clientOpId,
+        outcome: JobOutcome.duplicate,
+        syncVersion: duplicada.version,
+      );
+    }
+    final fila = _apply(
+      job.entity,
+      duplicada.payload,
+      version: duplicada.version + 1,
+      deleted: true,
+    );
+    return JobResult(
+      clientOpId: job.clientOpId,
+      outcome: JobOutcome.accepted,
+      syncVersion: fila.version,
+    );
   }
 
   _Row _apply(
@@ -345,8 +394,9 @@ int estimatedBytes(PushBatch batch) => utf8
           {
             'client_op_id': job.clientOpId,
             'entity': job.entity,
-            'op': job.op.name,
-            'sync_version': job.syncVersion,
+            'op': job.op.wireName,
+            if (job.op != Op.marcarComoDuplicado)
+              'sync_version': job.syncVersion,
             'payload': job.payload,
           },
       ]),

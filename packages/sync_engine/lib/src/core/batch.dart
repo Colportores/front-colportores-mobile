@@ -12,8 +12,8 @@ int jobBytes(SyncJob job) => utf8
     .encode(jsonEncode({
       'client_op_id': job.clientOpId,
       'entity': job.entity,
-      'op': job.op.name,
-      'sync_version': job.syncVersion,
+      'op': job.op.wireName,
+      if (job.op != Op.marcarComoDuplicado) 'sync_version': job.syncVersion,
       'payload': job.payload,
     }))
     .length;
