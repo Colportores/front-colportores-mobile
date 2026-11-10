@@ -53,8 +53,12 @@ class Visita extends Equatable {
     required this.tipoResultado,
     required this.colportorId,
     this.jornadaId,
+    DateTime? entrevistaEntrada,
+    DateTime? entrevistaSalida,
     required this.auditoria,
-  }) : fecha = instanteMs(fecha);
+  }) : fecha = instanteMs(fecha),
+       entrevistaEntrada = entrevistaEntrada == null ? null : instanteMs(entrevistaEntrada),
+       entrevistaSalida = entrevistaSalida == null ? null : instanteMs(entrevistaSalida);
 
   final String id;
 
@@ -77,6 +81,13 @@ class Visita extends Equatable {
   /// FK a `jornada.id`. Opcional, como en el servidor.
   final String? jornadaId;
 
+  /// La hora de entrada y la de salida de la entrevista que confirmó la colportora (vista 39, R·06 y
+  /// R·07; decisión de Cristian, 23/10, «Horas entrev», #466). `null` en una visita sin entrevista
+  /// (registrada antes, o que no fue una entrevista): no se inventan. Suben con la visita
+  /// (backend-supabase 0069; el servidor exige salida ≥ entrada).
+  final DateTime? entrevistaEntrada;
+  final DateTime? entrevistaSalida;
+
   final Auditoria auditoria;
 
   bool get estaBorrada => auditoria.estaBorrada;
@@ -90,6 +101,8 @@ class Visita extends Equatable {
     tipoResultado,
     colportorId,
     jornadaId,
+    entrevistaEntrada,
+    entrevistaSalida,
     auditoria,
   ];
 }

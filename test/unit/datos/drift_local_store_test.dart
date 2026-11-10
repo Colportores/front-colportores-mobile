@@ -159,9 +159,12 @@ void main() {
         'espacio_id': 'esp-1',
         'espacio_persona_id': 'ep-1',
         'fecha': '2026-10-23T13:45:10.123Z',
-        'tipo_resultado': 'RECHAZO',
+        'tipo_resultado': 'ENTREVISTA',
         'colportor_id': 'col-1',
         'jornada_id': null,
+        // Las horas de la entrevista (#466): vuelven tal cual.
+        'entrevista_entrada': '2026-10-23T13:20:00.000Z',
+        'entrevista_salida': '2026-10-23T13:45:00.000Z',
         'created_at': '2026-10-23T13:45:10.123Z',
         'updated_at': '2026-10-23T13:45:10.123Z',
         'created_by': 'col-1',

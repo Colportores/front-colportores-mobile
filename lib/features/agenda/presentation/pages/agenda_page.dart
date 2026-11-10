@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../mapa/presentation/providers/hoja_casa_providers.dart'
     show ContextoDeVisita, registrarVisitaDesdeLaCasaProvider;
+import '../../domain/entities/cobranza_por_agendar.dart';
 import '../../domain/entities/filtros_agenda.dart';
 import '../../domain/entities/item_agenda.dart';
 import '../../domain/entities/tipo_agenda.dart';
@@ -12,6 +13,7 @@ import '../../domain/entities/vista_agenda.dart';
 import '../../domain/services/armador_agenda.dart';
 import '../formato_agenda.dart';
 import '../providers/consulta_agenda_providers.dart';
+import '../widgets/cobranzas_sin_fecha.dart';
 import '../widgets/hoja_estado_agenda.dart';
 import '../widgets/piezas_agenda.dart';
 
@@ -176,6 +178,21 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
     final conError = leida.hasError;
     final items = conError ? null : leida.value;
 
+    // 42B·01G: las cobranzas «Sin fecha», al final, con «Pendientes» y el tipo «Todas» o «Cobranzas».
+    // Si no se pueden leer, el grupo no aparece: la agenda se ve igual.
+    final conSinFecha =
+        filtros.estado == EstadoFiltroAgenda.pendientes &&
+        (filtros.tipo == null || filtros.tipo == TipoAgenda.cobranza);
+    final sinFecha = conSinFecha
+        ? ref.watch(cobranzasSinFechaProvider(widget.colportorId)).value ?? const []
+        : const <CobranzaPorAgendar>[];
+    final grupoSinFecha = <Widget>[
+      if (sinFecha.isNotEmpty)
+        SliverToBoxAdapter(
+          child: GrupoCobranzasSinFecha(colportorId: widget.colportorId, cobranzas: sinFecha),
+        ),
+    ];
+
     final List<Widget> cuerpo;
     if (conError) {
       cuerpo = [
@@ -194,7 +211,10 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
       final vista = deCampania
           ? ArmadorAgenda.armarCampania(items, filtros, _ahora, limite: limite)
           : ArmadorAgenda.armar(items, filtros, _ahora);
-      if (vista.estaVacia) {
+      if (vista.estaVacia && grupoSinFecha.isNotEmpty) {
+        // Sin citas pero con cobranzas sin fecha: solo el grupo, sin el «Todavía no agendaste nada».
+        cuerpo = grupoSinFecha;
+      } else if (vista.estaVacia) {
         cuerpo = [
           SliverFillRemaining(
             hasScrollBody: false,
@@ -236,6 +256,7 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
             registrando: _registrandoId != null,
             alVerMas: vista.hayMas ? () => _verMas(limite) : null,
           ),
+          ...grupoSinFecha,
         ];
       }
     }

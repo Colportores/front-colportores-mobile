@@ -7,6 +7,7 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/misionero_dejado.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita_guardada.dart';
@@ -18,6 +19,8 @@ import 'package:colportores_mobile/features/agenda/presentation/widgets/hoja_ter
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
 import 'package:colportores_mobile/features/ventas/presentation/formato_venta.dart';
+import 'package:colportores_mobile/features/ventas/presentation/pages/asi_quedo_la_venta_page.dart';
+import 'package:colportores_mobile/features/ventas/presentation/pages/cuando_cobrar_page.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,7 +44,8 @@ final class AgendaDeTodo428 implements AgendaRepository {
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
-  }) => visitas.registrarVisita(visita, agendaId: agendaId, nota: nota);
+    List<MisioneroDejado> misioneros = const [],
+  }) => visitas.registrarVisita(visita, agendaId: agendaId, nota: nota, misioneros: misioneros);
 
   @override
   Future<Either<Failure, Agenda>> agendar(Agenda agenda, {NotaDeCampo? nota}) =>
@@ -227,6 +231,26 @@ final class Arnes428 {
     if (find.byKey(const Key('venta_terminar')).evaluate().isNotEmpty) {
       await tocarKey(tester, const Key('venta_terminar'));
     }
+  }
+
+  /// «Volver al mapa» en «Así quedó la venta» (42B·01D a 01G), si está.
+  Future<void> cerrarCierre(WidgetTester tester) async {
+    if (find.byKey(ClavesCierreDeVenta.volver).evaluate().isEmpty) return;
+    await tocarKey(tester, ClavesCierreDeVenta.volver);
+  }
+
+  /// «Sin fecha» → «Guardar» en «¿Cuándo volvés a cobrar?» (42B·01B), y el cierre.
+  Future<void> sinFecha(WidgetTester tester) async {
+    await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+    await tocarKey(tester, ClavesCuandoCobrar.guardar);
+    await cerrarCierre(tester);
+  }
+
+  /// «Listo» en «Día y hora», «Guardar» y el cierre.
+  Future<void> listoYGuardar(WidgetTester tester) async {
+    await tocarKey(tester, const Key('agendar_hoja_listo'));
+    await tocarKey(tester, ClavesCuandoCobrar.guardar);
+    await cerrarCierre(tester);
   }
 
   Future<void> hastaLaPregunta(WidgetTester tester, {Size? tamano, double? letra}) async {

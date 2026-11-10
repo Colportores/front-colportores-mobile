@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../datos/sync_queue_table.dart';
 import '../../features/agenda/data/datasources/agendas_table.dart';
+import '../../features/agenda/data/datasources/visita_misioneros_table.dart';
 import '../../features/agenda/data/datasources/visitas_table.dart';
 import '../../features/auth/data/datasources/sesion_usuario_table.dart';
 import '../../features/catalogo/data/datasources/colecciones_table.dart';
@@ -77,6 +78,7 @@ part 'app_database.g.dart';
     Notas,
     Agendas,
     Visitas,
+    VisitaMisioneros,
     HouseStatuses,
     NotificacionesHistorial,
     Productos,
@@ -169,10 +171,13 @@ class AppDatabase extends _$AppDatabase {
   /// - 33: la entrega diferida (HU-VEN-003, #433): `entrega.fecha_prevista` y, en `agenda`, el tipo
   ///   `ENTREGA` con la entrega que agenda (`entrega_id`; `venta_id` ya estaba desde la 24)
   ///   (backend-supabase 0068).
+  /// - 34: `visita` guarda las horas de la entrevista (`entrevista_entrada` y `entrevista_salida`, #466,
+  ///   decisión de Cristian, 23/10) y `visita_misionero`, los misioneros que la colportora dejó en una
+  ///   entrevista sin venta («Lo que dejaste», #608; backend-supabase 0160).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 33;
+  static const int versionEsquema = 34;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -486,6 +491,14 @@ class AppDatabase extends _$AppDatabase {
     from32To33: (m, esquema) async {
       await m.addColumn(esquema.entrega, esquema.entrega.fechaPrevista);
       await m.alterTable(TableMigration(esquema.agenda, newColumns: [esquema.agenda.entregaId]));
+    },
+    // Suma a `visita` las horas de la entrevista (las visitas que ya estaban quedan sin horas: no se
+    // inventan) y crea `visita_misionero` vacía, con su índice. Nada se vuelve a encolar al migrar.
+    from33To34: (m, esquema) async {
+      await m.addColumn(esquema.visita, esquema.visita.entrevistaEntrada);
+      await m.addColumn(esquema.visita, esquema.visita.entrevistaSalida);
+      await m.createTable(esquema.visitaMisionero);
+      await m.createIndex(esquema.visitaMisioneroVisitaIdx);
     },
   );
 }

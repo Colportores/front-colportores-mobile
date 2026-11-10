@@ -1,15 +1,13 @@
 // QA de #428, ronda 2 (d8f68fde): 27A·14 «Venta registrada» entre la venta y «¿Cuándo volvés a
 // cobrar?», «Cobrar ahora» y el aviso «Venta N guardada.» que ahora sale al final.
 import 'package:colportores_mobile/features/agenda/presentation/widgets/hoja_termino_entrevista.dart';
+import 'package:colportores_mobile/features/ventas/presentation/pages/cuando_cobrar_page.dart';
 import 'package:colportores_mobile/features/ventas/presentation/providers/ventas_providers.dart';
-import 'package:colportores_mobile/features/ventas/presentation/widgets/hoja_cuando_cobrar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/qa_vista39_venta_428_arnes.dart';
 import '../../helpers/venta_ui_falsos.dart' show tocar;
-
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 const _registrada = Key('venta_registrada_pagina');
 
@@ -92,15 +90,16 @@ void main() {
       await tester.tap(terminar, warnIfMissed: false);
       await tester.pumpAndSettle();
 
-      expect(find.byKey(ClavesCuandoCobrar.hoja), findsOneWidget);
-      await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      expect(find.byKey(ClavesCuandoCobrar.pagina), findsOneWidget);
+      await a.sinFecha(tester);
       expect(a.salida, isA<VentaGuardadaEnLaEntrevista>());
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('dado «Cobrar ahora» cancelado, entonces pregunta con el saldo entero', (
-      tester,
-    ) async {
+    // Decisión del 10/11 (P4 del QA de #432): salir del cobro sin cobrar vuelve a 27A·14 con el
+    // saldo intacto; la pregunta sale al cerrar desde ahí.
+    testWidgets('dado «Cobrar ahora» cancelado, entonces vuelve a «¿Y ahora?» y después pregunta '
+        'con el saldo entero', (tester) async {
       await hastaLaRegistrada(tester, alCobrar: () async => false);
 
       await tocar(tester, find.text('Cobrar ahora'));
@@ -108,8 +107,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(cobros, 1);
-      expect(find.byKey(ClavesCuandoCobrar.hoja), findsOneWidget);
-      expect(find.textContaining(r'Quedan $ 3.000'), findsOneWidget);
+      expect(find.byKey(_registrada), findsOneWidget);
+      expect(find.byKey(ClavesCuandoCobrar.pagina), findsNothing);
+      await a.tocarKey(tester, const Key('venta_terminar'));
+      expect(find.byKey(ClavesCuandoCobrar.pagina), findsOneWidget);
+      expect(find.textContaining(r'saldo $ 3.000'), findsOneWidget);
     });
 
     testWidgets('dado «Cobrar ahora» que lanza, entonces pregunta con el saldo entero y la venta '
@@ -120,8 +122,8 @@ void main() {
       await tocar(tester, find.text('Continuar'));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(ClavesCuandoCobrar.hoja), findsOneWidget);
-      await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      expect(find.byKey(ClavesCuandoCobrar.pagina), findsOneWidget);
+      await a.sinFecha(tester);
       expect(a.entorno.ventas.recibidas, hasLength(1));
       expect(a.salida, isA<VentaGuardadaEnLaEntrevista>());
       expect(tester.takeException(), isNull);
@@ -129,21 +131,18 @@ void main() {
   });
 
   group('aviso «Venta N guardada.» al final', () {
-    // skip: QA #428 — decisión P1: el «Venta N guardada.» sale una sola vez al llegar a R·08, después
-    // de la hoja; hoy sale antes y con «Sin fecha» tras >4 s no queda confirmación.
-    testWidgets(
-      'dado que tardé en elegir y toqué «Sin fecha», entonces el aviso está a la vista',
-      (tester) async {
-        await hastaLaRegistrada(tester, alCobrar: () async => false);
-        await a.tocarKey(tester, const Key('venta_terminar'));
+    // QA #428, decisión P1: el «Venta N guardada.» sale una sola vez al volver al mapa (42B·01H).
+    testWidgets('dado que tardé en elegir y toqué «Sin fecha», entonces el aviso está a la vista', (
+      tester,
+    ) async {
+      await hastaLaRegistrada(tester, alCobrar: () async => false);
+      await a.tocarKey(tester, const Key('venta_terminar'));
 
-        await tester.pump(const Duration(seconds: 6));
-        await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await tester.pump(const Duration(seconds: 6));
+      await a.sinFecha(tester);
 
-        expect(find.text('Venta 0039 guardada.'), findsOneWidget);
-      },
-      skip: !_verHallazgos,
-    );
+      expect(find.text('Venta 0039 guardada. Cobranza sin fecha.'), findsOneWidget);
+    });
 
     testWidgets(
       'dado que agendo «Mañana», entonces el aviso dice la venta y la cita, una sola vez',
@@ -152,10 +151,11 @@ void main() {
         await a.tocarKey(tester, const Key('venta_terminar'));
 
         await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.manana));
-        await a.tocarKey(tester, const Key('agendar_hoja_listo'));
+        await a.listoYGuardar(tester);
 
-        expect(find.textContaining('Venta 0039 guardada. Cobranza agendada para'), findsOneWidget);
+        expect(find.textContaining('Venta 0039 guardada. Cobranza agendada:'), findsOneWidget);
         expect(find.text('Venta 0039 guardada.'), findsNothing);
+        expect(find.text('Venta 0039 guardada. Cobranza sin fecha.'), findsNothing);
       },
     );
   });

@@ -15,7 +15,8 @@ import '../../../../core/database/fecha_utc_converter.dart';
 /// **Sin columna de notas**: las de una visita son filas de `nota` (`target_type = VISITA`,
 /// local-only, ADR-017). El `CHECK` de `tipo_resultado` es el del servidor, tal cual (con
 /// `COBRANZA`, decisión «Visita cobro»). Las horas de la entrevista (`entrevista_entrada` y
-/// `entrevista_salida`) llegan con #466.
+/// `entrevista_salida`, #466, esquema 34) son opcionales: solo las tiene la visita de una entrevista.
+/// Lo que se dejó sin venta (los misioneros) va en `visita_misionero` ([VisitaMisioneros]).
 @DataClassName('VisitaFila')
 @TableIndex(name: 'visita_colportor_idx', columns: {#colportorId, #fecha})
 @TableIndex(name: 'visita_espacio_persona_idx', columns: {#espacioPersonaId})
@@ -40,6 +41,11 @@ class Visitas extends Table {
   TextColumn get colportorId => text()();
 
   TextColumn get jornadaId => text().nullable()();
+
+  /// Cuándo empezó y terminó la entrevista (R·06 / R·07). Solo la visita de una entrevista.
+  IntColumn get entrevistaEntrada => integer().nullable().map(const FechaUtcConverter())();
+
+  IntColumn get entrevistaSalida => integer().nullable().map(const FechaUtcConverter())();
 
   IntColumn get createdAt => integer().map(const FechaUtcConverter())();
 

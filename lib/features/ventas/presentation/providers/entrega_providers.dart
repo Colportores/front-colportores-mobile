@@ -7,6 +7,7 @@ import '../../../agenda/presentation/providers/recordatorios_providers.dart';
 import '../../../mapa/presentation/providers/house_status_providers.dart';
 import '../../data/datasources/entrega_local_data_source_drift.dart';
 import '../../data/repositories/entrega_repository_impl.dart';
+import '../../data/services/fuente_de_productos_de_la_entrega_local.dart';
 import '../../data/services/fuente_de_productos_de_la_entrega_sin_fuente.dart';
 import '../../domain/entities/componente_vendido.dart';
 import '../../domain/entities/entrega.dart';
@@ -95,11 +96,13 @@ final entregasPendientesDeProvider = StreamProvider.autoDispose
 /// Sin reintentos automáticos: una falla de lectura es de la pantalla (con «Reintentar»).
 Duration? _sinReintentos(int intento, Object error) => null;
 
-/// De dónde salen los nombres de lo que se vendió. Hasta que exista el adaptador del catálogo
-/// (#274), no hay fuente: la pantalla lo dice y deja reintentar.
-final fuenteDeProductosDeLaEntregaProvider = Provider<FuenteDeProductosDeLaEntrega>(
-  (ref) => FuenteDeProductosDeLaEntregaSinFuente(),
-);
+/// De dónde salen los nombres de lo que se vendió: la réplica local del catálogo, sin red. Sin la
+/// base abierta no se sabe: la pantalla lo dice y deja reintentar.
+final fuenteDeProductosDeLaEntregaProvider = Provider<FuenteDeProductosDeLaEntrega>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return FuenteDeProductosDeLaEntregaSinFuente();
+  return FuenteDeProductosDeLaEntregaLocal(db);
+});
 
 /// Lo que «Entregar ahora» necesita para dibujarse: las filas de lo vendido y lo que la venta ya
 /// tiene entregado (volver atrás y reentrar no entrega dos veces).

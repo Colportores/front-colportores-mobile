@@ -90,7 +90,7 @@ void main() {
         final r = await caso.preparar(params());
 
         expect(r.swap().getOrElse(() => throw StateError('debía fallar')), ventaSinLugar);
-        expect(ventaSinLugar.mensaje, contains('cerrala con «No, guardar y volver al mapa»'));
+        expect(ventaSinLugar.mensaje, contains('cerrala con «No hubo venta»'));
         expect(agenda.recibidas, isEmpty);
         expect(memoria.guardadas, hasLength(1));
       },
@@ -164,6 +164,36 @@ void main() {
 
       expect(agenda.recibidas.single.visita.tipoResultado, TipoResultadoVisita.venta);
       expect(agenda.recibidas.single.visita.id, 'vis-1');
+    });
+
+    test('la visita VENTA guarda las horas de la entrevista (#466)', () async {
+      final venta = await preparada();
+
+      await caso.guardarVisita(venta);
+
+      final visita = agenda.recibidas.single.visita;
+      expect(visita.entrevistaEntrada, inicioEntrevista.toUtc());
+      expect(visita.entrevistaSalida, ahoraEntrevista.toUtc());
+    });
+
+    test('la venta desde la casa, sin entrevista (conHoras: false), no guarda horas', () async {
+      final r = await caso.preparar(
+        FinalizarEntrevistaParams(
+          ids: const IdsResultadoVisita(visita: 'vis-9', nota: 'not-9'),
+          espacioId: 'esp-1',
+          espacioPersonaId: 'ep-1',
+          colportorId: 'col-1',
+          entrada: ahoraEntrevista,
+          salida: ahoraEntrevista,
+          conHoras: false,
+        ),
+      );
+      final venta = r.getOrElse(() => throw StateError('debía poder prepararse'));
+
+      await caso.guardarVisita(venta);
+
+      final visita = agenda.recibidas.single.visita;
+      expect([visita.entrevistaEntrada, visita.entrevistaSalida], [null, null]);
     });
 
     test('si no se pudo guardar lanza, para que la venta se revierta', () async {

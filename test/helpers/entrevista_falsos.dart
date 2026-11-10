@@ -7,6 +7,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/entrevista_en_curso.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/misionero_dejado.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita_guardada.dart';
@@ -51,6 +52,9 @@ EntrevistaEnCurso entrevistaDePrueba({
 final class AgendaFalsa implements AgendaRepository {
   final recibidas = <({Visita visita, String? agendaId, NotaDeCampo? nota})>[];
 
+  /// Los misioneros de «Lo que dejaste» que llegaron con cada visita, por id de visita.
+  final misionerosPorVisita = <String, List<MisioneroDejado>>{};
+
   /// Si no es `null`, el registro espera a que se complete.
   Completer<void>? compuerta;
 
@@ -65,9 +69,11 @@ final class AgendaFalsa implements AgendaRepository {
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
+    List<MisioneroDejado> misioneros = const [],
   }) async {
     if (compuerta case final c?) await c.future;
     recibidas.add((visita: visita, agendaId: agendaId, nota: nota));
+    misionerosPorVisita[visita.id] = misioneros;
     if (falla case final f? when recibidas.length > fallaDesde) {
       recibidas.removeLast();
       return Left(f);

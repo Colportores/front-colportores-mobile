@@ -34,6 +34,7 @@ final class FichaPersonaLocalDataSourceDrift {
         _db.espacios,
         _db.ubicaciones,
         _db.visitas,
+        _db.visitaMisioneros,
         _db.ventas,
         _db.ventaItems,
         _db.productos,
@@ -70,17 +71,33 @@ final class FichaPersonaLocalDataSourceDrift {
       final filas = await (_db.select(
         _db.visitas,
       )..where((v) => v.espacioPersonaId.isIn(lote) & v.deletedAt.isNull())).get();
+      final misioneros = await _misionerosPorVisita([for (final f in filas) f.id]);
       for (final f in filas) {
         salida.add(
           VisitaEnFicha(
             id: f.id,
             fecha: f.fecha,
             resultado: TipoResultadoVisita.desdeCodigo(f.tipoResultado),
+            misioneros: misioneros[f.id] ?? 0,
           ),
         );
       }
     }
     return salida;
+  }
+
+  /// Cuántos misioneros vivos se dejaron en cada una de [visitaIds] («Lo que dejaste», 42B·08E).
+  Future<Map<String, int>> _misionerosPorVisita(List<String> visitaIds) async {
+    if (visitaIds.isEmpty) return const {};
+    final t = _db.visitaMisioneros;
+    final suma = t.cantidad.sum();
+    final filas =
+        await (_db.selectOnly(t)
+              ..addColumns([t.visitaId, suma])
+              ..where(t.visitaId.isIn(visitaIds) & t.deletedAt.isNull())
+              ..groupBy([t.visitaId]))
+            .get();
+    return {for (final f in filas) f.read(t.visitaId)!: f.read(suma) ?? 0};
   }
 
   Future<List<MovimientoDeFicha>> _ventas(List<String> vinculos) async {

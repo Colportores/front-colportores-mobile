@@ -1,6 +1,7 @@
 import '../../domain/entities/agenda.dart';
 import '../../domain/entities/cambios_de_agenda.dart';
 import '../../domain/entities/detalle_de_agenda.dart';
+import '../../domain/entities/misionero_dejado.dart';
 import '../../domain/entities/motivo_rechazo_agenda.dart';
 import '../../domain/entities/nota_de_campo.dart';
 import '../../domain/entities/visita.dart';
@@ -78,9 +79,17 @@ abstract interface class AgendaLocalDataSource {
   /// en el teléfono. Si la agenda no existe, es de otra casa o de otra persona, o ya no está
   /// programada, la visita se guarda igual como espontánea, sin tocar esa agenda, y el resultado trae
   /// el motivo en `agendaIgnorada`.
-  Future<VisitaRegistrada> registrarVisita(Visita visita, {String? agendaId, NotaDeCampo? nota});
+  ///
+  /// [misioneros] son los que se dejaron sin venta («Lo que dejaste», #608): se guardan y se encolan
+  /// en la misma transacción, después de la visita de la que cuelgan.
+  Future<VisitaRegistrada> registrarVisita(
+    Visita visita, {
+    String? agendaId,
+    NotaDeCampo? nota,
+    List<MisioneroDejado> misioneros = const [],
+  });
 
-  /// Deshace [visitaId] (el «Deshacer» de R·01): da de baja la visita y sus notas, vuelve a
+  /// Deshace [visitaId] (el «Deshacer» de R·01): da de baja la visita, sus notas y sus misioneros, vuelve a
   /// `PROGRAMADA` la agenda existente que la visita cumplió o no cumplió ([agendaAfectadaId]) o da de
   /// baja la que creó ([agendaCreadaId]), y recalcula el color de la casa, todo en una transacción.
   /// Si ya estaba deshecha, no escribe nada (`escribio: false`). Lanza [AgendaRechazadaException] si

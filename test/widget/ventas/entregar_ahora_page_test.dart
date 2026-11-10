@@ -278,15 +278,88 @@ void main() {
       expect(find.text('Agendar la cobranza'), findsOneWidget);
 
       await tocar(tester, find.text('Cobrar ahora'));
-      await tocar(tester, find.text('Agendar la cobranza'));
 
       expect(salida.cobrar, hasLength(1));
-      expect(salida.agendar, hasLength(1));
       expect(salida.cobrar.single.entregas, hasLength(5));
-      expect(salida.cerrada, isFalse);
-
+      // Quien abre la pantalla la cierra al cobrar: después, ninguna otra salida corre.
+      await tocar(tester, find.text('Agendar la cobranza'));
       await tocar(tester, find.text('Volver al mapa'));
-      expect(salida.cerrada, isTrue);
+      expect(salida.agendar, isEmpty);
+      expect(salida.cerrada, isFalse);
+    });
+
+    testWidgets('«Agendar la cobranza» lleva lo entregado', (tester) async {
+      final salida = await montarEntrega(
+        tester,
+        EntornoDeEntrega(),
+        ventaConColeccion(),
+        conCobro: true,
+        conAgendar: true,
+      );
+      await tocar(tester, find.byKey(const Key('venta_cta')));
+
+      await tocar(tester, find.text('Agendar la cobranza'));
+
+      expect(salida.agendar.single.entregas, hasLength(5));
+      expect(salida.cobrar, isEmpty);
+    });
+
+    testWidgets('doble toque en «Cobrar ahora»: abre un solo cobro', (tester) async {
+      final salida = await montarEntrega(
+        tester,
+        EntornoDeEntrega(),
+        ventaConColeccion(),
+        conCobro: true,
+        conAgendar: true,
+      );
+      await tocar(tester, find.byKey(const Key('venta_cta')));
+
+      await tester.tap(find.text('Cobrar ahora'));
+      await tester.tap(find.text('Cobrar ahora'));
+      await tester.pumpAndSettle();
+
+      expect(salida.cobrar, hasLength(1));
+    });
+
+    testWidgets('el saldo es el que quedó después del cobro de la venta, no el total (#432)', (
+      tester,
+    ) async {
+      await montarEntrega(
+        tester,
+        EntornoDeEntrega(),
+        ventaConColeccion(),
+        conCobro: true,
+        conAgendar: true,
+        saldoCentavos: 300000,
+      );
+
+      await tocar(tester, find.byKey(const Key('venta_cta')));
+
+      expect(find.text('Saldo'), findsOneWidget);
+      expect(find.text(r'$ 3.000'), findsOneWidget);
+      expect(find.text(r'$ 8.900'), findsNothing);
+      expect(find.text('Cobrar ahora'), findsOneWidget);
+    });
+
+    testWidgets('pagada en 27A·14 (saldo 0) y entregada entera: «Venta completa» (27B·03)', (
+      tester,
+    ) async {
+      final e = EntornoDeEntrega();
+      await montarEntrega(
+        tester,
+        e,
+        ventaConColeccion(),
+        conCobro: true,
+        conAgendar: true,
+        saldoCentavos: 0,
+      );
+
+      await tocar(tester, find.byKey(const Key('venta_cta')));
+
+      expect(find.text('Venta completa'), findsOneWidget);
+      expect(find.text('Saldo'), findsNothing);
+      expect(find.text('Cobrar ahora'), findsNothing, reason: 'no hay nada que cobrar');
+      expect(find.text('Agendar la cobranza'), findsNothing);
     });
 
     testWidgets('entrega parcial: dice qué falta y que la casa sigue con entrega pendiente', (
