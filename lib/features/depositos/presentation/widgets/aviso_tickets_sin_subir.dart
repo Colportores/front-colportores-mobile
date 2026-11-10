@@ -62,3 +62,26 @@ class _AvisoDeTicketsSinSubirState extends ConsumerState<AvisoDeTicketsSinSubir>
     );
   }
 }
+
+/// El aviso de la foto que el servidor rechazó para siempre (decisión P1 del 10/11 sobre 38A-08): va
+/// aparte del de 38A-08 y sin «Reintentar», porque reintentar no la arregla; dice a quién acudir. Sale
+/// mientras haya alguna; sin ninguna (o mientras se lee) no ocupa lugar.
+class AvisoDeTicketsRechazados extends ConsumerWidget {
+  const AvisoDeTicketsRechazados({super.key, this.margen = EdgeInsets.zero});
+
+  /// El espacio alrededor cuando se ve.
+  final EdgeInsetsGeometry margen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fechas = ref.watch(ticketsDeDepositoRechazadosProvider).value ?? const [];
+    if (fechas.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: margen,
+      child: AvisoDeVenta(
+        key: const Key('deposito_ticket_rechazado'),
+        texto: TextosDeposito.ticketsRechazados(fechas),
+      ),
+    );
+  }
+}

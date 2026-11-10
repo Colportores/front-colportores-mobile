@@ -1,4 +1,5 @@
 import '../../catalogo/presentation/formato_precios.dart' show FormatoPrecios;
+import '../../cuenta/presentation/textos_cuenta.dart' show FormatoCuenta;
 
 /// Los textos de «Registrar depósito» (vista 33 D, HU-CTA-004). Los del canvas van tal cual; los que el
 /// canvas no dibuja los decidió el agente de decisiones el 10/11 (P2 de #443).
@@ -106,6 +107,14 @@ abstract final class TextosDeposito {
       : 'No pudimos enviar $cuantos tickets. Quedaron guardados en el teléfono y los reintentamos '
             'solos.';
   static const reintentarAhora = 'Reintentar ahora';
+
+  /// La foto que el servidor rechazó para siempre: no hay reintento, lo revisa el coordinador
+  /// (decisión P1 del 10/11). [fechas] son las de los depósitos, la más vieja primero.
+  static String ticketsRechazados(List<DateTime> fechas) => fechas.length == 1
+      ? 'No pudimos enviar la foto del ticket del depósito del ${FormatoCuenta.fecha(fechas.first)} '
+            'y ya no se puede reintentar. Avisale a tu coordinador para que lo revise.'
+      : 'No pudimos enviar las fotos de ${fechas.length} tickets de depósito y ya no se pueden '
+            'reintentar. Avisale a tu coordinador para que los revise.';
 
   /// «$ 2.400 → $ 600».
   static String antesYDespues(int antes, int despues) =>

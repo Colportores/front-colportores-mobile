@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../depositos/presentation/pages/registrar_deposito_page.dart';
 import '../../../depositos/presentation/providers/depositos_providers.dart'
-    show ticketsDeDepositoSinSubirProvider;
+    show ticketsDeDepositoRechazadosProvider, ticketsDeDepositoSinSubirProvider;
 import '../../../depositos/presentation/widgets/aviso_tickets_sin_subir.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../domain/entities/resumen_de_cuenta.dart';
@@ -156,6 +156,9 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                 // sumar un hueco a la columna.
                 if ((ref.watch(ticketsDeDepositoSinSubirProvider).value ?? 0) > 0)
                   const AvisoDeTicketsSinSubir(),
+                // La foto que ya no se puede reintentar (P1 del 10/11): avisarle al coordinador.
+                if (ref.watch(ticketsDeDepositoRechazadosProvider).value?.isNotEmpty ?? false)
+                  const AvisoDeTicketsRechazados(),
                 TarjetaDeDeuda(colportorId: widget.colportorId),
                 for (final tipo in TipoDeCifra.values)
                   if (_cifraDe(tipo, datos) case final cifra?)

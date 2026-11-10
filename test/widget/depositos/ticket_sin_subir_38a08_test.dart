@@ -20,6 +20,9 @@ const _chip = Key('cuenta_registrar_deposito');
 /// La cola de fotos de mentira: cuántos tickets no subieron y qué pasa al reintentar.
 final class _Cola {
   final cuantos = StreamController<int>.broadcast();
+
+  /// Las fechas de los depósitos con la foto rechazada para siempre.
+  final rechazados = StreamController<List<DateTime>>.broadcast();
   var reintentos = 0;
 
   /// Lo que hace el próximo «Reintentar ahora»; por defecto, nada.
@@ -27,11 +30,18 @@ final class _Cola {
 
   List<Override> get overrides => [
     ticketsDeDepositoSinSubirProvider.overrideWith((ref) => cuantos.stream),
+    ticketsDeDepositoRechazadosProvider.overrideWith((ref) => rechazados.stream),
     reintentarSubidaDeTicketsProvider.overrideWithValue(() {
       reintentos++;
       return alReintentar();
     }),
   ];
+
+  Future<void> rechazar(WidgetTester tester, List<DateTime> fechas) async {
+    rechazados.add(fechas);
+    await tester.pump();
+    await tester.pump();
+  }
 
   Future<void> emitir(WidgetTester tester, int n) async {
     cuantos.add(n);
@@ -189,6 +199,94 @@ void main() {
       await cola.emitir(tester, 3);
       expect(tester.takeException(), isNull);
       expect(find.text(TextosDeposito.ticketsSinSubir(3)), findsOneWidget);
+    });
+  });
+
+  group('foto rechazada para siempre (P1 del 10/11)', () {
+    const rechazo = Key('deposito_ticket_rechazado');
+    final dia9 = DateTime.utc(2026, 11, 9, 15);
+    final dia8 = DateTime.utc(2026, 11, 8, 15);
+
+    testWidgets('en «Registrar depósito»: aviso aparte, con la fecha y sin «Reintentar»', (
+      tester,
+    ) async {
+      final cola = _Cola();
+      await montarDeposito(tester, ArnesDeDeposito(extras: cola.overrides));
+      await cola.rechazar(tester, const []);
+      expect(find.byKey(rechazo), findsNothing);
+
+      await cola.rechazar(tester, [dia9]);
+      expect(
+        find.text(
+          'No pudimos enviar la foto del ticket del depósito del 09/11 y ya no se puede '
+          'reintentar. Avisale a tu coordinador para que lo revise.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: find.byKey(rechazo), matching: find.byType(TextButton)),
+        findsNothing,
+      );
+      // No es 38A-08: ese aviso no sale por una rechazada.
+      expect(find.byKey(_aviso), findsNothing);
+    });
+
+    testWidgets('con varias, el plural', (tester) async {
+      final cola = _Cola();
+      await montarDeposito(tester, ArnesDeDeposito(extras: cola.overrides));
+      await cola.rechazar(tester, [dia8, dia9]);
+      expect(
+        find.text(
+          'No pudimos enviar las fotos de 2 tickets de depósito y ya no se pueden reintentar. '
+          'Avisale a tu coordinador para que los revise.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('los dos avisos juntos y registrar igual', (tester) async {
+      final cola = _Cola();
+      final arnes = ArnesDeDeposito(extras: cola.overrides);
+      await montarDeposito(tester, arnes);
+      await cola.emitir(tester, 1);
+      await cola.rechazar(tester, [dia9]);
+      expect(find.byKey(_aviso), findsOneWidget);
+      expect(find.byKey(rechazo), findsOneWidget);
+      await escribirMonto(tester, '1000');
+      await tester.tap(find.byKey(const Key('deposito_destino_2')));
+      await tester.pump();
+      await tocarRegistrar(tester);
+      expect(arnes.depositos.guardados, hasLength(1));
+    });
+
+    testWidgets('se va cuando ya no hay rechazadas', (tester) async {
+      final cola = _Cola();
+      await montarDeposito(tester, ArnesDeDeposito(extras: cola.overrides));
+      await cola.rechazar(tester, [dia9]);
+      expect(find.byKey(rechazo), findsOneWidget);
+      await cola.rechazar(tester, const []);
+      expect(find.byKey(rechazo), findsNothing);
+    });
+
+    testWidgets('en Mi Cuenta, a 320 × 640 con el texto al 200 %, entra y contrasta', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      final cola = _Cola();
+      await montarCuenta(
+        tester,
+        RepositorioDeCuentaControlable(inicial: resumenDelCanvas),
+        tamano: const Size(320, 640),
+        escala: 2,
+        overrides: ArnesDeDeposito(extras: cola.overrides).overridesSinCuenta,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(rechazo), findsNothing);
+      await cola.rechazar(tester, [dia8, dia9]);
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(rechazo), findsOneWidget);
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      semantica.dispose();
     });
   });
 
