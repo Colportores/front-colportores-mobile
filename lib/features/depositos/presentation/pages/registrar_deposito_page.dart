@@ -497,6 +497,8 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
         ],
         // 38A-08: un ticket de un depósito anterior no pudo subir su foto.
         const AvisoDeTicketsSinSubir(margen: EdgeInsets.only(bottom: 9)),
+        // La foto que ya no se puede reintentar: lo revisa el coordinador (P1 del 10/11).
+        const AvisoDeTicketsRechazados(margen: EdgeInsets.only(bottom: 9)),
         const SizedBox(height: 4),
         CampoDeVenta(
           key: const Key('deposito_monto'),

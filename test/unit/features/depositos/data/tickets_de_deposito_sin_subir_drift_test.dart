@@ -54,9 +54,14 @@ void main() {
   });
   tearDown(() => db.close());
 
-  Future<void> depositar(String n, {DestinoDeDeposito destino = DestinoDeDeposito.banco}) async {
+  Future<void> depositar(
+    String n, {
+    DestinoDeDeposito destino = DestinoDeDeposito.banco,
+    DateTime? fecha,
+  }) async {
     final r = await registrar(
       RegistrarDepositoConTicketParams(
+        fecha: fecha,
         depositoId: 'd-$n',
         ticketId: 't-$n',
         colportorId: 'col-1',
@@ -122,5 +127,68 @@ void main() {
     await pumpEventQueue();
     await escucha.cancel();
     expect(vistos, [0, 1, 0]);
+  });
+
+  group('rechazadas para siempre (P1 del 10/11)', () {
+    Future<List<DateTime>> rechazados() => sinSubir.observarRechazados().first;
+    final dia8 = DateTime.utc(2026, 11, 8, 15);
+    final dia9 = DateTime.utc(2026, 11, 9, 15);
+
+    test('sin rechazos no hay fechas; un intento que se reintenta no es un rechazo', () async {
+      await depositar('1');
+      await ticketsLocal.anotarIntentoFallido('t-1', codigo: 'red', definitivo: false);
+      expect(await rechazados(), isEmpty);
+    });
+
+    test('la rechazada da la fecha de su depósito, y no cuenta para 38A-08', () async {
+      await depositar('1', fecha: dia9);
+      await ticketsLocal.anotarIntentoFallido(
+        't-1',
+        codigo: 'copia_local_ausente',
+        definitivo: true,
+      );
+      expect(await rechazados(), [dia9]);
+      expect(await contar(), 0);
+    });
+
+    test(
+      'varias, la más vieja primero; borrado, validado o rechazado por el coordinador no cuenta',
+      () async {
+        await depositar('1', fecha: dia9);
+        await depositar('2', fecha: dia8);
+        await depositar('3', fecha: dia8);
+        await depositar('4', fecha: dia8);
+        await depositar('5', fecha: dia8);
+        for (final t in ['t-1', 't-2', 't-3', 't-4', 't-5']) {
+          await ticketsLocal.anotarIntentoFallido(t, codigo: 'muy_grande', definitivo: true);
+        }
+        await (db.update(
+          db.depositos,
+        )..where((d) => d.id.equals('d-3'))).write(DepositosCompanion(deletedAt: Value(_ahora)));
+        await (db.update(
+          db.depositos,
+        )..where((d) => d.id.equals('d-4'))).write(DepositosCompanion(validadoEn: Value(_ahora)));
+        await (db.update(
+          db.depositos,
+        )..where((d) => d.id.equals('d-5'))).write(DepositosCompanion(rechazadoEn: Value(_ahora)));
+        expect(await rechazados(), [dia8, dia9]);
+      },
+    );
+
+    test('avisa cuando aparece una, sin repetir', () async {
+      await depositar('1', fecha: dia9);
+      final vistos = <List<DateTime>>[];
+      final escucha = sinSubir.observarRechazados().listen(vistos.add);
+      await pumpEventQueue();
+      await ticketsLocal.anotarIntentoFallido('t-1', codigo: 'red', definitivo: false);
+      await pumpEventQueue();
+      await ticketsLocal.anotarIntentoFallido('t-1', codigo: 'muy_grande', definitivo: true);
+      await pumpEventQueue();
+      await escucha.cancel();
+      expect(vistos, [
+        <DateTime>[],
+        [dia9],
+      ]);
+    });
   });
 }
