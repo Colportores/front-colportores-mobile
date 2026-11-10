@@ -16,9 +16,6 @@ import '../../helpers/lista_ubicaciones_falsos.dart';
 import '../../helpers/qa_vista39_446_arnes.dart';
 import 'lista_ubicaciones_arnes.dart';
 
-/// Con `--dart-define=QA_HALLAZGOS=true` se corren los tests que documentan un hallazgo.
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 void main() {
   Future<Montaje446> abrirDesdeLaLista(
     WidgetTester tester, {
@@ -116,8 +113,8 @@ void main() {
     }
   }
 
-  // skip: QA #446: en la hoja de la Lista a 360×640 con letra ×2 el aviso de «No pudimos abrir la venta»
-  // queda fuera de la parte visible de la hoja (bloqueante). Se corre con QA_HALLAZGOS=true.
+  // QA #446 (bloqueante, arreglado): en la hoja de la Lista a 360×640 con letra ×2 el aviso de «No
+  // pudimos abrir la venta» quedaba fuera de la parte visible de la hoja; ahora la hoja se desplaza.
   testWidgets(
     'dado que «Ver la venta» falla en la hoja de la Lista a 360×640 con letra ×2, el aviso está a la vista',
     (tester) async {
@@ -132,6 +129,5 @@ void main() {
 
       expect(find.byKey(ClavesHistorialDeLaCasa.aviso).hitTestable(), findsOneWidget);
     },
-    skip: !_conHallazgos,
   );
 }

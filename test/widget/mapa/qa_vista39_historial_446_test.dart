@@ -286,10 +286,8 @@ void main() {
   group('el aviso de «No pudimos abrir la venta» se ve donde la persona está mirando', () {
     for (final tamano in const [t360x640, t412x915]) {
       for (final escala in const [1.0, 2.0]) {
-        // skip: QA #446: a 360×640 con letra ×2 el aviso queda arriba de las filas, fuera de la parte
-        // visible de la hoja que quedó desplazada hasta la fila tocada: «Ver la venta» no abre nada y
-        // no se ve ningún aviso (bloqueante). Se corre con QA_HALLAZGOS=true.
-        final falla = tamano == t360x640 && escala == 2.0;
+        // QA #446 (bloqueante, arreglado): a 360×640 con letra ×2 el aviso quedaba arriba de las filas,
+        // fuera de la parte visible de la hoja; ahora la hoja se desplaza hasta él.
         testWidgets(
           'dado que «Ver la venta» falla a ${tamano.width.toInt()}×${tamano.height.toInt()} con letra ×$escala, '
           'el aviso está a la vista sin tener que desplazar',
@@ -304,7 +302,6 @@ void main() {
 
             expect(find.byKey(ClavesHistorialDeLaCasa.aviso).hitTestable(), findsOneWidget);
           },
-          skip: falla && !_conHallazgos,
         );
       }
     }

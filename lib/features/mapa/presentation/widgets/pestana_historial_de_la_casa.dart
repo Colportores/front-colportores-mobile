@@ -70,6 +70,9 @@ class _PestanaHistorialDeLaCasaState extends ConsumerState<PestanaHistorialDeLaC
   /// El aviso de que no se pudo abrir el cobro o la venta; `null` sin aviso.
   String? _noPudimosAbrir;
 
+  /// Dónde está el aviso, para desplazar la hoja hasta él.
+  final _lugarDelAviso = GlobalKey();
+
   void _elegirFiltro(FiltroDeLaCasa filtro) {
     if (filtro == _filtro) return;
     setState(() {
@@ -101,10 +104,20 @@ class _PestanaHistorialDeLaCasaState extends ConsumerState<PestanaHistorialDeLaC
       await Future<Object?>.sync(() => ver(cobro.id));
     } on Object {
       // Nada de la excepción al aviso: puede traer datos de la persona (convenciones §7.5).
-      if (mounted) {
-        setState(() => _noPudimosAbrir = TextosHistorialDeLaCasa.noPudimosAbrirElCobro);
-      }
+      _avisar(TextosHistorialDeLaCasa.noPudimosAbrirElCobro);
     }
+  }
+
+  /// Muestra el aviso arriba de las filas y desplaza la hoja hasta él: la hoja quedó donde estaba la
+  /// fila tocada y, con letra grande o una lista larga, el aviso quedaría fuera de la vista (QA #446).
+  void _avisar(String texto) {
+    if (!mounted) return;
+    setState(() => _noPudimosAbrir = texto);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final lugar = _lugarDelAviso.currentContext;
+      if (!mounted || lugar == null) return;
+      Scrollable.ensureVisible(lugar);
+    });
   }
 
   Future<void> _abrirElDetalle(EventoDeLaCasa evento) async {
@@ -132,9 +145,7 @@ class _PestanaHistorialDeLaCasaState extends ConsumerState<PestanaHistorialDeLaC
     try {
       await Future<Object?>.sync(() => verVenta(venta));
     } on Object {
-      if (mounted) {
-        setState(() => _noPudimosAbrir = TextosHistorialDeLaCasa.noPudimosAbrirLaVenta);
-      }
+      _avisar(TextosHistorialDeLaCasa.noPudimosAbrirLaVenta);
     }
   }
 
@@ -216,11 +227,14 @@ class _PestanaHistorialDeLaCasaState extends ConsumerState<PestanaHistorialDeLaC
       spacing: 10,
       children: [
         if (_noPudimosAbrir case final texto?)
-          AvisoAlta(
-            key: ClavesHistorialDeLaCasa.aviso,
-            color: ColoresAlta.rojo,
-            glyph: '!',
-            texto: texto,
+          KeyedSubtree(
+            key: _lugarDelAviso,
+            child: AvisoAlta(
+              key: ClavesHistorialDeLaCasa.aviso,
+              color: ColoresAlta.rojo,
+              glyph: '!',
+              texto: texto,
+            ),
           ),
         ...cuerpo,
       ],
