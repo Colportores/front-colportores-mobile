@@ -40,6 +40,9 @@ abstract final class ClavesFicha {
 
   static Key fila(String id) => Key('ficha_fila_$id');
 
+  /// «Entregar» de la tarjeta de una entrega pendiente.
+  static Key entregar(String id) => Key('ficha_entregar_$id');
+
   static Key filtro(FiltroDeHistorial f) => Key('ficha_filtro_${f.name}');
 }
 
@@ -561,7 +564,14 @@ class FiltroDelHistorial extends StatelessWidget {
 }
 
 class FilaDeHistorial extends StatelessWidget {
-  const FilaDeHistorial({super.key, required this.movimiento, required this.ahora, this.alTocar});
+  const FilaDeHistorial({
+    super.key,
+    required this.movimiento,
+    required this.ahora,
+    this.alTocar,
+    this.alEntregar,
+    this.ocupado = false,
+  });
 
   final MovimientoDeFicha movimiento;
   final DateTime ahora;
@@ -569,6 +579,13 @@ class FilaDeHistorial extends StatelessWidget {
   /// Lo que pasa al tocar la fila (la venta abre su devolución, HU-VEN-004); `null`: la fila no se
   /// toca.
   final VoidCallback? alTocar;
+
+  /// «Entregar» (32B·01, HU-VEN-005): solo en la tarjeta de una entrega pendiente. `null`: la tarjeta
+  /// no lo ofrece (ficha de solo lectura o sin destino).
+  final VoidCallback? alEntregar;
+
+  /// Ya se está abriendo otra cosa: «Entregar» se ve apagado y no responde.
+  final bool ocupado;
 
   @override
   Widget build(BuildContext context) {
@@ -580,7 +597,23 @@ class FilaDeHistorial extends StatelessWidget {
       EntregaEnFicha() => ('⇢', ColoresAlta.grisFondo, ColoresAlta.tinta),
     };
     final pendiente = m is EntregaEnFicha && m.pendiente;
+    final entregar = pendiente ? alEntregar : null;
+    final alTocarFila = entregar == null ? alTocar : (ocupado ? null : entregar);
     final sub = FormatoFicha.subtitulo(m);
+    final accion = entregar == null
+        ? null
+        : Text(
+            TextosFicha.entregar,
+            key: ClavesFicha.entregar(m.id),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: ocupado ? ColoresAlta.gris : ColoresAlta.azul,
+            ),
+          );
+    // Con la letra más grande que la normal «Entregar» no entra al lado del texto sin desbordar a 320 dp:
+    // pasa debajo. Con la normal queda a la derecha, como en el canvas.
+    final accionDebajo = accion != null && MediaQuery.textScalerOf(context).scale(14) > 14.5;
     final cuadro = _Cuadro(
       hijo: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -604,10 +637,14 @@ class FilaDeHistorial extends StatelessWidget {
                 ),
                 if (sub != null)
                   Text(sub, style: const TextStyle(fontSize: 13, color: ColoresAlta.gris)),
+                if (accionDebajo)
+                  Padding(padding: const EdgeInsets.only(top: 8, bottom: 4), child: accion),
               ],
             ),
           ),
-          if (alTocar != null)
+          if (accion != null && !accionDebajo)
+            Padding(padding: const EdgeInsets.only(left: 8, top: 1), child: accion)
+          else if (accion == null && alTocar != null)
             const Padding(
               padding: EdgeInsets.only(left: 8, top: 2),
               child: Icon(Icons.chevron_right, color: ColoresAlta.gris, size: 22),
@@ -615,17 +652,19 @@ class FilaDeHistorial extends StatelessWidget {
         ],
       ),
     );
+    final etiqueta = FormatoFicha.paraLector(m, ahora);
     return Semantics(
       container: true,
-      button: alTocar != null,
-      onTap: alTocar,
-      label: FormatoFicha.paraLector(m, ahora),
+      button: entregar != null || alTocar != null,
+      enabled: entregar == null || !ocupado,
+      onTap: alTocarFila,
+      label: entregar == null ? etiqueta : '$etiqueta. ${TextosFicha.entregar}',
       excludeSemantics: true,
       child: KeyedSubtree(
         key: ClavesFicha.fila(m.id),
-        child: alTocar == null
+        child: alTocarFila == null
             ? cuadro
-            : InkWell(onTap: alTocar, borderRadius: BorderRadius.circular(14), child: cuadro),
+            : InkWell(onTap: alTocarFila, borderRadius: BorderRadius.circular(14), child: cuadro),
       ),
     );
   }
