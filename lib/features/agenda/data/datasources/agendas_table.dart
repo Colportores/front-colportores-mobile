@@ -21,8 +21,8 @@ import '../../../../core/database/fecha_utc_converter.dart';
 /// la HU, decisión del 23/10, «No cumplida»). **Cuelga del espacio** (`espacio_id`) y la persona es
 /// opcional («Sin persona»). De lo que la origina (0068) está [ventaId] y [montoPrevisto]: una cuota
 /// del plan de una venta es una cita `COBRANZA` con su venta y su monto (HU-COB-004, decisión «Plan
-/// cuotas» del 23/10, sin tablas de plan ni de cuotas). `entrega_id` y el tipo `ENTREGA` los suma la
-/// HU de las entregas.
+/// cuotas» del 23/10, sin tablas de plan ni de cuotas); una entrega para otro día es una cita
+/// `ENTREGA` con su venta y la fila que agenda, [entregaId] (HU-VEN-003, esquema 33).
 @DataClassName('AgendaFila')
 @TableIndex(name: 'agenda_colportor_idx', columns: {#colportorId, #fechaProgramada})
 @TableIndex(name: 'agenda_espacio_persona_idx', columns: {#espacioPersonaId})
@@ -41,7 +41,7 @@ class Agendas extends Table {
   /// Con quién es; `null` = sin persona.
   TextColumn get espacioPersonaId => text().nullable()();
 
-  /// `ENTREVISTA` o `COBRANZA`.
+  /// `ENTREVISTA`, `COBRANZA` o `ENTREGA`.
   TextColumn get tipo => text()();
 
   IntColumn get fechaProgramada => integer().map(const FechaUtcConverter())();
@@ -60,12 +60,16 @@ class Agendas extends Table {
   /// Se completa al registrar la visita que cumple la agenda.
   TextColumn get visitaId => text().nullable()();
 
-  /// La venta de la que sale la cita (una cuota); `null` si no sale de ninguna.
+  /// La venta de la que sale la cita (una cuota o una entrega); `null` si no sale de ninguna.
   TextColumn get ventaId => text().nullable()();
 
   /// Lo que se espera cobrar en la cita, en centavos: solo en una cita `COBRANZA` con venta (el
   /// `CHECK` de abajo). Una cita con monto previsto es una cuota del plan de la venta.
   IntColumn get montoPrevisto => integer().nullable()();
+
+  /// La entrega que se agenda: solo en una cita `ENTREGA` (el `CHECK` de abajo). Como la entrega es
+  /// una fila por producto, es la primera fila pendiente de la venta; la venta es [ventaId].
+  TextColumn get entregaId => text().nullable()();
 
   IntColumn get createdAt => integer().map(const FechaUtcConverter())();
 
@@ -83,8 +87,9 @@ class Agendas extends Table {
 
   @override
   List<String> get customConstraints => const [
-    "CHECK (tipo IN ('ENTREVISTA', 'COBRANZA'))",
+    "CHECK (tipo IN ('ENTREVISTA', 'COBRANZA', 'ENTREGA'))",
     "CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA'))",
     "CHECK (monto_previsto IS NULL OR (monto_previsto > 0 AND tipo = 'COBRANZA' AND venta_id IS NOT NULL))",
+    "CHECK (entrega_id IS NULL OR tipo = 'ENTREGA')",
   ];
 }
