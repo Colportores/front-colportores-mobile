@@ -1,3 +1,6 @@
+import 'dart:ui' show Rect;
+
+import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
@@ -92,6 +95,89 @@ void main() {
       ..cambiarModo(const CasaElegida('u-1'))
       ..terminarAlta(segunda);
     expect(contenedor.read(mapaPrincipalProvider), const CasaElegida('u-1'));
+  });
+
+  group('encuadrar la nueva y las existentes arriba de la hoja (41B)', () {
+    // Un mapa de 360×640 a pantalla completa; la hoja del aviso arranca en y = 400.
+    const area = Rect.fromLTWH(0, 0, 360, 640);
+    const borde = 400.0;
+    const reserva = 90.0;
+
+    ({double x, double y}) enPantalla(_ControladorFalso c, Coordenadas p) =>
+        ProyeccionMercator.aPantalla(p, c.camara, ancho: area.width, alto: area.height);
+
+    void dentro(_ControladorFalso c, List<Coordenadas> puntos) {
+      for (final p in puntos) {
+        final (:x, :y) = enPantalla(c, p);
+        expect(x, inInclusiveRange(0, area.width), reason: 'x de $p');
+        expect(y, greaterThanOrEqualTo(reserva), reason: 'sin lugar para la etiqueta: y=$y');
+        expect(y, lessThanOrEqualTo(borde), reason: 'bajo la hoja: y=$y');
+      }
+    }
+
+    test('sin mapa armado no mueve nada y lo dice', () async {
+      expect(
+        await mapa.encuadrarArribaDe(
+          const [_grecia],
+          bordeDeLaHoja: borde,
+          por: IntencionCamara.compararDuplicado,
+        ),
+        isFalse,
+      );
+    });
+
+    for (final rumbo in [0.0, 37.0]) {
+      test('cerca: mantiene el zoom y el rumbo, y las deja con lugar para la etiqueta '
+          '(rumbo $rumbo)', () async {
+        // La nueva quedó pegada arriba (como tras «Confirmar posición» con la hoja alta de N·02).
+        final c = _ControladorFalso(
+          CamaraMapa(centro: const Coordenadas(lat: -34.883, lon: -56.07), zoom: 17, rumbo: rumbo),
+        );
+        mapa.registrar(c, area: () => area);
+        const puntos = [_grecia, Coordenadas(lat: -34.8801, lon: -56.0702)];
+        expect(
+          mapa.estaALaVista(_grecia, bordeDeLaHoja: borde, margen: 24, margenArriba: reserva),
+          isFalse,
+        );
+
+        final movio = await mapa.encuadrarArribaDe(
+          puntos,
+          bordeDeLaHoja: borde,
+          por: IntencionCamara.compararDuplicado,
+          reservaArriba: reserva,
+        );
+
+        expect(movio, isTrue);
+        expect(c.movimientos, hasLength(1));
+        expect(c.camara.zoom, 17);
+        expect(c.camara.rumbo, rumbo);
+        dentro(c, puntos);
+      });
+    }
+
+    test('lejos: aleja lo justo para que entren todas', () async {
+      final c = _ControladorFalso(const CamaraMapa(centro: _grecia, zoom: 18));
+      mapa.registrar(c, area: () => area);
+      const puntos = [_grecia, Coordenadas(lat: -34.879, lon: -56.073)];
+
+      await mapa.encuadrarArribaDe(
+        puntos,
+        bordeDeLaHoja: borde,
+        por: IntencionCamara.compararDuplicado,
+        reservaArriba: reserva,
+      );
+
+      expect(c.camara.zoom, lessThan(18));
+      dentro(c, puntos);
+    });
+  });
+
+  test('estaALaVista con margen arriba: un punto sin lugar para su etiqueta no cuenta', () {
+    final c = _ControladorFalso(const CamaraMapa(centro: _grecia, zoom: 17));
+    mapa.registrar(c, area: () => const Rect.fromLTWH(0, 0, 360, 640));
+    // _grecia cae en el medio (y = 320); con la hoja en 400 se ve, con 60 dp arriba también.
+    expect(mapa.estaALaVista(_grecia, bordeDeLaHoja: 400, margen: 24), isTrue);
+    expect(mapa.estaALaVista(_grecia, bordeDeLaHoja: 400, margen: 24, margenArriba: 330), isFalse);
   });
 
   test('soltar un controlador viejo no suelta el nuevo (la pestaña se rearmó)', () {

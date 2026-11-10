@@ -78,6 +78,6 @@ void main() {
 
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       semantica.dispose();
-    }, skip: !verHallazgos655);
+    });
   }
 }

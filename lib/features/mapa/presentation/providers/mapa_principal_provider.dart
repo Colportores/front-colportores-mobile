@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
 import 'package:equatable/equatable.dart';
@@ -90,6 +91,10 @@ enum IntencionCamara {
 
   /// Tocó «Revisar» en un posible duplicado: el mapa encuadra el par (41D·01).
   revisarPar,
+
+  /// Tocó «Registrar» y apareció el aviso de duplicado: el mapa encuadra la casa nueva y las que ya
+  /// estaban, con sus etiquetas, arriba de la hoja (41B).
+  compararDuplicado,
 }
 
 /// El dueño del modo del mapa principal y de su cámara. Vive mientras vive la app (no se libera al
@@ -166,10 +171,76 @@ final class MapaPrincipalNotifier extends Notifier<ModoMapaPrincipal> {
     return true;
   }
 
+  /// Encuadra [puntos] en la parte del mapa que deja libre una hoja cuyo borde de arriba está en
+  /// [bordeDeLaHoja] (coordenada `y` global), dejando [reservaArriba] dp libres arriba de cada punto
+  /// para su etiqueta. Mantiene el rumbo y el zoom, salvo que los puntos no entren: ahí aleja lo
+  /// justo. Devuelve `false` si el mapa principal no está armado, no se sabe dónde está o no hay
+  /// puntos.
+  Future<bool> encuadrarArribaDe(
+    List<Coordenadas> puntos, {
+    required double bordeDeLaHoja,
+    required IntencionCamara por,
+    double reservaArriba = 0,
+    double margen = 32,
+  }) async {
+    final controlador = _controlador;
+    final area = _area?.call();
+    if (controlador == null || area == null || area.isEmpty || puntos.isEmpty) return false;
+    final libreHasta = bordeDeLaHoja.clamp(area.top, area.bottom).toDouble();
+    final camara = controlador.camara;
+    final rumbo = camara.rumbo;
+    // Los puntos en la pantalla (con el rumbo aplicado) de una cámara a [z] centrada en el primero.
+    ({double minX, double maxX, double minY, double maxY}) caja(double z) {
+      final referencia = CamaraMapa(centro: puntos.first, zoom: z, rumbo: rumbo);
+      final px = [
+        for (final p in puntos) ProyeccionMercator.aPantalla(p, referencia, ancho: 0, alto: 0),
+      ];
+      final xs = [for (final p in px) p.x];
+      final ys = [for (final p in px) p.y];
+      return (
+        minX: xs.reduce(math.min),
+        maxX: xs.reduce(math.max),
+        minY: ys.reduce(math.min),
+        maxY: ys.reduce(math.max),
+      );
+    }
+
+    var zoom = camara.zoom;
+    final ancho = math.max(1.0, area.width - 2 * margen);
+    final alto = math.max(1.0, libreHasta - area.top - reservaArriba - 2 * margen);
+    final ocupa = caja(zoom);
+    final exceso = math.max((ocupa.maxX - ocupa.minX) / ancho, (ocupa.maxY - ocupa.minY) / alto);
+    if (exceso > 1) zoom -= math.log(exceso) / math.ln2;
+    // El medio de los puntos, en el medio de lo libre (debajo de la reserva de las etiquetas).
+    final enZoom = caja(zoom);
+    final medio = ProyeccionMercator.dePantalla(
+      (enZoom.minX + enZoom.maxX) / 2,
+      (enZoom.minY + enZoom.maxY) / 2,
+      CamaraMapa(centro: puntos.first, zoom: zoom, rumbo: rumbo),
+      ancho: 0,
+      alto: 0,
+    );
+    final deseada = (area.top + reservaArriba + libreHasta) / 2;
+    final centro = ProyeccionMercator.centroQueDejaEn(
+      medio,
+      zoom: zoom,
+      rumbo: rumbo,
+      desplazamientoY: deseada - area.center.dy,
+    );
+    await controlador.moverCamara(CamaraMapa(centro: centro, zoom: zoom, rumbo: rumbo));
+    return true;
+  }
+
   /// ¿[punto] se ve en la parte del mapa que deja libre una hoja cuyo borde de arriba está en
   /// [bordeDeLaHoja] (coordenada `y` global)? Con [margen] dp: un punto pegado al borde no cuenta.
+  /// [margenArriba] (por defecto [margen]) deja lugar para una etiqueta encima del punto.
   /// `false` si el mapa principal no está armado o no se sabe dónde está.
-  bool estaALaVista(Coordenadas punto, {required double bordeDeLaHoja, double margen = 40}) {
+  bool estaALaVista(
+    Coordenadas punto, {
+    required double bordeDeLaHoja,
+    double margen = 40,
+    double? margenArriba,
+  }) {
     final controlador = _controlador;
     final area = _area?.call();
     if (controlador == null || area == null || area.isEmpty) return false;
@@ -180,7 +251,10 @@ final class MapaPrincipalNotifier extends Notifier<ModoMapaPrincipal> {
       alto: area.height,
     );
     final abajo = bordeDeLaHoja.clamp(area.top, area.bottom).toDouble() - area.top;
-    return x >= margen && x <= area.width - margen && y >= margen && y <= abajo - margen;
+    return x >= margen &&
+        x <= area.width - margen &&
+        y >= (margenArriba ?? margen) &&
+        y <= abajo - margen;
   }
 
   /// Pasa al modo [modo]. Cambiar de modo **no** mueve la cámara.

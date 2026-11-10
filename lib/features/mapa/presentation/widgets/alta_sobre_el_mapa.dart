@@ -43,6 +43,9 @@ abstract final class TextosAltaMapa {
   static const laNueva = 'La nueva';
   static const crearIgual = 'Crear igual';
 
+  /// HU-UBI-001: mientras se leen las ciudades de la campaña.
+  static const buscandoCiudades = 'Buscando las ciudades de tu campaña…';
+
   /// Propuesta del implementador (el canvas no dibuja la búsqueda sin resultados).
   static const sinResultados =
       'Ninguna ciudad de tu campaña se llama así. Revisá cómo la escribiste.';
@@ -168,6 +171,37 @@ class _AltaSobreElMapaState extends ConsumerState<AltaSobreElMapa> {
     });
   }
 
+  /// Lo que la etiqueta de un marcador ocupa encima de su punto («La nueva» va sobre el pin).
+  static const _reservaEtiquetas = 90.0;
+
+  /// Llegó el aviso de duplicado (tocó «Registrar»): la casa nueva y las que ya estaban tienen que
+  /// verse con sus etiquetas arriba de la hoja, para compararlas (41B, sin velo). Si ya se ven, el
+  /// mapa no se mueve; si no, las encuadra (aleja solo si no entran).
+  void _encuadrarElAviso() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final estado = ref.read(altaUbicacionProvider(widget.parametros));
+      final punto = estado.punto;
+      final borde = _bordeDeLaHoja();
+      if (punto == null || borde == null || estado.paso != PasoAlta.duplicado) return;
+      final puntos = [punto, for (final c in estado.candidatas) c.ubicacion.coordenadas];
+      final mapa = ref.read(mapaPrincipalProvider.notifier);
+      final seVen = puntos.every(
+        (p) =>
+            mapa.estaALaVista(p, bordeDeLaHoja: borde, margen: 24, margenArriba: _reservaEtiquetas),
+      );
+      if (seVen) return;
+      unawaited(
+        mapa.encuadrarArribaDe(
+          puntos,
+          bordeDeLaHoja: borde,
+          por: IntencionCamara.compararDuplicado,
+          reservaArriba: _reservaEtiquetas,
+        ),
+      );
+    });
+  }
+
   /// El pin cayó en el GPS al tocar el botón del pin: si esa posición no está a la vista, el mapa va
   /// a ella (la colportora pidió «mi ubicación»). Una sola vez.
   void _alLlegarElPuntoDelGps(AltaUbicacionState? anterior, AltaUbicacionState nuevo) {
@@ -218,6 +252,9 @@ class _AltaSobreElMapaState extends ConsumerState<AltaSobreElMapa> {
     ref.listen(proveedor, (anterior, nuevo) {
       _alLlegarElPuntoDelGps(anterior, nuevo);
       _sincronizarCampos(nuevo);
+      if (anterior?.paso != PasoAlta.duplicado && nuevo.paso == PasoAlta.duplicado) {
+        _encuadrarElAviso();
+      }
     });
     final conVelo = switch (estado.paso) {
       PasoAlta.queHayAca || PasoAlta.ciudad || PasoAlta.crearIgual => true,
@@ -235,12 +272,15 @@ class _AltaSobreElMapaState extends ConsumerState<AltaSobreElMapa> {
         children: [
           if (conVelo)
             Positioned.fill(
-              child: GestureDetector(
-                key: ClavesAltaMapa.velo,
-                behavior: HitTestBehavior.opaque,
-                // El velo no hace nada al tocarlo: el pin ya está confirmado (N·02 tiene «Volver»).
-                onTap: () {},
-                child: const ColoredBox(color: Color(0x520E1A2B)),
+              // El velo solo frena los toques al mapa (el pin ya está confirmado; N·02 tiene
+              // «Volver»): no es un botón, así que el lector de pantalla no lo ve.
+              child: ExcludeSemantics(
+                child: GestureDetector(
+                  key: ClavesAltaMapa.velo,
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {},
+                  child: const ColoredBox(color: Color(0x520E1A2B)),
+                ),
               ),
             ),
           if (estado.paso == PasoAlta.posicion) ...[
@@ -1132,9 +1172,22 @@ class _HojaCiudadesState extends ConsumerState<_HojaCiudades> {
           builder: (context, foto) {
             final datos = foto.data;
             if (datos == null) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Center(child: CircularProgressIndicator()),
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Semantics(
+                  liveRegion: true,
+                  child: const Column(
+                    children: [
+                      ExcludeSemantics(child: CircularProgressIndicator()),
+                      SizedBox(height: 10),
+                      Text(
+                        TextosAltaMapa.buscandoCiudades,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13.5, color: ColoresAlta.gris),
+                      ),
+                    ],
+                  ),
+                ),
               );
             }
             if (datos.fallo) {

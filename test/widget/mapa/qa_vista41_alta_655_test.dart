@@ -253,7 +253,7 @@ void main() {
         reason: 'HU-UBI-001: «mientras lee, muestra "Buscando las ciudades de tu campaña…"»',
       );
       espera.complete();
-    }, skip: !verHallazgos655);
+    });
 
     testWidgets('«Elegí la ciudad» mientras lee: «Volver» anda y no hay excepción', (tester) async {
       final espera = Completer<void>();
@@ -884,7 +884,6 @@ void main() {
             }
             expect(find.text('La nueva'), findsOneWidget);
           },
-          skip: tamano == telefonoChico655 && !verHallazgos655,
         );
       }
     }
