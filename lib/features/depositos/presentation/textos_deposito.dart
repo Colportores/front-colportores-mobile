@@ -1,7 +1,7 @@
 import '../../catalogo/presentation/formato_precios.dart' show FormatoPrecios;
 
 /// Los textos de «Registrar depósito» (vista 33 D, HU-CTA-004). Los del canvas van tal cual; los que el
-/// canvas no dibuja están marcados «Para confirmar» (pendiente de textos de #443).
+/// canvas no dibuja los decidió el agente de decisiones el 10/11 (P2 de #443).
 abstract final class TextosDeposito {
   // --- 33D-01 -------------------------------------------------------------------------------
   static const eyebrow = 'REGISTRAR DEPÓSITO';
@@ -29,37 +29,36 @@ abstract final class TextosDeposito {
   static const fotoCargada = 'Foto del ticket · tocá para cambiarla';
   static const fotoCargadaEtiqueta = 'Foto del ticket cargada. Tocá para cambiarla.';
 
-  /// Para confirmar: mientras se achica la foto.
+  /// Mientras se achica la foto.
   static const preparandoFoto = 'Preparando la foto…';
 
-  /// Para confirmar: la hoja para elegir de dónde sale la foto.
+  /// La hoja para elegir de dónde sale la foto.
   static const deDondeLaFoto = 'La foto del ticket';
   static const sacarFoto = 'Sacar foto';
   static const elegirDeLaGaleria = 'Elegir de la galería';
 
-  /// Para confirmar: las fallas de la cámara y de la foto.
+  /// Las fallas de la cámara y de la foto.
   static const sinPermisoDeCamara =
       'No tenemos permiso para usar la cámara. Activalo en los ajustes del teléfono o elegí la foto '
       'de la galería.';
   static const capturaFallida = 'No pudimos usar esa foto. Probá de nuevo.';
   static const fotoIlegible = 'No pudimos leer esa foto. Sacala de nuevo.';
-  static const sinCamara =
-      'En este teléfono no se puede cargar la foto del ticket: el depósito en el banco o en la '
-      'oficina se registra con el ticket.';
+  static const sinCamara = 'Este teléfono no tiene cámara: elegí la foto del ticket de la galería.';
 
   /// El número de operación del banco (la «referencia» de HU-CTA-004): opcional.
   static const referencia = 'Nº DE OPERACIÓN';
   static const referenciaHint = 'Opcional';
 
-  /// Para confirmar: el retiro no lleva foto (HU-CTA-004, «Retiro coord»).
+  /// El retiro no lleva foto (HU-CTA-004, «Retiro coord»).
   static const retiroSinFoto =
       'El retiro no lleva foto: tu coordinador confirma que recibió el efectivo.';
 
-  /// Para confirmar: el alquiler se paga a la campaña en curso y no hay ninguna.
+  /// El alquiler se paga a la campaña en curso y no hay ninguna.
   static const sinCampaniaParaElAlquiler =
-      'No estás inscripto en una campaña en curso: el alquiler se paga a tu campaña.';
+      'No estás inscripto en una campaña en curso, y el alquiler se paga a tu campaña. Si es de una '
+      'campaña que ya terminó, avisale a tu coordinador.';
 
-  /// Para confirmar: el título del calendario de la fecha.
+  /// El título del calendario de la fecha.
   static const cuandoDepositaste = '¿Cuándo depositaste?';
 
   // --- Lo que falta (38A-04) ----------------------------------------------------------------
@@ -83,7 +82,7 @@ abstract final class TextosDeposito {
   static const listo = 'Listo';
   static const filaEnMano = 'En mano';
 
-  /// Para confirmar: con «Acredita V1» el depósito no pasa a «Depositado» al registrarlo, sino a lo
+  /// Con «Acredita V1» el depósito no pasa a «Depositado» al registrarlo, sino a lo
   /// «por validar» (el rótulo de Mi plata).
   static const filaPorValidar = 'Por validar';
 
@@ -91,12 +90,22 @@ abstract final class TextosDeposito {
   static const quedaPorValidarTicket =
       'Queda por validar: suma a tu dinero depositado cuando tu coordinador valide el ticket.';
 
-  /// Para confirmar: el mismo aviso para el retiro, que no tiene ticket.
+  /// El mismo aviso para el retiro, que no tiene ticket.
   static const quedaPorValidarRetiro =
       'Queda por validar: suma a tu dinero depositado cuando tu coordinador confirme el retiro.';
 
-  /// Para confirmar: el éxito sin conexión.
+  /// El éxito sin conexión.
   static const seEnviaAlVolver = 'Se envía cuando vuelva la conexión.';
+
+  // --- 38A-08, la foto del ticket no subió -------------------------------------------------
+
+  /// 38A-08 tal cual con un ticket; con más, lo mismo en plural (pendiente de textos, P2 de la
+  /// entrega de 38A-08).
+  static String ticketsSinSubir(int cuantos) => cuantos == 1
+      ? 'No pudimos enviar el ticket. Quedó guardado en el teléfono y lo reintentamos solo.'
+      : 'No pudimos enviar $cuantos tickets. Quedaron guardados en el teléfono y los reintentamos '
+            'solos.';
+  static const reintentarAhora = 'Reintentar ahora';
 
   /// «$ 2.400 → $ 600».
   static String antesYDespues(int antes, int despues) =>

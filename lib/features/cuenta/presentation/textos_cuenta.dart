@@ -38,6 +38,9 @@ abstract final class TextosCuenta {
   /// (HU-CTA-004): el pedido (vista 37) y el ticket suelto (vista 38) no se dibujan hasta tener pantalla.
   static const acciones = 'ACCIONES';
   static const registrarDeposito = 'Registrar depósito';
+
+  /// «Registrar depósito» apagado con $ 0 en mano (decisión del 10/11, P1 del QA de #443).
+  static const sinPlataParaDepositar = 'No tenés plata en mano para depositar.';
 }
 
 /// Los textos de «Mi plata» (vista 33C, HU-CTA-003). Los del canvas van tal cual; los demás dicen «para
