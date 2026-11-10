@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -116,7 +118,7 @@ class _PestanaHistorialDeLaCasaState extends ConsumerState<PestanaHistorialDeLaC
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final lugar = _lugarDelAviso.currentContext;
       if (!mounted || lugar == null) return;
-      Scrollable.ensureVisible(lugar);
+      unawaited(Scrollable.ensureVisible(lugar));
     });
   }
 
