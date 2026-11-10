@@ -3,6 +3,7 @@
 // memoria. Casos límite del flujo: una sola venta se salta, cancelar en cualquiera de los dos pasos,
 // falla a mitad del cobro, dos cobros seguidos (el segundo ve el saldo nuevo), volver atrás y reentrar.
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/cobranzas/presentation/widgets/dialogo_no_te_pago.dart';
 import 'package:colportores_mobile/features/cobranzas/presentation/widgets/hoja_que_venta.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -87,21 +88,26 @@ void main() {
       expect(a.repo.base.recibidos.single.ventaId, 'v-45');
     });
 
-    testWidgets('«Cancelar» en C·08: no se abre el cobro, no se escribe nada y devuelve false', (
-      tester,
-    ) async {
-      final a = await montarCobrarDesdeLaCasa(
-        tester,
-        repo: cobranzasConVentas([ventaDelCanvas38(), ventaDelCanvas45()]),
-      );
+    testWidgets(
+      '«Cancelar» en C·08 y «No, me equivoqué»: no se abre el cobro, no se escribe nada y devuelve '
+      'false',
+      (tester) async {
+        final a = await montarCobrarDesdeLaCasa(
+          tester,
+          repo: cobranzasConVentas([ventaDelCanvas38(), ventaDelCanvas45()]),
+        );
 
-      await tocarQueVenta(tester, find.byKey(ClavesQueVenta.cancelar));
+        await tocarQueVenta(tester, find.byKey(ClavesQueVenta.cancelar));
+        // Decisión de Cristian (03/11): antes de volver se pregunta «¿Pedro no te pagó?».
+        expect(a.resultados, isEmpty);
+        await tocarQueVenta(tester, find.byKey(ClavesNoTePago.noMeEquivoque));
 
-      expect(a.resultados, [false]);
-      expect(pagina, findsNothing);
-      expect(a.repo.base.recibidos, isEmpty);
-      expect(a.rutas.aperturas - 1, a.rutas.cierres);
-    });
+        expect(a.resultados, [false]);
+        expect(pagina, findsNothing);
+        expect(a.repo.base.recibidos, isEmpty);
+        expect(a.rutas.aperturas - 1, a.rutas.cierres);
+      },
+    );
 
     testWidgets('cerrar el cobro sin cobrar devuelve false y no queda ningún cobro', (
       tester,
@@ -184,14 +190,14 @@ void main() {
       },
     );
 
-    testWidgets('error de lectura y «Cancelar»: devuelve false y no deja nada trabado', (
-      tester,
-    ) async {
+    testWidgets('error de lectura, «Cancelar» y «No, me equivoqué»: devuelve false y no deja nada '
+        'trabado', (tester) async {
       final repo = cobranzasConVentas([ventaDelCanvas38(), ventaDelCanvas45()])
         ..fallas.add(const FailureInesperado(causa: 'x'));
       final a = await montarCobrarDesdeLaCasa(tester, repo: repo);
 
       await tocarQueVenta(tester, find.byKey(ClavesQueVenta.cancelar));
+      await tocarQueVenta(tester, find.byKey(ClavesNoTePago.noMeEquivoque));
 
       expect(a.resultados, [false]);
       expect(a.rutas.aperturas - 1, a.rutas.cierres);

@@ -117,6 +117,15 @@ final class VentaRegistradaEnLaCasa {
   const VentaRegistradaEnLaCasa();
 }
 
+/// Lo que contesta el gancho de «$ Cobrar» cuando **no se cobró** pero la colportora tocó «Cancelar» y
+/// contestó «Sí, anotar la visita» a «¿María no te pagó?» (decisión de Cristian, 03/11): la visita
+/// «Cobranza» sin cobro **ya quedó guardada** (sin tocar la cita, que sigue `PROGRAMADA`). Quien lo
+/// recibe lo trata como algo resuelto —«¿Qué pasó?» y la hoja de la casa se cierran y el mapa queda
+/// libre— y **no guarda la visita otra vez**.
+final class CobranzaAnotadaSinCobro {
+  const CobranzaAnotadaSinCobro();
+}
+
 /// A dónde lleva «✓ Registrar visita» (#411, «¿Qué pasó?»). **Sin destino**: mientras sea `null` el
 /// botón no se muestra (HU-UBI-003, «los botones llegan con la HU que los resuelve y no se muestran
 /// mientras no tengan a dónde llevar»). Devuelve `true` si algo se resolvió y la hoja de la casa se
@@ -147,7 +156,8 @@ final venderDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDe
 
 /// A dónde lleva «$ Cobrar» (#440, «¿Qué venta?»), tanto desde la hoja de la casa como desde la opción
 /// «Cobranza» de «¿Qué pasó?». Devuelve `true` si se cobró (desde «¿Qué pasó?» la visita queda
-/// guardada como «Cobranza»). Sin destino, el botón y la opción no se muestran.
+/// guardada como «Cobranza») y [CobranzaAnotadaSinCobro] si no se cobró y la colportora pidió anotar la
+/// visita al cancelar. Sin destino, el botón y la opción no se muestran.
 final cobrarDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDeCobro)?>(
   (ref) => null,
 );

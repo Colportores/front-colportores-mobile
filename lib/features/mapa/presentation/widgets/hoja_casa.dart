@@ -397,8 +397,9 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
           espacioId: contexto.espacioId,
           personaId: personaId,
         ));
-        // Cobrado: el mapa queda libre con la casa en su color nuevo (si no se cobró, la hoja sigue).
-        if (cobrado == true && mounted) _volverAlMapa();
+        // Cobrado, o sin cobro pero con la visita «Cobranza» ya anotada (03/11): el mapa queda libre con
+        // la casa en su color nuevo. Si no se cobró ni se anotó nada, la hoja sigue.
+        if ((cobrado == true || cobrado is CobranzaAnotadaSinCobro) && mounted) _volverAlMapa();
       }, TextosHojaCasa.noPudimosAbrirCobro);
     };
   }
