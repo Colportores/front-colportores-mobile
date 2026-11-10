@@ -411,8 +411,12 @@ class _AccionRapida extends StatelessWidget {
       onPressed: alTocar,
       backgroundColor: Colors.white,
       side: const BorderSide(color: ColoresAlta.grisBorde),
-      labelStyle: const TextStyle(
-        color: ColoresAlta.tinta,
+      // El texto lleva su color: apagado (ocupado) hay que pintarlo apagado a mano, con el 38 % de
+      // Material que usa el resto de la app (login).
+      labelStyle: TextStyle(
+        color: alTocar == null
+            ? Theme.of(context).colorScheme.onSurface.withValues(alpha: .38)
+            : ColoresAlta.tinta,
         fontWeight: FontWeight.w500,
         fontSize: 14,
       ),
