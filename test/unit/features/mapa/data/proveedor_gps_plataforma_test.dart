@@ -102,6 +102,34 @@ void main() {
       expect(plataforma.pedidos, 0);
     });
 
+    // #679: en Android `permiso()` nunca dice «para siempre»; eso solo sale de pedirlo.
+    test('negado para siempre al pedirlo: las lecturas siguientes no lo vuelven a pedir', () async {
+      plataforma.permisoActual = PermisoUbicacion.denegado;
+      plataforma.permisoTrasPedir = PermisoUbicacion.denegadoParaSiempre;
+      expect(_motivo(await gps.posicionActual()), MotivoSinGps.permisoDenegado);
+      plataforma.permisoActual = PermisoUbicacion.denegado; // Lo que dice Android al mirarlo.
+
+      expect(_motivo(await gps.posicionActual()), MotivoSinGps.permisoDenegado);
+      expect(_motivo(await gps.posicionActual()), MotivoSinGps.permisoDenegado);
+
+      expect(plataforma.pedidos, 1);
+    });
+
+    test('negado para siempre y después concedido en los ajustes: lee y vuelve a pedir si lo '
+        'sacan', () async {
+      plataforma.permisoActual = PermisoUbicacion.denegado;
+      plataforma.permisoTrasPedir = PermisoUbicacion.denegadoParaSiempre;
+      await gps.posicionActual();
+      plataforma.permisoActual = PermisoUbicacion.concedido;
+
+      expect(await gps.posicionActual(), isA<Right<Failure, LecturaGps>>());
+
+      plataforma.permisoActual = PermisoUbicacion.denegado;
+      plataforma.permisoTrasPedir = PermisoUbicacion.denegado;
+      await gps.posicionActual();
+      expect(plataforma.pedidos, 2);
+    });
+
     test('una lectura que se agota o falla es sinSenal y no lanza', () async {
       plataforma.falla = TimeoutException('sin señal');
       expect(_motivo(await gps.posicionActual()), MotivoSinGps.sinSenal);
@@ -130,6 +158,21 @@ void main() {
       expect(plataforma.pedidos, 0);
       expect(plataforma.ajustesApp, 1);
     });
+
+    test(
+      '«Activar GPS» lo vuelve a pedir aunque la última respuesta fuera «para siempre»',
+      () async {
+        plataforma.permisoActual = PermisoUbicacion.denegado;
+        plataforma.permisoTrasPedir = PermisoUbicacion.denegadoParaSiempre;
+        await gps.posicionActual();
+        plataforma.permisoActual = PermisoUbicacion.denegado;
+
+        await gps.activar(MotivoSinGps.permisoDenegado);
+
+        expect(plataforma.pedidos, 2);
+        expect(plataforma.ajustesApp, 1);
+      },
+    );
 
     test('si lo piden y lo niegan para siempre, abre los ajustes de la app', () async {
       plataforma.permisoActual = PermisoUbicacion.denegado;

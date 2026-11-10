@@ -44,9 +44,14 @@
         android:dataExtractionRules="@xml/data_extraction_rules">
         <!-- Solo vertical (decisión de Cristian del 07/10, #301): la misma regla que Info.plist y
              que SystemChrome.setPreferredOrientations en main.dart. Android 16 la ignora en
-             pantallas de 600 dp o más (tablets); los teléfonos la respetan. -->
+             pantallas de 600 dp o más (tablets); los teléfonos la respetan.
+             Atrás del sistema a la antigua (#679): con el atrás predictivo, que Android 16 prende
+             solo, el sistema decide si cerrar la app según lo último que avisó Flutter, y con un
+             campo enfocado en «Nueva ubicación» el atrás sacaba de la app en vez de volver al
+             mapa. Así cada atrás llega a Flutter y lo resuelve la pila de pantallas (PopScope). -->
         <activity
             android:name=".MainActivity"
+            android:enableOnBackInvokedCallback="false"
             android:exported="true"
             android:launchMode="singleTop"
             android:screenOrientation="portrait"
