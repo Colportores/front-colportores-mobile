@@ -71,6 +71,19 @@ abstract final class TextosEntrevista {
 
   static const guardando = 'Guardando…';
 
+  // «Lo que dejaste» (#608): el título lo fija la decisión de Cristian (04/11, «Misio. entrev»); el
+  // resto es propuesta (mapa §2: texto) hasta el artboard de la vista 42.
+  static const loQueDejasteTitulo = 'Lo que dejaste';
+  static const loQueDejasteAyuda =
+      'Si le dejaste algún misionero, anotalo y se descuenta de tu stock. No es una venta: no lleva '
+      'talonario ni monto.';
+  static const volverALasHoras = 'Volver a las horas';
+  static const noDejeNinguno = 'No dejé ninguno, guardar';
+
+  /// «Guardar 3 misioneros», con lo que anotó.
+  static String guardarLoQueDejaste(int cuantos) =>
+      cuantos == 1 ? 'Guardar 1 misionero' : 'Guardar $cuantos misioneros';
+
   /// Propuesta: falla al guardar. Dice qué pasó y qué hacer; la entrevista no se pierde.
   static const noPudimosGuardar =
       'No pudimos guardar la entrevista. Probá de nuevo; no perdiste nada.';
@@ -162,6 +175,10 @@ abstract final class ClavesEntrevista {
   static const avisoError = Key('entrevista_aviso_error');
   static const registrarVenta = Key('entrevista_registrar_venta');
   static const guardarYVolver = Key('entrevista_guardar_y_volver');
+  static const loQueDejaste = Key('entrevista_lo_que_dejaste');
+  static const avisoLoQueDejaste = Key('entrevista_aviso_lo_que_dejaste');
+  static const volverALasHoras = Key('entrevista_volver_a_las_horas');
+  static const guardarLoQueDejaste = Key('entrevista_guardar_lo_que_dejaste');
 
   static const avisoFijo = Key('entrevista_aviso_fijo');
 }

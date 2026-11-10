@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/misionero_dejado.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/hoja_termino_entrevista.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
 import 'package:flutter/material.dart';
@@ -15,8 +16,8 @@ final _salida = DateTime(2026, 10, 23, 14, 41);
 
 void main() {
   var ahora = DateTime(2026, 10, 23, 14, 41);
-  final guardados = <({DateTime entrada, DateTime salida})>[];
-  Future<Failure?> Function(DateTime, DateTime) alGuardar = (e, s) async => null;
+  final guardados = <({DateTime entrada, DateTime salida, Map<String, int> misioneros})>[];
+  GuardarEntrevista alGuardar = (e, s, m) async => null;
   SalidaTerminoEntrevista? salidaDeLaHoja;
   var hojaCerrada = false;
 
@@ -25,8 +26,8 @@ void main() {
     guardados.clear();
     salidaDeLaHoja = null;
     hojaCerrada = false;
-    alGuardar = (e, s) async {
-      guardados.add((entrada: e, salida: s));
+    alGuardar = (e, s, m) async {
+      guardados.add((entrada: e, salida: s, misioneros: m));
       return null;
     };
   });
@@ -41,6 +42,7 @@ void main() {
     String persona = 'Pedro Gómez',
     double escala = 1,
     Size tamano = const Size(390, 844),
+    List<MisioneroParaDejar> misioneros = const [],
   }) async {
     tester.view.physicalSize = tamano;
     tester.view.devicePixelRatio = 1;
@@ -65,7 +67,8 @@ void main() {
                     salida: salida,
                     entradaInferida: inferida,
                     reloj: () => ahora,
-                    alGuardar: (e, s) => alGuardar(e, s),
+                    misioneros: misioneros,
+                    alGuardar: (e, s, m) => alGuardar(e, s, m),
                   );
                   hojaCerrada = true;
                 },
@@ -394,7 +397,7 @@ void main() {
       tester,
     ) async {
       final espera = Completer<Failure?>();
-      alGuardar = (e, s) => espera.future;
+      alGuardar = (e, s, _) => espera.future;
       await montar(tester, entrada: _entrada, salida: _salida);
 
       await tester.ensureVisible(find.byKey(ClavesEntrevista.guardarYVolver));
@@ -414,7 +417,7 @@ void main() {
     testWidgets('un doble toque guarda una sola vez', (tester) async {
       final espera = Completer<Failure?>();
       var llamadas = 0;
-      alGuardar = (e, s) {
+      alGuardar = (e, s, _) {
         llamadas++;
         return espera.future;
       };
@@ -434,9 +437,9 @@ void main() {
       'si falla a mitad, el aviso dice qué hacer, los botones vuelven y se puede reintentar',
       (tester) async {
         var intento = 0;
-        alGuardar = (e, s) async {
+        alGuardar = (e, s, _) async {
           intento++;
-          guardados.add((entrada: e, salida: s));
+          guardados.add((entrada: e, salida: s, misioneros: const {}));
           return intento == 1 ? const FailureInesperado() : null;
         };
         await montar(tester, entrada: _entrada, salida: _salida);
@@ -458,7 +461,7 @@ void main() {
     testWidgets('si lo que guarda lanza una excepción tampoco queda «Guardando…» para siempre', (
       tester,
     ) async {
-      alGuardar = (e, s) async => throw StateError('se cayó');
+      alGuardar = (e, s, _) async => throw StateError('se cayó');
       await montar(tester, entrada: _entrada, salida: _salida);
 
       await tocar(tester, ClavesEntrevista.guardarYVolver);
@@ -468,7 +471,7 @@ void main() {
     });
 
     testWidgets('si las horas no valen muestra el mensaje de la validación', (tester) async {
-      alGuardar = (e, s) async => const FailureValidacion(
+      alGuardar = (e, s, _) async => const FailureValidacion(
         campos: {
           'salida': 'La salida no puede ser antes de la entrada. Corregí una de las dos horas.',
         },
@@ -485,7 +488,7 @@ void main() {
     });
 
     testWidgets('corregir una hora limpia el aviso de error', (tester) async {
-      alGuardar = (e, s) async => const FailureInesperado();
+      alGuardar = (e, s, _) async => const FailureInesperado();
       await montar(tester, entrada: _entrada, salida: _salida);
       await tocar(tester, ClavesEntrevista.guardarYVolver);
       expect(find.byKey(ClavesEntrevista.avisoError), findsOneWidget);
@@ -499,7 +502,7 @@ void main() {
 
     testWidgets('mientras guarda las horas no se pueden tocar', (tester) async {
       final espera = Completer<Failure?>();
-      alGuardar = (e, s) => espera.future;
+      alGuardar = (e, s, _) => espera.future;
       await montar(tester, entrada: _entrada, salida: _salida);
       await tester.ensureVisible(find.byKey(ClavesEntrevista.guardarYVolver));
       await tester.tap(find.byKey(ClavesEntrevista.guardarYVolver));
@@ -591,6 +594,282 @@ void main() {
 
       expect(find.bySemanticsLabel('Salida, sin elegir'), findsOneWidget);
       semantica.dispose();
+    });
+  });
+
+  group('arrastrar la hoja (#466)', () {
+    testWidgets('sin guardar, arrastrarla hacia abajo la cierra y la entrevista sigue', (
+      tester,
+    ) async {
+      await montar(tester, entrada: _entrada, salida: _salida);
+
+      await tester.drag(find.text(TextosEntrevista.terminoTitulo), const Offset(0, 600));
+      await tester.pumpAndSettle();
+
+      expect(hojaCerrada, isTrue);
+      expect(salidaDeLaHoja, isNull);
+      expect(guardados, isEmpty);
+    });
+
+    testWidgets('mientras guarda, el arrastre no la cierra', (tester) async {
+      final espera = Completer<Failure?>();
+      alGuardar = (e, s, _) => espera.future;
+      await montar(tester, entrada: _entrada, salida: _salida);
+      await tester.tap(find.byKey(ClavesEntrevista.guardarYVolver));
+      await tester.pump();
+
+      await tester.drag(find.text(TextosEntrevista.terminoTitulo), const Offset(0, 600));
+      await tester.pumpAndSettle();
+
+      expect(hojaCerrada, isFalse);
+      expect(find.text('Guardando…'), findsOneWidget);
+      espera.complete(null);
+      await tester.pumpAndSettle();
+      expect(salidaDeLaHoja, isA<EntrevistaGuardada>());
+    });
+  });
+
+  group('«Lo que dejaste» (#608, diseño provisorio hasta la vista 42)', () {
+    const camino = MisioneroParaDejar(productoId: 'p-camino', nombre: 'El camino a Cristo');
+    const paz = MisioneroParaDejar(productoId: 'p-paz', nombre: 'Paz en tiempos de crisis');
+    const misioneros = [camino, paz];
+
+    Finder fila(MisioneroParaDejar m) =>
+        find.byKey(ValueKey('entrevista_misionero_${m.productoId}'));
+
+    Future<void> unoMas(WidgetTester tester, MisioneroParaDejar m, {int veces = 1}) async {
+      for (var i = 0; i < veces; i++) {
+        await tester.ensureVisible(fila(m));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Uno más de ${m.nombre}'));
+        await tester.pump();
+      }
+    }
+
+    testWidgets('sin misioneros en el catálogo, «No, guardar…» guarda directo, sin el paso', (
+      tester,
+    ) async {
+      await montar(tester, entrada: _entrada, salida: _salida);
+
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+
+      expect(find.byKey(ClavesEntrevista.loQueDejaste), findsNothing);
+      expect(guardados.single.misioneros, isEmpty);
+      expect(salidaDeLaHoja, isA<EntrevistaGuardada>());
+    });
+
+    testWidgets('con misioneros, «No, guardar…» pasa al paso sin guardar todavía', (tester) async {
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+
+      expect(guardados, isEmpty);
+      expect(hojaCerrada, isFalse);
+      expect(find.text(TextosEntrevista.loQueDejasteTitulo), findsOneWidget);
+      expect(find.text(TextosEntrevista.loQueDejasteAyuda), findsOneWidget);
+      expect(fila(camino), findsOneWidget);
+      expect(fila(paz), findsOneWidget);
+      expect(find.textContaining(r'$'), findsNothing, reason: 'sin montos');
+      expect(find.text(TextosEntrevista.noDejeNinguno), findsOneWidget);
+    });
+
+    testWidgets('anota cuántos dejó de cada uno y los guarda con las horas', (tester) async {
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+
+      await unoMas(tester, camino, veces: 2);
+      await unoMas(tester, paz);
+      expect(find.text(TextosEntrevista.guardarLoQueDejaste(3)), findsOneWidget);
+      await tocar(tester, ClavesEntrevista.guardarLoQueDejaste);
+
+      final g = guardados.single;
+      expect([g.entrada, g.salida], [_entrada, _salida]);
+      expect(g.misioneros, {'p-camino': 2, 'p-paz': 1});
+      expect(salidaDeLaHoja, isA<EntrevistaGuardada>());
+    });
+
+    testWidgets('«No dejé ninguno, guardar» guarda la entrevista sin misioneros', (tester) async {
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+
+      await tocar(tester, ClavesEntrevista.guardarLoQueDejaste);
+
+      expect(guardados.single.misioneros, isEmpty);
+      expect(salidaDeLaHoja, isA<EntrevistaGuardada>());
+    });
+
+    testWidgets('subir y volver a 0 no manda ese misionero', (tester) async {
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+      await unoMas(tester, camino);
+      await tester.tap(find.byTooltip('Uno menos de ${camino.nombre}'));
+      await tester.pump();
+
+      expect(find.text(TextosEntrevista.noDejeNinguno), findsOneWidget);
+      await tocar(tester, ClavesEntrevista.guardarLoQueDejaste);
+      expect(guardados.single.misioneros, isEmpty);
+    });
+
+    testWidgets('«Volver a las horas» vuelve sin perder lo anotado y se puede reentrar', (
+      tester,
+    ) async {
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+      await unoMas(tester, paz);
+
+      await tocar(tester, ClavesEntrevista.volverALasHoras);
+      expect(find.text(TextosEntrevista.terminoTitulo), findsOneWidget);
+      expect(guardados, isEmpty);
+
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+      expect(find.text(TextosEntrevista.guardarLoQueDejaste(1)), findsOneWidget);
+    });
+
+    testWidgets('el atrás del sistema vuelve a las horas, no cierra la hoja', (tester) async {
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(hojaCerrada, isFalse);
+      expect(find.text(TextosEntrevista.terminoTitulo), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(hojaCerrada, isTrue);
+      expect(salidaDeLaHoja, isNull);
+    });
+
+    testWidgets('«Sí, registrar la venta» no pasa por el paso', (tester) async {
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+
+      await tocar(tester, ClavesEntrevista.registrarVenta);
+
+      expect(salidaDeLaHoja, isA<QuiereRegistrarLaVenta>());
+      expect(guardados, isEmpty);
+    });
+
+    testWidgets('un doble toque en guardar guarda una sola vez', (tester) async {
+      final espera = Completer<Failure?>();
+      var llamadas = 0;
+      alGuardar = (e, s, _) {
+        llamadas++;
+        return espera.future;
+      };
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+
+      await tester.tap(find.byKey(ClavesEntrevista.guardarLoQueDejaste));
+      await tester.tap(find.byKey(ClavesEntrevista.guardarLoQueDejaste), warnIfMissed: false);
+      await tester.pump();
+
+      expect(llamadas, 1);
+      expect(find.text('Guardando…'), findsOneWidget);
+      expect(habilitado(tester, ClavesEntrevista.volverALasHoras), isFalse);
+      espera.complete(null);
+      await tester.pumpAndSettle();
+      expect(salidaDeLaHoja, isA<EntrevistaGuardada>());
+    });
+
+    testWidgets('mientras guarda, las cantidades no cambian ni el atrás sale', (tester) async {
+      final espera = Completer<Failure?>();
+      alGuardar = (e, s, m) {
+        guardados.add((entrada: e, salida: s, misioneros: m));
+        return espera.future;
+      };
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+      await unoMas(tester, camino);
+      await tester.tap(find.byKey(ClavesEntrevista.guardarLoQueDejaste));
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('Uno más de ${camino.nombre}'), warnIfMissed: false);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+
+      expect(find.byKey(ClavesEntrevista.loQueDejaste), findsOneWidget);
+      expect(find.text('Guardando…'), findsOneWidget);
+      expect(hojaCerrada, isFalse);
+      espera.complete(null);
+      await tester.pumpAndSettle();
+      expect(guardados.single.misioneros, {'p-camino': 1});
+    });
+
+    testWidgets('si falla a mitad, avisa, el botón vuelve y el reintento manda lo mismo', (
+      tester,
+    ) async {
+      var intento = 0;
+      alGuardar = (e, s, m) async {
+        intento++;
+        guardados.add((entrada: e, salida: s, misioneros: m));
+        return intento == 1 ? const FailureInesperado() : null;
+      };
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+      await unoMas(tester, paz, veces: 2);
+
+      await tocar(tester, ClavesEntrevista.guardarLoQueDejaste);
+      expect(find.text(TextosEntrevista.noPudimosGuardar), findsOneWidget);
+      expect(habilitado(tester, ClavesEntrevista.guardarLoQueDejaste), isTrue);
+      expect(find.text(TextosEntrevista.guardarLoQueDejaste(2)), findsOneWidget);
+      expect(hojaCerrada, isFalse);
+
+      await tocar(tester, ClavesEntrevista.guardarLoQueDejaste);
+      expect(guardados.map((g) => g.misioneros), [
+        {'p-paz': 2},
+        {'p-paz': 2},
+      ]);
+      expect(salidaDeLaHoja, isA<EntrevistaGuardada>());
+    });
+
+    testWidgets('si lo que guarda lanza, no queda «Guardando…» trabado', (tester) async {
+      alGuardar = (e, s, _) async => throw StateError('se cayó');
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+
+      await tocar(tester, ClavesEntrevista.guardarLoQueDejaste);
+
+      expect(find.text(TextosEntrevista.noPudimosGuardar), findsOneWidget);
+      expect(habilitado(tester, ClavesEntrevista.guardarLoQueDejaste), isTrue);
+      expect(habilitado(tester, ClavesEntrevista.volverALasHoras), isTrue);
+    });
+
+    testWidgets('a 200 % en 320×568 con una lista larga de nombres largos no desborda', (
+      tester,
+    ) async {
+      final muchos = [
+        for (var i = 0; i < 12; i++)
+          MisioneroParaDejar(
+            productoId: 'p-$i',
+            nombre: 'Misionero de nombre larguísimo número $i para la prueba de letra grande',
+          ),
+      ];
+      await montar(
+        tester,
+        entrada: _entrada,
+        salida: _salida,
+        misioneros: muchos,
+        escala: 2,
+        tamano: const Size(320, 568),
+      );
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+      expect(tester.takeException(), isNull);
+
+      await unoMas(tester, muchos.last);
+      await tocar(tester, ClavesEntrevista.guardarLoQueDejaste);
+
+      expect(guardados.single.misioneros, {'p-11': 1});
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('«Volver a las horas» mide al menos 48 dp', (tester) async {
+      await montar(tester, entrada: _entrada, salida: _salida, misioneros: misioneros);
+      await tocar(tester, ClavesEntrevista.guardarYVolver);
+
+      final tamano = tester.getSize(find.byKey(ClavesEntrevista.volverALasHoras));
+      expect(tamano.height, greaterThanOrEqualTo(48));
+      expect(tamano.width, greaterThanOrEqualTo(48));
     });
   });
 }

@@ -10,6 +10,7 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/misionero_dejado.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
@@ -44,6 +45,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/agendar_visita_arnes.dart';
+import '../../helpers/entrega_falsos.dart' show EntornoDeEntrega;
 import '../../helpers/entrevista_falsos.dart';
 import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart';
@@ -63,7 +65,8 @@ final class _AgendaDeTodo implements AgendaRepository {
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
-  }) => visitas.registrarVisita(visita, agendaId: agendaId, nota: nota);
+    List<MisioneroDejado> misioneros = const [],
+  }) => visitas.registrarVisita(visita, agendaId: agendaId, nota: nota, misioneros: misioneros);
 
   @override
   Future<Either<Failure, Agenda>> agendar(Agenda agenda, {NotaDeCampo? nota}) =>
@@ -910,14 +913,14 @@ void main() {
       expect(entorno.ventas.recibidas, hasLength(1), reason: 'la venta ya está guardada');
     });
 
-    testWidgets('sin cobro enganchado y sin entrega, no dibuja grupos: solo «Listo»', (
+    testWidgets('sin cobro enganchado, solo la entrega; «Terminar» sigue a la pregunta', (
       tester,
     ) async {
       await montar(tester);
       await hastaVentaRegistrada(tester);
 
       expect(find.text(TextosVenta.cobro), findsNothing);
-      expect(find.text(TextosVenta.entrega), findsNothing);
+      expect(find.text(TextosVenta.entrega), findsOneWidget);
       expect(find.text(TextosVenta.cobrarAhora), findsNothing);
 
       await tocarKey(tester, const Key('venta_terminar'));
@@ -1039,6 +1042,150 @@ void main() {
       await elegirCuando(tester, CuandoCobrar.sinFecha);
 
       expect(contenedor(tester).read(cobranzaRecienAgendadaProvider), isNull);
+    });
+  });
+
+  group('«Entregar ahora» desde 27A·14 (#432)', () {
+    late EntornoDeEntrega entrega;
+
+    Future<void> hastaVentaRegistrada(WidgetTester tester) async {
+      await hastaLaVenta(tester);
+      await armarLaVenta(tester);
+      await registrar(tester);
+    }
+
+    Future<void> elegirEntregarAhora(WidgetTester tester) async {
+      await tocar(tester, find.text(TextosVenta.entregarAhora));
+      await tocar(tester, find.text(TextosVenta.continuar));
+    }
+
+    void conEntrega() {
+      entrega = EntornoDeEntrega();
+      extras.addAll(entrega.overrides);
+    }
+
+    void conCobro(List<ContextoDeCobroDeLaVenta> recibidos, {bool cobra = true}) {
+      extras.add(
+        cobrarDespuesDeLaVentaProvider.overrideWithValue((contexto) async {
+          recibidos.add(contexto);
+          return cobra;
+        }),
+      );
+    }
+
+    testWidgets('se ofrece «Entregar ahora» y no «Entregar otro día» (es de #435)', (tester) async {
+      conEntrega();
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      expect(find.text(TextosVenta.entrega), findsOneWidget);
+      expect(find.text(TextosVenta.entregarAhora), findsOneWidget);
+      expect(find.text(TextosVenta.entregarOtroDia), findsNothing);
+    });
+
+    testWidgets('abre 27B·01 con la venta; entregar todo deja 27B·04 con el total y después '
+        'pregunta cuándo volver a cobrar', (tester) async {
+      conEntrega();
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      await elegirEntregarAhora(tester);
+      expect(find.byKey(const Key('entrega_pagina')), findsOneWidget);
+      await tocar(tester, find.byKey(const Key('venta_cta')));
+
+      expect(find.text('Entrega registrada'), findsOneWidget);
+      expect(find.text(FormatoVenta.monto(300000)), findsWidgets);
+      expect(entrega.entregas.recibidas, isNotEmpty);
+      await tocar(tester, find.text('Volver al mapa'));
+
+      expect(find.byKey(ClavesCuandoCobrar.hoja), findsOneWidget);
+      expect(find.text(TextosCuandoCobrar.saldo(300000, 'Pedro Gómez')), findsOneWidget);
+    });
+
+    testWidgets('con el cobro de la venta pagado entero: 27B·03 «Venta completa» y no pregunta', (
+      tester,
+    ) async {
+      conEntrega();
+      conCobro(<ContextoDeCobroDeLaVenta>[]);
+      extras.add(saldoPendienteRepositoryProvider.overrideWithValue(_SaldoFalso(0)));
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      await tocar(tester, find.text(TextosVenta.cobrarAhora));
+      await elegirEntregarAhora(tester);
+      await tocar(tester, find.byKey(const Key('venta_cta')));
+
+      expect(find.text('Venta completa'), findsOneWidget);
+      await tocar(tester, find.text('Volver al mapa'));
+
+      expect(find.byKey(ClavesCuandoCobrar.hoja), findsNothing);
+      expect(salida, isA<VentaGuardadaEnLaEntrevista>());
+    });
+
+    testWidgets('«Cobrar ahora» en 27B·04 cobra y vuelve a mostrar la venta con lo que quedó', (
+      tester,
+    ) async {
+      final cobros = <ContextoDeCobroDeLaVenta>[];
+      conEntrega();
+      conCobro(cobros);
+      extras.add(saldoPendienteRepositoryProvider.overrideWithValue(_SaldoFalso(120000)));
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      await elegirEntregarAhora(tester);
+      await tocar(tester, find.byKey(const Key('venta_cta')));
+      await tocar(tester, find.text('Cobrar ahora'));
+
+      expect(cobros, hasLength(1));
+      expect(find.byKey(const Key('entrega_pagina')), findsOneWidget);
+      expect(find.text(FormatoVenta.monto(120000)), findsWidgets);
+      await tocar(tester, find.text('Volver al mapa'));
+
+      expect(find.text(TextosCuandoCobrar.saldo(120000, 'Pedro Gómez')), findsOneWidget);
+    });
+
+    testWidgets('«Agendar la cobranza» sigue a «¿Cuándo volvés a cobrar?»', (tester) async {
+      conEntrega();
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      await elegirEntregarAhora(tester);
+      await tocar(tester, find.byKey(const Key('venta_cta')));
+      await tocar(tester, find.text('Agendar la cobranza'));
+
+      expect(find.byKey(ClavesCuandoCobrar.hoja), findsOneWidget);
+    });
+
+    testWidgets('volver de 27B·01 sin entregar no registra nada y sigue a la pregunta', (
+      tester,
+    ) async {
+      conEntrega();
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      await elegirEntregarAhora(tester);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(entrega.entregas.recibidas, isEmpty);
+      expect(find.byKey(ClavesCuandoCobrar.hoja), findsOneWidget);
+      expect(entorno.ventas.recibidas, hasLength(1), reason: 'la venta sigue guardada');
+    });
+
+    testWidgets('dos toques en «Continuar» abren «Entregar ahora» una sola vez', (tester) async {
+      conEntrega();
+      await montar(tester);
+      await hastaVentaRegistrada(tester);
+
+      await tocar(tester, find.text(TextosVenta.entregarAhora));
+      await tester.tap(find.text(TextosVenta.continuar));
+      await tester.tap(find.text(TextosVenta.continuar), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('entrega_pagina')), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('entrega_pagina')), findsNothing);
     });
   });
 

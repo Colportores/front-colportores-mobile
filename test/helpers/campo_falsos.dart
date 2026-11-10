@@ -30,6 +30,7 @@ Future<void> sembrarUbicacion(
   String tipo = 'CASA',
   double lat = -34.9,
   double lon = -56.16,
+  String ciudadId = 'ciu-1',
   DateTime? borrada,
 }) => db
     .into(db.ubicaciones)
@@ -39,7 +40,7 @@ Future<void> sembrarUbicacion(
         tipo: tipo,
         lat: lat,
         lon: lon,
-        ciudadId: 'ciu-1',
+        ciudadId: ciudadId,
         createdAt: t0,
         updatedAt: t0,
         deletedAt: Value(borrada),

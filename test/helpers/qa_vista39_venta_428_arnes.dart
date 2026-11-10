@@ -7,6 +7,7 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/misionero_dejado.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita_guardada.dart';
@@ -41,7 +42,8 @@ final class AgendaDeTodo428 implements AgendaRepository {
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
-  }) => visitas.registrarVisita(visita, agendaId: agendaId, nota: nota);
+    List<MisioneroDejado> misioneros = const [],
+  }) => visitas.registrarVisita(visita, agendaId: agendaId, nota: nota, misioneros: misioneros);
 
   @override
   Future<Either<Failure, Agenda>> agendar(Agenda agenda, {NotaDeCampo? nota}) =>

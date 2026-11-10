@@ -218,7 +218,7 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
       if (actual.motivo.isEmpty && _motivo.text.isNotEmpty) _motivo.clear();
       if (anterior?.falla == null && actual.falla != null) _mostrarElAviso();
     });
-    final id = _args.cliente.espacioPersonaId;
+    final id = (colportorId: _args.colportorId, espacioPersonaId: _args.cliente.espacioPersonaId);
     final precios = ref.watch(preciosDeLaVentaProvider(id));
 
     final Widget cuerpo;
@@ -433,7 +433,9 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
           : BotonDeVenta(
               texto: venta.falla != null ? TextosVenta.reintentar : TextosVenta.registrarVenta,
               ocupado: venta.guardando,
-              nota: venta.talonarioVacio
+              nota: venta.soloMisioneros
+                  ? TextosVenta.soloMisioneros
+                  : venta.talonarioVacio
                   ? TextosVenta.talonarioVacio
                   : repetido != null
                   ? TextosVenta.talonarioRepetidoNota

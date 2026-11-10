@@ -760,9 +760,9 @@ class FilaDeCantidad extends StatelessWidget {
   const FilaDeCantidad({
     super.key,
     required this.titulo,
-    required this.precio,
     required this.cantidad,
     required this.alCambiar,
+    this.precio,
     this.etiqueta,
     this.tintaEtiqueta = ColoresAgenda.ambarTinta,
     this.fondoEtiqueta = ColoresAgenda.ambarFondo,
@@ -770,7 +770,9 @@ class FilaDeCantidad extends StatelessWidget {
   });
 
   final String titulo;
-  final String precio;
+
+  /// El precio (o «Sin cobrar»); `null` donde no hay montos («Lo que dejaste», #608).
+  final String? precio;
   final int cantidad;
   final ValueChanged<int> alCambiar;
   final String? etiqueta;
@@ -782,7 +784,7 @@ class FilaDeCantidad extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
-      label: '$titulo. $precio. ${cantidad == 0 ? 'Ninguno' : '$cantidad'}',
+      label: [titulo, ?precio, if (cantidad == 0) 'Ninguno' else '$cantidad'].join('. '),
       child: Container(
         constraints: const BoxConstraints(minHeight: 64),
         padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
@@ -805,14 +807,15 @@ class FilaDeCantidad extends StatelessWidget {
                     spacing: 8,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Text(
-                        precio,
-                        style: const TextStyle(
-                          fontFamily: 'JetBrainsMono',
-                          fontSize: 12.5,
-                          color: ColoresAgenda.gris,
+                      if (precio case final precio?)
+                        Text(
+                          precio,
+                          style: const TextStyle(
+                            fontFamily: 'JetBrainsMono',
+                            fontSize: 12.5,
+                            color: ColoresAgenda.gris,
+                          ),
                         ),
-                      ),
                       if (etiqueta != null)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

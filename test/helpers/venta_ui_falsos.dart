@@ -175,7 +175,10 @@ final class FuenteDePreciosDeLaVentaFalsa implements FuenteDePreciosDeLaVenta {
   Completer<void>? bloqueo;
 
   @override
-  Future<Either<Failure, PreciosDeLaVenta>> leer(String espacioPersonaId) async {
+  Future<Either<Failure, PreciosDeLaVenta>> leer({
+    required String colportorId,
+    required String espacioPersonaId,
+  }) async {
     lecturas++;
     final espera = bloqueo;
     if (espera != null) await espera.future;

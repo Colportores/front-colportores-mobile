@@ -11,12 +11,14 @@ import '../../../../core/logging/app_logger.dart';
 import '../../../../core/secure_storage/secure_storage_providers.dart';
 import '../../data/datasources/borrador_de_nota_de_entrevista_drift.dart';
 import '../../data/datasources/destino_de_entrevista_drift.dart';
+import '../../data/datasources/misioneros_para_dejar_drift.dart';
 import '../../data/datasources/ultima_visita_del_colportor_drift.dart';
 import '../../data/repositories/entrevista_en_curso_repository_almacen.dart';
 import '../../domain/entities/entrevista_en_curso.dart';
 import '../../domain/repositories/borrador_de_nota_de_entrevista.dart';
 import '../../domain/repositories/entrevista_en_curso_repository.dart';
 import '../../domain/services/destino_de_entrevista.dart';
+import '../../domain/services/misioneros_para_dejar.dart';
 import '../../domain/services/ultima_visita_del_colportor.dart';
 import '../../domain/usecases/cerrar_entrevista_con_venta_use_case.dart';
 import '../../domain/usecases/empezar_entrevista_use_case.dart';
@@ -88,6 +90,14 @@ final ultimaVisitaDelColportorProvider = Provider<UltimaVisitaDelColportor>((ref
   final db = ref.watch(dbLocalProvider);
   if (db == null) throw StateError('La base de datos local no está abierta');
   return UltimaVisitaDelColportorDrift(db);
+});
+
+/// Los misioneros que se pueden anotar en «Lo que dejaste» (#608). Sin DB abierta no hay de dónde
+/// leerlos: lanza, y quien los lee salta el paso.
+final misionerosParaDejarProvider = Provider<MisionerosParaDejar>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return MisionerosParaDejarDrift(db);
 });
 
 /// Lo que la pantalla sabe de la entrevista en curso de una colportora.
@@ -329,6 +339,7 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
   Future<Either<Failure, ResultadoVisitaRegistrado>?> finalizar({
     required DateTime entrada,
     required DateTime salida,
+    Map<String, int> misioneros = const {},
   }) async {
     final entrevista = state.entrevista;
     if (entrevista == null) return const Left(sinEntrevistaEnCurso);
@@ -343,6 +354,7 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
           entrada: entrada,
           salida: salida,
           nota: state.notaBorrador,
+          misioneros: misioneros,
         ),
       );
       if (ref.mounted) {

@@ -160,11 +160,15 @@ final class NuevaVentaState extends Equatable {
 
   bool get talonarioVacio => talonario.trim().isEmpty;
 
+  /// La venta lleva solo misioneros: no es una venta (decisión de Cristian, 03/11, «Talonario mis») y
+  /// no se registra; se anotan al terminar la entrevista, en «Lo que dejaste» (04/11, «Misio. entrev»).
+  bool get soloMisioneros => renglones.isNotEmpty && !cobraAlgo;
+
   bool get puedeRegistrar =>
       !guardando &&
       guardada == null &&
       !talonarioVacio &&
-      renglones.isNotEmpty &&
+      cobraAlgo &&
       talonarioRepetido == null &&
       montoValido &&
       !motivoFalta;

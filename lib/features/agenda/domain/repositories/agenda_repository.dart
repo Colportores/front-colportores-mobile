@@ -4,6 +4,7 @@ import '../../../../core/error/failure.dart';
 import '../entities/agenda.dart';
 import '../entities/cambios_de_agenda.dart';
 import '../entities/detalle_de_agenda.dart';
+import '../entities/misionero_dejado.dart';
 import '../entities/nota_de_campo.dart';
 import '../entities/visita.dart';
 import '../entities/visita_guardada.dart';
@@ -50,10 +51,14 @@ abstract interface class AgendaRepository {
   /// (`TipoResultadoVisita.cumpleLaAgenda`: `NO_CONTESTO`) la pasa a `NO_CUMPLIDA` y
   /// `VisitaGuardada.agendaNoCumplida` lo dice; si la agenda es una cuota del plan, la visita se
   /// guarda y la cuota queda como estaba (decisión del 03/11, #608).
+  ///
+  /// [misioneros] son los que se dejaron sin venta («Lo que dejaste», #608): van en la misma
+  /// transacción que la visita.
   Future<Either<Failure, VisitaGuardada>> registrarVisita(
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
+    List<MisioneroDejado> misioneros = const [],
   });
 
   /// La agenda de entrevista que sigue `PROGRAMADA` en [espacioId] (la más próxima), o `null` si no

@@ -17,6 +17,7 @@ import '../../../mapa/presentation/textos_personas.dart' show FormatoPersonas, T
 import '../../../ventas/domain/entities/cliente_de_la_venta.dart';
 import '../../../ventas/domain/entities/nueva_venta.dart' show VentaGuardada;
 import '../../../ventas/presentation/flujo_cuando_cobrar.dart';
+import '../../../ventas/presentation/pages/entregar_ahora_page.dart';
 import '../../../ventas/presentation/pages/nueva_venta_page.dart';
 import '../../../ventas/presentation/pages/venta_registrada_page.dart';
 import '../../../ventas/presentation/providers/nueva_venta_notifier.dart' show ArgumentosDeVenta;
@@ -24,6 +25,7 @@ import '../../../ventas/presentation/providers/ventas_providers.dart'
     show ContextoDeCobroDeLaVenta, cobrarDespuesDeLaVentaProvider;
 import '../../domain/entities/agenda.dart';
 import '../../domain/entities/entrevista_en_curso.dart';
+import '../../domain/entities/misionero_dejado.dart';
 import '../../domain/usecases/cerrar_entrevista_con_venta_use_case.dart';
 import '../../domain/usecases/finalizar_entrevista_use_case.dart';
 import '../providers/agenda_providers.dart';
@@ -129,6 +131,8 @@ abstract final class FlujoEntrevista {
     var entradaVista = entrevista.inicio;
     DateTime? salidaVista = pedirSalida ? null : reloj();
     var persona = rotulo.persona;
+    final misioneros = await _misioneros(ref);
+    if (!context.mounted) return null;
     SalidaTerminoEntrevista? resultado;
     while (true) {
       if (!context.mounted) return null;
@@ -140,8 +144,13 @@ abstract final class FlujoEntrevista {
         salida: salidaVista,
         entradaInferida: false,
         reloj: reloj,
-        alGuardar: (entrada, salida) async {
-          final guardado = await notificador.finalizar(entrada: entrada, salida: salida);
+        misioneros: misioneros,
+        alGuardar: (entrada, salida, dejados) async {
+          final guardado = await notificador.finalizar(
+            entrada: entrada,
+            salida: salida,
+            misioneros: dejados,
+          );
           // `null`: ya había un guardado en curso (no pasa con la hoja, que lo impide).
           if (guardado == null) return const FailureInesperado();
           return guardado.fold<Failure?>((falla) {
@@ -258,20 +267,26 @@ abstract final class FlujoEntrevista {
     // Con quién es la entrevista: sin persona hasta que, si hay venta, se pide el nombre.
     var vinculo = espacioPersonaId;
     var nombre = persona;
-    FinalizarEntrevistaParams parametros(DateTime entrada, DateTime salida) =>
-        FinalizarEntrevistaParams(
-          ids: ids,
-          espacioId: espacioId,
-          espacioPersonaId: vinculo,
-          colportorId: colportorId,
-          entrada: entrada,
-          salida: salida,
-          agendaId: agendaId,
-          jornadaId: jornadaId,
-          nota: ref.read(entrevistaEnCursoProvider(colportorId)).notaBorrador,
-        );
+    FinalizarEntrevistaParams parametros(
+      DateTime entrada,
+      DateTime salida, [
+      Map<String, int> dejados = const {},
+    ]) => FinalizarEntrevistaParams(
+      ids: ids,
+      espacioId: espacioId,
+      espacioPersonaId: vinculo,
+      colportorId: colportorId,
+      entrada: entrada,
+      salida: salida,
+      agendaId: agendaId,
+      jornadaId: jornadaId,
+      nota: ref.read(entrevistaEnCursoProvider(colportorId)).notaBorrador,
+      misioneros: dejados,
+    );
     var entradaVista = entradaPrevia;
     var salidaVista = reloj();
+    final misioneros = await _misioneros(ref);
+    if (!context.mounted) return null;
     SalidaTerminoEntrevista? resultado;
     while (true) {
       final r = resultado = await mostrarHojaTerminoEntrevista(
@@ -282,8 +297,11 @@ abstract final class FlujoEntrevista {
         salida: salidaVista,
         entradaInferida: inferida,
         reloj: reloj,
-        alGuardar: (entrada, salida) async {
-          final guardado = await notificador.finalizarSinInicio(parametros(entrada, salida));
+        misioneros: misioneros,
+        alGuardar: (entrada, salida, dejados) async {
+          final guardado = await notificador.finalizarSinInicio(
+            parametros(entrada, salida, dejados),
+          );
           // Sin entrevista en curso no hay nada que «se cierre»: lo que no se guardó es la visita.
           return guardado.fold<Failure?>(
             (falla) => falla == entrevistaSinLugar
@@ -377,8 +395,9 @@ abstract final class FlujoEntrevista {
   /// 2. Abre la venta con la casa, la persona y la visita puestas. Al registrarla, la visita `VENTA` se
   ///    guarda en la misma transacción ([guardarVisita]): si la venta no se guarda, la visita tampoco
   ///    (R44). Después, [soltar] cierra la entrevista en curso.
-  /// 3. 27A·14 «Venta registrada: ¿y ahora?»: «Cobrar ahora» abre el cobro (vista 28). El grupo ENTREGA
-  ///    llega con HU-VEN-002 (#159, #160): hasta entonces no se dibuja.
+  /// 3. 27A·14 «Venta registrada: ¿y ahora?»: «Cobrar ahora» abre el cobro (vista 28) y «Entregar
+  ///    ahora» la entrega (27B, #432), en ese orden: así, con todo cobrado y entregado, 27B·03 dice
+  ///    «Venta completa». «Entregar otro día» (27C) llega con #435.
   /// 4. Con saldo —lo que quedó sin cobrar—, pregunta «¿Cuándo volvés a cobrar?» y agenda la cobranza
   ///    (decisión «Agenda cobro»).
   /// 5. R·08, tras guardar: el mapa queda libre con la casa a la vista y su color nuevo (decisión de
@@ -517,9 +536,11 @@ abstract final class FlujoEntrevista {
             espacioId: espacioId,
             espacioPersonaId: espacioPersonaId,
             colportorId: colportorId,
-            // No hay entrevista con horas: la visita es del momento en que se vende.
+            // No hay entrevista con horas: la visita es del momento en que se vende y no guarda
+            // horas de entrevista (#466).
             entrada: ahora,
             salida: ahora,
+            conHoras: false,
             agendaId: agendaId,
             jornadaId: jornadaId,
           ),
@@ -538,6 +559,16 @@ abstract final class FlujoEntrevista {
       // abierta como estaba y no cambió nada, no hay qué decir.
       avisarSiNoSeGuardo: false,
     );
+  }
+
+  /// Los misioneros que se pueden anotar en «Lo que dejaste» (#608). Si no se pueden leer, ninguno:
+  /// el paso no aparece y guardar la entrevista no espera al catálogo.
+  static Future<List<MisioneroParaDejar>> _misioneros(ProviderContainer ref) async {
+    try {
+      return await ref.read(misionerosParaDejarProvider).leer().timeout(const Duration(seconds: 2));
+    } on Object {
+      return const [];
+    }
   }
 
   static void _avisar(ScaffoldMessengerState? mensajero, String texto) => mensajero
@@ -621,16 +652,27 @@ abstract final class FlujoEntrevista {
         conCobro: cobrar != null,
       );
       var saldo = guardada.totalCentavos;
+      Future<int> cobrarAhora() => _cobrarAhora(
+        ref,
+        cobrar!,
+        guardada: guardada,
+        espacioId: espacioId,
+        espacioPersonaId: espacioPersonaId,
+        colportorId: colportorId,
+      );
       if (seguimiento?.cobrarAhora == true && cobrar != null) {
-        saldo = await _cobrarAhora(
-          ref,
-          cobrar,
+        saldo = await cobrarAhora();
+      }
+      if (seguimiento?.entrega == MomentoDeEntrega.ahora && contextoFirme.mounted) {
+        saldo = await _entregarAhora(
+          contextoFirme,
           guardada: guardada,
-          espacioId: espacioId,
-          espacioPersonaId: espacioPersonaId,
-          colportorId: colportorId,
+          nombre: cliente.nombre,
+          saldoCentavos: saldo,
+          cobrar: cobrar == null ? null : cobrarAhora,
         );
       }
+      // «Entregar otro día» (27C, MomentoDeEntrega.otroDia) se engancha acá con #435.
       avisarLaVenta();
       if (contextoFirme.mounted) {
         await FlujoCuandoCobrar.preguntar(
@@ -667,12 +709,50 @@ abstract final class FlujoEntrevista {
       builder: (ruta) => VentaRegistradaPage(
         guardada: guardada,
         nombreDelCliente: nombre,
+        conEntregarAhora: true,
         conCobro: conCobro,
         alContinuar: (seguimiento) => Navigator.of(ruta).pop(seguimiento),
         alTerminar: () => Navigator.of(ruta).pop(),
       ),
     ),
   );
+
+  /// «Entregar ahora» (27B, #432): la colportora tilda lo que entrega (27B·01) y ve cómo quedó la venta
+  /// (27B·03 completa, 27B·04 con saldo). Devuelve lo que la venta sigue debiendo, en centavos.
+  ///
+  /// En 27B·04, «Cobrar ahora» abre el cobro ([cobrar]; sin cobro no se dibuja) y, si se cobró algo,
+  /// vuelve a mostrar cómo quedó (27B·03 si ya no debe nada). «Agendar la cobranza» y «Volver al mapa»
+  /// siguen a «¿Cuándo volvés a cobrar?» (decisión «Agenda cobro»: con saldo, se pregunta siempre).
+  /// Volver atrás sin entregar no cambia nada: la venta queda para entregar otro día.
+  static Future<int> _entregarAhora(
+    BuildContext context, {
+    required VentaGuardada guardada,
+    required String nombre,
+    required int saldoCentavos,
+    Future<int> Function()? cobrar,
+  }) async {
+    var saldo = saldoCentavos;
+    final navegador = Navigator.of(context);
+    while (navegador.mounted) {
+      final despues = await navegador.push<Object?>(
+        MaterialPageRoute<Object?>(
+          builder: (ruta) => EntregarAhoraPage(
+            guardada: guardada,
+            nombreDelCliente: nombre,
+            saldoCentavos: saldo,
+            alCobrar: cobrar == null ? null : (_) => Navigator.of(ruta).pop(_TrasLaEntrega.cobrar),
+            alAgendarCobranza: (_) => Navigator.of(ruta).pop(_TrasLaEntrega.agendar),
+          ),
+        ),
+      );
+      if (despues != _TrasLaEntrega.cobrar || cobrar == null) return saldo;
+      final quedo = await cobrar();
+      // Sin cobrar nada no hay otra cosa que mostrar: sigue a «¿Cuándo volvés a cobrar?».
+      if (quedo >= saldo) return saldo;
+      saldo = quedo;
+    }
+    return saldo;
+  }
 
   /// «Cobrar ahora»: abre el cobro (vista 28) y devuelve lo que quedó sin cobrar, en centavos. Si no
   /// se cobró, o no se puede leer cuánto, es el total de la venta: preguntar «¿Cuándo volvés a cobrar?»
@@ -819,3 +899,6 @@ abstract final class FlujoEntrevista {
   /// «Grecia 3307», o «La casa» si no se sabe la dirección.
   static String _lugar(String direccion) => direccion.isEmpty ? 'La casa' : direccion;
 }
+
+/// Lo que eligió en 27B·04, después de entregar.
+enum _TrasLaEntrega { cobrar, agendar }

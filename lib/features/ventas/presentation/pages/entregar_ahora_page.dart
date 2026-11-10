@@ -25,7 +25,12 @@ import '../widgets/piezas_venta.dart';
 ///
 /// [alCobrar] y [alAgendarCobranza] dibujan «Cobrar ahora» y «Agendar la cobranza» (27B·04) y los
 /// engancha quien tenga esa pantalla (el cobro, la vista 28; la cobranza, la vista 22). Sin destino no
-/// se dibujan: un botón que no lleva a ningún lado sería mentir (HU-UBI-003).
+/// se dibujan: un botón que no lleva a ningún lado sería mentir (HU-UBI-003). Cada salida (volver,
+/// cobrar o agendar) corre una sola vez: un doble toque no cierra dos pantallas.
+///
+/// [saldoCentavos] es lo que la venta todavía debe (después de «Cobrar ahora» en 27A·14, lo que quedó
+/// sin cobrar): con la entrega completa y saldo 0, la venta está completa (27B·03). Sin él, el monto
+/// entero de la venta.
 class EntregarAhoraPage extends ConsumerStatefulWidget {
   const EntregarAhoraPage({
     super.key,
@@ -33,24 +38,28 @@ class EntregarAhoraPage extends ConsumerStatefulWidget {
     required this.nombreDelCliente,
     this.alCobrar,
     this.alAgendarCobranza,
+    this.saldoCentavos,
   });
 
   final VentaGuardada guardada;
   final String nombreDelCliente;
   final ValueChanged<EntregaRegistrada>? alCobrar;
   final ValueChanged<EntregaRegistrada>? alAgendarCobranza;
+  final int? saldoCentavos;
 
   static Route<EntregaRegistrada> ruta({
     required VentaGuardada guardada,
     required String nombreDelCliente,
     ValueChanged<EntregaRegistrada>? alCobrar,
     ValueChanged<EntregaRegistrada>? alAgendarCobranza,
+    int? saldoCentavos,
   }) => MaterialPageRoute<EntregaRegistrada>(
     builder: (_) => EntregarAhoraPage(
       guardada: guardada,
       nombreDelCliente: nombreDelCliente,
       alCobrar: alCobrar,
       alAgendarCobranza: alAgendarCobranza,
+      saldoCentavos: saldoCentavos,
     ),
   );
 
@@ -65,11 +74,23 @@ class _EntregarAhoraPageState extends ConsumerState<EntregarAhoraPage> {
 
   String get _eyebrow => TextosVenta.eyebrowTalonario(_guardada.venta.numeroTalonario);
 
+  int get _saldo => widget.saldoCentavos ?? _guardada.venta.montoTotalCentavos;
+
   void _cerrar([EntregaRegistrada? registrada]) {
     if (_saliendo) return;
     _saliendo = true;
     Navigator.of(context).pop(registrada);
   }
+
+  /// [salida], para que corra una sola vez (un doble toque en «Cobrar ahora» no abre dos cobros).
+  ValueChanged<EntregaRegistrada>? _unaVez(ValueChanged<EntregaRegistrada>? salida) =>
+      salida == null
+      ? null
+      : (registrada) {
+          if (_saliendo) return;
+          _saliendo = true;
+          salida(registrada);
+        };
 
   @override
   Widget build(BuildContext context) {
@@ -113,8 +134,9 @@ class _EntregarAhoraPageState extends ConsumerState<EntregarAhoraPage> {
                 registrada: EntregaRegistrada(entregas: datos.previas, yaEstaba: true),
                 nombres: datos.nombres,
                 eyebrow: _eyebrow,
-                alCobrar: widget.alCobrar,
-                alAgendarCobranza: widget.alAgendarCobranza,
+                saldo: _saldo,
+                alCobrar: _unaVez(widget.alCobrar),
+                alAgendarCobranza: _unaVez(widget.alAgendarCobranza),
                 alVolver: _cerrar,
               );
             }
@@ -134,8 +156,9 @@ class _EntregarAhoraPageState extends ConsumerState<EntregarAhoraPage> {
               nombres: datos.nombres,
               nombreDelCliente: widget.nombreDelCliente,
               eyebrow: _eyebrow,
-              alCobrar: widget.alCobrar,
-              alAgendarCobranza: widget.alAgendarCobranza,
+              saldo: _saldo,
+              alCobrar: _unaVez(widget.alCobrar),
+              alAgendarCobranza: _unaVez(widget.alAgendarCobranza),
               alVolver: _cerrar,
             );
           },
@@ -199,6 +222,7 @@ class _Formulario extends ConsumerStatefulWidget {
     required this.nombres,
     required this.nombreDelCliente,
     required this.eyebrow,
+    required this.saldo,
     required this.alVolver,
     this.alCobrar,
     this.alAgendarCobranza,
@@ -208,6 +232,7 @@ class _Formulario extends ConsumerStatefulWidget {
   final Map<String, String> nombres;
   final String nombreDelCliente;
   final String eyebrow;
+  final int saldo;
   final void Function([EntregaRegistrada?]) alVolver;
   final ValueChanged<EntregaRegistrada>? alCobrar;
   final ValueChanged<EntregaRegistrada>? alAgendarCobranza;
@@ -242,6 +267,7 @@ class _FormularioState extends ConsumerState<_Formulario> {
         registrada: registrada,
         nombres: widget.nombres,
         eyebrow: widget.eyebrow,
+        saldo: widget.saldo,
         alCobrar: widget.alCobrar,
         alAgendarCobranza: widget.alAgendarCobranza,
         alVolver: widget.alVolver,
@@ -316,6 +342,7 @@ class _Resultado extends StatelessWidget {
     required this.registrada,
     required this.nombres,
     required this.eyebrow,
+    required this.saldo,
     required this.alVolver,
     this.alCobrar,
     this.alAgendarCobranza,
@@ -325,22 +352,24 @@ class _Resultado extends StatelessWidget {
   final EntregaRegistrada registrada;
   final Map<String, String> nombres;
   final String eyebrow;
+
+  /// Lo que la venta todavía debe, en centavos.
+  final int saldo;
   final void Function([EntregaRegistrada?]) alVolver;
   final ValueChanged<EntregaRegistrada>? alCobrar;
   final ValueChanged<EntregaRegistrada>? alAgendarCobranza;
 
   @override
   Widget build(BuildContext context) {
-    // Hasta que existan los cobros (HU-COB-001, #436) el saldo es el monto entero de la venta.
-    final saldo = guardada.venta.montoTotalCentavos;
     final quedaPendiente = registrada.quedaPendiente;
     final completa = !quedaPendiente && saldo == 0;
     final pendientes = [
       for (final e in registrada.entregas)
         if (e.pendiente) e,
     ];
-    final cobrar = completa ? null : alCobrar;
-    final agendar = completa ? null : alAgendarCobranza;
+    // Sin saldo no hay nada que cobrar ni que agendar (aunque quede material para otro día).
+    final cobrar = saldo > 0 ? alCobrar : null;
+    final agendar = saldo > 0 ? alAgendarCobranza : null;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (volvio, _) {
