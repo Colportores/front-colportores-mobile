@@ -3,17 +3,21 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../../agenda/presentation/providers/recordatorios_providers.dart';
 import '../../../mapa/presentation/providers/house_status_providers.dart';
 import '../../data/datasources/entrega_local_data_source_drift.dart';
 import '../../data/repositories/entrega_repository_impl.dart';
 import '../../data/services/fuente_de_productos_de_la_entrega_sin_fuente.dart';
 import '../../domain/entities/componente_vendido.dart';
 import '../../domain/entities/entrega.dart';
+import '../../domain/entities/entrega_pendiente.dart';
 import '../../domain/entities/linea_para_entregar.dart';
 import '../../domain/entities/nueva_venta.dart';
 import '../../domain/repositories/entrega_repository.dart';
 import '../../domain/repositories/fuente_de_productos_de_la_entrega.dart';
 import '../../domain/services/armador_de_lineas_de_entrega.dart';
+import '../../domain/usecases/cumplir_entrega_use_case.dart';
+import '../../domain/usecases/diferir_entrega_use_case.dart';
 import '../../domain/usecases/entregar_ahora_use_case.dart';
 
 // Cableado de las entregas (BACK-HU-VEN-002, #430). Presentation conoce domain; data se inyecta acá.
@@ -45,8 +49,46 @@ final entregarAhoraUseCaseProvider = Provider<EntregarAhoraUseCase>(
     ref.watch(entregaRepositoryProvider),
     generarId: ref.watch(generadorIdEntregaProvider),
     ahora: ref.watch(relojEntregaProvider),
+    recordatorios: ref.watch(recordatoriosProvider),
   ),
 );
+
+// --- Entrega diferida (BACK-HU-VEN-003, #433; vista 27C, #435) ---
+
+/// HU-VEN-003, «Entrega diferida»: deja lo que falta entregar para otra fecha, con su cita y su
+/// recordatorio en la agenda. La vista 27C-01 y «Poner fecha» (27C-02) lo usan.
+final diferirEntregaUseCaseProvider = Provider<DiferirEntregaUseCase>(
+  (ref) => DiferirEntregaUseCase(
+    ref.watch(entregaRepositoryProvider),
+    ref.watch(recordatoriosProvider),
+    generarId: ref.watch(generadorIdEntregaProvider),
+    ahora: ref.watch(relojEntregaProvider),
+  ),
+);
+
+/// HU-VEN-003, «Cumplir entrega pendiente»: «Marcar entregado» (27C-03 y 27C-04).
+final cumplirEntregaUseCaseProvider = Provider<CumplirEntregaUseCase>(
+  (ref) => CumplirEntregaUseCase(
+    ref.watch(entregaRepositoryProvider),
+    ref.watch(recordatoriosProvider),
+    generarId: ref.watch(generadorIdEntregaProvider),
+    ahora: ref.watch(relojEntregaProvider),
+  ),
+);
+
+/// Todo lo que falta entregar, una entrada por venta (27C-02 «Entregas pendientes»). Reactivo y solo
+/// del teléfono: se repinta cuando se deja una entrega, se marca o se mueve su fecha.
+final entregasPendientesProvider = StreamProvider.autoDispose<List<EntregaPendiente>>(
+  (ref) => ref.watch(entregaRepositoryProvider).observarPendientes(),
+);
+
+/// Lo que falta entregarle a la persona del vínculo [espacioPersonaId] (su ficha, vista 32).
+final entregasPendientesDeProvider = StreamProvider.autoDispose
+    .family<List<EntregaPendiente>, String>(
+      (ref, espacioPersonaId) => ref
+          .watch(entregaRepositoryProvider)
+          .observarPendientes(espacioPersonaId: espacioPersonaId),
+    );
 
 // --- La pantalla «Entregar ahora» (vista 27B, #432) ---
 

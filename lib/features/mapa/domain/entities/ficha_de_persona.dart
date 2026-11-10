@@ -67,13 +67,18 @@ final class EntregaEnFicha extends MovimientoDeFicha {
     required super.fecha,
     required this.pendiente,
     required this.lineas,
+    this.ventaId,
   });
 
   final bool pendiente;
   final List<LineaDeFicha> lineas;
 
+  /// La venta de la que sale lo entregado (HU-VEN-005): con ella «Entregar», en una entrega pendiente,
+  /// abre el destino ya en esa venta, sin preguntar «¿Qué venta?». `null` si no se conoce.
+  final String? ventaId;
+
   @override
-  List<Object?> get props => [id, fecha, pendiente, lineas];
+  List<Object?> get props => [id, fecha, pendiente, lineas, ventaId];
 }
 
 /// Un cobro de una venta.

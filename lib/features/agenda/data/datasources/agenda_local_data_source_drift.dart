@@ -9,6 +9,7 @@ import '../../../cobranzas/data/datasources/cuotas_local_data_source_drift.dart'
 import '../../../mapa/data/datasources/audit_log_table.dart';
 import '../../../mapa/data/datasources/notas_table.dart';
 import '../../../mapa/domain/services/house_status_updater.dart';
+import '../../../ventas/data/models/entrega_model.dart';
 import '../../domain/entities/agenda.dart';
 import '../../domain/entities/cambios_de_agenda.dart';
 import '../../domain/entities/detalle_de_agenda.dart';
@@ -118,57 +119,65 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
   });
 
   @override
-  Future<AgendaEditada> modificar(CambiosDeAgenda cambios, {required DateTime ahora}) =>
-      _db.transaction(() async {
-        final fila = await _agendaPorId(cambios.agendaId);
-        if (fila == null || fila.deletedAt != null) {
-          throw const AgendaRechazadaException(_Motivo.agendaInexistente);
-        }
-        // Solo se edita una agenda que sigue esperando su visita (HU-VIS-003): se mira DENTRO de la
-        // transacción, porque entre abrir el formulario y guardar pudo cumplirse, cancelarse o
-        // llegar cancelada del servidor.
-        if (EstadoAgenda.desdeCodigo(fila.estado).estaCerrada) {
-          throw const AgendaRechazadaException(_Motivo.agendaCerrada);
-        }
-        // Una cuota del plan se reprograma, pero sigue siendo una cobranza con su venta y su monto.
-        if (fila.montoPrevisto != null && cambios.tipo != TipoAgenda.cobranza) {
-          throw const AgendaRechazadaException(_Motivo.cuotaDelPlan);
-        }
+  Future<AgendaEditada> modificar(
+    CambiosDeAgenda cambios, {
+    required DateTime ahora,
+  }) => _db.transaction(() async {
+    final fila = await _agendaPorId(cambios.agendaId);
+    if (fila == null || fila.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.agendaInexistente);
+    }
+    // Solo se edita una agenda que sigue esperando su visita (HU-VIS-003): se mira DENTRO de la
+    // transacción, porque entre abrir el formulario y guardar pudo cumplirse, cancelarse o
+    // llegar cancelada del servidor.
+    if (EstadoAgenda.desdeCodigo(fila.estado).estaCerrada) {
+      throw const AgendaRechazadaException(_Motivo.agendaCerrada);
+    }
+    // Una cuota del plan se reprograma, pero sigue siendo una cobranza con su venta y su monto.
+    if (fila.montoPrevisto != null && cambios.tipo != TipoAgenda.cobranza) {
+      throw const AgendaRechazadaException(_Motivo.cuotaDelPlan);
+    }
+    // La cita de una entrega tampoco cambia de tipo: el CHECK de `entrega_id` la frenaría con una
+    // excepción cruda.
+    if (fila.tipo == TipoAgenda.entrega.codigo && cambios.tipo != TipoAgenda.entrega) {
+      throw const AgendaRechazadaException(_Motivo.citaDeEntrega);
+    }
 
-        final instante = instanteMs(ahora);
-        final cuando = instanteMs(cambios.fechaProgramada);
-        final cambiaLaFila =
-            fila.tipo != cambios.tipo.codigo ||
-            fila.fechaProgramada != cuando ||
-            fila.slotCodigo != cambios.slotCodigo;
-        final cambiaLaNota = await _guardarNotaEditada(cambios, instante, fila.colportorId);
-        if (!cambiaLaFila && !cambiaLaNota) return (agenda: _aAgenda(fila), escribio: false);
+    final instante = instanteMs(ahora);
+    final cuando = instanteMs(cambios.fechaProgramada);
+    final cambiaLaFila =
+        fila.tipo != cambios.tipo.codigo ||
+        fila.fechaProgramada != cuando ||
+        fila.slotCodigo != cambios.slotCodigo;
+    final cambiaLaNota = await _guardarNotaEditada(cambios, instante, fila.colportorId);
+    if (!cambiaLaFila && !cambiaLaNota) return (agenda: _aAgenda(fila), escribio: false);
 
-        var agenda = _aAgenda(fila);
-        if (cambiaLaFila) {
-          agenda = await _escribirAgenda(
-            cambios.agendaId,
-            AgendasCompanion(
-              tipo: Value(cambios.tipo.codigo),
-              fechaProgramada: Value(cuando),
-              slotCodigo: Value(cambios.slotCodigo),
-              updatedAt: Value(instante),
-            ),
-          );
-          await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
-        }
-        // «Audit log local» (HU-VIS-003): una fila por modificación, solo con el id de la agenda.
-        await _db
-            .into(_db.auditLogLocal)
-            .insert(
-              AuditLogLocalCompanion.insert(
-                evento: EventoAuditoriaLocal.agendaModificada,
-                uuid: cambios.agendaId,
-                creadoEn: instante,
-              ),
-            );
-        return (agenda: agenda, escribio: true);
-      });
+    var agenda = _aAgenda(fila);
+    if (cambiaLaFila) {
+      agenda = await _escribirAgenda(
+        cambios.agendaId,
+        AgendasCompanion(
+          tipo: Value(cambios.tipo.codigo),
+          fechaProgramada: Value(cuando),
+          slotCodigo: Value(cambios.slotCodigo),
+          updatedAt: Value(instante),
+        ),
+      );
+      await _moverLaFechaDeLaEntrega(fila, cuando, instante);
+      await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
+    }
+    // «Audit log local» (HU-VIS-003): una fila por modificación, solo con el id de la agenda.
+    await _db
+        .into(_db.auditLogLocal)
+        .insert(
+          AuditLogLocalCompanion.insert(
+            evento: EventoAuditoriaLocal.agendaModificada,
+            uuid: cambios.agendaId,
+            creadoEn: instante,
+          ),
+        );
+    return (agenda: agenda, escribio: true);
+  });
 
   /// Deja la nota de la agenda como la pide [cambios] y devuelve si cambió algo. `nota == null`: no
   /// se toca. En blanco: se da de baja la vigente. Con texto: se cambia la vigente o se crea una con
@@ -562,6 +571,30 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
         ),
       );
 
+  /// Mover la cita de una entrega (HU-VEN-003) mueve también la fecha prevista de lo que falta
+  /// entregar de esa venta: la lista de «Entregas pendientes» y la Agenda dicen la misma fecha. Lo que
+  /// ya se entregó conserva la que se había acordado. Se encola cada fila con su `update`.
+  Future<void> _moverLaFechaDeLaEntrega(AgendaFila cita, DateTime cuando, DateTime instante) async {
+    final ventaId = cita.ventaId;
+    if (cita.tipo != TipoAgenda.entrega.codigo || ventaId == null) return;
+    final pendientes =
+        await (_db.select(_db.entregas)..where(
+              (e) => e.ventaId.equals(ventaId) & e.pendiente.equals(true) & e.deletedAt.isNull(),
+            ))
+            .get();
+    for (final fila in pendientes) {
+      if (fila.fechaPrevista == cuando) continue;
+      final nueva = EntregaModel.desdeFila(fila).editada(ahora: instante, fechaPrevista: cuando);
+      await (_db.update(_db.entregas)..where((e) => e.id.equals(fila.id))).write(
+        EntregasCompanion(
+          fechaPrevista: Value(cuando),
+          updatedAt: Value(nueva.auditoria.updatedAt),
+        ),
+      );
+      await _encolador.encolar('entrega', OperacionSync.update, EntregaModel.toJson(nueva));
+    }
+  }
+
   /// Recalcula el color de la casa a la que pertenece el espacio [espacioId]. Si la ubicación del
   /// espacio no está en el teléfono no hay casa que pintar: la agenda o la visita se guarda igual,
   /// porque no se pierde un registro de campo por una fila que falta.
@@ -599,6 +632,7 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     visitaId: fila.visitaId,
     ventaId: fila.ventaId,
     montoPrevistoCentavos: fila.montoPrevisto,
+    entregaId: fila.entregaId,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,
@@ -639,6 +673,7 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     visitaId: Value(a.visitaId),
     ventaId: Value(a.ventaId),
     montoPrevisto: Value(a.montoPrevistoCentavos),
+    entregaId: Value(a.entregaId),
     createdAt: a.auditoria.createdAt,
     updatedAt: a.auditoria.updatedAt,
     createdBy: Value(a.auditoria.createdBy),

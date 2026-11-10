@@ -33,9 +33,19 @@ abstract final class TextosAgenda {
       persona.trim().isEmpty ? tagCobranza : '$tagCobranza · ${persona.trim()}';
   static const atrasadas = 'ATRASADAS';
   static const pasoLaHora = 'Pasó la hora · registrá qué pasó';
+  static const pasoLaHoraSola = 'Pasó la hora';
+
+  /// Lo que dice una cita vencida. A una ENTREGA no se le ofrece «Registrar» (se cumple con «Entregado
+  /// hoy», que llega con #435): solo avisa que pasó la hora.
+  static String pasoLaHoraDe(TipoAgenda tipo) =>
+      tipo == TipoAgenda.entrega ? pasoLaHoraSola : pasoLaHora;
 
   static const tagEntrevista = 'Entrevista';
   static const tagCobranza = 'Cobranza';
+
+  /// La etiqueta de la cita de una entrega para otro día (HU-VEN-003). A confirmar: el canvas de la
+  /// agenda no la dibuja.
+  static const tagEntrega = 'Entrega';
   static const tagCumplida = 'Cumplida';
   static const tagNoCumplida = 'No cumplida';
   static const tagCancelada = 'Cancelada';
@@ -164,6 +174,7 @@ abstract final class FormatoAgenda {
   static String tipo(TipoAgenda tipo) => switch (tipo) {
     TipoAgenda.entrevista => TextosAgenda.tagEntrevista,
     TipoAgenda.cobranza => TextosAgenda.tagCobranza,
+    TipoAgenda.entrega => TextosAgenda.tagEntrega,
   };
 
   /// La etiqueta de la fila: el tipo mientras está programada; el estado cuando ya se cerró.
@@ -203,7 +214,7 @@ abstract final class FormatoAgenda {
       ?subtitulo(item),
       if (item.agenda.estado != EstadoAgenda.programada) etiqueta(item),
       ?cierre(item),
-      if (vencida) TextosAgenda.pasoLaHora,
+      if (vencida) TextosAgenda.pasoLaHoraDe(item.agenda.tipo),
     ];
     return partes.join('. ');
   }

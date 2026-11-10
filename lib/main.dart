@@ -78,6 +78,8 @@ import 'features/respaldo/presentation/providers/recuperacion_pendiente_provider
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'features/tickets/data/services/almacen_de_fotos_en_disco.dart';
+import 'features/tickets/data/services/capturador_image_picker.dart';
+import 'features/tickets/data/services/compresor_flutter_image_compress.dart';
 import 'features/tickets/presentation/providers/tickets_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
@@ -280,6 +282,10 @@ Future<void> main() async {
         ),
         // La copia local de la foto de cada ticket (HU-COB-007): carpeta privada de la app.
         almacenDeFotosDeTicketProvider.overrideWithValue(AlmacenDeFotosEnDisco(carpetaDeLaApp)),
+        // La cámara y la galería, y el que achica la foto del ticket (decisión de Cristian del 03/11
+        // en #169: `image_picker` + `flutter_image_compress`).
+        capturadorDeFotoProvider.overrideWithValue(CapturadorImagePicker()),
+        compresorDeImagenProvider.overrideWithValue(CompresorFlutterImageCompress()),
         // Bloqueo de pantalla y nivel del Keystore: canal nativo propio (MainActivity.kt,
         // AppDelegate.swift).
         seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
@@ -360,7 +366,9 @@ Future<void> main() async {
         ),
         // «$ Cobrar» de la hoja de la casa y «Cobranza» de «¿Qué pasó?» (vista 39, C·01 y C·06, #440):
         // «¿Qué venta?» (C·08, se salta con una sola) y el cobro en efectivo (vista 28). Devuelve
-        // `true` si se cobró; la visita «Cobranza» la guarda `FlujoRegistrarVisita`, no esto.
+        // `true` si se cobró (la visita «Cobranza» la guarda `FlujoRegistrarVisita`, no esto),
+        // `CobranzaAnotadaSinCobro` si canceló sin cobrar y contestó «Sí» a «¿María no te pagó?» (esa
+        // visita ya la guardó el flujo, decisión del 03/11) o `false` si no se cobró ni se anotó nada.
         cobrarDesdeLaCasaProvider.overrideWith(
           (ref) => (datos) {
             final contexto = navigatorKeyColportores.currentContext;

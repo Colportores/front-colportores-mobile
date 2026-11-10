@@ -774,6 +774,28 @@ void main() {
       expect((await agendas()).single.estado, 'CUMPLIDA');
     });
 
+    test(
+      'una visita de cobranza sin cobro y sin agendaId (decisión del 03/11): la cita de cobranza '
+      'de la casa sigue «Programada» y no se crea otra',
+      () async {
+        await local.agendar(agendaDe('age-1', tipo: TipoAgenda.cobranza));
+        encolador.encolados.clear();
+
+        final r = await local.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.cobranza, creada: t1),
+        );
+
+        expect([r.agendaCreadaId, r.agendaAfectadaId, r.agendaNoCumplida], [null, null, false]);
+        final agenda = (await agendas()).single;
+        expect(
+          [agenda.id, agenda.estado, agenda.visitaId, agenda.deletedAt],
+          ['age-1', 'PROGRAMADA', null, null],
+        );
+        expect((await visitas()).single.tipoResultado, 'COBRANZA');
+        expect(cola(), ['visita:insert']);
+      },
+    );
+
     test('un «No contestó» y un rechazo sin cita siguen creando su agenda espontánea', () async {
       final noContesto = await local.registrarVisita(
         visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: t1),

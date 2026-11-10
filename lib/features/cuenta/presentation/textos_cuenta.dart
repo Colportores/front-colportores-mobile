@@ -33,6 +33,11 @@ abstract final class TextosCuenta {
 
   /// 33A·02: cómo empieza el aviso de sin conexión.
   static const avisoSinConexion = 'Sin conexión';
+
+  /// 33A·01: el rótulo de las acciones. De las tres del canvas solo está «Registrar depósito»
+  /// (HU-CTA-004): el pedido (vista 37) y el ticket suelto (vista 38) no se dibujan hasta tener pantalla.
+  static const acciones = 'ACCIONES';
+  static const registrarDeposito = 'Registrar depósito';
 }
 
 /// Los textos de «Mi plata» (vista 33C, HU-CTA-003). Los del canvas van tal cual; los demás dicen «para
