@@ -89,8 +89,11 @@ class _HojaDetalleDeVisitaState extends State<HojaDetalleDeVisita> {
       :final saldoCentavos,
     ) =>
       [
-        for (final l in lineas) _Dato(l.nombre, l.cantidad > 1 ? '× ${l.cantidad}' : '× 1'),
-        _Dato(TextosHistorialDeLaCasa.total, FormatoBajaPersona.monto(montoCentavos)),
+        // C·04: «Colección de N libros · $ total» y una fila «Libro · <nombre>» por renglón (decisión
+        // del 10/11, P1 del QA de #677).
+        _Dato(FormatoHistorialDeLaCasa.coleccion(lineas), FormatoBajaPersona.monto(montoCentavos)),
+        for (final l in lineas)
+          _Dato(TextosHistorialDeLaCasa.libro, FormatoHistorialDeLaCasa.libro(l)),
         _Dato(TextosHistorialDeLaCasa.pagado, FormatoBajaPersona.monto(pagadoCentavos)),
         _Dato(TextosHistorialDeLaCasa.saldo, FormatoBajaPersona.monto(saldoCentavos), fuerte: true),
       ],

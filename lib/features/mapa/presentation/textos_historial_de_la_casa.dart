@@ -1,5 +1,6 @@
 import '../../agenda/domain/entities/visita.dart' show TipoResultadoVisita;
 import '../../cobranzas/domain/entities/cobranza.dart' show MedioCobranza;
+import '../../ventas/presentation/formato_venta.dart' show TextosVenta;
 import '../domain/entities/evento_de_la_casa.dart';
 import '../domain/entities/ficha_de_persona.dart' show LineaDeFicha;
 import '../domain/services/historial_de_la_casa.dart';
@@ -28,7 +29,7 @@ abstract final class TextosHistorialDeLaCasa {
   static const pasadaACobrar = 'Pasó a cobrar';
   static const ventaRegistrada = 'Venta registrada';
   static const venta = 'Venta';
-  static const total = 'Total';
+  static const libro = 'Libro';
   static const duracion = 'Duración';
   static const filtroDelHistorial = 'MOSTRAR';
   static const verTodo = 'Ver todo';
@@ -121,6 +122,14 @@ abstract final class FormatoHistorialDeLaCasa {
   /// «Salud y Hogar + Nuestros Hijos × 2»: lo que se vendió, con la cantidad si es más de una.
   static String lineas(List<LineaDeFicha> lineas) =>
       lineas.map((l) => l.cantidad > 1 ? '${l.nombre} × ${l.cantidad}' : l.nombre).join(' + ');
+
+  /// «Colección de 16 libros»: la primera fila del detalle de una venta (C·04), con N la suma de las
+  /// cantidades de sus renglones.
+  static String coleccion(List<LineaDeFicha> lineas) =>
+      TextosVenta.coleccionDe(lineas.fold<int>(0, (n, l) => n + l.cantidad));
+
+  /// «Salud y Hogar» o «Nuestros Hijos × 12»: el valor de la fila «Libro» de un renglón (C·04).
+  static String libro(LineaDeFicha l) => l.cantidad > 1 ? '${l.nombre} × ${l.cantidad}' : l.nombre;
 
   static String _medio(MedioCobranza medio) => switch (medio) {
     MedioCobranza.efectivo => 'en efectivo',

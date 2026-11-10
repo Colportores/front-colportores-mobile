@@ -517,10 +517,13 @@ void main() {
         expect(find.byKey(ClavesDetalleDeVisita.hoja), findsOneWidget);
         expect(find.text('Venta 0038 · 12/10'), findsOneWidget);
         expect(find.text('Pedro Gómez · Grecia 3310'), findsOneWidget);
-        expect(find.text('Salud y Hogar'), findsWidgets);
-        expect(find.text('× 1'), findsOneWidget);
-        expect(find.text(TextosHistorialDeLaCasa.total), findsOneWidget);
+        // C·04: «Colección de 1 libro · $ 4.800» y «Libro · Salud y Hogar» (decisión del 10/11).
+        expect(find.text('Colección de 1 libro'), findsOneWidget);
         expect(find.text(monto(480000)), findsOneWidget);
+        expect(find.text(TextosHistorialDeLaCasa.libro), findsOneWidget);
+        expect(find.text('Salud y Hogar'), findsWidgets);
+        expect(find.text('Total'), findsNothing);
+        expect(find.text('× 1'), findsNothing);
         expect(find.text(TextosHistorialDeLaCasa.pagado), findsOneWidget);
         expect(find.text(monto(360000)), findsOneWidget);
         expect(find.text(TextosHistorialDeLaCasa.saldo), findsOneWidget);
