@@ -1,5 +1,6 @@
 import '../domain/entities/contexto_notas_persona.dart';
 import '../domain/entities/nota_de_texto.dart';
+import '../domain/services/retencion_notas_borradas.dart';
 import '../domain/services/validador_nota.dart';
 
 /// Los textos de las vistas de las notas de una persona (vista 32E, HU-UBI-012). Los del canvas van
@@ -87,6 +88,20 @@ abstract final class TextosNotas {
 
   static String verBorradas(int cantidad) => 'Ver borradas ($cantidad)';
 
+  /// Lo que dice cada nota de «Ver borradas» (decisión de Cristian, 27/10): cuándo se va para siempre,
+  /// por ejemplo «Se borra el 25/01». [dia] es `FormatoNotas.diaDeBorrado`.
+  static String seBorraEl(String dia) => 'Se borra el $dia';
+
+  /// Lo que lee el lector de pantalla del botón «Restaurar» de una nota borrada: «Restaurar la nota
+  /// del 05/10» o «Restaurar la nota de hoy a las 14:20». [fechaParaLector] es
+  /// `FormatoNotas.fechaParaLector` («el 05/10», «hoy a las 14:20»): con «el» va «del».
+  static String restaurarLaNota(String fechaParaLector) {
+    final fecha = fechaParaLector.startsWith('el ')
+        ? 'del ${fechaParaLector.substring(3)}'
+        : 'de $fechaParaLector';
+    return 'Restaurar la nota $fecha';
+  }
+
   /// La advertencia del límite blando de la HU (5000 caracteres): avisa y deja guardar.
   static String notaLarga(int largo) =>
       'La nota tiene $largo caracteres y lo recomendado es hasta ${ValidadorNota.largoSuave}. '
@@ -109,6 +124,16 @@ abstract final class FormatoNotas {
 
   /// «22/10»: el día y el mes, con el año de dos dígitos si no es el actual.
   static String diaMes(DateTime fecha, DateTime ahora) => _dia(fecha.toLocal(), ahora.toLocal());
+
+  /// El día en que una nota borrada se va para siempre, «25/01»: el día y el mes (hora local) de los 90
+  /// días después de que se borró. Sin año: faltan 90 días como mucho, no hay con qué confundirlo.
+  /// `null` si la nota no está borrada.
+  static String? diaDeBorrado(NotaDeTexto nota) {
+    final borrada = nota.auditoria.deletedAt;
+    if (borrada == null) return null;
+    final se = RetencionNotasBorradas.seVaEl(borrada).toLocal();
+    return '${_dos(se.day)}/${_dos(se.month)}';
+  }
 
   /// «HOY 14:20» si se escribió hoy; «05/10» (o «05/10/25» de otro año) si no. Con la hora local.
   static String fecha(NotaDeTexto nota, DateTime ahora) {

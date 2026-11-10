@@ -18,7 +18,10 @@ import '../providers/baja_ubicacion_providers.dart';
 import '../providers/duplicados_providers.dart';
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
+import '../providers/personas_providers.dart' show lectorUltimaVisitaDeLaUbicacionProvider;
+import '../providers/ubicacion_colportor_provider.dart';
 import '../providers/uniones_pendientes_notifier.dart';
+import '../textos_personas.dart' show FormatoPersonas;
 import '../widgets/aviso_con_deshacer.dart';
 import '../widgets/hoja_filtros_lista.dart';
 import '../widgets/hoja_reactivar.dart';
@@ -60,15 +63,18 @@ typedef AlAbrirUbicacion = void Function(String ubicacionId, double? distanciaMe
 /// contadores, orden por cercanía, «Mostrar bajas», buscador y carga de a 50.
 ///
 /// Vive dentro de la pantalla principal (`IndexedStack`): [activa] dice si la pestaña está a la
-/// vista. El GPS se pide la primera vez que se abre, no al arrancar la app.
+/// vista. El GPS no es de esta pestaña: lo lee de `ubicacionColportorProvider`, que solo el mapa pide.
 class ListaUbicacionesPage extends ConsumerStatefulWidget {
   const ListaUbicacionesPage({
     super.key,
     required this.colportorId,
     this.activa = true,
     this.alAbrirUbicacion,
+    this.casaAbreSuHoja = false,
     this.alRegistrar,
     this.alRevisarDuplicados,
+    this.paraElegir = false,
+    this.alActivarGps,
   });
 
   /// UUID del colportor con la sesión iniciada: la lista es «las que registré».
@@ -82,6 +88,11 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// reemplaza.
   final AlAbrirUbicacion? alAbrirUbicacion;
 
+  /// Con [alAbrirUbicacion], una casa abre igual la hoja de la casa (vista 39, C·01) y el destino queda
+  /// para lo que puede tener deptos (edificio y negocio): una casa no tiene espacios que gestionar, y la
+  /// hoja de la ubicación (vista 11) solo le mostraría «Editar casa».
+  final bool casaAbreSuHoja;
+
   /// Cómo se abre el alta («Nueva» y «Registrar tu primera ubicación»). Por defecto abre
   /// `AltaUbicacionPage`; un test lo reemplaza.
   final Future<void> Function()? alRegistrar;
@@ -89,6 +100,19 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// Cómo se abre «Posibles duplicados» desde el aviso «N posibles duplicados · Revisar». Por defecto
   /// abre `PosiblesDuplicadosPage`; un test lo reemplaza.
   final Future<void> Function()? alRevisarDuplicados;
+
+  /// La lista hace de selector (el de la casa de «+ Agendar», #568): tiene su estado propio, aparte
+  /// del de la pestaña Lista, que sigue viva debajo con su búsqueda y sus filtros.
+  final bool paraElegir;
+
+  /// «Activar GPS»: lleva al colportor a la pestaña Mapa, que es la única que pide el permiso (#651);
+  /// nunca sale un diálogo sobre la Lista. Sin esto (la Lista de «+ Agendar», sin Mapa al lado) el
+  /// chip solo informa.
+  final VoidCallback? alActivarGps;
+
+  /// La clave del estado de esta lista.
+  String get clave =>
+      paraElegir ? ListaUbicacionesNotifier.claveDeSeleccion(colportorId) : colportorId;
 
   @override
   ConsumerState<ListaUbicacionesPage> createState() => _ListaUbicacionesPageState();
@@ -112,23 +136,12 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   var _abriendoCasa = false;
 
   ListaUbicacionesNotifier get _notificador =>
-      ref.read(listaUbicacionesProvider(widget.colportorId).notifier);
+      ref.read(listaUbicacionesProvider(widget.clave).notifier);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    if (widget.activa) WidgetsBinding.instance.addPostFrameCallback((_) => _alAbrirPestana());
-  }
-
-  @override
-  void didUpdateWidget(ListaUbicacionesPage anterior) {
-    super.didUpdateWidget(anterior);
-    // Cambiar un provider durante la construcción no se permite: se pide el GPS al terminar el
-    // cuadro.
-    if (widget.activa && !anterior.activa) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _alAbrirPestana());
-    }
   }
 
   @override
@@ -140,16 +153,11 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     super.dispose();
   }
 
-  void _alAbrirPestana() {
-    if (!mounted) return;
-    unawaited(_notificador.alAbrirPestana());
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState estado) {
     // Volvió de los ajustes del sistema: si estaba sin GPS, se vuelve a intentar.
     if (estado == AppLifecycleState.resumed && widget.activa) {
-      unawaited(_notificador.reintentarGpsSiHaceFalta());
+      unawaited(ref.read(ubicacionColportorProvider.notifier).reintentarGpsSiHaceFalta());
     }
   }
 
@@ -206,7 +214,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   /// La distancia que muestra la fila de esa ubicación en la Lista, si está cargada y se conoce.
   double? _distanciaDe(String ubicacionId) {
     for (final item
-        in ref.read(listaUbicacionesProvider(widget.colportorId)).lista?.items ??
+        in ref.read(listaUbicacionesProvider(widget.clave)).lista?.items ??
             const <ItemListaUbicacion>[]) {
       if (item.ubicacion.id == ubicacionId) return item.distanciaMetros;
     }
@@ -218,22 +226,44 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   /// pasó; su «Reactivar» es el de la fila.
   Future<void> _abrirCasa(ItemListaUbicacion item) async {
     final destino = widget.alAbrirUbicacion;
-    if (destino != null) {
+    if (destino != null && !_laCasaAbreSuHoja(item)) {
       destino(item.ubicacion.id, item.distanciaMetros);
       return;
     }
     if (_abriendoCasa) return;
     _abriendoCasa = true;
     try {
-      await mostrarHojaCasa(
-        context,
-        colportorId: widget.colportorId,
-        item: item,
-        alReactivar: _reactivar,
-      );
+      await _mostrarHojaCasa(item);
     } finally {
       _abriendoCasa = false;
     }
+  }
+
+  bool _laCasaAbreSuHoja(ItemListaUbicacion item) =>
+      widget.casaAbreSuHoja && item.ubicacion.tipo == TipoUbicacion.casa;
+
+  Future<void> _mostrarHojaCasa(ItemListaUbicacion item) => mostrarHojaCasa(
+    context,
+    colportorId: widget.colportorId,
+    item: item,
+    alReactivar: _reactivar,
+    // «Abrir la existente» desde «Editar casa» (#652): la hoja de esa otra ubicación.
+    alAbrirOtra: _abrirLaExistente,
+  );
+
+  /// «Abrir la existente» del aviso de un duplicado: la hoja de esa ubicación, que es la de la casa si
+  /// es una casa y [ListaUbicacionesPage.casaAbreSuHoja]. No pasa por la guarda de [_abrirCasa]: se
+  /// llega desde la hoja de otra casa, que todavía se está cerrando.
+  void _abrirLaExistente(String ubicacionId) {
+    for (final item
+        in ref.read(listaUbicacionesProvider(widget.colportorId)).lista?.items ??
+            const <ItemListaUbicacion>[]) {
+      if (item.ubicacion.id == ubicacionId && _laCasaAbreSuHoja(item)) {
+        unawaited(_mostrarHojaCasa(item));
+        return;
+      }
+    }
+    widget.alAbrirUbicacion?.call(ubicacionId, _distanciaDe(ubicacionId));
   }
 
   /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04). Si la baja
@@ -245,10 +275,13 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     setState(() => _reactivandoId = item.ubicacion.id);
     SalidaHojaReactivar? salida;
     try {
+      final ultimaVisita = await _ultimaVisitaDe(item.ubicacion.id);
+      if (!mounted) return;
       salida = await mostrarHojaReactivar(
         context,
         colportorId: widget.colportorId,
         item: item,
+        ultimaVisita: ultimaVisita,
         ofreceAbrirExistente: widget.alAbrirUbicacion != null,
       );
     } finally {
@@ -260,9 +293,20 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
       case ReactivacionRealizada(:final ubicacion):
         _avisarReactivada(ubicacion, item.motivoBaja);
       case AbrirExistenteElegida(:final ubicacionId):
-        widget.alAbrirUbicacion?.call(ubicacionId, _distanciaDe(ubicacionId));
+        _abrirLaExistente(ubicacionId);
       case null:
         break;
+    }
+  }
+
+  /// El renglón «Última visita» de «Reactivar» («No contestó · 02/09»), o `null` si la ubicación no
+  /// tiene ninguna visita o no se pudo leer: el renglón no se dibuja, nunca se inventa (HU-UBI-005).
+  Future<String?> _ultimaVisitaDe(String ubicacionId) async {
+    try {
+      final ultima = await ref.read(lectorUltimaVisitaDeLaUbicacionProvider).de(ubicacionId);
+      return ultima == null ? null : FormatoPersonas.ultimaVisita(ultima);
+    } on Object {
+      return null;
     }
   }
 
@@ -359,7 +403,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
 
   @override
   Widget build(BuildContext context) {
-    final proveedor = listaUbicacionesProvider(widget.colportorId);
+    final proveedor = listaUbicacionesProvider(widget.clave);
     final estado = ref.watch(proveedor);
     // «Limpiar filtros» también vacía la búsqueda: el campo tiene que seguirla.
     ref.listen(proveedor.select((s) => s.filtros.busqueda), (_, texto) {
@@ -405,7 +449,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
               busqueda: _busqueda,
               alEscribir: _alEscribir,
               alEnviar: _buscarYa,
-              alActivarGps: () => unawaited(_notificador.activarGps()),
+              alActivarGps: widget.alActivarGps,
             ),
             _FilaFiltros(
               estado: estado,
@@ -502,7 +546,7 @@ class _Cabecera extends StatelessWidget {
   final TextEditingController busqueda;
   final ValueChanged<String> alEscribir;
   final ValueChanged<String> alEnviar;
-  final VoidCallback alActivarGps;
+  final VoidCallback? alActivarGps;
 
   @override
   Widget build(BuildContext context) {
@@ -543,31 +587,46 @@ class _ChipGps extends StatelessWidget {
   const _ChipGps({required this.estado, required this.alActivar});
 
   final ListaUbicacionesState estado;
-  final VoidCallback alActivar;
+  final VoidCallback? alActivar;
 
   @override
   Widget build(BuildContext context) {
     const estilo = TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: ColoresLista.grisTexto);
     final lectura = estado.lectura;
     switch (estado.gps) {
-      case EstadoGpsLista.sinPedir:
-        return const SizedBox.shrink();
       case EstadoGpsLista.buscando when lectura == null:
         return const Text('◎ Buscando GPS…', style: estilo);
+      // Todavía nadie pidió el GPS (el mapa no se abrió): se ofrece activarlo, igual que el alta.
+      case EstadoGpsLista.sinPedir:
       case EstadoGpsLista.sinGps:
-        return Semantics(
-          button: true,
-          label: 'Sin GPS. Activar GPS',
-          child: ExcludeSemantics(
-            child: TextButton(
-              onPressed: alActivar,
-              style: TextButton.styleFrom(
-                foregroundColor: ColoresLista.azul,
-                minimumSize: const Size(48, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                textStyle: estilo.copyWith(fontWeight: FontWeight.w600),
+        final texto = estado.gps == EstadoGpsLista.sinPedir
+            ? '◎ Sin GPS · Activar GPS'
+            : '◎ Sin GPS';
+        // Con el texto agrandado el chip no puede ser más ancho que la pantalla: se parte en dos
+        // renglones en vez de empujar el título fuera de los costados.
+        final tope = BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width - 40);
+        if (alActivar == null) {
+          return ConstrainedBox(
+            constraints: tope,
+            child: Text(texto, style: estilo),
+          );
+        }
+        return ConstrainedBox(
+          constraints: tope,
+          child: Semantics(
+            button: true,
+            label: 'Sin GPS. Activar GPS',
+            child: ExcludeSemantics(
+              child: TextButton(
+                onPressed: alActivar,
+                style: TextButton.styleFrom(
+                  foregroundColor: ColoresLista.azul,
+                  minimumSize: const Size(48, 48),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  textStyle: estilo.copyWith(fontWeight: FontWeight.w600),
+                ),
+                child: Text(texto, textAlign: TextAlign.center),
               ),
-              child: const Text('◎ Sin GPS'),
             ),
           ),
         );

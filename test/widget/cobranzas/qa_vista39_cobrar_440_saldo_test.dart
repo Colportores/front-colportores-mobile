@@ -92,6 +92,7 @@ void main() {
       personas: PersonaRepositoryImpl(PersonaLocalDataSourceDrift(db, encolador: encolador)),
       saldos: SaldosDePersonasLocal(cobros),
       notas: _SinNotas(),
+      cambios: cobros.alCambiarLoQueSeDebe,
     );
     emisiones.clear();
     suscripcion = caso(ubicacionId: 'ub-1', tipo: TipoUbicacion.casa).listen(emisiones.add);
@@ -121,8 +122,8 @@ void main() {
         emisiones.last.saldosCentavos,
         {'per-1': 70000},
         reason:
-            'la hoja sigue diciendo «Debe \$ 1.200» después de cobrar \$ 500: el contexto solo '
-            'se vuelve a leer cuando cambian las personas de la casa, no cuando cambia su saldo',
+            'la hoja sigue diciendo «Debe \$ 1.200» después de cobrar \$ 500: el contexto no '
+            'se volvió a leer cuando cambió el saldo (cambios: alCambiarLoQueSeDebe)',
       );
     },
   );

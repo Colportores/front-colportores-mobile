@@ -25,9 +25,6 @@ import 'nota_persona_falsos.dart';
 /// `--dart-define=QA_CAPTURAS=true` saca una captura PNG de cada estado.
 const sacarCapturas144 = bool.fromEnvironment('QA_CAPTURAS');
 
-/// `--dart-define=QA_HALLAZGOS=true` corre también los tests de hallazgos (los que llevan `skip`).
-const verHallazgos144 = bool.fromEnvironment('QA_HALLAZGOS');
-
 /// La raíz de la captura: envuelve la app entera (la hoja, el diálogo y el aviso viven dentro).
 final raizCaptura144 = GlobalKey();
 

@@ -83,6 +83,10 @@ mixin FinDeJornada<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// La sesión de quien cierra la jornada.
   Sesion get sesionDelFin;
 
+  /// Si «Sí, registrar la venta» de la entrevista abierta sigue por la venta. Una pantalla donde no se
+  /// debe vender lo apaga (la cuenta restringida espera la decisión de Cristian, «Venta susp.», #472).
+  bool get permiteRegistrarVentaAlTerminar => true;
+
   /// Se llama, dentro del `setState` del cierre, cuando la jornada quedó cerrada o corregida: la
   /// pantalla suelta lo suyo (avisos de inicio, bloqueos).
   void alCerrarLaJornada() {}
@@ -114,8 +118,12 @@ mixin FinDeJornada<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   DateTime? horaElegidaFin(Jornada jornada, DateTime ahora) => horaFin;
 
   /// `true` si no hay una entrevista en curso o si la colportora la terminó (con «No, guardar y
-  /// volver al mapa»); `false` si la dejó abierta o eligió registrar la venta, que sigue por su lado
-  /// (R44: si la venta no se completa el resultado no se guarda).
+  /// volver al mapa»); `false` si la dejó abierta o eligió registrar la venta.
+  ///
+  /// «Sí, registrar la venta» abre la venta (#428). Si se guarda, la entrevista queda cerrada pero la
+  /// jornada **no se cierra sola detrás de la venta**: la colportora la cierra con su botón cuando ya
+  /// no queda entrevista abierta. Si la venta no se completa, por R44 no se guarda el resultado, la
+  /// entrevista sigue en curso y el aviso dice que hay que terminarla para cerrar la jornada.
   Future<bool> _terminarEntrevistaAbierta() async {
     final colportorId = sesionDelFin.usuarioId;
     final estado = await ref.read(entrevistaEnCursoProvider(colportorId).notifier).esperarLectura();
@@ -126,6 +134,8 @@ mixin FinDeJornada<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       ref,
       colportorId: colportorId,
       pedirSalida: true,
+      desdeLaJornada: true,
+      conVenta: permiteRegistrarVentaAlTerminar,
     );
     return salida is EntrevistaGuardada;
   }

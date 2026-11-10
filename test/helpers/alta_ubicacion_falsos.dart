@@ -4,6 +4,7 @@ import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.dart';
@@ -15,6 +16,7 @@ import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplic
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/proveedor_gps.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/seguidor_gps.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
@@ -25,6 +27,7 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 
 import 'mapa_base_falso.dart';
+import 'ubicacion_colportor_falsos.dart';
 import 'ubicacion_sin_modificar.dart';
 import 'zonas_falsas.dart';
 
@@ -38,7 +41,7 @@ LecturaGps lecturaGps(double precision, {Coordenadas punto = puntoItalia}) =>
     LecturaGps(coordenadas: punto, precisionMetros: precision);
 
 /// El GPS del teléfono, que el test controla: qué devuelve, cuánto tarda y qué se activó.
-final class GpsFalso implements ProveedorGps, ActivadorGps {
+final class GpsFalso implements ProveedorGps, SeguidorGps, ActivadorGps {
   GpsFalso([Either<Failure, LecturaGps>? respuesta])
     : respuesta = respuesta ?? Right(lecturaGps(6));
 
@@ -69,6 +72,34 @@ final class GpsFalso implements ProveedorGps, ActivadorGps {
     if (espera != null) await espera.future;
     return respuesta;
   }
+
+  // ---- seguimiento (#670): el stream que abre el GPS único mientras el mapa sigue ----
+
+  late final StreamController<Either<Failure, LecturaGps>> _seguimiento =
+      StreamController<Either<Failure, LecturaGps>>.broadcast(
+        onListen: () => seguimientosAbiertos++,
+        onCancel: () => seguimientosCerrados++,
+      );
+
+  /// Cuántas veces se abrió y se cerró el stream del seguimiento.
+  var seguimientosAbiertos = 0;
+  var seguimientosCerrados = 0;
+
+  /// El seguimiento está abierto ahora.
+  bool get siguiendo => seguimientosAbiertos > seguimientosCerrados;
+
+  @override
+  Stream<Either<Failure, LecturaGps>> seguir() => _seguimiento.stream;
+
+  /// El teléfono se movió: llega una lectura por el stream del seguimiento.
+  void moverse(LecturaGps lectura) => _seguimiento.add(Right(lectura));
+
+  /// El seguimiento falla (el GPS se apagó, se retiró el permiso…).
+  void fallarElSeguimiento(MotivoSinGps motivo) =>
+      _seguimiento.add(Left(FailureGpsNoDisponible(motivo: motivo)));
+
+  /// El sistema cierra el stream sin avisar.
+  Future<void> cerrarElSeguimiento() => _seguimiento.close();
 
   @override
   Future<void> activar(MotivoSinGps motivo) async {
@@ -243,6 +274,8 @@ CandidataDuplicado candidata(
   TipoUbicacion tipo = TipoUbicacion.casa,
   String ciudadId = 'ciu-mvd',
   DateTime? actualizada,
+  EstadoCasa? estado,
+  int? espacios,
 }) {
   final cuando = actualizada ?? DateTime.utc(2026, 9, 29, 12);
   return CandidataDuplicado(
@@ -259,6 +292,8 @@ CandidataDuplicado candidata(
     motivo: motivo,
     distanciaMetros: metros,
     admiteConservarAmbos: admiteConservarAmbos,
+    estado: estado,
+    cantidadEspacios: espacios,
   );
 }
 
@@ -281,11 +316,16 @@ List<Override> overridesAlta({
   SituacionMapa? situacion,
   bool situacionReal = false,
   String Function()? generadorId,
+  bool gpsAbierto = true,
 }) {
   final gpsFalso = gps ?? GpsFalso();
   var secuencia = 0;
   return [
     proveedorGpsProvider.overrideWithValue(gpsFalso),
+    seguidorGpsProvider.overrideWithValue(gpsFalso),
+    // El alta no pide el permiso (#651): lee el GPS del colportor, que ya abrió el mapa. Con
+    // [gpsAbierto] `false` el mapa todavía no se abrió (nadie lo lee hasta que el test lo pida).
+    if (gpsAbierto) ubicacionColportorYaAbierta(),
     activadorGpsProvider.overrideWithValue(gpsFalso),
     geocodificadorInversoProvider.overrideWithValue(geocodificador ?? GeocodificadorFalso()),
     ciudadesParaAltaProvider.overrideWithValue(puertoCiudades ?? ciudades ?? CiudadesFalsas()),

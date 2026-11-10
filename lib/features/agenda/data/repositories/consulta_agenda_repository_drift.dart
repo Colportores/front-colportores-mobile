@@ -25,6 +25,10 @@ import '../../domain/repositories/consulta_agenda_repository.dart';
 /// (casa) dados de baja no se lee —queda guardada, no se borra ni se cancela, y vuelve sola si se
 /// reactiva—; con la **persona** de baja la cita se lee igual, sin nombre. Vale para las dos lecturas
 /// de acá, y por ende para la pestaña y para los conteos de los días.
+///
+/// **Alt. de baja** (decisión de Cristian, 03/11): una cobranza agendada en una dirección alternativa
+/// dada de baja **sigue** en la Agenda (con la persona y su casa activas) y la dirección sale marcada
+/// ([DireccionDeAgenda.deBaja]) para que la colportora la reagende.
 final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
   ConsultaAgendaRepositoryDrift(this._db);
 
@@ -44,6 +48,24 @@ final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
           // La ventana, o una programada de antes: la atrasada no se pierde (P3).
           (agendas.fechaProgramada.isBiggerOrEqualValue(conversor.toSql(desde)) |
               agendas.estado.equals(EstadoAgenda.programada.codigo)),
+      ascendente: true,
+    );
+  }
+
+  @override
+  Stream<List<ItemAgenda>> observarDeLaCasa({
+    required String colportorId,
+    required String ubicacionId,
+  }) {
+    final espacios = _db.espacios;
+    final deLaCasa = _db.selectOnly(espacios)
+      ..addColumns([espacios.id])
+      ..where(espacios.ubicacionId.equals(ubicacionId));
+    return _leer(
+      colportorId,
+      (agendas) =>
+          agendas.estado.equals(EstadoAgenda.programada.codigo) &
+          agendas.espacioId.isInQuery(deLaCasa),
       ascendente: true,
     );
   }
@@ -209,6 +231,7 @@ final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
     tipo: UbicacionModel.tipoDesdeCodigo(fila.tipo),
     calle: fila.calle,
     numero: fila.numero,
+    deBaja: fila.deletedAt != null,
   );
 
   static Agenda _aAgenda(AgendaFila fila) => Agenda(

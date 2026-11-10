@@ -469,19 +469,17 @@ class _ModificarAgendaPageState extends ConsumerState<ModificarAgendaPage> {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: Semantics(
-                  hint: esperaLaCasa ? TextosDetalleAgenda.guardarEsperaLaCasa : null,
-                  child: BotonAccionPersona(
-                    key: ClavesModificarAgenda.guardar,
-                    etiqueta: conFalla
-                        ? TextosAgendarVisita.reintentar
-                        : TextosDetalleAgenda.guardarCambios,
-                    etiquetaEnviando: TextosDetalleAgenda.guardando,
-                    aspectoApagado: false,
-                    habilitado: !esperaLaCasa,
-                    enviando: _enviando,
-                    alTocar: () => unawaited(_guardar()),
-                  ),
+                child: BotonAccionPersona(
+                  key: ClavesModificarAgenda.guardar,
+                  etiqueta: conFalla
+                      ? TextosAgendarVisita.reintentar
+                      : TextosDetalleAgenda.guardarCambios,
+                  etiquetaEnviando: TextosDetalleAgenda.guardando,
+                  aspectoApagado: false,
+                  habilitado: !esperaLaCasa,
+                  pista: esperaLaCasa ? TextosDetalleAgenda.guardarEsperaLaCasa : null,
+                  enviando: _enviando,
+                  alTocar: () => unawaited(_guardar()),
                 ),
               ),
             ],

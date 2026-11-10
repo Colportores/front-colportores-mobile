@@ -30,7 +30,12 @@ import '../widgets/piezas_persona.dart';
 /// Devuelve la [Persona] guardada (o `null` si se cerró sin guardar), para que quien la abrió avise
 /// «Guardamos a Jorge en este teléfono.» (A·05).
 class AltaPersonaPage extends ConsumerStatefulWidget {
-  const AltaPersonaPage({super.key, required this.espacioId, required this.colportorId});
+  const AltaPersonaPage({
+    super.key,
+    required this.espacioId,
+    required this.colportorId,
+    this.ayuda,
+  });
 
   /// El espacio al que se agrega la persona.
   final String espacioId;
@@ -38,14 +43,19 @@ class AltaPersonaPage extends ConsumerStatefulWidget {
   /// UUID del usuario con la sesión iniciada (`created_by`).
   final String colportorId;
 
-  /// Abre el alta encima de la pantalla actual.
+  /// Una línea bajo el título que dice para qué se pide el nombre en este paso (por ejemplo, antes de
+  /// una venta). `null` = el alta de siempre, sin línea.
+  final String? ayuda;
+
+  /// Abre el alta encima de la pantalla actual. [ayuda] es la línea opcional bajo el título.
   static Future<Persona?> abrir(
     BuildContext context, {
     required String espacioId,
     required String colportorId,
+    String? ayuda,
   }) => Navigator.of(context).push<Persona>(
     MaterialPageRoute(
-      builder: (_) => AltaPersonaPage(espacioId: espacioId, colportorId: colportorId),
+      builder: (_) => AltaPersonaPage(espacioId: espacioId, colportorId: colportorId, ayuda: ayuda),
     ),
   );
 
@@ -241,6 +251,14 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
                           style: theme.textTheme.headlineSmall,
                         ),
                       ),
+                      if (widget.ayuda != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.ayuda!,
+                          key: ClavesAltaPersona.ayuda,
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
                       if (donde != null) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -334,4 +352,9 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
       ),
     );
   }
+}
+
+/// Las claves del alta de persona, para los tests.
+abstract final class ClavesAltaPersona {
+  static const ayuda = Key('alta_persona_ayuda');
 }

@@ -16,7 +16,9 @@ import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../inicio/presentation/widgets/barra_pestanas_inicio.dart';
 import '../../../notificaciones/presentation/pages/notificaciones_page.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones.dart';
+import '../../../respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import '../../../respaldo/presentation/providers/respaldo_drive_providers.dart';
+import '../../../respaldo/presentation/textos_recuperacion.dart';
 import '../../../respaldo/presentation/textos_respaldo_drive.dart';
 import '../../../respaldo/presentation/widgets/hojas_drive.dart';
 import '../../../respaldo/presentation/widgets/seccion_respaldo_drive.dart';
@@ -60,6 +62,9 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
   /// llegue antes de que se vuelva a dibujar.
   bool _cambiandoAviso = false;
 
+  /// Se está abriendo «Recuperar mi respaldo» (#610). Es un campo: corta el segundo toque.
+  bool _abriendoRecuperacion = false;
+
   /// Se está abriendo una hoja del respaldo en Drive. Es un campo: corta el segundo toque aunque
   /// llegue antes de que la hoja termine de abrirse.
   bool _abriendoHojaDrive = false;
@@ -95,6 +100,40 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
       }
     } finally {
       _abriendoHojaDrive = false;
+    }
+  }
+
+  /// «Recuperar mi respaldo» (#610, «Recup. luego»): vuelve a abrir el asistente de recuperación si el
+  /// teléfono sigue sin nada cargado. No puede haber nada escuchando la base mientras se recupera, así
+  /// que la app se reinicia por dentro y abre directo en la vista 34, como en el primer arranque
+  /// (decisión de Cristian, 04/11, «Motor vivo»): con la raíz reiniciada, esta pantalla ya no existe y
+  /// no queda nada que sacar de la pila. Si ya hay datos, lo dice y la fila desaparece.
+  Future<void> _recuperarMiRespaldo() async {
+    if (_abriendoRecuperacion) return;
+    _abriendoRecuperacion = true;
+    final mensajero = ScaffoldMessenger.of(context);
+    var reiniciando = false;
+    try {
+      final resultado = await ref.read(recuperacionPendienteProvider.notifier).reabrir();
+      // La app se está reiniciando: esta pantalla se va, y un segundo toque no pide otro reinicio.
+      reiniciando = resultado == ReaperturaDeLaRecuperacion.abierta;
+      if (reiniciando || !mounted) return;
+      ref.invalidate(recuperarDespuesDisponibleProvider);
+      mensajero.clearSnackBars();
+      recordarAviso(
+        mensajero.showSnackBar(
+          SnackBar(
+            key: const Key('configuracion_recuperar_respaldo_no'),
+            content: Text(
+              resultado == ReaperturaDeLaRecuperacion.hayDatos
+                  ? TextosRecuperacion.yaNoSePuedeRecuperar
+                  : TextosRecuperacion.noSePudoRevisar,
+            ),
+          ),
+        ),
+      );
+    } finally {
+      if (!reiniciando) _abriendoRecuperacion = false;
     }
   }
 
@@ -268,6 +307,8 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     final estadoDrive = ref.watch(estadoRespaldoDriveProvider);
     final driveCancelado = ref.watch(avisoDriveCanceladoProvider);
     final ultimoRespaldo = ref.watch(ultimoRespaldoDriveProvider).value;
+    // «Recuperar mi respaldo» (#610): mientras el teléfono no tenga nada cargado.
+    final puedeRecuperar = ref.watch(recuperarDespuesDisponibleProvider).value ?? false;
     final conBarra = estadoCuenta is! AsyncLoading;
     final estado = estadoCuenta.value;
     final accede = estadoCuenta is AsyncData && (estado == null || estado.accedeAModulosDeCampo);
@@ -344,7 +385,13 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                             key: const Key('configuracion_notificaciones'),
                             minVerticalPadding: 12,
                             leading: const Icon(Icons.notifications_none_outlined),
-                            title: const Text(TextosNotificaciones.filaConfiguracion),
+                            // Con el texto al 200 % en 360 dp la palabra no entra entre el ícono y la
+                            // flecha: se achica en vez de partirla (QA #153, menor 1).
+                            title: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: AlignmentDirectional.centerStart,
+                              child: Text(TextosNotificaciones.filaConfiguracion, maxLines: 1),
+                            ),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () =>
                                 unawaited(Navigator.of(context).push(NotificacionesPage.ruta())),
@@ -385,6 +432,22 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                         alReintentar: () =>
                             unawaited(ref.read(estadoRespaldoDriveProvider.notifier).recargar()),
                       ),
+                      if (puedeRecuperar) ...[
+                        const SizedBox(height: 12),
+                        _Tarjeta(
+                          children: [
+                            ListTile(
+                              key: const Key('configuracion_recuperar_respaldo'),
+                              minVerticalPadding: 12,
+                              leading: const Icon(Icons.cloud_download_outlined),
+                              title: const Text(TextosRecuperacion.filaConfiguracion),
+                              subtitle: const Text(TextosRecuperacion.filaConfiguracionDetalle),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => unawaited(_recuperarMiRespaldo()),
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 24),
                       const _TituloSeccion('Privacidad y datos'),
                       const SizedBox(height: 8),

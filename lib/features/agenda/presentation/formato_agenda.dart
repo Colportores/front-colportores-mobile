@@ -4,6 +4,7 @@ import '../domain/entities/filtros_agenda.dart';
 import '../domain/entities/item_agenda.dart';
 import '../domain/entities/tipo_agenda.dart';
 import '../domain/entities/vista_agenda.dart';
+import '../domain/services/texto_recordatorio.dart';
 
 /// Los textos de la pestaña Agenda (vista 23B, HU-VIS-002). Los literales son los del canvas; los
 /// que el canvas no dibuja están marcados en el pendiente de la HU.
@@ -20,7 +21,16 @@ abstract final class TextosAgenda {
   static const filtroTipo = 'Filtrar por tipo';
 
   static const agendar = '+ Agendar';
+  static const visitasAgendadas = 'VISITAS AGENDADAS';
   static const registrar = 'Registrar';
+
+  /// La tarjeta de la cobranza recién agendada al registrar una venta (vista 39, R·08).
+  static const agendadaAlRegistrarLaVenta = 'Agendada al registrar la venta';
+  static const cambiarLaCita = 'Cambiar';
+
+  /// «Cobranza · Pedro», o «Cobranza» si no se sabe con quién es.
+  static String cobranzaDe(String persona) =>
+      persona.trim().isEmpty ? tagCobranza : '$tagCobranza · ${persona.trim()}';
   static const atrasadas = 'ATRASADAS';
   static const pasoLaHora = 'Pasó la hora · registrá qué pasó';
 
@@ -93,6 +103,30 @@ abstract final class FormatoAgenda {
   static String subtituloDe(FiltrosAgenda filtros) =>
       filtros.estado.miraLaCampania ? TextosAgenda.subtituloCampania : TextosAgenda.subtitulo;
 
+  static const _diasCortos = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'];
+
+  /// «JUE 24/10 · 14:30» (con el año si no es el de [ahora]): cuándo es una visita en la lista de la
+  /// hoja de la casa (23B·10).
+  static String cuandoCorto(DateTime momento, DateTime ahora) {
+    final l = momento.toLocal();
+    return '${_diasCortos[l.weekday - 1]} ${diaMesConAnio(momento, ahora)} · ${hora(momento)}';
+  }
+
+  /// La segunda línea de una visita en la hoja de la casa: con quién («María Fernández»), «en» la
+  /// dirección si la cobranza es en otra, o el depto si la casa es un edificio. `null` si no hay nada
+  /// que decir (la casa ya es el título de la hoja).
+  static String? subtituloDeVisitaDeLaCasa(ItemAgenda item) {
+    final alternativa = item.alternativa == null ? null : direccion(item);
+    final depto = item.numeroDepto?.trim() ?? '';
+    final partes = [
+      ?item.nombrePersona,
+      if (alternativa != null) 'en $alternativa',
+      if (alternativa == null && depto.isNotEmpty && item.casa?.tipo == TipoUbicacion.edificio)
+        'Depto $depto',
+    ];
+    return partes.isEmpty ? null : partes.join(' · ');
+  }
+
   /// El rótulo con el conteo del día (HU-VIS-002: «Hoy (3)», «Mañana (5)»).
   static String rotuloConConteo(DiaDeAgenda dia) => '${rotuloDelDia(dia)} (${dia.cantidad})';
 
@@ -112,7 +146,9 @@ abstract final class FormatoAgenda {
     final base = partes.join(' ');
     final depto = item.numeroDepto?.trim() ?? '';
     final conDepto = item.alternativa == null && lugar.tipo == TipoUbicacion.edificio;
-    return conDepto && depto.isNotEmpty ? '$base · Depto $depto' : base;
+    final conDatos = conDepto && depto.isNotEmpty ? '$base · Depto $depto' : base;
+    // «Alt. de baja»: la cobranza sigue y suena, pero la dirección se ve marcada para reagendarla.
+    return lugar.deBaja ? '$conDatos ${TextoRecordatorio.direccionDadaDeBaja}' : conDatos;
   }
 
   /// El título de la fila: la persona; sin persona, la dirección; sin ninguna, «Visita sin datos».

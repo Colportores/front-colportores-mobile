@@ -15,11 +15,13 @@ final class DestinoDeEntrevistaDrift implements ResolverDestinoDeEntrevista {
   @override
   Future<DestinoDeEntrevista?> resolver({
     required String espacioId,
-    required String espacioPersonaId,
+    String? espacioPersonaId,
   }) async {
-    final vinculo = await (_db.select(
-      _db.espacioPersonas,
-    )..where((v) => v.id.equals(espacioPersonaId))).getSingleOrNull();
+    final vinculo = espacioPersonaId == null
+        ? null
+        : await (_db.select(
+            _db.espacioPersonas,
+          )..where((v) => v.id.equals(espacioPersonaId))).getSingleOrNull();
 
     var conPersona = false;
     if (vinculo != null && vinculo.deletedAt == null) {

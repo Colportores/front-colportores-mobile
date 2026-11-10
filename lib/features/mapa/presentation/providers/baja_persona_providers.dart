@@ -1,5 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/database/database_providers.dart';
+import '../../data/datasources/cuenta_de_persona_local_data_source_drift.dart';
+import '../../data/services/cuenta_de_persona_drift.dart';
 import '../../domain/entities/persona_del_espacio.dart';
 import '../../domain/services/cuenta_de_persona.dart';
 import '../../domain/usecases/baja_persona_use_cases.dart';
@@ -13,11 +16,20 @@ import 'personas_providers.dart';
 /// «Reintentar» es de quien lo toca.
 Duration? _sinReintentos(int intento, Object error) => null;
 
-/// De dónde sale la cuenta de cada persona (comprado, entregado, pagado y saldo de la baja con saldo,
-/// 32D·02). Sin ventas locales todavía (S9) no hay fuente: [CuentasDePersonasSinFuente], y nadie
-/// tiene saldo conocido. Un test o el S9 lo reemplazan.
+/// Lo que la DB local sabe de las entregas, los cobros y la cuenta de una persona (la ficha, 32B, y la
+/// baja con saldo, 32D·02). Sin DB abierta no hay dónde leer: lanza, y la pantalla lo muestra como un
+/// error de lectura.
+final cuentaDePersonaLocalProvider = Provider<CuentaDePersonaLocalDataSourceDrift>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return CuentaDePersonaLocalDataSourceDrift(db);
+});
+
+/// De dónde sale la cuenta de cada persona (comprado, entregado, pagado y saldo de la ficha y de la baja
+/// con saldo, 32D·02): las ventas, las entregas y los cobros del teléfono, nunca el servidor (ADR-004).
+/// Un test lo reemplaza con un fake.
 final cuentasDePersonasProvider = Provider<CuentasDePersonas>(
-  (ref) => const CuentasDePersonasSinFuente(),
+  (ref) => CuentasDePersonasDrift(ref.watch(cuentaDePersonaLocalProvider)),
 );
 
 final consultarCuentaDePersonaUseCaseProvider = Provider<ConsultarCuentaDePersonaUseCase>(

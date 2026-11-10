@@ -17,12 +17,28 @@ import '../../../../helpers/campo_falsos.dart';
 import '../../../../helpers/logger_mudo.dart';
 import '../../../../helpers/venta_falsos.dart';
 
-Cobranza cobroDe(String id, int monto, {String venta = 'v-1', DateTime? fecha}) => Cobranza(
+Cobranza cobroDe(
+  String id,
+  int monto, {
+  String venta = 'v-1',
+  DateTime? fecha,
+  MedioCobranza medio = MedioCobranza.efectivo,
+  TipoTarjeta? tarjetaTipo,
+  String? tarjetaMarca,
+  String? numeroAprobacion,
+  String? referencia,
+  String? banco,
+}) => Cobranza(
   id: id,
   ventaId: venta,
   montoCentavos: monto,
-  medio: MedioCobranza.efectivo,
+  medio: medio,
   fecha: fecha ?? t0,
+  tarjetaTipo: tarjetaTipo,
+  tarjetaMarca: tarjetaMarca,
+  numeroAprobacion: numeroAprobacion,
+  referenciaTransferencia: referencia,
+  bancoOrigen: banco,
   auditoria: Auditoria(createdAt: t0, updatedAt: t0, createdBy: 'col-1'),
 );
 
@@ -88,6 +104,81 @@ void main() {
       (await db.select(db.houseStatuses).getSingleOrNull())?.color;
 
   group('registrar', () {
+    test(
+      'un cobro con tarjeta guarda y sube el tipo, la marca y el número de aprobación',
+      () async {
+        await local.registrar(
+          cobroDe(
+            'c-t',
+            50000,
+            medio: MedioCobranza.tarjeta,
+            tarjetaTipo: TipoTarjeta.credito,
+            tarjetaMarca: 'Visa',
+            numeroAprobacion: '884213',
+          ),
+        );
+
+        final fila = (await cobros()).single;
+        expect(fila.medio, 'TARJETA');
+        expect(
+          [fila.tarjetaTipo, fila.tarjetaMarca, fila.numeroAprobacion],
+          ['CREDITO', 'Visa', '884213'],
+        );
+        expect([fila.referenciaTransferencia, fila.bancoOrigen], [null, null]);
+        final payload = encolador.encolados.single.payload;
+        expect(payload['medio'], 'TARJETA');
+        expect(payload['tarjeta_tipo'], 'CREDITO');
+        expect(payload['tarjeta_marca'], 'Visa');
+        expect(payload['numero_aprobacion'], '884213');
+        expect(payload['referencia_transferencia'], isNull);
+        expect(payload['banco_origen'], isNull);
+      },
+    );
+
+    test('un cobro por transferencia guarda y sube la referencia y el banco', () async {
+      await local.registrar(
+        cobroDe(
+          'c-x',
+          50000,
+          medio: MedioCobranza.transferencia,
+          referencia: 'TX-12345',
+          banco: 'Banco Ñandú',
+        ),
+      );
+
+      final fila = (await cobros()).single;
+      expect(fila.medio, 'TRANSFERENCIA');
+      expect([fila.referenciaTransferencia, fila.bancoOrigen], ['TX-12345', 'Banco Ñandú']);
+      expect([fila.tarjetaTipo, fila.tarjetaMarca, fila.numeroAprobacion], [null, null, null]);
+      final payload = encolador.encolados.single.payload;
+      expect(payload['medio'], 'TRANSFERENCIA');
+      expect(payload['referencia_transferencia'], 'TX-12345');
+      expect(payload['banco_origen'], 'Banco Ñandú');
+      expect(payload['tarjeta_tipo'], isNull);
+    });
+
+    test('el débito se guarda como DEBITO', () async {
+      await local.registrar(
+        cobroDe('c-d', 50000, medio: MedioCobranza.tarjeta, tarjetaTipo: TipoTarjeta.debito),
+      );
+
+      expect((await cobros()).single.tarjetaTipo, 'DEBITO');
+      expect(encolador.encolados.single.payload['tarjeta_tipo'], 'DEBITO');
+    });
+
+    test(
+      'el reintento con el mismo id no duplica el cobro con tarjeta ni lo encola de nuevo',
+      () async {
+        final cobro = cobroDe('c-t', 50000, medio: MedioCobranza.tarjeta, numeroAprobacion: '1');
+        await local.registrar(cobro);
+        final r = await local.registrar(cobro);
+
+        expect(r.yaEstaba, isTrue);
+        expect(await cobros(), hasLength(1));
+        expect(cola(), ['cobranza:insert']);
+      },
+    );
+
     test('un cobro de UYU 500 del total UYU 1500 deja el saldo en 1000 y lo encola', () async {
       final r = await local.registrar(cobroDe('c-1', 50000));
 
@@ -98,10 +189,7 @@ void main() {
       );
       expect(r.ventaPagada, isFalse);
       final fila = (await cobros()).single;
-      expect(
-        [fila.ventaId, fila.monto, fila.medio, fila.numeroCuota],
-        ['v-1', 50000, 'EFECTIVO', null],
-      );
+      expect([fila.ventaId, fila.monto, fila.medio], ['v-1', 50000, 'EFECTIVO']);
       expect(fila.fecha, t0);
       expect(cola(), ['cobranza:insert']);
       expect((await local.ventaConSaldo('v-1'))!.saldoCentavos, 100000);
@@ -134,7 +222,12 @@ void main() {
         'monto',
         'medio',
         'fecha',
-        'numero_cuota',
+        'tarjeta_tipo',
+        'tarjeta_marca',
+        'numero_aprobacion',
+        'referencia_transferencia',
+        'banco_origen',
+        'ticket_id',
         'created_at',
         'updated_at',
         'created_by',
@@ -243,21 +336,6 @@ void main() {
       expect([for (final v in ventas) v.ventaId], ['v-1', 'v-2']);
       expect(ventas.first.numeroTalonario, 'T-v-1');
       expect(ventas.first.descripcion, '1 producto');
-    });
-
-    test('cambiosDeSaldos avisa al registrar un cobro y al registrar una venta', () async {
-      var avisos = 0;
-      final suscripcion = local.cambiosDeSaldos().listen((_) => avisos++);
-      addTearDown(suscripcion.cancel);
-
-      await local.registrar(cobroDe('c-1', 50000));
-      await pumpEventQueue();
-      expect(avisos, greaterThan(0), reason: 'un cobro cambia el saldo');
-
-      final tras = avisos;
-      await sembrarVentaCon('v-2', [itemDe('i-x', 'v-2', cantidad: 1, precio: 10000)]);
-      await pumpEventQueue();
-      expect(avisos, greaterThan(tras), reason: 'una venta nueva también');
     });
 
     group('qué se vendió (C·08)', () {

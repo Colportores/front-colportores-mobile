@@ -1,5 +1,7 @@
-// HU-VEN-001 (vista 27, «Registrar venta»): un test por artboard (27A·01 a 27A·13; el 27A·09 no se
-// implementa, decisión P4 de #158; el 27A·14 está en venta_registrada_page_test.dart), por los
+// HU-VEN-001 (vista 27, «Registrar venta»): un test por artboard (27A·01 a 27A·13; el 27A·09 («Sin
+// ubicación: precios de tu zona») ya no es parte de la vista: Cristian lo sacó del inventario el
+// 03/11 («27A·09 GPS») y queda anotado en «Diferencias con el canvas» de disenio-vistas, porque el
+// precio sale de la casa del cliente y nunca del GPS; el 27A·14 está en venta_registrada_page_test.dart), por los
 // estados que el canvas no dibuja (cargando, error de precios, sin catálogo, sin conexión) y por cada
 // caso límite: doble toque, falla a mitad del guardado, acciones seguidas, volver y reentrar, datos
 // límite y texto al 200 %.
@@ -13,6 +15,8 @@ import 'package:colportores_mobile/features/ventas/domain/entities/componente_ve
 import 'package:colportores_mobile/features/ventas/domain/entities/precios_de_la_venta.dart';
 import 'package:colportores_mobile/features/ventas/domain/repositories/venta_repository.dart';
 import 'package:colportores_mobile/features/ventas/presentation/formato_venta.dart';
+import 'package:colportores_mobile/features/ventas/presentation/widgets/piezas_venta.dart'
+    show LimitarPuntosDeCodigo;
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -756,6 +760,71 @@ void main() {
       expect(_habilitado(tester), isTrue);
     });
 
+    testWidgets('una validación rechazada se dice y guía: reintentar igual no la arregla', (
+      tester,
+    ) async {
+      final e = EntornoDeVenta();
+      e.ventas.respuesta = const FailureValidacion(
+        campos: {'total': 'El total de la venta es demasiado grande'},
+      );
+      await montarNuevaVenta(tester, e);
+      await _ventaConLaColeccion(tester);
+      await escribir(tester, _campo('venta_talonario'), '0042');
+
+      await tocar(tester, _cta);
+
+      expect(
+        find.text(
+          'El total de la venta es demasiado grande. Revisá lo que cargaste y probá de nuevo.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('No pudimos guardar'), findsNothing);
+      expect(_habilitado(tester), isTrue);
+    });
+
+    testWidgets('un detalle que ya trae punto final no lo duplica', (tester) async {
+      final e = EntornoDeVenta();
+      e.ventas.respuesta = const FailureValidacion(
+        campos: {'total': 'El total de la venta es demasiado grande.'},
+      );
+      await montarNuevaVenta(tester, e);
+      await _ventaConLaColeccion(tester);
+      await escribir(tester, _campo('venta_talonario'), '0042');
+
+      await tocar(tester, _cta);
+
+      expect(
+        find.text(
+          'El total de la venta es demasiado grande. Revisá lo que cargaste y probá de nuevo.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('la persona que ya no está dice que hay que volver a elegirla', (tester) async {
+      final e = EntornoDeVenta();
+      e.ventas.respuesta = const FailureValidacion(
+        campos: {'persona': 'La persona de esta venta ya no está en tu teléfono.'},
+      );
+      await montarNuevaVenta(tester, e);
+      await _ventaConLaColeccion(tester);
+      await escribir(tester, _campo('venta_talonario'), '0042');
+
+      await tocar(tester, _cta);
+
+      expect(
+        find.text(
+          'La persona de esta venta ya no está en tu teléfono. '
+          'Volvé atrás y elegí a la persona de nuevo.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('..'), findsNothing);
+      expect(find.textContaining('Revisá lo que cargaste'), findsNothing);
+      expect(_habilitado(tester), isTrue);
+    });
+
     testWidgets('el aviso se va apenas la colportora toca algo', (tester) async {
       final e = EntornoDeVenta();
       e.ventas.respuesta = const FailureVentaNoGuardada();
@@ -1058,6 +1127,14 @@ void main() {
       expect(FormatoVenta.parsearMonto('0'), 0);
     });
 
+    test('lo más que cabe en el entero del servidor: 21.474.836,47', () {
+      expect(FormatoVenta.parsearMonto('21.474.836,47'), 2147483647);
+      expect(FormatoVenta.parsearMonto('21.474.836,48'), isNull);
+      expect(FormatoVenta.parsearMonto('21.474.836,99'), isNull);
+      expect(FormatoVenta.parsearMonto('21.474.836'), 2147483600);
+      expect(FormatoVenta.parsearMonto('21.474.837'), isNull);
+    });
+
     test('lo que no es un monto no se lee', () {
       for (final malo in [
         '',
@@ -1072,6 +1149,32 @@ void main() {
       ]) {
         expect(FormatoVenta.parsearMonto(malo), isNull, reason: malo);
       }
+    });
+  });
+  group('Tope del campo en puntos de código', () {
+    const limite = LimitarPuntosDeCodigo(5);
+    TextEditingValue escribe(String texto) =>
+        limite.formatEditUpdate(TextEditingValue.empty, TextEditingValue(text: texto));
+
+    test('lo que entra en el tope pasa tal cual', () {
+      expect(escribe('T-100').text, 'T-100');
+      expect(escribe('').text, '');
+    });
+
+    test('corta en 5 puntos de código, no en 5 grafemas', () {
+      expect(escribe('abcdefgh').text, 'abcde');
+      // Un emoji compuesto son 5 puntos de código (3 personas y 2 uniones): entra uno solo.
+      final familia = String.fromCharCodes('👨‍👩‍👧'.runes);
+      expect(familia.runes.length, 5);
+      expect(escribe(familia * 3).text, familia);
+      // Un emoji simple es un punto de código aunque ocupe dos unidades UTF-16.
+      expect(escribe('🙂' * 9).text.runes.length, 5);
+    });
+
+    test('deja el cursor al final de lo cortado', () {
+      final v = escribe('abcdefgh');
+      expect(v.selection, const TextSelection.collapsed(offset: 5));
+      expect(v.composing, TextRange.empty);
     });
   });
 }

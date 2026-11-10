@@ -10,4 +10,5 @@ export 'src/adapters/aes_gcm_crypto.dart';
 export 'src/adapters/backup_codec.dart';
 export 'src/adapters/bff_transport.dart';
 export 'src/adapters/drive_archive.dart';
+export 'src/adapters/google_drive_archive.dart';
 export 'src/adapters/supabase_rpc_transport.dart';

@@ -48,6 +48,12 @@ class _TerminarJornadaDeLaCuentaState extends ConsumerState<TerminarJornadaDeLaC
   @override
   Sesion get sesionDelFin => _sesion ?? ref.read(sesionProvider).value!;
 
+  /// Con la cuenta restringida «Sí, registrar la venta» no abre la venta: si se deja vender o se apaga
+  /// la opción lo decide Cristian (§3 «Venta susp.», PR #555). Hasta entonces la hoja se comporta como
+  /// antes de #428.
+  @override
+  bool get permiteRegistrarVentaAlTerminar => false;
+
   @override
   void initState() {
     super.initState();

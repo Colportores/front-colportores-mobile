@@ -11,7 +11,6 @@ void main() {
     inicio: DateTime.utc(2026, 9, 22, 12, 15),
     fin: DateTime.utc(2026, 9, 22, 20),
     acompananteId: 'u-2',
-    tipoAcompanamiento: 'tipo-x',
     totalVisitas: 14,
     totalVentas: 3,
     auditoria: Auditoria(
@@ -44,7 +43,6 @@ void main() {
         'inicio',
         'fin',
         'acompaniante_id',
-        'tipo_acompaniamiento',
         'total_visitas',
         'total_ventas',
         'created_at',

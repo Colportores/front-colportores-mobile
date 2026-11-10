@@ -13,7 +13,24 @@ import '../error/failure.dart';
 ///
 /// Regla para las pantallas nuevas: toda pantalla que necesite red usa esto con su acción y nunca
 /// muestra tal cual el mensaje de [FailureSinConexion].
-String mensajePara(Failure failure, {required String accion}) => switch (failure) {
-  FailureSinConexion() => 'Necesitás conexión para $accion',
-  Failure(:final mensaje) => mensaje,
-};
+///
+/// Con [noPudimos] ("No pudimos crear tu cuenta."), un error del servidor sin texto propio dice qué
+/// pasa y qué hacer ([mensajeDeServidor]) en lugar del genérico.
+String mensajePara(Failure failure, {required String accion, String? noPudimos}) =>
+    switch (failure) {
+      FailureSinConexion() => 'Necesitás conexión para $accion',
+      FailureServidor() when noPudimos != null => mensajeDeServidor(failure, noPudimos: noPudimos),
+      Failure(:final mensaje) => mensaje,
+    };
+
+/// El texto de un error del servidor: todo aviso dice qué pasa y qué hacer, y el mismo caso lleva el
+/// mismo texto en cada pantalla (decisión del 29/10 en #542).
+///
+/// Un [FailureServidor] con texto propio (el rate limit de 429: «Esperá unos minutos…») lo conserva.
+/// El que no lo tiene (un código del servidor sin traducción, un 4xx o 5xx cualquiera: trae el
+/// genérico, que no dice qué hacer) se muestra como «[noPudimos] Probá de nuevo en unos minutos.».
+/// El código técnico nunca llega a la pantalla: queda en el log de la capa de datos.
+String mensajeDeServidor(FailureServidor failure, {required String noPudimos}) =>
+    failure.mensaje == const FailureServidor().mensaje
+    ? '$noPudimos Probá de nuevo en unos minutos.'
+    : failure.mensaje;

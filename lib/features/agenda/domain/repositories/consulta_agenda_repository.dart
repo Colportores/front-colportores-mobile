@@ -28,4 +28,15 @@ abstract interface class ConsultaAgendaRepository {
   /// persona, una ubicación o la campaña. Sin campaña en curso en el teléfono, el rango queda abierto
   /// ([RangoDeCampania.sinLimite]). Un error al leer sale por el `Stream`.
   Stream<List<ItemAgenda>> observarCampania({required String colportorId, required DateTime hoy});
+
+  /// Las agendas `PROGRAMADA` de [colportorId] de la ubicación [ubicacionId] (de cualquiera de sus
+  /// espacios), de la más temprana a la más tardía, con la persona y la dirección de cada una: la
+  /// lista «Visitas agendadas» de la hoja de la casa (23B·10, #491). Igual que las demás lecturas, no
+  /// trae la agenda de un depto o una casa dados de baja y deja sin nombre a la persona de baja. Emite
+  /// de nuevo cada vez que cambia una agenda, una persona o una ubicación involucrada. Un error al
+  /// leer sale por el `Stream`.
+  Stream<List<ItemAgenda>> observarDeLaCasa({
+    required String colportorId,
+    required String ubicacionId,
+  });
 }

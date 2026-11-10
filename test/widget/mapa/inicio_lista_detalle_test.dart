@@ -11,6 +11,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart'
 import 'package:colportores_mobile/features/mapa/presentation/formato_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/modificar_ubicacion_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/espacios_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_ubicacion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,9 +62,18 @@ Future<_Edicion> _montar(WidgetTester tester) async {
         relojJornadaProvider.overrideWithValue(() => DateTime(2026, 10, 6, 15)),
         ...overridesLista(
           repo: RepoListaFalso([
-            filaLista('a', calle: 'Rivadavia', numero: '100', metrosAlNorte: 25),
-            filaLista('b', calle: 'Mataojo', numero: '2044'),
+            filaLista(
+              'a',
+              tipo: TipoUbicacion.edificio,
+              calle: 'Rivadavia',
+              numero: '100',
+              metrosAlNorte: 25,
+            ),
+            filaLista('b', tipo: TipoUbicacion.edificio, calle: 'Mataojo', numero: '2044'),
+            filaLista('c', calle: 'Colonia', numero: '77'),
           ]),
+          // La distancia sale del GPS único, que ya pasó por el mapa (#651).
+          gpsAbierto: true,
         ),
         ubicacionDeLaHojaProvider.overrideWith(
           (ref, id) => ubicacionGuardada(
@@ -117,6 +127,18 @@ void main() {
       expect(find.text('EDIFICIO'), findsNothing);
     },
   );
+
+  testWidgets('tocar una casa en la Lista abre la hoja de la casa (vista 39), no la de espacios', (
+    tester,
+  ) async {
+    await _montar(tester);
+
+    await tester.tap(find.byKey(const ValueKey('c')));
+    await asentarLista(tester);
+
+    expect(find.byType(HojaCasa), findsOneWidget);
+    expect(find.byKey(ClavesHojaUbicacion.hoja), findsNothing);
+  });
 
   testWidgets('cerrar la hoja vuelve a la Lista, que sigue en la misma pestaña', (tester) async {
     await _montar(tester);

@@ -217,6 +217,16 @@ final ultimoRespaldoDriveProvider = StreamProvider.autoDispose<DateTime?>((ref) 
   yield* motor.status.map((estado) => estado.lastBackupAt);
 });
 
+/// Desde cuándo está conectado el Drive de la persona con la sesión iniciada (#583): de ahí se
+/// cuentan los días «sin respaldo» cuando todavía no hubo ninguno. `null` sin sesión, sin cuenta o si
+/// el almacén no se deja leer. Se vuelve a leer cuando Drive pasa a estar conectado.
+final conectadaDesdeDriveProvider = FutureProvider.autoDispose<DateTime?>((ref) async {
+  final usuarioId = ref.watch(sesionProvider.select((s) => s.value?.usuarioId));
+  if (usuarioId == null) return null;
+  ref.watch(estadoRespaldoDriveProvider.select((estado) => estado.value is DriveConectada));
+  return ref.watch(respaldoDriveRepositoryProvider).conectadaDesde(usuarioId);
+}, retry: _sinReintentos);
+
 /// Se avisó «No conectamos tu Drive. Podés hacerlo cuando quieras.» (16D·07): la persona cerró la
 /// pantalla de Google. El aviso se queda en Configuración hasta que vuelva a intentarlo o salga de
 /// la pantalla.

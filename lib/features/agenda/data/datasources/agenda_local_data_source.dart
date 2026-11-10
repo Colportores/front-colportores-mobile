@@ -70,7 +70,9 @@ abstract interface class AgendaLocalDataSource {
   ///
   /// Un resultado que no cumple la agenda (`TipoResultadoVisita.cumpleLaAgenda`, hoy `NO_CONTESTO`)
   /// guarda la visita y pasa la agenda a `NO_CUMPLIDA` (apuntando a la visita), sin crear una agenda
-  /// cumplida de más: `agendaNoCumplida: true`.
+  /// cumplida de más: `agendaNoCumplida: true`. Una **cuota del plan** (`Agenda.esCuota`) es la
+  /// excepción (decisión del 03/11, #608): «No contestó» guarda la visita y deja la cuota `PROGRAMADA`,
+  /// sin tocarla (`agendaNoCumplida: false`, `agendaAfectadaId: null`).
   ///
   /// Lanza [AgendaRechazadaException] si el espacio de la visita, o su persona (si la hay), no están
   /// en el teléfono. Si la agenda no existe, es de otra casa o de otra persona, o ya no está

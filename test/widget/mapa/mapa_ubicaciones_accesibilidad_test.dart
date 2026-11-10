@@ -314,17 +314,18 @@ void main() {
     );
 
     testWidgets(
-      '«Mi ubicación» con GPS dice solo «Mi ubicación», sin motivo ni pista, y se puede tocar',
+      '«Mi ubicación» con GPS dice el modo del seguimiento («Mapa libre»), sin motivo ni pista, y se '
+      'puede tocar',
       (tester) async {
         final semantica = tester.ensureSemantics();
         await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
 
         final nodo = tester.getSemantics(botonMiUbicacion).getSemanticsData();
-        expect(nodo.label, 'Mi ubicación');
+        expect(nodo.label, 'Mapa libre');
         expect(nodo.hint, isEmpty);
         expect(nodo.hasAction(SemanticsAction.tap), isTrue);
         expect(_lecturasDe(tester, 'No disponible'), 0);
-        expect(_lecturasDe(tester, 'Mi ubicación'), 1);
+        expect(_lecturasDe(tester, 'Mapa libre'), 1);
         semantica.dispose();
       },
       variant: const TargetPlatformVariant({TargetPlatform.android, TargetPlatform.iOS}),
@@ -354,7 +355,7 @@ void main() {
     );
 
     testWidgets(
-      '«Mi ubicación» pasa de «buscando GPS…» a «Mi ubicación» cuando llega la lectura y no queda el '
+      '«Mi ubicación» pasa de «buscando GPS…» a «Mapa libre» cuando llega la lectura y no queda el '
       'motivo viejo',
       (tester) async {
         final semantica = tester.ensureSemantics();
@@ -371,7 +372,7 @@ void main() {
         await asentarLista(tester);
 
         final nodo = tester.getSemantics(botonMiUbicacion).getSemanticsData();
-        expect(nodo.label, 'Mi ubicación');
+        expect(nodo.label, 'Mapa libre');
         expect(nodo.hint, isEmpty);
         expect(nodo.hasAction(SemanticsAction.tap), isTrue);
         expect(_lecturasDe(tester, 'No disponible'), 0);

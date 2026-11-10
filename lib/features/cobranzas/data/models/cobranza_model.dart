@@ -5,6 +5,9 @@ import '../../domain/entities/cobranza.dart';
 /// de `public.cobranza` (`backend-supabase`, migración 0001) y las fechas en ISO-8601 UTC. Un test
 /// fija la lista exacta de claves.
 ///
+/// El cobro **no** manda `numero_cuota` (decisión del 03/11, #608: qué cuotas cubrió un cobro se
+/// calcula con los cobros y las cuotas; el servidor sacó la columna en la migración 0156).
+///
 /// **Sin dato del cliente** (ADR-004, R-CB03): `venta_id` es un id opaco.
 abstract final class CobranzaModel {
   static Map<String, Object?> toJson(Cobranza cobro) => {
@@ -13,7 +16,12 @@ abstract final class CobranzaModel {
     'monto': cobro.montoCentavos,
     'medio': codigoDelMedio(cobro.medio),
     'fecha': cobro.fecha.toIso8601String(),
-    'numero_cuota': cobro.numeroCuota,
+    'tarjeta_tipo': cobro.tarjetaTipo == null ? null : codigoDelTipoDeTarjeta(cobro.tarjetaTipo!),
+    'tarjeta_marca': cobro.tarjetaMarca,
+    'numero_aprobacion': cobro.numeroAprobacion,
+    'referencia_transferencia': cobro.referenciaTransferencia,
+    'banco_origen': cobro.bancoOrigen,
+    'ticket_id': cobro.ticketId,
     ...auditoriaAJson(cobro.auditoria),
   };
 
@@ -21,6 +29,19 @@ abstract final class CobranzaModel {
     MedioCobranza.efectivo => 'EFECTIVO',
     MedioCobranza.tarjeta => 'TARJETA',
     MedioCobranza.transferencia => 'TRANSFERENCIA',
+  };
+
+  static String codigoDelTipoDeTarjeta(TipoTarjeta tipo) => switch (tipo) {
+    TipoTarjeta.debito => 'DEBITO',
+    TipoTarjeta.credito => 'CREDITO',
+  };
+
+  /// El tipo de tarjeta de un código guardado; `null` si no hay o no se reconoce (un dato opcional
+  /// nunca tumba la lectura del cobro).
+  static TipoTarjeta? tipoDeTarjetaDesdeCodigo(String? codigo) => switch (codigo) {
+    'DEBITO' => TipoTarjeta.debito,
+    'CREDITO' => TipoTarjeta.credito,
+    _ => null,
   };
 
   static MedioCobranza medioDesdeCodigo(String codigo) => switch (codigo) {

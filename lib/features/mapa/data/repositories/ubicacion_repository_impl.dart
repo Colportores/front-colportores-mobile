@@ -393,6 +393,7 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
               cantidadEspacios: f.cantidadEspacios,
               estado: EstadoCasa.desdeColor(f.color),
               motivoBaja: f.motivoBaja,
+              proximaEntrevista: f.proximaEntrevista,
             ),
         ],
       );

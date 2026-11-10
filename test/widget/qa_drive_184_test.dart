@@ -4,9 +4,7 @@
 // implementación no prueba: reintentos, acciones superpuestas, falla a mitad, datos límite,
 // semántica del lector de pantalla y privacidad.
 //
-// Los tests con `skip` documentan un hallazgo del QA (#184): el implementador saca el `skip` cuando
-// lo arregla. `--dart-define=QA_CAPTURAS=true` saca una captura de cada celda en
-// `.dart_tool/qa_capturas/`.
+// `--dart-define=QA_CAPTURAS=true` saca una captura de cada celda en `.dart_tool/qa_capturas/`.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -31,9 +29,6 @@ Future<void> _arriba(WidgetTester tester) async {
   await tester.drag(find.byType(Scrollable).first, const Offset(0, 6000));
   await tester.pumpAndSettle();
 }
-
-/// `--dart-define=QA_HALLAZGOS=true` corre también los tests que documentan un hallazgo.
-const verHallazgos184 = bool.fromEnvironment('QA_HALLAZGOS');
 
 String _celda(Estado184 e, Size t, double escala) =>
     '${e.rotulo} · ${t.width.toInt()}x${t.height.toInt()} · texto ${escala}x';
@@ -333,15 +328,22 @@ void main() {
       expect(find.textContaining('reinstalar'), findsNothing);
     });
 
-    testWidgets(
-      'el aviso de «No conectamos tu Drive» queda a la vista a 360×640 con texto 2,0',
-      (tester) async {
-        await montar184(tester, Estado184.cancelo, escala: 2);
-        expect(avisoCancelado184, findsOneWidget);
-        expect(enPantalla184(tester, avisoCancelado184), isTrue);
-      },
-      skip: !verHallazgos184,
-    ); // skip: decidido por el agente de decisiones (pendiente 184-qa P2): el aviso queda arriba, como en el canvas.
+    // Decisión del agente de decisiones (pendiente 184-qa P2): el aviso queda arriba de la fila,
+    // como en el canvas; con texto 2,0 en una pantalla chica queda sobre el borde de arriba y se
+    // llega a él desplazando. No se lo baja para que entre junto a la fila.
+    testWidgets('el aviso de «No conectamos tu Drive» queda arriba de la fila, como en el canvas, '
+        'y se llega a él a 360×640 con texto 2,0', (tester) async {
+      await montar184(tester, Estado184.cancelo, escala: 2);
+      expect(avisoCancelado184, findsOneWidget);
+      expect(
+        tester.getRect(avisoCancelado184).bottom,
+        lessThanOrEqualTo(tester.getRect(fila184).top),
+        reason: 'el aviso va arriba de la fila de Drive',
+      );
+
+      await _arriba(tester);
+      expect(enPantalla184(tester, avisoCancelado184), isTrue);
+    });
   });
 
   group('Texto grande: la fila se lee', () {

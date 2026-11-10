@@ -442,5 +442,29 @@ void main() {
       expect(montaje.almacen.guardadas, hasLength(1));
       expect(alTocar(tester), isNotNull);
     });
+
+    testWidgets(
+      '«Sí, registrar la venta» no abre la venta con la cuenta restringida (a la espera de '
+      'Cristian, «Venta susp.»): nada se guarda y la jornada sigue abierta',
+      (tester) async {
+        await montaje.almacen.guardar(entrevistaDePrueba());
+        await montar(tester);
+
+        await tocarTerminar(tester);
+        await tester.tap(find.byKey(ClavesEntrevista.filaSalida));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('hoja_hora_usar')));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(ClavesEntrevista.registrarVenta));
+        await tester.tap(find.byKey(ClavesEntrevista.registrarVenta));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('nueva_venta_pagina')), findsNothing);
+        expect(local.unica.estaAbierta, isTrue);
+        expect(montaje.agenda.recibidas, isEmpty);
+        expect(montaje.almacen.guardadas, hasLength(1));
+        expect(alTocar(tester), isNotNull);
+      },
+    );
   });
 }

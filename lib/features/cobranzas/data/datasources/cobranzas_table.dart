@@ -8,8 +8,11 @@ import '../../../../core/database/fecha_utc_converter.dart';
 /// diferencias de motor de [Ventas]: fechas en epoch ms UTC, sin claves foráneas y sin defaults de
 /// servidor. El dinero va en **centavos** (`int`), nunca `double`.
 ///
-/// Esta versión lleva las columnas del cobro en efectivo (HU-COB-001). Los datos de la tarjeta y la
-/// transferencia (#396) y la anulación (#422) suman sus columnas con sus HU.
+/// Esta versión lleva las columnas del cobro en efectivo (HU-COB-001) y los datos opcionales de la
+/// tarjeta y de la transferencia (HU-COB-002 y HU-COB-003, #396; migración 0072 del backend). La
+/// anulación (#422) suma sus columnas con su HU. El servidor cuida que los datos de la tarjeta vayan
+/// solo en un cobro con TARJETA y los de la transferencia solo en uno con TRANSFERENCIA; acá lo cuida
+/// el caso de uso, que nunca arma otra cosa.
 ///
 /// **Sin dato del cliente** (ADR-004, R-CB03): la cobranza cuelga de la venta por un id opaco.
 @DataClassName('CobranzaFila')
@@ -32,8 +35,24 @@ class Cobranzas extends Table {
   /// Cuándo pagó el cliente (`fecha_pago`).
   IntColumn get fecha => integer().map(const FechaUtcConverter())();
 
-  /// Número de cuota (HU-COB-004); `null` si el cobro no es de una cuota.
-  IntColumn get numeroCuota => integer().nullable()();
+  /// `DEBITO` o `CREDITO`; solo con TARJETA. Opcional.
+  TextColumn get tarjetaTipo => text().nullable()();
+
+  /// La marca de la tarjeta, 1 a 40 caracteres; solo con TARJETA. Opcional.
+  TextColumn get tarjetaMarca => text().nullable()();
+
+  /// El número de aprobación del ticket, 1 a 40 caracteres; solo con TARJETA. Opcional.
+  TextColumn get numeroAprobacion => text().nullable()();
+
+  /// El número de operación de la transferencia, 1 a 40 caracteres; solo con TRANSFERENCIA. Opcional.
+  TextColumn get referenciaTransferencia => text().nullable()();
+
+  /// El banco de origen, como texto de 1 a 60 caracteres; solo con TRANSFERENCIA. Opcional.
+  TextColumn get bancoOrigen => text().nullable()();
+
+  /// El ticket del cobro con tarjeta (HU-COB-007, #426): el id de una fila de `ticket`. Opcional; se
+  /// completa cuando el colportor carga el ticket. Es un id opaco, sin dato del cliente.
+  TextColumn get ticketId => text().nullable()();
 
   IntColumn get createdAt => integer().map(const FechaUtcConverter())();
 

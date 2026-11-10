@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import 'package:flutter/services.dart'
+    show TextInputFormatter, TextEditingValue, TextSelection, TextRange;
 
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../../domain/entities/cliente_de_la_venta.dart';
@@ -200,6 +201,26 @@ class RotuloDeSeccion extends StatelessWidget {
   }
 }
 
+/// Corta lo escrito o pegado en [maximo] puntos de código (`runes`), la misma medida que usan el caso
+/// de uso y el servidor para el talonario y el motivo.
+class LimitarPuntosDeCodigo extends TextInputFormatter {
+  const LimitarPuntosDeCodigo(this.maximo);
+
+  final int maximo;
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue anterior, TextEditingValue nuevo) {
+    final puntos = nuevo.text.runes;
+    if (puntos.length <= maximo) return nuevo;
+    final cortado = String.fromCharCodes(puntos.take(maximo));
+    return TextEditingValue(
+      text: cortado,
+      selection: TextSelection.collapsed(offset: cortado.length),
+      composing: TextRange.empty,
+    );
+  }
+}
+
 /// Un campo de texto con su rótulo, un texto de ayuda y, si hay, un error (talonario repetido,
 /// monto inválido). Con error el borde y el texto van en rojo, y el lector lo anuncia.
 class CampoDeVenta extends StatelessWidget {
@@ -217,6 +238,7 @@ class CampoDeVenta extends StatelessWidget {
     this.icono,
     this.habilitado = true,
     this.autofocus = false,
+    this.autocorregir = true,
   });
 
   final String? rotulo;
@@ -233,6 +255,10 @@ class CampoDeVenta extends StatelessWidget {
 
   /// Abre el teclado al mostrarse (el monto del cobro, vista 28).
   final bool autofocus;
+
+  /// `false` en los campos de códigos (el número de aprobación, la referencia): sin corrector ni
+  /// sugerencias del teclado.
+  final bool autocorregir;
 
   @override
   Widget build(BuildContext context) {
@@ -252,13 +278,17 @@ class CampoDeVenta extends StatelessWidget {
             onChanged: alCambiar,
             enabled: habilitado,
             autofocus: autofocus,
+            autocorrect: autocorregir,
+            enableSuggestions: autocorregir,
             keyboardType: teclado,
             minLines: lineas,
             maxLines: lineas,
-            maxLength: maxLargo,
-            maxLengthEnforcement: MaxLengthEnforcement.enforced,
-            buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+            // El tope cuenta puntos de código, como el caso de uso y el servidor: `maxLength` cuenta
+            // grafemas, y un emoji compuesto (👨‍👩‍👧) es uno para él y cinco para ellos.
+            inputFormatters: [if (maxLargo != null) LimitarPuntosDeCodigo(maxLargo!)],
             decoration: InputDecoration(
+              // Alto mínimo de toque: 48 dp en Android (44 pt en iOS), también con texto 1,0.
+              constraints: lineas == 1 ? const BoxConstraints(minHeight: 48) : null,
               // Con texto de ejemplo (`hint`) el rótulo no va adentro: taparía el ejemplo. El rótulo de
               // arriba es solo visual, así que el lector lo recibe por el `Semantics` de afuera.
               labelText: hint == null ? rotulo : null,
@@ -651,6 +681,17 @@ class TarjetaDeRenglon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Con texto grande (≥ 150 %) el precio al costado le deja al nombre un ancho en el que parte las
+    // palabras: pasa debajo del detalle y el nombre usa todo el ancho que queda.
+    final apilado = MediaQuery.textScalerOf(context).scale(14) / 14 >= 1.5;
+    final precioEnFila = Text(
+      precio,
+      style: const TextStyle(
+        fontFamily: 'JetBrainsMono',
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
+    );
     final fila = Container(
       constraints: const BoxConstraints(minHeight: 56),
       padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
@@ -688,20 +729,11 @@ class TarjetaDeRenglon extends StatelessWidget {
                 Text(titulo, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
                 if (detalle != null)
                   Text(detalle!, style: const TextStyle(fontSize: 12, color: ColoresAgenda.gris)),
+                if (apilado) precioEnFila,
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(left: 8),
-            child: Text(
-              precio,
-              style: const TextStyle(
-                fontFamily: 'JetBrainsMono',
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          if (!apilado) Padding(padding: const EdgeInsets.only(left: 8), child: precioEnFila),
           IconButton(
             tooltip: TextosVenta.quitar,
             onPressed: alQuitar,
@@ -888,10 +920,16 @@ class BotonDeVenta extends StatelessWidget {
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const SizedBox(
+                    SizedBox(
                       width: 22,
                       height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                        // Sin texto al lado, la ruedita es todo lo que hay: el lector dice qué pasa.
+                        // Con texto al lado, ese texto ya lo dice: no se lee dos veces.
+                        semanticsLabel: textoOcupado == null ? TextosVenta.guardando : null,
+                      ),
                     ),
                     if (textoOcupado != null) ...[
                       const SizedBox(width: 10),

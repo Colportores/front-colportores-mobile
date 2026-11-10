@@ -64,13 +64,15 @@ void main() {
     logger: loggerMudo(),
   );
 
-  DbLocalRepositoryImpl construir({AppLogger? logger}) => DbLocalRepositoryImpl(
-    custodia: custodia(),
-    seguridad: seguridad,
-    helper: helper,
-    dbLocal: container.read(dbLocalProvider.notifier),
-    logger: logger ?? loggerMudo(),
-  );
+  DbLocalRepositoryImpl construir({AppLogger? logger, void Function()? alEnvolver}) =>
+      DbLocalRepositoryImpl(
+        custodia: custodia(),
+        seguridad: seguridad,
+        helper: helper,
+        dbLocal: container.read(dbLocalProvider.notifier),
+        alEnvolver: alEnvolver,
+        logger: logger ?? loggerMudo(),
+      );
 
   setUp(() async {
     directorio = await Directory.systemTemp.createTemp('colportores_db_local_repo_test');
@@ -132,6 +134,45 @@ void main() {
       expect(_derecha(await repo.abrir(leida)), unit, reason: 'abre sin la contraseña');
     },
   );
+
+  group('al rehacerse el envoltorio por contraseña (HU-SYNC-006)', () {
+    test('avisa una vez por cada envoltorio nuevo, para que Drive tenga el último', () async {
+      var avisos = 0;
+      repo = construir(alEnvolver: () => avisos++);
+      final dek = _derecha(await repo.crearDek());
+
+      _derecha(await repo.envolverConPassword(dek, 'secreto123'));
+      expect(avisos, 1);
+
+      _derecha(await repo.envolverConPassword(dek, 'NuevaClave1'));
+      expect(avisos, 2, reason: 'cambiar la contraseña sube el envoltorio de nuevo');
+    });
+
+    test('si falla el envoltorio, no avisa: no hay nada nuevo que subir', () async {
+      var avisos = 0;
+      repo = construir(alEnvolver: () => avisos++);
+      proveedor.falla = const CriptoException('derivar', 'sin memoria');
+      final dek = _derecha(await repo.crearDek());
+
+      _izquierda(await repo.envolverConPassword(dek, 'secreto123'));
+
+      expect(avisos, 0);
+    });
+
+    test('si el aviso explota, el envoltorio igual quedó hecho y la operación sale bien', () async {
+      final salida = _SalidaEnMemoria();
+      repo = construir(
+        logger: AppLogger(output: salida),
+        alEnvolver: () => throw StateError('sin Drive'),
+      );
+      final dek = _derecha(await repo.crearDek());
+
+      _derecha(await repo.envolverConPassword(dek, 'secreto123'));
+
+      expect(_derecha(await repo.desenvolverConPassword('secreto123')).bytes, dek.bytes);
+      expect(salida.lineas.join('\n'), contains('ENVOLTORIO_AVISO'));
+    });
+  });
 
   test('dada la DEK envuelta, la contraseña la desenvuelve; otra contraseña no', () async {
     final dek = _derecha(await repo.crearDek());

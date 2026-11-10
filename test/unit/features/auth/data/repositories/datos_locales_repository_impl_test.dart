@@ -17,11 +17,14 @@ import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_da
 import 'package:colportores_mobile/features/auth/data/datasources/backup_drive_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/datos_locales_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resumen_datos_locales.dart';
+import 'package:colportores_mobile/features/tickets/data/services/almacen_de_fotos_en_disco.dart';
+import 'package:colportores_mobile/features/tickets/domain/entities/ticket.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../../helpers/logger_mudo.dart';
 import '../../../../../helpers/proveedor_clave_db_falso.dart';
+import '../../../../../helpers/tickets_falsos.dart';
 
 final class _DriveFake implements BackupDriveDataSource {
   bool hay = true;
@@ -269,6 +272,71 @@ void main() {
         await esperarDekOlvidada();
       },
     );
+
+    test(
+      'borra también la carpeta tickets/ con las fotos sin cifrar de los comprobantes',
+      () async {
+        await abrirConJornadas(0);
+        await guardarDekYEnvoltorio();
+        final fotos = AlmacenDeFotosEnDisco(directorio.path);
+        await fotos.guardar('t-1', TipoDeImagen.jpeg, fotoDePrueba());
+        await fotos.guardar('t-2', TipoDeImagen.png, fotoDePrueba(500));
+        final carpeta = Directory('${directorio.path}${Platform.pathSeparator}tickets');
+        expect(carpeta.listSync(), hasLength(2));
+        final conFotos = DatosLocalesRepositoryImpl(
+          helper,
+          () => db,
+          () async {
+            await helper.cerrar();
+            db = null;
+          },
+          custodia,
+          drive,
+          borrarFotosDeTickets: fotos.borrarTodo,
+          logger: loggerMudo(),
+        );
+
+        final r = await conFotos.borrar(incluirBackupDrive: false);
+
+        expect(r.isRight(), isTrue);
+        expect(carpeta.existsSync(), isFalse);
+        expect(await helper.existe(), isFalse);
+      },
+    );
+
+    test('si no se pueden borrar las fotos de los tickets, el borrado falla y reintentar lo '
+        'termina (nunca se da por borrado con fotos sueltas)', () async {
+      await abrirConJornadas(0);
+      await guardarDekYEnvoltorio();
+      final fotos = AlmacenDeFotosEnDisco(directorio.path);
+      await fotos.guardar('t-1', TipoDeImagen.jpeg, fotoDePrueba());
+      var intentos = 0;
+      final conFalla = DatosLocalesRepositoryImpl(
+        helper,
+        () => db,
+        () async {
+          await helper.cerrar();
+          db = null;
+        },
+        custodia,
+        drive,
+        borrarFotosDeTickets: () async {
+          intentos++;
+          if (intentos == 1) throw const FileSystemException('bloqueada');
+          await fotos.borrarTodo();
+        },
+        logger: loggerMudo(),
+      );
+
+      final primero = await conFalla.borrar(incluirBackupDrive: false);
+      expect(primero.isLeft(), isTrue);
+      expect(Directory('${directorio.path}${Platform.pathSeparator}tickets').existsSync(), isTrue);
+
+      final segundo = await conFalla.borrar(incluirBackupDrive: false, reintento: true);
+
+      expect(segundo.isRight(), isTrue);
+      expect(Directory('${directorio.path}${Platform.pathSeparator}tickets').existsSync(), isFalse);
+    });
 
     test(
       'sin pendientes, cierra y borra la DB, olvida la DEK y su envoltorio y respeta Drive',

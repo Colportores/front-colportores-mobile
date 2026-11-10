@@ -21,6 +21,10 @@ enum OpcionQuePaso {
 
   /// Sigue al cobro (C·08, #440). Solo se ofrece si alguien de la casa debe.
   cobranza,
+
+  /// Sigue a la venta (vista 27) de la persona de la última entrevista dada (decisión de Cristian,
+  /// 04/11, «Vender desde el mapa»). Solo se ofrece si en la casa ya hubo una entrevista dada.
+  vender,
 }
 
 /// Lo que pasó al elegir una opción: la hoja se cierra, queda abierta sin decir nada (la colportora
@@ -39,20 +43,32 @@ final class OpcionCancelada extends SalidaDeOpcion {
   const OpcionCancelada();
 }
 
+/// Un botón del aviso de falla: lleva a donde se arregla lo que el aviso dice (por ejemplo, a la
+/// entrevista en curso de otra casa). Corre como una opción más: mientras corre, la hoja no admite otro
+/// toque, y lo que devuelve se resuelve igual que lo de [mostrarHojaQuePaso.alElegir].
+typedef AccionDeFalla = ({String etiqueta, Future<SalidaDeOpcion> Function() alTocar});
+
 /// No se pudo: la hoja sigue abierta con [texto] (qué pasó y qué hacer) y se puede volver a elegir.
+/// Con [accion], el aviso lleva además su botón.
 final class OpcionFallida extends SalidaDeOpcion {
-  const OpcionFallida(this.texto);
+  const OpcionFallida(this.texto, {this.accion});
 
   final String texto;
+  final AccionDeFalla? accion;
 }
 
 /// Quién debe y cuánto, para la ayuda de «Cobranza».
 typedef CobroOfrecido = ({String persona, int saldoCentavos});
 
+/// A quién se le vende, para la ayuda de «Vender»: la persona de la última entrevista dada, o `null` si
+/// la casa tiene más de una persona entrevistada (se pregunta a quién al tocar).
+typedef VentaOfrecida = ({String? persona});
+
 /// Las claves de la hoja (para los tests y la QA).
 abstract final class ClavesQuePaso {
   static const hoja = Key('que_paso_hoja');
   static const falla = Key('que_paso_falla');
+  static const accionDeLaFalla = Key('que_paso_falla_accion');
   static const guardando = Key('que_paso_guardando');
   static Key opcion(OpcionQuePaso o) => Key('que_paso_${o.name}');
   static const cancelar = Key('que_paso_cancelar');
@@ -102,6 +118,7 @@ Future<bool> mostrarHojaQuePaso(
   required Set<OpcionQuePaso> ofrecidas,
   required Future<SalidaDeOpcion> Function(OpcionQuePaso opcion) alElegir,
   CobroOfrecido? cobro,
+  VentaOfrecida? venta,
 }) async {
   final resultado = await showModalBottomSheet<bool>(
     context: context,
@@ -114,8 +131,13 @@ Future<bool> mostrarHojaQuePaso(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) =>
-        HojaQuePaso(direccion: direccion, ofrecidas: ofrecidas, cobro: cobro, alElegir: alElegir),
+    builder: (_) => HojaQuePaso(
+      direccion: direccion,
+      ofrecidas: ofrecidas,
+      cobro: cobro,
+      venta: venta,
+      alElegir: alElegir,
+    ),
   );
   return resultado ?? false;
 }
@@ -132,11 +154,13 @@ class HojaQuePaso extends StatefulWidget {
     required this.ofrecidas,
     required this.alElegir,
     this.cobro,
+    this.venta,
   });
 
   final String direccion;
   final Set<OpcionQuePaso> ofrecidas;
   final CobroOfrecido? cobro;
+  final VentaOfrecida? venta;
   final Future<SalidaDeOpcion> Function(OpcionQuePaso opcion) alElegir;
 
   @override
@@ -151,19 +175,34 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
   /// Ya se está cerrando: ningún otro toque cierra otra vez.
   var _cerrando = false;
 
+  /// Corre el botón de un aviso de falla (no es ninguna de las opciones): tampoco admite otro toque.
+  var _ocupadaPorAccion = false;
+
   String? _falla;
+  AccionDeFalla? _accionDeLaFalla;
 
   /// Donde vive el aviso de falla: para llevar la hoja hasta él (con texto grande la persona ya
   /// bajó hasta el renglón que tocó).
   final _lugarDeLaFalla = GlobalKey();
 
-  Future<void> _elegir(OpcionQuePaso opcion) async {
-    if (_corriendo != null || _cerrando) return;
+  Future<void> _elegir(OpcionQuePaso opcion) => _correr(opcion, () => widget.alElegir(opcion));
+
+  /// El botón del aviso de falla: corre como una opción más (un solo toque a la vez).
+  Future<void> _tocarAccion(AccionDeFalla accion) => _correr(null, accion.alTocar);
+
+  /// Corre [hacer] con la hoja ocupada (el renglón [opcion], si es una opción) y resuelve cómo salió.
+  /// Pase lo que pase —incluso si [hacer] lanza— la hoja vuelve a admitir un toque.
+  Future<void> _correr(OpcionQuePaso? opcion, Future<SalidaDeOpcion> Function() hacer) async {
+    if (_corriendo != null || _cerrando || _ocupadaPorAccion) return;
     _corriendo = opcion;
-    setState(() => _falla = null);
+    _ocupadaPorAccion = opcion == null;
+    setState(() {
+      _falla = null;
+      _accionDeLaFalla = null;
+    });
     SalidaDeOpcion salida;
     try {
-      salida = await widget.alElegir(opcion);
+      salida = await hacer();
     } on Object {
       // Nada del error al mensaje: puede traer datos de la casa (convenciones §7.5).
       salida = const OpcionFallida(TextosRegistrarVisita.noPudimosGuardar);
@@ -174,11 +213,16 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
         _cerrando = true;
         Navigator.of(context).pop(true);
       case OpcionCancelada():
-        setState(() => _corriendo = null);
-      case OpcionFallida(:final texto):
         setState(() {
           _corriendo = null;
+          _ocupadaPorAccion = false;
+        });
+      case OpcionFallida(:final texto, :final accion):
+        setState(() {
+          _corriendo = null;
+          _ocupadaPorAccion = false;
           _falla = texto;
+          _accionDeLaFalla = accion;
         });
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final lugar = _lugarDeLaFalla.currentContext;
@@ -195,13 +239,14 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
   }
 
   void _cancelar() {
-    if (_corriendo != null || _cerrando) return;
+    if (_corriendo != null || _ocupadaPorAccion || _cerrando) return;
     _cerrando = true;
     Navigator.of(context).pop(false);
   }
 
   List<_Fila> _filas() {
     final cobro = widget.cobro;
+    final venta = widget.venta;
     return [
       if (widget.ofrecidas.contains(OpcionQuePaso.noContesto))
         const _Fila(
@@ -245,13 +290,24 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
           fondo: ColoresAlta.azul,
           redondo: false,
         ),
+      if (widget.ofrecidas.contains(OpcionQuePaso.vender) && venta != null)
+        _Fila(
+          opcion: OpcionQuePaso.vender,
+          titulo: TextosRegistrarVisita.vender,
+          ayuda: venta.persona == null
+              ? TextosRegistrarVisita.ayudaVenderVarias
+              : TextosRegistrarVisita.ayudaVender(venta.persona!),
+          glifo: '+',
+          fondo: ColoresAlta.azul,
+        ),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final ocupada = _corriendo != null;
+    final ocupada = _corriendo != null || _ocupadaPorAccion;
+    final accion = _accionDeLaFalla;
     return PopScope(
       // Mientras corre una opción no se sale: el resultado se perdería.
       canPop: !ocupada,
@@ -284,6 +340,16 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
                   color: ColoresAlta.rojo,
                   glyph: '!',
                   texto: _falla!,
+                  acciones: accion == null
+                      ? null
+                      : Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: EnlaceAlta(
+                            key: ClavesQuePaso.accionDeLaFalla,
+                            texto: accion.etiqueta,
+                            alPresionar: ocupada ? null : () => unawaited(_tocarAccion(accion)),
+                          ),
+                        ),
                 ),
               ),
               const SizedBox(height: 12),
