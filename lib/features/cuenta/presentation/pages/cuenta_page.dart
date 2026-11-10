@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../depositos/presentation/pages/registrar_deposito_page.dart';
+import '../../../depositos/presentation/providers/depositos_providers.dart'
+    show ticketsDeDepositoSinSubirProvider;
+import '../../../depositos/presentation/widgets/aviso_tickets_sin_subir.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../domain/entities/resumen_de_cuenta.dart';
 import '../providers/cuenta_providers.dart';
@@ -149,6 +152,10 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                       ref.read(deudaConLaCasaProvider(widget.colportorId).notifier).actualizar(),
                     ),
                   ),
+                // 38A-08: la foto de un ticket de depósito no pudo subir. Solo cuando pasa, para no
+                // sumar un hueco a la columna.
+                if ((ref.watch(ticketsDeDepositoSinSubirProvider).value ?? 0) > 0)
+                  const AvisoDeTicketsSinSubir(),
                 TarjetaDeDeuda(colportorId: widget.colportorId),
                 for (final tipo in TipoDeCifra.values)
                   if (_cifraDe(tipo, datos) case final cifra?)
@@ -160,10 +167,14 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                     ),
                 AccionesDeCuenta(
                   acciones: [
-                    (
+                    AccionDeCuenta(
                       texto: TextosCuenta.registrarDeposito,
                       clave: const Key('cuenta_registrar_deposito'),
                       alTocar: () => unawaited(_registrarDeposito()),
+                      // Con $ 0 en mano no hay qué depositar (como 33C·03, que no dibuja el botón).
+                      apagadaPorque: datos.enMano.totalCentavos > 0
+                          ? null
+                          : TextosCuenta.sinPlataParaDepositar,
                     ),
                   ],
                 ),

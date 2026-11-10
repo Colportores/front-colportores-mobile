@@ -412,16 +412,36 @@ class BannerErrorCuenta extends StatelessWidget {
   }
 }
 
+/// Un atajo de «ACCIONES» (33A·01). Con [apagadaPorque] la pastilla queda apagada y debajo se dice
+/// por qué: no se ofrece algo que no se puede hacer.
+final class AccionDeCuenta {
+  const AccionDeCuenta({
+    required this.texto,
+    required this.clave,
+    required this.alTocar,
+    this.apagadaPorque,
+  });
+
+  final String texto;
+  final Key clave;
+  final VoidCallback alTocar;
+  final String? apagadaPorque;
+}
+
 /// «ACCIONES» de 33A·01: los atajos de la plata, como pastillas de 48 dp de alto que se acomodan en
 /// varias líneas con el texto grande.
 class AccionesDeCuenta extends StatelessWidget {
   const AccionesDeCuenta({super.key, required this.acciones});
 
-  /// Cada acción con su texto, su clave y qué hace.
-  final List<({String texto, Key clave, VoidCallback alTocar})> acciones;
+  /// Cada acción con su texto, su clave, qué hace y, si está apagada, por qué.
+  final List<AccionDeCuenta> acciones;
 
   @override
   Widget build(BuildContext context) {
+    final motivos = [
+      for (final a in acciones)
+        if (a.apagadaPorque case final motivo?) (clave: a.clave, motivo: motivo),
+    ];
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Column(
@@ -446,11 +466,14 @@ class AccionesDeCuenta extends StatelessWidget {
               for (final a in acciones)
                 OutlinedButton(
                   key: a.clave,
-                  onPressed: a.alTocar,
+                  onPressed: a.apagadaPorque == null ? a.alTocar : null,
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(48, 48),
                     foregroundColor: ColoresCuenta.azul,
+                    // Apagada: gris legible (el motivo se lee debajo), no el 38 % de Material.
+                    disabledForegroundColor: ColoresCuenta.gris,
                     backgroundColor: Colors.white,
+                    disabledBackgroundColor: ColoresCuenta.grisFondo,
                     side: const BorderSide(color: ColoresCuenta.borde, width: 1.5),
                     shape: const StadiumBorder(),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -462,6 +485,15 @@ class AccionesDeCuenta extends StatelessWidget {
                 ),
             ],
           ),
+          for (final m in motivos)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                m.motivo,
+                key: ValueKey(('motivo', m.clave)),
+                style: const TextStyle(fontSize: 13, height: 1.35, color: ColoresCuenta.gris),
+              ),
+            ),
         ],
       ),
     );

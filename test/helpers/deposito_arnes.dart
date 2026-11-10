@@ -131,6 +131,7 @@ final class ArnesDeDeposito {
     this.conexion = TipoConexion.wifi,
     this.legible = true,
     RepositorioDeCuentaControlable? cuenta,
+    this.extras = const [],
   }) : depositos = depositos ?? DepositosFalsos(),
        capturador = capturador ?? CapturadorGuionado(),
        cuenta = cuenta ?? RepositorioDeCuentaControlable(inicial: resumenDelCanvas);
@@ -147,6 +148,9 @@ final class ArnesDeDeposito {
   /// El compresor puede leer la foto.
   final bool legible;
   final RepositorioDeCuentaControlable cuenta;
+
+  /// Overrides de más que suma un test (los tickets sin subir de 38A-08, por ejemplo).
+  final List<Override> extras;
 
   var _depositoIds = 0;
   var _ticketIds = 0;
@@ -170,6 +174,7 @@ final class ArnesDeDeposito {
     compresorDeImagenProvider.overrideWithValue(CompresorDePrueba([900], legible: legible)),
     campaniaDelAlquilerProvider.overrideWith((ref, _) async => campania),
     conexionProvider.overrideWith((ref) => Stream.value(conexion)),
+    ...extras,
   ];
 }
 
