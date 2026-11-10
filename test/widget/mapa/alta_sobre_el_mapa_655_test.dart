@@ -202,6 +202,30 @@ void main() {
       expect(_estado(tester)!.numero.fuente, FuenteCampo.delMapa);
     });
 
+    testWidgets('si la pestaña se desmonta con el alta abierta, al cerrarla el mapa vuelve a '
+        'estar libre y al volver se puede sumar otra casa', (tester) async {
+      final a = await _montar(tester);
+      await _abrir(tester);
+      final contenedor = contenedorDeLaPestana(tester);
+      expect(contenedor.read(mapaPrincipalProvider), isA<ColocandoPin>());
+
+      a.m.montada.value = false;
+      await _asentar(tester);
+      await tester.binding.handlePopRoute();
+      await _asentar(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(_hojaAlta, findsNothing);
+      expect(contenedor.read(mapaPrincipalProvider), const Explorando());
+
+      a.m.montada.value = true;
+      await _asentar(tester);
+      expect(botonNueva, findsOneWidget);
+      await _abrir(tester);
+      expect(_hojaAlta, findsOneWidget);
+      expect(_pin, findsOneWidget);
+    });
+
     testWidgets('dos toques seguidos al pin abren un solo alta', (tester) async {
       await _montar(tester);
 

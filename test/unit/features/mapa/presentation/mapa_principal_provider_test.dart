@@ -74,6 +74,26 @@ void main() {
     expect(contenedor.read(mapaPrincipalProvider), const Explorando());
   });
 
+  test('terminar un alta vuelve a explorar solo si el mapa sigue en esa alta', () {
+    const primera = ParametrosAlta(colportorId: 'col-1', apertura: 1);
+    const segunda = ParametrosAlta(colportorId: 'col-1', apertura: 2);
+
+    mapa
+      ..cambiarModo(const ColocandoPin(primera))
+      ..terminarAlta(primera);
+    expect(contenedor.read(mapaPrincipalProvider), const Explorando());
+
+    mapa
+      ..cambiarModo(const ColocandoPin(segunda))
+      ..terminarAlta(primera);
+    expect(contenedor.read(mapaPrincipalProvider), const ColocandoPin(segunda));
+
+    mapa
+      ..cambiarModo(const CasaElegida('u-1'))
+      ..terminarAlta(segunda);
+    expect(contenedor.read(mapaPrincipalProvider), const CasaElegida('u-1'));
+  });
+
   test('soltar un controlador viejo no suelta el nuevo (la pestaña se rearmó)', () {
     final viejo = _ControladorFalso(const CamaraMapa(centro: _montevideo, zoom: 12));
     final nuevo = _ControladorFalso(const CamaraMapa(centro: _grecia, zoom: 15));

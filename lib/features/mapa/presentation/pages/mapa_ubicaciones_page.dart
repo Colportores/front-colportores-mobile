@@ -615,9 +615,9 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       }
     } finally {
       _abriendoAlta = false;
-      if (ref.read(mapaPrincipalProvider) == ColocandoPin(parametros)) {
-        _mapaPrincipal.volverAExplorar();
-      }
+      // Sin `ref`: la pestaña puede haberse desmontado con el alta abierta, y el modo del mapa (que
+      // vive con la app) no puede quedar colocando un pin que nadie dibuja.
+      _mapaPrincipal.terminarAlta(parametros);
     }
     if (!mounted) return;
     switch (salida) {

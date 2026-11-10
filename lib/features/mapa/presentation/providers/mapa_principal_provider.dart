@@ -188,6 +188,13 @@ final class MapaPrincipalNotifier extends Notifier<ModoMapaPrincipal> {
 
   /// Vuelve al mapa libre.
   void volverAExplorar() => state = const Explorando();
+
+  /// Terminó el alta [alta]: si el mapa sigue colocando su pin, vuelve al mapa libre. Si ya está en
+  /// otro modo (otra alta, una casa elegida) no lo toca. No necesita a la pestaña Mapa: se puede
+  /// llamar aunque se haya desmontado mientras el alta estaba abierta.
+  void terminarAlta(ParametrosAlta alta) {
+    if (state == ColocandoPin(alta)) state = const Explorando();
+  }
 }
 
 /// El modo del mapa principal y su cámara (#655). No se libera solo: lo usan la pestaña Mapa y las
