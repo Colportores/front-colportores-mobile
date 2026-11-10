@@ -166,10 +166,13 @@ class AppDatabase extends _$AppDatabase {
   ///   cobro ya no guarda qué número de cuota paga (#608).
   /// - 32: `jornada` pierde `tipo_acompaniamiento` (backend-supabase 0169, decisión de Cristian, 04/11):
   ///   ninguna pantalla lo pide; el acompañamiento queda con quién acompaña (#642).
+  /// - 33: la entrega diferida (HU-VEN-003, #433): `entrega.fecha_prevista` y, en `agenda`, el tipo
+  ///   `ENTREGA` con la entrega que agenda (`entrega_id`; `venta_id` ya estaba desde la 24)
+  ///   (backend-supabase 0068).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 32;
+  static const int versionEsquema = 33;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -474,6 +477,15 @@ class AppDatabase extends _$AppDatabase {
     // índice `jornada_colportor_idx` y deja los `CHECK`.
     from31To32: (m, esquema) async {
       await m.alterTable(TableMigration(esquema.jornada));
+    },
+    // Suma `entrega.fecha_prevista` (las filas que ya estaban quedan sin fecha acordada) y reescribe
+    // `agenda` (SQLite no cambia un `CHECK`): deja entrar el tipo `ENTREGA`, suma `entrega_id` (vacío
+    // en todas las citas que ya estaban) y conserva cada fila con el resto de sus columnas, entre ellas
+    // `venta_id` y `monto_previsto` de las cuotas del plan. Nada se vuelve a encolar al migrar.
+    // `alterTable` vuelve a crear los índices que `agenda` ya tenía.
+    from32To33: (m, esquema) async {
+      await m.addColumn(esquema.entrega, esquema.entrega.fechaPrevista);
+      await m.alterTable(TableMigration(esquema.agenda, newColumns: [esquema.agenda.entregaId]));
     },
   );
 }

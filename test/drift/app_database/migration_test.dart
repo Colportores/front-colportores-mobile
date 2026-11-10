@@ -38,6 +38,7 @@ import 'generated/schema_v3.dart' as v3;
 import 'generated/schema_v30.dart' as v30;
 import 'generated/schema_v31.dart' as v31;
 import 'generated/schema_v32.dart' as v32;
+import 'generated/schema_v33.dart' as v33;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
@@ -1970,6 +1971,144 @@ void main() {
           throwsA(anything),
         );
         expect(await nuevo.select(nuevo.jornada).get(), hasLength(3));
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 32, cuando migra a la 33, conserva las entregas y las citas '
+      '(también las cuotas con su venta y su monto), suma la fecha prevista y deja entrar la cita de '
+      'entrega con la entrega que agenda (#433)', () async {
+    // HU-VEN-003 (#433): `entrega.fecha_prevista` y, en `agenda`, el tipo ENTREGA con `entrega_id`
+    // (`venta_id` y `monto_previsto` ya estaban desde la 24). SQLite no cambia un CHECK: `agenda` se
+    // reescribe y no puede perder ninguna fila.
+    const entregaPendiente = v32.EntregaData(
+      id: 'e-1',
+      ventaId: 'v-1',
+      productoId: 'p-1',
+      cantidad: 2,
+      pendiente: 1,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 1,
+    );
+    const entregaHecha = v32.EntregaData(
+      id: 'e-2',
+      ventaId: 'v-1',
+      productoId: 'p-2',
+      cantidad: 1,
+      fechaEntrega: 1758710000000,
+      pendiente: 0,
+      createdAt: 1758700000000,
+      updatedAt: 1758710000000,
+      deletedAt: 1758720000000,
+      syncVersion: 3,
+    );
+    const cuota = v32.AgendaData(
+      id: 'a-1',
+      espacioId: 'esp-1',
+      espacioPersonaId: 'ep-1',
+      tipo: 'COBRANZA',
+      fechaProgramada: 1758700000000,
+      esEstricta: 0,
+      estado: 'PROGRAMADA',
+      colportorId: 'col-1',
+      ventaId: 'v-1',
+      montoPrevisto: 50000,
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      createdBy: 'col-1',
+      syncVersion: 2,
+    );
+    const entrevista = v32.AgendaData(
+      id: 'a-2',
+      espacioId: 'esp-1',
+      tipo: 'ENTREVISTA',
+      fechaProgramada: 1758800000000,
+      slotCodigo: 'mid_morning',
+      esEstricta: 1,
+      estado: 'CUMPLIDA',
+      colportorId: 'col-1',
+      visitaId: 'vis-1',
+      createdAt: 1758700000000,
+      updatedAt: 1758800000000,
+      deletedAt: 1758900000000,
+      syncVersion: 5,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 32,
+      newVersion: 33,
+      createOld: v32.DatabaseAtV32.new,
+      createNew: v33.DatabaseAtV33.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch.insert(viejo.entrega, entregaPendiente);
+        batch.insert(viejo.entrega, entregaHecha);
+        batch.insert(viejo.agenda, cuota);
+        batch.insert(viejo.agenda, entrevista);
+      },
+      validateItems: (nuevo) async {
+        final entregas = await (nuevo.select(
+          nuevo.entrega,
+        )..orderBy([(e) => OrderingTerm.asc(e.id)])).get();
+        expect(entregas.map((e) => [e.id, e.pendiente, e.fechaPrevista]), [
+          ['e-1', 1, null],
+          ['e-2', 0, null],
+        ]);
+        expect(entregas.first.cantidad, 2);
+        expect(entregas.first.createdBy, 'col-1');
+        expect(entregas.first.syncVersion, 1);
+        expect(entregas.last.fechaEntrega, 1758710000000);
+        expect(entregas.last.deletedAt, 1758720000000);
+        expect(entregas.last.syncVersion, 3);
+
+        final agendas = await (nuevo.select(
+          nuevo.agenda,
+        )..orderBy([(a) => OrderingTerm.asc(a.id)])).get();
+        expect(agendas.map((a) => [a.id, a.tipo, a.ventaId, a.montoPrevisto, a.entregaId]), [
+          ['a-1', 'COBRANZA', 'v-1', 50000, null],
+          ['a-2', 'ENTREVISTA', null, null, null],
+        ]);
+        expect(agendas.first.espacioPersonaId, 'ep-1');
+        expect(agendas.first.syncVersion, 2);
+        expect(agendas.last.slotCodigo, 'mid_morning');
+        expect(agendas.last.esEstricta, 1);
+        expect(agendas.last.visitaId, 'vis-1');
+        expect(agendas.last.deletedAt, 1758900000000);
+        expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+        const columnas =
+            'INSERT INTO agenda (id, espacio_id, tipo, fecha_programada, es_estricta, estado, '
+            'colportor_id, venta_id, entrega_id, monto_previsto, created_at, updated_at) VALUES ';
+        // La cita de entrega entra, con la venta y la entrega que la originan.
+        await nuevo.customStatement(
+          "$columnas('a-3', 'esp-1', 'ENTREGA', 1758800000000, 0, 'PROGRAMADA', 'col-1', 'v-1', "
+          "'e-1', NULL, 1, 1)",
+        );
+        // Otro tipo no entra, una entrega solo cuelga de una cita de entrega, y el monto previsto
+        // sigue siendo solo de una cobranza.
+        for (final malo in [
+          "('a-4', 'esp-1', 'OTRO', 1, 0, 'PROGRAMADA', 'col-1', NULL, NULL, NULL, 1, 1)",
+          "('a-5', 'esp-1', 'COBRANZA', 1, 0, 'PROGRAMADA', 'col-1', 'v-1', 'e-1', NULL, 1, 1)",
+          "('a-6', 'esp-1', 'ENTREGA', 1, 0, 'PROGRAMADA', 'col-1', 'v-1', 'e-1', 100, 1, 1)",
+        ]) {
+          await expectLater(nuevo.customStatement('$columnas$malo'), throwsA(anything));
+        }
+        expect(await nuevo.select(nuevo.agenda).get(), hasLength(3));
+        // Los índices de agenda siguen, para la lista de entregas pendientes y la Agenda.
+        final indices = await nuevo
+            .customSelect("SELECT name FROM sqlite_master WHERE type = 'index'")
+            .get();
+        expect(
+          indices.map((r) => r.read<String>('name')),
+          containsAll([
+            'agenda_venta_idx',
+            'agenda_colportor_idx',
+            'agenda_espacio_idx',
+            'agenda_espacio_persona_idx',
+          ]),
+        );
       },
     );
   });

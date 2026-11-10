@@ -3,7 +3,9 @@ import 'package:equatable/equatable.dart';
 
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/error/failure.dart';
+import '../../../../core/logging/app_logger.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../agenda/domain/services/recordatorios.dart';
 import '../entities/componente_vendido.dart';
 import '../entities/entrega.dart';
 import '../repositories/entrega_repository.dart';
@@ -47,13 +49,22 @@ final class EntregarAhoraParams extends Equatable {
 /// ahora y `pendiente = false`; las pendientes, sin fecha y `pendiente = true`. Las guarda por
 /// [EntregaRepository.registrarEntrega], idempotente por venta.
 ///
+/// Si la venta tenía entregas **pendientes** (HU-VEN-003), «Entregar ahora» las cumple en vez de
+/// duplicarlas ([EntregaRepository.entregarAhora]); la cita de esa entrega queda cumplida y, con
+/// [Recordatorios], se le saca el aviso **después** de guardar (nunca hace fallar la entrega).
+///
 /// En V1 no hay stock: la app confía en lo que lleva la colportora (decisión del 23/10, el stock es
 /// V2, HU-STK-007).
 final class EntregarAhoraUseCase implements UseCase<EntregaRegistrada, EntregarAhoraParams> {
-  EntregarAhoraUseCase(this._repository, {required this._generarId, DateTime Function()? ahora})
-    : _ahora = ahora ?? DateTime.now;
+  EntregarAhoraUseCase(
+    this._repository, {
+    required this._generarId,
+    DateTime Function()? ahora,
+    this._recordatorios,
+  }) : _ahora = ahora ?? DateTime.now;
 
   final EntregaRepository _repository;
+  final Recordatorios? _recordatorios;
   final String Function() _generarId;
   final DateTime Function() _ahora;
 
@@ -66,12 +77,29 @@ final class EntregarAhoraUseCase implements UseCase<EntregaRegistrada, EntregarA
       return const Left(FailureEntregaNoGuardada(causa: 'faltan_ids'));
     }
     if (params.aEntregar != null) return _loTildado(params, params.aEntregar!);
-    return _repository.entregarAhora(
+    final entregada = await _repository.entregarAhora(
       params.ventaId.trim(),
       colportorId: params.colportorId.trim(),
       ahora: _ahora().toUtc(),
       generarId: _generarId,
     );
+    final cita = entregada.fold<String?>((_) => null, (r) => r.citaCumplidaId);
+    if (cita != null) await _sacarRecordatorio(cita);
+    return entregada;
+  }
+
+  /// La entrega ya está guardada: una falla del plugin de avisos no la deshace.
+  Future<void> _sacarRecordatorio(String agendaId) async {
+    try {
+      await _recordatorios?.cancelar(agendaId);
+    } on Object catch (e) {
+      AppLogger.instance.warn(
+        LogModulo.agenda,
+        'ENTREGA_RECORDATORIO',
+        'no se pudo sacar el recordatorio de la entrega cumplida',
+        {'agenda_id': agendaId, 'error': e.runtimeType.toString()},
+      );
+    }
   }
 
   Future<Either<Failure, EntregaRegistrada>> _loTildado(
