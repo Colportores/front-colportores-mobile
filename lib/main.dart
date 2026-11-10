@@ -57,6 +57,7 @@ import 'features/mapa/presentation/providers/baja_ubicacion_providers.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'features/mapa/presentation/providers/lugar_de_trabajo_providers.dart';
 import 'features/mapa/presentation/providers/personas_providers.dart';
+import 'features/mapa/presentation/widgets/pestana_historial_de_la_casa.dart';
 import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
 import 'features/notificaciones/data/repositories/marca_conciliacion_recordatorios_impl.dart';
 import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
@@ -467,8 +468,17 @@ Future<void> main() async {
         // recibe de verdad va con el proyecto de Firebase (pendiente): `pushRemotasProvider` no
         // recibe nada hasta entonces.
         ...EnganchesPushRemotas.enganches(navigatorKeyColportores),
+        // Pestaña Historial de la hoja de la casa (vista 39, C·03 y C·04, #446): las visitas, las ventas
+        // y los cobros del lugar, todos en el teléfono. Un cobro abre su detalle (vista 30 B) cuando
+        // se enganche `verCobroDesdeLaCasaProvider` (PR #585).
+        pestanaHistorialDeLaCasaProvider.overrideWithValue(
+          (context, contexto) => PestanaHistorialDeLaCasa(
+            espacioId: contexto.espacioId,
+            direccion: contexto.direccion,
+          ),
+        ),
         // Pestaña Notas de la hoja de la casa (vista 39, C·05, #447): las notas del lugar, todas en
-        // el teléfono. La pestaña Historial se engancha con su HU (#446).
+        // el teléfono.
         pestanaNotasDeLaCasaProvider.overrideWithValue(
           (context, contexto) => PestanaNotasDeLaCasa(
             ubicacionId: contexto.ubicacionId,
