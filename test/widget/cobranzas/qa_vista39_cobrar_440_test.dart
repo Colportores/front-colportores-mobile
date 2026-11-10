@@ -386,15 +386,18 @@ void main() {
       },
     );
 
-    testWidgets('atrás del sistema desde el cobro: vuelve sin cobrar y no reabre «¿Qué venta?»', (
-      tester,
-    ) async {
+    testWidgets('atrás del sistema desde el cobro: pregunta «¿Pedro no te pagó?», atrás otra vez es '
+        '«No», vuelve sin cobrar y no reabre «¿Qué venta?»', (tester) async {
       final repo = cobranzasConVentas([ventaDelCanvas38(), ventaDelCanvas45()]);
       final a = await montarCobrarDesdeLaCasa(tester, repo: repo);
       await tester.tap(_cobrar);
       await asentarAgendar(tester);
       expect(pagina, findsOneWidget);
 
+      await tester.binding.handlePopRoute();
+      await asentarAgendar(tester);
+      expect(find.text('¿Pedro no te pagó?'), findsOneWidget);
+      expect(pagina, findsNothing);
       await tester.binding.handlePopRoute();
       await asentarAgendar(tester);
 

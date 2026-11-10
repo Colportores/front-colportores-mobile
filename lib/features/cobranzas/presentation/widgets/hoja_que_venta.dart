@@ -46,8 +46,8 @@ final class VentaElegida extends SalidaQueVenta {
   final VentaConSaldo venta;
 }
 
-/// Tocó «Cancelar»: no cobra. Es lo único que dispara la pregunta «¿María no te pagó?» (decisión de
-/// Cristian, 03/11).
+/// Tocó «Cancelar»: no cobra. Dispara la pregunta «¿María no te pagó?» (decisión de Cristian, 03/11),
+/// igual que salir del cobro sin cobrar (ver `FlujoCobrarDesdeLaCasa`).
 final class CanceloQueVenta extends SalidaQueVenta {
   const CanceloQueVenta();
 }

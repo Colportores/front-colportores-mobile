@@ -109,9 +109,8 @@ void main() {
       },
     );
 
-    testWidgets('cerrar el cobro sin cobrar devuelve false y no queda ningún cobro', (
-      tester,
-    ) async {
+    testWidgets('cerrar el cobro sin cobrar pregunta «¿Pedro no te pagó?»; con «No» devuelve false y '
+        'no queda ningún cobro', (tester) async {
       final a = await montarCobrarDesdeLaCasa(
         tester,
         repo: cobranzasConVentas([ventaDelCanvas38(), ventaDelCanvas45()]),
@@ -120,6 +119,10 @@ void main() {
       expect(pagina, findsOneWidget);
 
       await tocarCobro(tester, cerrarCobro);
+      // Decisión del 10/11 (P2 de #440): salir del cobro sin cobrar es el «Cancelar».
+      expect(find.text('¿Pedro no te pagó?'), findsOneWidget);
+      expect(a.resultados, isEmpty);
+      await tocarQueVenta(tester, find.byKey(ClavesNoTePago.noMeEquivoque));
 
       expect(a.resultados, [false]);
       expect(pagina, findsNothing);
@@ -136,6 +139,7 @@ void main() {
         await tocarQueVenta(tester, find.byKey(ClavesQueVenta.fila('v-45')));
         await tocarQueVenta(tester, _cobrarEnLaHoja);
         await tocarCobro(tester, cerrarCobro);
+        await tocarQueVenta(tester, find.byKey(ClavesNoTePago.noMeEquivoque));
         expect(a.resultados, [false]);
 
         await abrirCobrarDesdeLaCasa(tester);

@@ -117,9 +117,10 @@ final class VentaRegistradaEnLaCasa {
   const VentaRegistradaEnLaCasa();
 }
 
-/// Lo que contesta el gancho de «$ Cobrar» cuando **no se cobró** pero la colportora tocó «Cancelar» y
-/// contestó «Sí, anotar la visita» a «¿María no te pagó?» (decisión de Cristian, 03/11): la visita
-/// «Cobranza» sin cobro **ya quedó guardada** (sin tocar la cita, que sigue `PROGRAMADA`). Quien lo
+/// Lo que contesta el gancho de «$ Cobrar» cuando **no se cobró** pero la colportora canceló («Cancelar»
+/// en «¿Qué venta?», o «✕» o atrás en el cobro) y contestó «Sí, anotar la visita» a «¿María no te
+/// pagó?» (decisión de Cristian, 03/11): la visita «Cobranza» sin cobro **ya quedó guardada** (sin
+/// tocar la cita, que sigue `PROGRAMADA`). Quien lo
 /// recibe lo trata como algo resuelto —«¿Qué pasó?» y la hoja de la casa se cierran y el mapa queda
 /// libre— y **no guarda la visita otra vez**.
 final class CobranzaAnotadaSinCobro {

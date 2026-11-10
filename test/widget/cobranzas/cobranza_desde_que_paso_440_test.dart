@@ -254,18 +254,72 @@ void main() {
     );
 
     testWidgets(
-      'cerrar el cobro sin cobrar: no se guarda la visita y se puede elegir otra opción',
+      'una sola venta, «✕» del cobro sin cobrar y «No, me equivoqué»: no se guarda la visita y se '
+      'puede elegir otra opción',
       (tester) async {
         final m = await _montar(tester, cobros: cobranzasConVentas([ventaDelCanvas38()]));
 
         await _tocar(tester, _cobranza);
         await tocarCobro(tester, cerrarCobro);
+        // Decisión del 10/11 (P2 de #440): con una sola venta, «✕» es el «Cancelar» y pregunta.
+        expect(find.text('¿Pedro no te pagó?'), findsOneWidget);
+        expect(m.agenda.recibidas, isEmpty);
+        await _tocar(tester, find.byKey(ClavesNoTePago.noMeEquivoque));
 
         expect(m.agenda.recibidas, isEmpty);
+        expect(m.cobros.base.recibidos, isEmpty);
+        expect(m.resultados, isEmpty);
         expect(_hoja, findsOneWidget);
         // La opción no quedó trabada: se puede volver a tocar.
         await _tocar(tester, _cobranza);
         expect(pagina, findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'una sola venta, «✕» del cobro sin cobrar y «Sí, anotar la visita»: UNA visita «Cobranza» sin '
+      'cobro ni agenda, «¿Qué pasó?» se resuelve y no la guarda otra vez',
+      (tester) async {
+        final agenda = AgendaRepositorioFalso()
+          ..programada = agendaDe('cita-1', tipo: TipoAgenda.cobranza);
+        final m = await _montar(
+          tester,
+          cobros: cobranzasConVentas([ventaDelCanvas38()]),
+          agenda: agenda,
+        );
+
+        await _tocar(tester, _cobranza);
+        expect(find.byKey(ClavesQueVenta.lista), findsNothing, reason: 'C·08 se salta');
+        await tocarCobro(tester, cerrarCobro);
+        await _tocar(tester, find.byKey(ClavesNoTePago.anotar));
+
+        final registrada = m.agenda.recibidas.single;
+        expect(registrada.visita.tipoResultado, TipoResultadoVisita.cobranza);
+        expect(registrada.visita.espacioPersonaId, 'ep-pedro');
+        expect(registrada.agendaId, isNull, reason: 'la cita de cobranza no se toca');
+        expect(agenda.programada!.estado, EstadoAgenda.programada);
+        expect(m.cobros.base.recibidos, isEmpty);
+        expect(m.resultados, [true]);
+        expect(_hoja, findsNothing);
+        expect(pagina, findsNothing);
+        expect(find.text('Anotamos la visita de cobranza.'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'una sola venta, cobro parcial y atrás del sistema: sin pregunta y UNA sola visita «Cobranza»',
+      (tester) async {
+        final m = await _montar(tester, cobros: cobranzasConVentas([ventaDelCanvas38()]));
+
+        await _tocar(tester, _cobranza);
+        await _cobrarMonto(tester, '600');
+        await tester.binding.handlePopRoute();
+        await asentar(tester);
+
+        expect(find.byType(DialogoNoTePago), findsNothing);
+        expect(m.cobros.base.recibidos, hasLength(1));
+        expect(m.agenda.recibidas.single.visita.tipoResultado, TipoResultadoVisita.cobranza);
+        expect(m.resultados, [true]);
       },
     );
 
