@@ -39,6 +39,10 @@ abstract final class TextosCierreDeVenta {
   static const ponerFecha = 'Poner fecha';
   static const sinFecha = 'SIN FECHA';
 
+  /// «Poner fecha» o «Cambiar» no pudo guardar la cita: la tarjeta sigue como estaba (el mismo texto
+  /// que el grupo «Sin fecha» de la Agenda). Va en la tarjeta: un aviso abajo taparía el botón.
+  static const noSePudoAgendar = 'No pudimos agendar el cobro. Probá de nuevo.';
+
   /// «✓ $ 400 en efectivo» (el cobro de la vista 28 es en efectivo).
   static String cobrado(int centavos) => '✓ ${FormatoVenta.monto(centavos)} en efectivo';
 
@@ -92,6 +96,7 @@ abstract final class ClavesCierreDeVenta {
   static const completa = Key('cierre_venta_completa');
   static const tarjetaCobranza = Key('cierre_venta_cobranza');
   static const accionCobranza = Key('cierre_venta_cobranza_accion');
+  static const fallaCobranza = Key('cierre_venta_cobranza_falla');
   static const volver = Key('cierre_venta_volver');
 }
 
@@ -158,6 +163,9 @@ class _AsiQuedoLaVentaPageState extends State<AsiQuedoLaVentaPage> {
   var _ocupado = false;
   var _saliendo = false;
 
+  /// La última «Poner fecha» o «Cambiar» no pudo guardar la cita.
+  var _fallo = false;
+
   void _salir() {
     if (_saliendo || _ocupado) return;
     _saliendo = true;
@@ -167,13 +175,19 @@ class _AsiQuedoLaVentaPageState extends State<AsiQuedoLaVentaPage> {
   /// «Cambiar» o «Poner fecha»: una a la vez, y lo que vuelva reemplaza a la tarjeta.
   Future<void> _accion(Future<CobranzaDeLaVenta?> Function() accion) async {
     if (_ocupado || _saliendo) return;
-    setState(() => _ocupado = true);
+    setState(() {
+      _ocupado = true;
+      _fallo = false;
+    });
     try {
       final nueva = await accion();
       if (!mounted) return;
       if (nueva is CobranzaAgendada) setState(() => _cobranza = nueva);
+      // «Poner fecha» eligió un día pero la cita no se guardó: se dice acá, la tarjeta sigue sin fecha.
+      if (nueva is CobranzaNoAgendada) setState(() => _fallo = true);
     } on Object {
       // La tarjeta queda como estaba: la cita (si había) sigue guardada.
+      if (mounted) setState(() => _fallo = true);
     } finally {
       if (mounted) setState(() => _ocupado = false);
     }
@@ -269,6 +283,7 @@ class _AsiQuedoLaVentaPageState extends State<AsiQuedoLaVentaPage> {
           antes: TextosCierreDeVenta.cuandoEnTarjeta(fecha),
           titulo: TextosCierreDeVenta.cobranzaAgendada(widget.persona),
           detalle: TextosCierreDeVenta.saldoEn(widget.saldoCentavos, widget.direccion),
+          fallo: _fallo,
           accion: cambiar == null ? null : TextosCierreDeVenta.cambiar,
           alAccion: cambiar == null || _ocupado
               ? null
@@ -284,6 +299,7 @@ class _AsiQuedoLaVentaPageState extends State<AsiQuedoLaVentaPage> {
           antes: TextosCierreDeVenta.sinFecha,
           titulo: TextosCierreDeVenta.cobranzaSinFecha(widget.persona),
           detalle: TextosCierreDeVenta.saldoSinDia(widget.saldoCentavos),
+          fallo: _fallo,
           accion: ponerFecha == null ? null : TextosCierreDeVenta.ponerFecha,
           alAccion: ponerFecha == null || _ocupado ? null : () => unawaited(_accion(ponerFecha)),
         );
@@ -342,6 +358,7 @@ class _TarjetaDeCobranza extends StatelessWidget {
     required this.detalle,
     required this.accion,
     required this.alAccion,
+    this.fallo = false,
   });
 
   final String antes;
@@ -349,6 +366,7 @@ class _TarjetaDeCobranza extends StatelessWidget {
   final String detalle;
   final String? accion;
   final VoidCallback? alAccion;
+  final bool fallo;
 
   @override
   Widget build(BuildContext context) {
@@ -379,6 +397,23 @@ class _TarjetaDeCobranza extends StatelessWidget {
         ),
         Text(titulo, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
         Text(detalle, style: const TextStyle(fontSize: 12.5, color: ColoresAgenda.gris)),
+        if (fallo)
+          Semantics(
+            liveRegion: true,
+            container: true,
+            child: const Padding(
+              key: ClavesCierreDeVenta.fallaCobranza,
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                TextosCierreDeVenta.noSePudoAgendar,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: ColoresAgenda.rojo,
+                ),
+              ),
+            ),
+          ),
       ],
     );
     final boton = accion == null

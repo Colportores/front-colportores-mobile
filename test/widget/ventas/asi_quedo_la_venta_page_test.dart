@@ -216,8 +216,68 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('SÁB 24/10 · 12:30'), findsOneWidget);
+    expect(find.byKey(ClavesCierreDeVenta.fallaCobranza), findsOneWidget);
     await tocar(tester, find.byKey(ClavesCierreDeVenta.volver));
     expect(quedo, isA<CobranzaAgendada>());
+  });
+
+  testWidgets(
+    '«Poner fecha» con la cita que no se guarda: lo dice en la tarjeta, que sigue sin fecha',
+    (tester) async {
+      var intentos = 0;
+      await montar(
+        tester,
+        saldo: 80000,
+        alPonerFecha: () async {
+          intentos++;
+          return intentos == 1
+              ? const CobranzaNoAgendada()
+              : CobranzaAgendada(_cita(DateTime(2026, 10, 25, 10)));
+        },
+      );
+
+      await tocar(tester, find.byKey(ClavesCierreDeVenta.accionCobranza));
+
+      expect(find.text('No pudimos agendar el cobro. Probá de nuevo.'), findsOneWidget);
+      expect(find.text('SIN FECHA'), findsOneWidget);
+      // Nada queda trabado: se puede reintentar, y al agendar el aviso se va.
+      await tocar(tester, find.byKey(ClavesCierreDeVenta.accionCobranza));
+      expect(intentos, 2);
+      expect(find.byKey(ClavesCierreDeVenta.fallaCobranza), findsNothing);
+      expect(find.text('DOM 25/10 · 10:00'), findsOneWidget);
+      await tocar(tester, find.byKey(ClavesCierreDeVenta.volver));
+      expect(quedo, isA<CobranzaAgendada>());
+    },
+  );
+
+  testWidgets('«Poner fecha» que vuelve sin elegir (sigue sin fecha) no muestra ningún aviso', (
+    tester,
+  ) async {
+    await montar(tester, saldo: 80000, alPonerFecha: () async => const CobranzaSinFecha());
+
+    await tocar(tester, find.byKey(ClavesCierreDeVenta.accionCobranza));
+
+    expect(find.byKey(ClavesCierreDeVenta.fallaCobranza), findsNothing);
+    expect(find.text('SIN FECHA'), findsOneWidget);
+  });
+
+  testWidgets('el aviso de la falla en la tarjeta entra a 320×568 con la letra al 200 %', (
+    tester,
+  ) async {
+    await montar(
+      tester,
+      saldo: 80000,
+      escala: 2,
+      tamano: const Size(320, 568),
+      alPonerFecha: () async => const CobranzaNoAgendada(),
+    );
+
+    await tocar(tester, find.byKey(ClavesCierreDeVenta.accionCobranza));
+    await tester.ensureVisible(find.byKey(ClavesCierreDeVenta.fallaCobranza));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(ClavesCierreDeVenta.fallaCobranza).hitTestable(), findsOneWidget);
   });
 
   testWidgets('el atrás del sistema hace lo mismo que «Volver al mapa»', (tester) async {

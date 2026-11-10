@@ -782,6 +782,66 @@ class FilaDeCantidad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textos = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(titulo, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+        Wrap(
+          spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (precio case final precio?)
+              Text(
+                precio,
+                style: const TextStyle(
+                  fontFamily: 'JetBrainsMono',
+                  fontSize: 12.5,
+                  color: ColoresAgenda.gris,
+                ),
+              ),
+            if (etiqueta != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: fondoEtiqueta,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  etiqueta!,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: tintaEtiqueta),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+    final botones = <Widget>[
+      IconButton(
+        tooltip: 'Uno menos de $titulo',
+        onPressed: cantidad > 0 ? () => alCambiar(cantidad - 1) : null,
+        icon: const Icon(Icons.remove_circle_outline),
+      ),
+      ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 24),
+        child: Text(
+          '$cantidad',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: 'JetBrainsMono',
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      IconButton(
+        tooltip: 'Uno más de $titulo',
+        onPressed: cantidad < maximo ? () => alCambiar(cantidad + 1) : null,
+        icon: const Icon(Icons.add_circle_outline),
+      ),
+    ];
+    // Con la letra grande el − / + baja debajo del nombre: al costado, en un teléfono angosto, una
+    // palabra larga se partía por la mitad («alimentació/n», QA #432).
+    final apilada = MediaQuery.textScalerOf(context).scale(1) > 1.5;
     return Semantics(
       container: true,
       label: [titulo, ?precio, if (cantidad == 0) 'Ninguno' else '$cantidad'].join('. '),
@@ -796,71 +856,20 @@ class FilaDeCantidad extends StatelessWidget {
             width: cantidad > 0 ? 2 : 1,
           ),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: apilada
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(titulo, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
-                  Wrap(
-                    spacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (precio case final precio?)
-                        Text(
-                          precio,
-                          style: const TextStyle(
-                            fontFamily: 'JetBrainsMono',
-                            fontSize: 12.5,
-                            color: ColoresAgenda.gris,
-                          ),
-                        ),
-                      if (etiqueta != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: fondoEtiqueta,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            etiqueta!,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: tintaEtiqueta,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                  Padding(padding: const EdgeInsets.only(right: 8), child: textos),
+                  Row(mainAxisAlignment: MainAxisAlignment.end, children: botones),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(child: textos),
+                  ...botones,
                 ],
               ),
-            ),
-            IconButton(
-              tooltip: 'Uno menos de $titulo',
-              onPressed: cantidad > 0 ? () => alCambiar(cantidad - 1) : null,
-              icon: const Icon(Icons.remove_circle_outline),
-            ),
-            ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 24),
-              child: Text(
-                '$cantidad',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontFamily: 'JetBrainsMono',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            IconButton(
-              tooltip: 'Uno más de $titulo',
-              onPressed: cantidad < maximo ? () => alCambiar(cantidad + 1) : null,
-              icon: const Icon(Icons.add_circle_outline),
-            ),
-          ],
-        ),
       ),
     );
   }
