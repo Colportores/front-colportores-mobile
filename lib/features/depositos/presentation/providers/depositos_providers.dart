@@ -86,6 +86,14 @@ final ticketsDeDepositoSinSubirProvider = StreamProvider.autoDispose<int>((ref) 
   return TicketsDeDepositoSinSubirDrift(db).observar();
 });
 
+/// Las fechas de los depósitos cuya foto el servidor rechazó para siempre (P1 del 10/11 sobre
+/// 38A-08): el aviso sin «Reintentar» que pide avisarle al coordinador. Sin DB, ninguno.
+final ticketsDeDepositoRechazadosProvider = StreamProvider.autoDispose<List<DateTime>>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return Stream.value(const []);
+  return TicketsDeDepositoSinSubirDrift(db).observarRechazados();
+});
+
 /// «Reintentar ahora» de 38A-08: una pasada de la cola de fotos ya, sin esperar el próximo reintento.
 /// Si falla, la foto sigue pendiente y la cola la vuelve a probar sola. Un test lo reemplaza.
 final reintentarSubidaDeTicketsProvider = Provider<Future<void> Function()>((ref) {

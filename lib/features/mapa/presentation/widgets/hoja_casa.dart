@@ -684,6 +684,7 @@ class _Arriba extends ConsumerWidget {
     final paraLaPestana = (
       ubicacionId: item.ubicacion.id,
       espacioId: espacioId,
+      direccion: FormatoUbicaciones.direccion(item.ubicacion),
       colportorId: colportorId,
       esBaja: item.esBaja,
     );

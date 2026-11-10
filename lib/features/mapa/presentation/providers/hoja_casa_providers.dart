@@ -194,11 +194,12 @@ final devolverVentaDesdeLaFichaProvider =
     Provider<FutureOr<Object?> Function(ContextoDeDevolucion)?>((ref) => null);
 
 /// Lo que recibe el contenido de una pestaña de la hoja arriba (Historial o Notas) para dibujarse: la
-/// casa y el espacio ya resueltos, el colportor con la sesión iniciada y si la casa está dada de baja
-/// (solo lectura).
+/// casa y el espacio ya resueltos, la dirección que la hoja muestra de título («Grecia 3310»), el
+/// colportor con la sesión iniciada y si la casa está dada de baja (solo lectura).
 typedef ContextoDePestana = ({
   String ubicacionId,
   String espacioId,
+  String direccion,
   String? colportorId,
   bool esBaja,
 });
@@ -207,7 +208,8 @@ typedef ContextoDePestana = ({
 typedef ConstructorDePestana = Widget Function(BuildContext context, ContextoDePestana contexto);
 
 /// La pestaña **Historial** de la hoja arriba (C·03 y C·04, #446). **Sin contenido**: mientras sea
-/// `null` la pestaña no se ofrece (llega con su issue; no se dibuja una pestaña vacía).
+/// `null` la pestaña no se ofrece (no se dibuja una pestaña vacía). `main.dart` la engancha a
+/// `PestanaHistorialDeLaCasa`.
 final pestanaHistorialDeLaCasaProvider = Provider<ConstructorDePestana?>((ref) => null);
 
 /// La pestaña **Notas** de la hoja arriba (C·05, #447). **Sin contenido**: mientras sea `null` la
