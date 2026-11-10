@@ -889,6 +889,46 @@ void main() {
     }
   });
 
+  group('41B · etiquetas de candidatas muy juntas', () {
+    // Ronda 2: con candidatas a 4 m y 12 m el canvas las dibuja separadas (A y B en lugares distintos);
+    // acá la cámara conserva el zoom (`encuadrarArribaDe` solo aleja, nunca acerca) y las etiquetas
+    // quedan una sobre otra: no se lee a cuál corresponde cada letra.
+    for (final tamano in tamanos655) {
+      testWidgets(
+        '41B·02 en ${tamano.width.toInt()}x${tamano.height.toInt()}: las etiquetas de la nueva y de '
+        'las candidatas no se tapan entre sí',
+        (tester) async {
+          await llegarA655(tester, Artboard655.b02, tamano: tamano);
+          await tester.pump(const Duration(milliseconds: 300));
+
+          final rects = <String, Rect>{
+            for (final f in [
+              find.text('La nueva'),
+              find.textContaining('A · a '),
+              find.textContaining('B · a '),
+            ])
+              for (var i = 0; i < f.evaluate().length; i++)
+                (f.at(i).evaluate().single.widget as Text).data!: tester.getRect(f.at(i)),
+          };
+          final nombres = rects.keys.toList();
+          for (var i = 0; i < nombres.length; i++) {
+            for (var j = i + 1; j < nombres.length; j++) {
+              final cruce = rects[nombres[i]]!.intersect(rects[nombres[j]]!);
+              expect(
+                cruce.width <= 0 || cruce.height <= 0,
+                isTrue,
+                reason:
+                    '«${nombres[i]}» y «${nombres[j]}» se tapan: ${rects[nombres[i]]} / ${rects[nombres[j]]}',
+              );
+            }
+          }
+        },
+        // skip: QA #655 — candidatas a 4 m y 12 m: las etiquetas A/B quedan una sobre otra (el canvas las separa).
+        skip: !verHallazgos655,
+      );
+    }
+  });
+
   group('Privacidad', () {
     test('toString del estado del alta, de sus parámetros y del modo del mapa no trae PII', () {
       const estado = AltaUbicacionState(
