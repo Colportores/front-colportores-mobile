@@ -7,7 +7,6 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/catalogo/domain/entities/ciudad_consultable.dart';
 import 'package:colportores_mobile/features/catalogo/presentation/providers/precios_providers.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
-import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
 import 'package:dartz/dartz.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -17,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../../helpers/alta_ubicacion_falsos.dart';
 import '../../../../helpers/logger_mudo.dart';
 import '../../../../helpers/replica_de_campanias.dart';
+import '../../../../helpers/ubicacion_colportor_falsos.dart';
 
 class _DbFija extends DbLocalNotifier {
   _DbFija(this._db);
@@ -54,8 +54,8 @@ void main() {
       overrides: [
         dbLocalProvider.overrideWith(() => _DbFija(conBase ? (base ?? db) : null)),
         relojPreciosProvider.overrideWithValue(() => DateTime.utc(2026, 10, 27, 15)),
-        esperaDelGpsPreciosProvider.overrideWithValue(const Duration(milliseconds: 200)),
-        proveedorGpsProvider.overrideWithValue(gps ?? GpsFalso()),
+        // Precios no pide el GPS (#651): lee la última lectura del GPS único del colportor.
+        ubicacionColportorDeGps(gps ?? GpsFalso()),
       ],
     );
     addTearDown(contenedor.dispose);
