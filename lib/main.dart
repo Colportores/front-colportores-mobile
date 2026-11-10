@@ -364,7 +364,9 @@ Future<void> main() async {
         ),
         // «$ Cobrar» de la hoja de la casa y «Cobranza» de «¿Qué pasó?» (vista 39, C·01 y C·06, #440):
         // «¿Qué venta?» (C·08, se salta con una sola) y el cobro en efectivo (vista 28). Devuelve
-        // `true` si se cobró; la visita «Cobranza» la guarda `FlujoRegistrarVisita`, no esto.
+        // `true` si se cobró (la visita «Cobranza» la guarda `FlujoRegistrarVisita`, no esto),
+        // `CobranzaAnotadaSinCobro` si canceló sin cobrar y contestó «Sí» a «¿María no te pagó?» (esa
+        // visita ya la guardó el flujo, decisión del 03/11) o `false` si no se cobró ni se anotó nada.
         cobrarDesdeLaCasaProvider.overrideWith(
           (ref) => (datos) {
             final contexto = navigatorKeyColportores.currentContext;
