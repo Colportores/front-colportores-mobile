@@ -82,8 +82,37 @@ void main() {
         );
         await tester.pumpWidget(const SizedBox.shrink());
       },
-      skip: !_qaHallazgos,
     );
+
+    // Fix del bloqueante de QA de #678: «Registrar resultado» solo para las citas de visita y de
+    // cobranza; la entrega espera al flujo de #435 (entrega para otro día).
+    for (final (tipo, ofrece) in [
+      (TipoAgenda.entrega, false),
+      (TipoAgenda.entrevista, true),
+      (TipoAgenda.cobranza, true),
+    ]) {
+      testWidgets('con el destino enganchado, una cita ${tipo.codigo} '
+          '${ofrece ? 'ofrece' : 'no ofrece'} «Registrar resultado» y deja «Modificar» a mano', (
+        tester,
+      ) async {
+        await montarDetalle(
+          tester,
+          detalle: DetalleDeAgenda(
+            agenda: agendaDelDetalle(tipo: tipo, ventaId: 'ven-1'),
+          ),
+          conRegistrar: true,
+          abrir: false,
+        );
+        await abrirDetalle(tester);
+
+        expect(find.byKey(ClavesDetalleAgenda.registrar), ofrece ? findsOneWidget : findsNothing);
+        expect(find.text('Registrar resultado'), ofrece ? findsOneWidget : findsNothing);
+        expect(find.byKey(ClavesDetalleAgenda.modificar), findsOneWidget);
+        expect(find.text('Cancelar agenda'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    }
 
     testWidgets('sin el destino enganchado, «Modificar» y «Cancelar agenda» siguen a mano', (
       tester,

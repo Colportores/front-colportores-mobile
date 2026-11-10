@@ -16,6 +16,7 @@ import '../../../mapa/presentation/widgets/piezas_alta.dart';
 import '../../domain/entities/detalle_de_agenda.dart';
 import '../../domain/entities/estado_agenda.dart';
 import '../../domain/entities/franja_horaria.dart';
+import '../../domain/entities/tipo_agenda.dart';
 import '../../domain/usecases/cancelar_agenda_use_case.dart';
 import '../formato_agenda.dart' show TextosAgenda;
 import '../formato_detalle_agenda.dart';
@@ -31,6 +32,7 @@ import 'modificar_agenda_page.dart';
 ///
 /// - **Programada** (23C·01): «Registrar resultado» lleva a «¿Qué pasó?» de la vista 39 con la casa y
 ///   la agenda ya puestas; «Modificar» abre 23C·02; «Cancelar agenda» va como enlace al pie.
+///   Una cita de ENTREGA no ofrece «Registrar resultado» hasta el flujo de #435 (entrega para otro día).
 /// - **Modificada** (23C·03): al volver de «Modificar», el detalle ya muestra lo nuevo y el aviso de éxito
 ///   («Guardado. El recordatorio pasó a las 10:00.») queda en pantalla.
 /// - **Cumplida o no cumplida** (23C·06): el aviso «Esta visita ya tiene resultado…» y ninguna salida.
@@ -306,7 +308,10 @@ class _Cuerpo extends ConsumerWidget {
     final preferencias = ref.watch(preferenciasDelAvisoProvider).asData?.value;
     final reloj = ref.watch(relojVisitaProvider);
     final programada = agenda.estado == EstadoAgenda.programada;
-    final registrar = ref.watch(registrarVisitaDesdeLaCasaProvider);
+    final registrarEnganche = ref.watch(registrarVisitaDesdeLaCasaProvider);
+    // Una cita de ENTREGA no se cierra con «Registrar resultado»: dejaría la entrega pendiente sin
+    // cita ni aviso. Hasta que exista el flujo de #435 (entrega para otro día) no se ofrece.
+    final registrar = agenda.tipo == TipoAgenda.entrega ? null : registrarEnganche;
     final ubicacionId = contexto?.ubicacion.id;
 
     final subtitulo = _subtitulo(contexto, _persona(personas, agenda.espacioPersonaId));
