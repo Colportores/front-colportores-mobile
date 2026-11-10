@@ -89,9 +89,14 @@ void main() {
     final primero = await repo.borrar(incluirBackupDrive: false);
     expect(primero.isLeft(), isTrue, reason: 'el cierre lanzo: el borrado falla a mitad');
 
+    // La jornada nueva queda en la cola del motor sin subir (#679: se cuenta la cola, no la tabla).
     await db!.customStatement(
       'INSERT INTO jornada (id, colportor_id, inicio, created_at, updated_at) '
       "VALUES ('nueva', 'c1', 0, 0, 0)",
+    );
+    await db!.customStatement(
+      'INSERT INTO sync_queue (id, client_op_id, entity, op, payload, created_at, state) '
+      "VALUES ('q-nueva', 'op-nueva', 'jornada', 'insert', '{}', 0, 'PENDING')",
     );
     cierreFalla = false;
     final reintento = await repo.borrar(incluirBackupDrive: false, reintento: true);
