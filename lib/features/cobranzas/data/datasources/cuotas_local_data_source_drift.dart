@@ -59,6 +59,16 @@ final class CuotasLocalDataSourceDrift {
     return _plan(venta);
   }
 
+  /// El día de la primera cuota sin cubrir de [ventaId] (hora del teléfono): la más temprana de las
+  /// abiertas, vencida o no. `null` si la venta no tiene plan o ya cobró todas sus cuotas.
+  Future<DateTime?> proximaCuotaAbiertaDe(String ventaId) async {
+    final estado = await _estado(ventaId);
+    for (final cuota in estado.cuotas) {
+      if (!cuota.estaCubierta) return cuota.fecha;
+    }
+    return null;
+  }
+
   /// El plan de [ventaId] cada vez que cambia la venta, sus cobros, sus citas o lo que se vendió.
   Stream<PlanDeCuotas?> observarPlan(String ventaId) => _db
       .customSelect(

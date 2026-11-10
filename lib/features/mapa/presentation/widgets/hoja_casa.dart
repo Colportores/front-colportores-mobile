@@ -569,6 +569,8 @@ class _Resumen extends StatelessWidget {
           FilaPersonaDeLaCasa(
             persona: persona.persona,
             saldoCentavos: contexto.saldoDe(persona.persona.id),
+            cuota: contexto.cuotaQueTocaDe(persona.persona.id),
+            ahora: ahora,
             alCobrar: alCobrar(persona.persona.id),
             ocupada: ocupado,
           ),
@@ -677,6 +679,7 @@ class _Arriba extends ConsumerWidget {
                 (
                   persona: p,
                   saldoCentavos: contexto.saldoDe(p.persona.id),
+                  cuota: contexto.cuotaQueTocaDe(p.persona.id),
                   detalle: switch (contexto.ultimaEntrevistaDe[p.persona.id]) {
                     final fecha? => TextosPestanasHojaCasa.entrevistaDada(fecha),
                     null => null,
@@ -688,6 +691,7 @@ class _Arriba extends ConsumerWidget {
             alAgregar: alAgregarPersona,
             ocupada: ocupado,
             guardada: guardada,
+            ahora: ahora,
           ),
           PestanaHojaCasa.historial => historial!(context, paraLaPestana),
           PestanaHojaCasa.notas => notas!(context, paraLaPestana),

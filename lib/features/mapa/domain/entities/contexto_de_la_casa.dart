@@ -14,6 +14,7 @@ class ContextoDeLaCasa extends Equatable {
     this.personas = const [],
     this.saldosCentavos = const {},
     this.ultimaEntrevistaDe = const {},
+    this.proximaCuotaDe = const {},
     this.nota,
   });
 
@@ -31,6 +32,10 @@ class ContextoDeLaCasa extends Equatable {
   /// Cuándo fue la última entrevista dada a cada persona (`persona.id` → fecha). Quien no está en el
   /// mapa no tuvo ninguna que se sepa: no se muestra nada.
   final Map<String, DateTime> ultimaEntrevistaDe;
+
+  /// El día de la cuota que toca a cada persona que tiene un plan de cuotas (`persona.id` → día).
+  /// Quien no está en el mapa no tiene plan o no tiene cuota abierta: la fila no dice cuota.
+  final Map<String, DateTime> proximaCuotaDe;
 
   /// La nota más reciente del lugar, si hay.
   final NotaDelLugar? nota;
@@ -56,10 +61,22 @@ class ContextoDeLaCasa extends Equatable {
     return saldo != null && saldo > 0 ? saldo : null;
   }
 
+  /// El día de la cuota que toca a [personaId], solo si debe algo: sin saldo no hay cuota que mostrar
+  /// (la fila de quien no debe no lleva «$ Cobrar» ni cuota).
+  DateTime? cuotaQueTocaDe(String personaId) =>
+      saldoDe(personaId) == null ? null : proximaCuotaDe[personaId];
+
   /// Lleva datos personales (personas y nota): ver `Persona.stringify`.
   @override
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [espacioId, personas, saldosCentavos, ultimaEntrevistaDe, nota];
+  List<Object?> get props => [
+    espacioId,
+    personas,
+    saldosCentavos,
+    ultimaEntrevistaDe,
+    proximaCuotaDe,
+    nota,
+  ];
 }
