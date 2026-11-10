@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/misionero_dejado.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
@@ -546,6 +547,7 @@ final class _AgendaQueLanza implements AgendaRepository {
   Future<Either<Failure, VisitaGuardada>> registrarVisita(
     Visita visita, {
     String? agendaId,
+    List<MisioneroDejado> misioneros = const [],
     NotaDeCampo? nota,
   }) => throw StateError('se cayó la base');
 

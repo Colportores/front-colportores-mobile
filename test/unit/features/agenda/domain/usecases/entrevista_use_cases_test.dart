@@ -197,6 +197,54 @@ void main() {
       expect(recibida.nota!.texto, 'volver con la esposa');
     });
 
+    test('la visita guarda las horas que confirmó la colportora (#466)', () async {
+      await conEntrevistaEnCurso();
+
+      await finalizar(finalizando());
+
+      final visita = agenda.recibidas.single.visita;
+      expect(visita.entrevistaEntrada, entrada.toUtc());
+      expect(visita.entrevistaSalida, salida.toUtc());
+    });
+
+    test('los misioneros de «Lo que dejaste» van con la visita, sin los de 0 (#608)', () async {
+      await conEntrevistaEnCurso();
+
+      await finalizar(
+        FinalizarEntrevistaParams.de(
+          entrevistaDePrueba(agendaId: 'age-1', jornadaId: 'jor-1'),
+          entrada: entrada,
+          salida: salida,
+          misioneros: const {'p-camino': 2, 'p-paz': 0},
+        ),
+      );
+
+      final dejados = agenda.misionerosPorVisita['vis-1']!;
+      expect(
+        [for (final m in dejados) (m.productoId, m.cantidad, m.visitaId)],
+        [('p-camino', 2, 'vis-1')],
+      );
+    });
+
+    test('sin entrevista con horas (conHoras: false) la visita no guarda horas', () async {
+      reloj = ahoraEntrevista;
+
+      await finalizar(
+        FinalizarEntrevistaParams(
+          ids: const IdsResultadoVisita(visita: 'vis-1', nota: 'not-1'),
+          espacioId: 'esp-1',
+          espacioPersonaId: 'ep-1',
+          colportorId: 'col-1',
+          entrada: salida,
+          salida: salida,
+          conHoras: false,
+        ),
+      );
+
+      final visita = agenda.recibidas.single.visita;
+      expect([visita.entrevistaEntrada, visita.entrevistaSalida], [null, null]);
+    });
+
     test('al guardar bien, la entrevista deja de estar en curso', () async {
       await conEntrevistaEnCurso();
 

@@ -17,7 +17,7 @@ const ventaSinLugar = FailureValidacion(
   campos: {'espacio': 'La casa de esta entrevista ya no está en tu teléfono.'},
   mensaje:
       'La casa de esta entrevista ya no está en tu teléfono, así que no se puede registrar la '
-      'venta. La entrevista sigue en curso: cerrala con «No, guardar y volver al mapa».',
+      'venta. La entrevista sigue en curso: cerrala con «No hubo venta».',
 );
 
 /// La persona de la entrevista ya no está en el teléfono (se dio de baja): una venta se ata a una
@@ -26,7 +26,7 @@ const ventaSinPersona = FailureValidacion(
   campos: {'persona': 'La persona de esta entrevista ya no está en tu teléfono.'},
   mensaje:
       'La persona de esta entrevista ya no está en tu teléfono, así que no se puede registrar la '
-      'venta. La entrevista sigue en curso: cerrala con «No, guardar y volver al mapa».',
+      'venta. La entrevista sigue en curso: cerrala con «No hubo venta».',
 );
 
 /// Lo mismo para «Vender» de «¿Qué pasó?» (vista 39): no hay entrevista en curso que cerrar, así que
@@ -163,6 +163,9 @@ final class CerrarEntrevistaConVentaUseCase {
           agendaId: params.agendaId,
           jornadaId: params.jornadaId,
           nota: params.nota,
+          // Las horas de la entrevista que terminó en venta (#466); sin entrevista, ninguna.
+          entrevistaEntrada: params.conHoras ? params.entrada : null,
+          entrevistaSalida: params.conHoras ? params.salida : null,
         ),
       ),
     );

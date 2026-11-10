@@ -218,7 +218,7 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
       if (actual.motivo.isEmpty && _motivo.text.isNotEmpty) _motivo.clear();
       if (anterior?.falla == null && actual.falla != null) _mostrarElAviso();
     });
-    final id = _args.cliente.espacioPersonaId;
+    final id = (colportorId: _args.colportorId, espacioPersonaId: _args.cliente.espacioPersonaId);
     final precios = ref.watch(preciosDeLaVentaProvider(id));
 
     final Widget cuerpo;
@@ -433,7 +433,9 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
           : BotonDeVenta(
               texto: venta.falla != null ? TextosVenta.reintentar : TextosVenta.registrarVenta,
               ocupado: venta.guardando,
-              nota: venta.talonarioVacio
+              nota: venta.soloMisioneros
+                  ? TextosVenta.soloMisioneros
+                  : venta.talonarioVacio
                   ? TextosVenta.talonarioVacio
                   : repetido != null
                   ? TextosVenta.talonarioRepetidoNota
@@ -475,9 +477,10 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
         return TarjetaDeRenglon(
           key: Key('venta_renglon_${r.clave}'),
           rotulo: null,
-          titulo: r.titulo,
+          // 42B·08G: el misionero va «El camino a Cristo × 1», «Misionero · sin cobrar», a $ 0.
+          titulo: sinCobrar ? '${r.titulo} × $cantidad' : r.titulo,
           detalle: sinCobrar
-              ? '$cantidad · sin cobrar'
+              ? TextosVenta.misioneroSinCobrar
               : '$cantidad × ${FormatoVenta.monto(precioCentavos)}',
           precio: FormatoVenta.monto(r.subtotalCentavos),
           alQuitar: alQuitar,

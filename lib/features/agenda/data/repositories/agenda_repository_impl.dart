@@ -5,6 +5,7 @@ import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/agenda.dart';
 import '../../domain/entities/cambios_de_agenda.dart';
 import '../../domain/entities/detalle_de_agenda.dart';
+import '../../domain/entities/misionero_dejado.dart';
 import '../../domain/entities/nota_de_campo.dart';
 import '../../domain/entities/visita.dart';
 import '../../domain/entities/visita_guardada.dart';
@@ -52,8 +53,14 @@ final class AgendaRepositoryImpl implements AgendaRepository {
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
+    List<MisioneroDejado> misioneros = const [],
   }) => _correr('VISITA_ALTA', {'visita_id': visita.id, 'agenda_id': ?agendaId}, () async {
-    final r = await _local.registrarVisita(visita, agendaId: agendaId, nota: nota);
+    final r = await _local.registrarVisita(
+      visita,
+      agendaId: agendaId,
+      nota: nota,
+      misioneros: misioneros,
+    );
     if (r.agendaIgnorada case final motivo?) {
       _log.info(LogModulo.db, 'VISITA_ALTA_SIN_AGENDA', 'visita guardada sin su agenda', {
         'visita_id': r.visita.id,

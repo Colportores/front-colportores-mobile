@@ -286,6 +286,7 @@ Future<SalidaDeEntrega> montarEntrega(
   bool conCobro = false,
   bool conAgendar = false,
   bool abrir = true,
+  int? saldoCentavos,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -312,6 +313,7 @@ Future<SalidaDeEntrega> montarEntrega(
                       nombreDelCliente: 'María Fernández',
                       alCobrar: conCobro ? salida.cobrar.add : null,
                       alAgendarCobranza: conAgendar ? salida.agendar.add : null,
+                      saldoCentavos: saldoCentavos,
                     ),
                   );
                   salida.registrada = r;

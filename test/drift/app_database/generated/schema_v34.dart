@@ -4435,7 +4435,7 @@ class SyncQueue extends Table with TableInfo<SyncQueue, SyncQueueData> {
   @override
   List<String> get customConstraints => const [
     'PRIMARY KEY(id)',
-    'CHECK(op IN (\'insert\', \'update\', \'delete\', \'marcar_como_duplicado\'))',
+    'CHECK(op IN (\'insert\', \'update\', \'delete\'))',
     'CHECK(state IN (\'PENDING\', \'IN_FLIGHT\', \'INVALID\', \'DONE\', \'BLOCKED\', \'WAITING\'))',
   ];
   @override
@@ -7724,6 +7724,22 @@ class Visita extends Table with TableInfo<Visita, VisitaData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<int> entrevistaEntrada = GeneratedColumn<int>(
+    'entrevista_entrada',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> entrevistaSalida = GeneratedColumn<int>(
+    'entrevista_salida',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
     'created_at',
     aliasedName,
@@ -7774,6 +7790,8 @@ class Visita extends Table with TableInfo<Visita, VisitaData> {
     tipoResultado,
     colportorId,
     jornadaId,
+    entrevistaEntrada,
+    entrevistaSalida,
     createdAt,
     updatedAt,
     createdBy,
@@ -7818,6 +7836,14 @@ class Visita extends Table with TableInfo<Visita, VisitaData> {
       jornadaId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}jornada_id'],
+      ),
+      entrevistaEntrada: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}entrevista_entrada'],
+      ),
+      entrevistaSalida: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}entrevista_salida'],
       ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -7864,6 +7890,8 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
   final String tipoResultado;
   final String colportorId;
   final String? jornadaId;
+  final int? entrevistaEntrada;
+  final int? entrevistaSalida;
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
@@ -7877,6 +7905,8 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
     required this.tipoResultado,
     required this.colportorId,
     this.jornadaId,
+    this.entrevistaEntrada,
+    this.entrevistaSalida,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
@@ -7896,6 +7926,12 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
     map['colportor_id'] = Variable<String>(colportorId);
     if (!nullToAbsent || jornadaId != null) {
       map['jornada_id'] = Variable<String>(jornadaId);
+    }
+    if (!nullToAbsent || entrevistaEntrada != null) {
+      map['entrevista_entrada'] = Variable<int>(entrevistaEntrada);
+    }
+    if (!nullToAbsent || entrevistaSalida != null) {
+      map['entrevista_salida'] = Variable<int>(entrevistaSalida);
     }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -7922,6 +7958,12 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
       jornadaId: jornadaId == null && nullToAbsent
           ? const Value.absent()
           : Value(jornadaId),
+      entrevistaEntrada: entrevistaEntrada == null && nullToAbsent
+          ? const Value.absent()
+          : Value(entrevistaEntrada),
+      entrevistaSalida: entrevistaSalida == null && nullToAbsent
+          ? const Value.absent()
+          : Value(entrevistaSalida),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       createdBy: createdBy == null && nullToAbsent
@@ -7947,6 +7989,8 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
       tipoResultado: serializer.fromJson<String>(json['tipoResultado']),
       colportorId: serializer.fromJson<String>(json['colportorId']),
       jornadaId: serializer.fromJson<String?>(json['jornadaId']),
+      entrevistaEntrada: serializer.fromJson<int?>(json['entrevistaEntrada']),
+      entrevistaSalida: serializer.fromJson<int?>(json['entrevistaSalida']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
@@ -7965,6 +8009,8 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
       'tipoResultado': serializer.toJson<String>(tipoResultado),
       'colportorId': serializer.toJson<String>(colportorId),
       'jornadaId': serializer.toJson<String?>(jornadaId),
+      'entrevistaEntrada': serializer.toJson<int?>(entrevistaEntrada),
+      'entrevistaSalida': serializer.toJson<int?>(entrevistaSalida),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
@@ -7981,6 +8027,8 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
     String? tipoResultado,
     String? colportorId,
     Value<String?> jornadaId = const Value.absent(),
+    Value<int?> entrevistaEntrada = const Value.absent(),
+    Value<int?> entrevistaSalida = const Value.absent(),
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
@@ -7996,6 +8044,12 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
     tipoResultado: tipoResultado ?? this.tipoResultado,
     colportorId: colportorId ?? this.colportorId,
     jornadaId: jornadaId.present ? jornadaId.value : this.jornadaId,
+    entrevistaEntrada: entrevistaEntrada.present
+        ? entrevistaEntrada.value
+        : this.entrevistaEntrada,
+    entrevistaSalida: entrevistaSalida.present
+        ? entrevistaSalida.value
+        : this.entrevistaSalida,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
@@ -8017,6 +8071,12 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
           ? data.colportorId.value
           : this.colportorId,
       jornadaId: data.jornadaId.present ? data.jornadaId.value : this.jornadaId,
+      entrevistaEntrada: data.entrevistaEntrada.present
+          ? data.entrevistaEntrada.value
+          : this.entrevistaEntrada,
+      entrevistaSalida: data.entrevistaSalida.present
+          ? data.entrevistaSalida.value
+          : this.entrevistaSalida,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
@@ -8037,6 +8097,8 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
           ..write('tipoResultado: $tipoResultado, ')
           ..write('colportorId: $colportorId, ')
           ..write('jornadaId: $jornadaId, ')
+          ..write('entrevistaEntrada: $entrevistaEntrada, ')
+          ..write('entrevistaSalida: $entrevistaSalida, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -8055,6 +8117,8 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
     tipoResultado,
     colportorId,
     jornadaId,
+    entrevistaEntrada,
+    entrevistaSalida,
     createdAt,
     updatedAt,
     createdBy,
@@ -8072,6 +8136,8 @@ class VisitaData extends DataClass implements Insertable<VisitaData> {
           other.tipoResultado == this.tipoResultado &&
           other.colportorId == this.colportorId &&
           other.jornadaId == this.jornadaId &&
+          other.entrevistaEntrada == this.entrevistaEntrada &&
+          other.entrevistaSalida == this.entrevistaSalida &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
@@ -8087,6 +8153,8 @@ class VisitaCompanion extends UpdateCompanion<VisitaData> {
   final Value<String> tipoResultado;
   final Value<String> colportorId;
   final Value<String?> jornadaId;
+  final Value<int?> entrevistaEntrada;
+  final Value<int?> entrevistaSalida;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
@@ -8101,6 +8169,8 @@ class VisitaCompanion extends UpdateCompanion<VisitaData> {
     this.tipoResultado = const Value.absent(),
     this.colportorId = const Value.absent(),
     this.jornadaId = const Value.absent(),
+    this.entrevistaEntrada = const Value.absent(),
+    this.entrevistaSalida = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
@@ -8116,6 +8186,8 @@ class VisitaCompanion extends UpdateCompanion<VisitaData> {
     required String tipoResultado,
     required String colportorId,
     this.jornadaId = const Value.absent(),
+    this.entrevistaEntrada = const Value.absent(),
+    this.entrevistaSalida = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
@@ -8137,6 +8209,8 @@ class VisitaCompanion extends UpdateCompanion<VisitaData> {
     Expression<String>? tipoResultado,
     Expression<String>? colportorId,
     Expression<String>? jornadaId,
+    Expression<int>? entrevistaEntrada,
+    Expression<int>? entrevistaSalida,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
@@ -8152,6 +8226,8 @@ class VisitaCompanion extends UpdateCompanion<VisitaData> {
       if (tipoResultado != null) 'tipo_resultado': tipoResultado,
       if (colportorId != null) 'colportor_id': colportorId,
       if (jornadaId != null) 'jornada_id': jornadaId,
+      if (entrevistaEntrada != null) 'entrevista_entrada': entrevistaEntrada,
+      if (entrevistaSalida != null) 'entrevista_salida': entrevistaSalida,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
@@ -8169,6 +8245,8 @@ class VisitaCompanion extends UpdateCompanion<VisitaData> {
     Value<String>? tipoResultado,
     Value<String>? colportorId,
     Value<String?>? jornadaId,
+    Value<int?>? entrevistaEntrada,
+    Value<int?>? entrevistaSalida,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
@@ -8184,6 +8262,8 @@ class VisitaCompanion extends UpdateCompanion<VisitaData> {
       tipoResultado: tipoResultado ?? this.tipoResultado,
       colportorId: colportorId ?? this.colportorId,
       jornadaId: jornadaId ?? this.jornadaId,
+      entrevistaEntrada: entrevistaEntrada ?? this.entrevistaEntrada,
+      entrevistaSalida: entrevistaSalida ?? this.entrevistaSalida,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
@@ -8217,6 +8297,12 @@ class VisitaCompanion extends UpdateCompanion<VisitaData> {
     if (jornadaId.present) {
       map['jornada_id'] = Variable<String>(jornadaId.value);
     }
+    if (entrevistaEntrada.present) {
+      map['entrevista_entrada'] = Variable<int>(entrevistaEntrada.value);
+    }
+    if (entrevistaSalida.present) {
+      map['entrevista_salida'] = Variable<int>(entrevistaSalida.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -8248,6 +8334,483 @@ class VisitaCompanion extends UpdateCompanion<VisitaData> {
           ..write('tipoResultado: $tipoResultado, ')
           ..write('colportorId: $colportorId, ')
           ..write('jornadaId: $jornadaId, ')
+          ..write('entrevistaEntrada: $entrevistaEntrada, ')
+          ..write('entrevistaSalida: $entrevistaSalida, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncVersion: $syncVersion, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class VisitaMisionero extends Table
+    with TableInfo<VisitaMisionero, VisitaMisioneroData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  VisitaMisionero(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> visitaId = GeneratedColumn<String>(
+    'visita_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> productoId = GeneratedColumn<String>(
+    'producto_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> cantidad = GeneratedColumn<int>(
+    'cantidad',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
+    'sync_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    visitaId,
+    productoId,
+    cantidad,
+    createdAt,
+    updatedAt,
+    createdBy,
+    deletedAt,
+    syncVersion,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'visita_misionero';
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VisitaMisioneroData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VisitaMisioneroData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      visitaId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}visita_id'],
+      )!,
+      productoId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}producto_id'],
+      )!,
+      cantidad: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cantidad'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      ),
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      syncVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sync_version'],
+      )!,
+    );
+  }
+
+  @override
+  VisitaMisionero createAlias(String alias) {
+    return VisitaMisionero(attachedDatabase, alias);
+  }
+
+  @override
+  List<String> get customConstraints => const [
+    'PRIMARY KEY(id)',
+    'CHECK(cantidad >= 1)',
+  ];
+  @override
+  bool get dontWriteConstraints => true;
+}
+
+class VisitaMisioneroData extends DataClass
+    implements Insertable<VisitaMisioneroData> {
+  final String id;
+  final String visitaId;
+  final String productoId;
+  final int cantidad;
+  final int createdAt;
+  final int updatedAt;
+  final String? createdBy;
+  final int? deletedAt;
+  final int syncVersion;
+  const VisitaMisioneroData({
+    required this.id,
+    required this.visitaId,
+    required this.productoId,
+    required this.cantidad,
+    required this.createdAt,
+    required this.updatedAt,
+    this.createdBy,
+    this.deletedAt,
+    required this.syncVersion,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['visita_id'] = Variable<String>(visitaId);
+    map['producto_id'] = Variable<String>(productoId);
+    map['cantidad'] = Variable<int>(cantidad);
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || createdBy != null) {
+      map['created_by'] = Variable<String>(createdBy);
+    }
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
+    map['sync_version'] = Variable<int>(syncVersion);
+    return map;
+  }
+
+  VisitaMisioneroCompanion toCompanion(bool nullToAbsent) {
+    return VisitaMisioneroCompanion(
+      id: Value(id),
+      visitaId: Value(visitaId),
+      productoId: Value(productoId),
+      cantidad: Value(cantidad),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      createdBy: createdBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdBy),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      syncVersion: Value(syncVersion),
+    );
+  }
+
+  factory VisitaMisioneroData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VisitaMisioneroData(
+      id: serializer.fromJson<String>(json['id']),
+      visitaId: serializer.fromJson<String>(json['visitaId']),
+      productoId: serializer.fromJson<String>(json['productoId']),
+      cantidad: serializer.fromJson<int>(json['cantidad']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      createdBy: serializer.fromJson<String?>(json['createdBy']),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
+      syncVersion: serializer.fromJson<int>(json['syncVersion']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'visitaId': serializer.toJson<String>(visitaId),
+      'productoId': serializer.toJson<String>(productoId),
+      'cantidad': serializer.toJson<int>(cantidad),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'createdBy': serializer.toJson<String?>(createdBy),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
+      'syncVersion': serializer.toJson<int>(syncVersion),
+    };
+  }
+
+  VisitaMisioneroData copyWith({
+    String? id,
+    String? visitaId,
+    String? productoId,
+    int? cantidad,
+    int? createdAt,
+    int? updatedAt,
+    Value<String?> createdBy = const Value.absent(),
+    Value<int?> deletedAt = const Value.absent(),
+    int? syncVersion,
+  }) => VisitaMisioneroData(
+    id: id ?? this.id,
+    visitaId: visitaId ?? this.visitaId,
+    productoId: productoId ?? this.productoId,
+    cantidad: cantidad ?? this.cantidad,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    syncVersion: syncVersion ?? this.syncVersion,
+  );
+  VisitaMisioneroData copyWithCompanion(VisitaMisioneroCompanion data) {
+    return VisitaMisioneroData(
+      id: data.id.present ? data.id.value : this.id,
+      visitaId: data.visitaId.present ? data.visitaId.value : this.visitaId,
+      productoId: data.productoId.present
+          ? data.productoId.value
+          : this.productoId,
+      cantidad: data.cantidad.present ? data.cantidad.value : this.cantidad,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      syncVersion: data.syncVersion.present
+          ? data.syncVersion.value
+          : this.syncVersion,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisitaMisioneroData(')
+          ..write('id: $id, ')
+          ..write('visitaId: $visitaId, ')
+          ..write('productoId: $productoId, ')
+          ..write('cantidad: $cantidad, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncVersion: $syncVersion')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    visitaId,
+    productoId,
+    cantidad,
+    createdAt,
+    updatedAt,
+    createdBy,
+    deletedAt,
+    syncVersion,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VisitaMisioneroData &&
+          other.id == this.id &&
+          other.visitaId == this.visitaId &&
+          other.productoId == this.productoId &&
+          other.cantidad == this.cantidad &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.createdBy == this.createdBy &&
+          other.deletedAt == this.deletedAt &&
+          other.syncVersion == this.syncVersion);
+}
+
+class VisitaMisioneroCompanion extends UpdateCompanion<VisitaMisioneroData> {
+  final Value<String> id;
+  final Value<String> visitaId;
+  final Value<String> productoId;
+  final Value<int> cantidad;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<String?> createdBy;
+  final Value<int?> deletedAt;
+  final Value<int> syncVersion;
+  final Value<int> rowid;
+  const VisitaMisioneroCompanion({
+    this.id = const Value.absent(),
+    this.visitaId = const Value.absent(),
+    this.productoId = const Value.absent(),
+    this.cantidad = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.syncVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  VisitaMisioneroCompanion.insert({
+    required String id,
+    required String visitaId,
+    required String productoId,
+    required int cantidad,
+    required int createdAt,
+    required int updatedAt,
+    this.createdBy = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.syncVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       visitaId = Value(visitaId),
+       productoId = Value(productoId),
+       cantidad = Value(cantidad),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<VisitaMisioneroData> custom({
+    Expression<String>? id,
+    Expression<String>? visitaId,
+    Expression<String>? productoId,
+    Expression<int>? cantidad,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<String>? createdBy,
+    Expression<int>? deletedAt,
+    Expression<int>? syncVersion,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (visitaId != null) 'visita_id': visitaId,
+      if (productoId != null) 'producto_id': productoId,
+      if (cantidad != null) 'cantidad': cantidad,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (createdBy != null) 'created_by': createdBy,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (syncVersion != null) 'sync_version': syncVersion,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  VisitaMisioneroCompanion copyWith({
+    Value<String>? id,
+    Value<String>? visitaId,
+    Value<String>? productoId,
+    Value<int>? cantidad,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<String?>? createdBy,
+    Value<int?>? deletedAt,
+    Value<int>? syncVersion,
+    Value<int>? rowid,
+  }) {
+    return VisitaMisioneroCompanion(
+      id: id ?? this.id,
+      visitaId: visitaId ?? this.visitaId,
+      productoId: productoId ?? this.productoId,
+      cantidad: cantidad ?? this.cantidad,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      createdBy: createdBy ?? this.createdBy,
+      deletedAt: deletedAt ?? this.deletedAt,
+      syncVersion: syncVersion ?? this.syncVersion,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (visitaId.present) {
+      map['visita_id'] = Variable<String>(visitaId.value);
+    }
+    if (productoId.present) {
+      map['producto_id'] = Variable<String>(productoId.value);
+    }
+    if (cantidad.present) {
+      map['cantidad'] = Variable<int>(cantidad.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
+    if (syncVersion.present) {
+      map['sync_version'] = Variable<int>(syncVersion.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VisitaMisioneroCompanion(')
+          ..write('id: $id, ')
+          ..write('visitaId: $visitaId, ')
+          ..write('productoId: $productoId, ')
+          ..write('cantidad: $cantidad, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -20124,6 +20687,7 @@ class DatabaseAtV34 extends GeneratedDatabase {
   late final Nota nota = Nota(this);
   late final Agenda agenda = Agenda(this);
   late final Visita visita = Visita(this);
+  late final VisitaMisionero visitaMisionero = VisitaMisionero(this);
   late final HouseStatus houseStatus = HouseStatus(this);
   late final NotificacionHistorial notificacionHistorial =
       NotificacionHistorial(this);
@@ -20226,6 +20790,10 @@ class DatabaseAtV34 extends GeneratedDatabase {
     'visita_espacio_idx',
     'CREATE INDEX visita_espacio_idx ON visita (espacio_id)',
   );
+  late final Index visitaMisioneroVisitaIdx = Index(
+    'visita_misionero_visita_idx',
+    'CREATE INDEX visita_misionero_visita_idx ON visita_misionero (visita_id)',
+  );
   late final Index notificacionHistorialRecibidaIdx = Index(
     'notificacion_historial_recibida_idx',
     'CREATE INDEX notificacion_historial_recibida_idx ON notificacion_historial (recibida_en)',
@@ -20312,6 +20880,7 @@ class DatabaseAtV34 extends GeneratedDatabase {
     nota,
     agenda,
     visita,
+    visitaMisionero,
     houseStatus,
     notificacionHistorial,
     producto,
@@ -20353,6 +20922,7 @@ class DatabaseAtV34 extends GeneratedDatabase {
     visitaColportorIdx,
     visitaEspacioPersonaIdx,
     visitaEspacioIdx,
+    visitaMisioneroVisitaIdx,
     notificacionHistorialRecibidaIdx,
     productoColeccionColeccionIdx,
     precioPorCiudadCampaniaCiudadIdx,

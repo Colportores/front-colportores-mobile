@@ -24,6 +24,8 @@ final class FinalizarEntrevistaParams extends Equatable {
     this.agendaId,
     this.jornadaId,
     this.nota = '',
+    this.misioneros = const {},
+    this.conHoras = true,
   });
 
   /// Termina la entrevista [en] curso con las horas que confirmó la colportora.
@@ -32,6 +34,7 @@ final class FinalizarEntrevistaParams extends Equatable {
     required DateTime entrada,
     required DateTime salida,
     String nota = '',
+    Map<String, int> misioneros = const {},
   }) => FinalizarEntrevistaParams(
     ids: en.ids,
     espacioId: en.espacioId,
@@ -42,6 +45,7 @@ final class FinalizarEntrevistaParams extends Equatable {
     agendaId: en.agendaId,
     jornadaId: en.jornadaId,
     nota: nota,
+    misioneros: misioneros,
   );
 
   final IdsResultadoVisita ids;
@@ -61,6 +65,14 @@ final class FinalizarEntrevistaParams extends Equatable {
   /// La nota de la visita, local-only: en blanco no crea ninguna.
   final String nota;
 
+  /// Los misioneros que dejó sin venta («Lo que dejaste», #608): producto → cuántos.
+  final Map<String, int> misioneros;
+
+  /// Si [entrada] y [salida] son las de una entrevista y se guardan en la visita (#466). `false` en
+  /// la venta que sale de la hoja de la casa sin entrevista («Vender desde la casa»): sus horas son
+  /// «ahora» y no se inventa una entrevista.
+  final bool conHoras;
+
   /// Lleva la nota (dato personal): nunca debe salir en un log ni en un `toString`.
   @override
   bool? get stringify => false;
@@ -76,6 +88,8 @@ final class FinalizarEntrevistaParams extends Equatable {
     agendaId,
     jornadaId,
     nota,
+    misioneros,
+    conHoras,
   ];
 }
 
@@ -102,8 +116,9 @@ const entrevistaSinLugar = FailureValidacion(
 /// 4. Borra la entrevista en curso. Si **eso** falla, devuelve `Left`: la visita ya quedó guardada y
 ///    el reintento (mismos ids) la encuentra y vuelve a intentar el borrado.
 ///
-/// **Las horas de entrada y salida no se guardan en la visita** hasta #466 (esperan las columnas
-/// de backend-supabase#132): se validan y se usan para el aviso y el resumen.
+/// Las horas de entrada y salida quedan en la visita (`entrevista_entrada` y `entrevista_salida`,
+/// decisión de Cristian, 23/10, «Horas entrev», #466), con los misioneros que dejó sin venta («Lo que
+/// dejaste», #608), en la misma transacción.
 ///
 /// Para «Sí, registrar la venta» este caso de uso **no se llama**: si la venta no se completa el
 /// resultado no se guarda (R44, vista 39), y la entrevista sigue en curso hasta que el flujo de
@@ -169,6 +184,9 @@ final class FinalizarEntrevistaUseCase
         agendaId: params.agendaId,
         jornadaId: params.jornadaId,
         nota: params.nota,
+        entrevistaEntrada: params.conHoras ? params.entrada : null,
+        entrevistaSalida: params.conHoras ? params.salida : null,
+        misioneros: params.misioneros,
       ),
     );
     if (guardada.isLeft()) return guardada;

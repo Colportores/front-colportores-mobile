@@ -680,7 +680,7 @@ void main() {
               entrada: entrada,
               salida: salida,
               entradaInferida: inferida,
-              alGuardar: (_, _) async => null,
+              alGuardar: (_, _, _) async => null,
               reloj: () => DateTime(2026, 10, 23, 15),
             ),
           ),

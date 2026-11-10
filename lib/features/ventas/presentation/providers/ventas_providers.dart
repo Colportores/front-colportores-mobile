@@ -6,6 +6,7 @@ import '../../../../core/sync/sync_providers.dart';
 import '../../../mapa/presentation/providers/house_status_providers.dart';
 import '../../data/datasources/venta_local_data_source_drift.dart';
 import '../../data/repositories/venta_repository_impl.dart';
+import '../../data/services/fuente_de_precios_de_la_venta_local.dart';
 import '../../data/services/fuente_de_precios_de_la_venta_sin_fuente.dart';
 import '../../domain/entities/precios_de_la_venta.dart';
 import '../../domain/repositories/fuente_de_precios_de_la_venta.dart';
@@ -44,22 +45,29 @@ final registrarVentaUseCaseProvider = Provider<RegistrarVentaUseCase>(
   ),
 );
 
-/// De dónde sale la ciudad (y la campaña en curso) de la casa del cliente. Hasta que existan las
-/// réplicas de #274, no hay fuente: la pantalla lo dice y deja reintentar.
-final fuenteDePreciosDeLaVentaProvider = Provider<FuenteDePreciosDeLaVenta>(
-  (ref) => FuenteDePreciosDeLaVentaSinFuente(),
-);
+/// De dónde sale la ciudad (y la campaña en curso) de la casa del cliente: la casa y las réplicas del
+/// pull de catálogos, en el teléfono y sin red (la misma fuente de la vista 26). Sin la base abierta
+/// no se sabe: la pantalla lo dice y deja reintentar.
+final fuenteDePreciosDeLaVentaProvider = Provider<FuenteDePreciosDeLaVenta>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return FuenteDePreciosDeLaVentaSinFuente();
+  return FuenteDePreciosDeLaVentaLocal(db, ahora: ref.watch(relojVentaProvider));
+});
 
 Duration? _sinReintentos(int intento, Object error) => null;
 
-/// Con qué precios se le vende al cliente del vínculo [espacioPersonaId] (27A·01 y 27A·10).
-final preciosDeLaVentaProvider = FutureProvider.autoDispose.family<PreciosDeLaVenta, String>((
-  ref,
-  espacioPersonaId,
-) async {
-  final leido = await ref.watch(fuenteDePreciosDeLaVentaProvider).leer(espacioPersonaId);
-  return leido.fold<PreciosDeLaVenta>((falla) => throw falla, (precios) => precios);
-}, retry: _sinReintentos);
+/// A quién y quién vende: la clave de [preciosDeLaVentaProvider].
+typedef ClienteYColportor = ({String colportorId, String espacioPersonaId});
+
+/// Con qué precios [ClienteYColportor.colportorId] le vende al cliente del vínculo
+/// [ClienteYColportor.espacioPersonaId] (27A·01 y 27A·10).
+final preciosDeLaVentaProvider = FutureProvider.autoDispose
+    .family<PreciosDeLaVenta, ClienteYColportor>((ref, clave) async {
+      final leido = await ref
+          .watch(fuenteDePreciosDeLaVentaProvider)
+          .leer(colportorId: clave.colportorId, espacioPersonaId: clave.espacioPersonaId);
+      return leido.fold<PreciosDeLaVenta>((falla) => throw falla, (precios) => precios);
+    }, retry: _sinReintentos);
 
 /// Lo que «Cobrar ahora» de 27A·14 le pasa al cobro (vista 28): la venta recién registrada y con quién
 /// y dónde fue. `colportorId` es el usuario con la sesión iniciada.

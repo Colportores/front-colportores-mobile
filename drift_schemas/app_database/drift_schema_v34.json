@@ -1246,7 +1246,7 @@
         "is_virtual": false,
         "without_rowid": false,
         "constraints": [
-          "CHECK (op IN ('insert', 'update', 'delete', 'marcar_como_duplicado'))",
+          "CHECK (op IN ('insert', 'update', 'delete'))",
           "CHECK (state IN ('PENDING', 'IN_FLIGHT', 'INVALID', 'DONE', 'BLOCKED', 'WAITING'))"
         ],
         "explicit_pk": [
@@ -2020,6 +2020,34 @@
             "dsl_features": []
           },
           {
+            "name": "entrevista_entrada",
+            "getter_name": "entrevistaEntrada",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "entrevista_salida",
+            "getter_name": "entrevistaSalida",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
             "name": "created_at",
             "getter_name": "createdAt",
             "moor_type": "int",
@@ -2094,6 +2122,127 @@
     },
     {
       "id": 17,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "visita_misionero",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "visita_id",
+            "getter_name": "visitaId",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "producto_id",
+            "getter_name": "productoId",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "cantidad",
+            "getter_name": "cantidad",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "created_at",
+            "getter_name": "createdAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "updated_at",
+            "getter_name": "updatedAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "created_by",
+            "getter_name": "createdBy",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "deleted_at",
+            "getter_name": "deletedAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "sync_version",
+            "getter_name": "syncVersion",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (cantidad >= 1)"
+        ],
+        "explicit_pk": [
+          "id"
+        ]
+      }
+    },
+    {
+      "id": 18,
       "references": [],
       "type": "table",
       "data": {
@@ -2237,7 +2386,7 @@
       }
     },
     {
-      "id": 18,
+      "id": 19,
       "references": [],
       "type": "table",
       "data": {
@@ -2332,7 +2481,7 @@
       }
     },
     {
-      "id": 19,
+      "id": 20,
       "references": [],
       "type": "table",
       "data": {
@@ -2531,7 +2680,7 @@
       }
     },
     {
-      "id": 20,
+      "id": 21,
       "references": [],
       "type": "table",
       "data": {
@@ -2642,7 +2791,7 @@
       }
     },
     {
-      "id": 21,
+      "id": 22,
       "references": [],
       "type": "table",
       "data": {
@@ -2763,7 +2912,7 @@
       }
     },
     {
-      "id": 22,
+      "id": 23,
       "references": [],
       "type": "table",
       "data": {
@@ -2916,7 +3065,7 @@
       }
     },
     {
-      "id": 23,
+      "id": 24,
       "references": [],
       "type": "table",
       "data": {
@@ -3059,7 +3208,7 @@
       }
     },
     {
-      "id": 24,
+      "id": 25,
       "references": [],
       "type": "table",
       "data": {
@@ -3168,7 +3317,7 @@
       }
     },
     {
-      "id": 25,
+      "id": 26,
       "references": [],
       "type": "table",
       "data": {
@@ -3299,7 +3448,7 @@
       }
     },
     {
-      "id": 26,
+      "id": 27,
       "references": [],
       "type": "table",
       "data": {
@@ -3438,7 +3587,7 @@
       }
     },
     {
-      "id": 27,
+      "id": 28,
       "references": [],
       "type": "table",
       "data": {
@@ -3557,7 +3706,7 @@
       }
     },
     {
-      "id": 28,
+      "id": 29,
       "references": [],
       "type": "table",
       "data": {
@@ -3688,7 +3837,7 @@
       }
     },
     {
-      "id": 29,
+      "id": 30,
       "references": [],
       "type": "table",
       "data": {
@@ -3853,7 +4002,7 @@
       }
     },
     {
-      "id": 30,
+      "id": 31,
       "references": [],
       "type": "table",
       "data": {
@@ -4022,7 +4171,7 @@
       }
     },
     {
-      "id": 31,
+      "id": 32,
       "references": [],
       "type": "table",
       "data": {
@@ -4218,7 +4367,7 @@
       }
     },
     {
-      "id": 32,
+      "id": 33,
       "references": [],
       "type": "table",
       "data": {
@@ -4381,7 +4530,7 @@
       }
     },
     {
-      "id": 33,
+      "id": 34,
       "references": [],
       "type": "table",
       "data": {
@@ -4520,7 +4669,7 @@
       }
     },
     {
-      "id": 34,
+      "id": 35,
       "references": [],
       "type": "table",
       "data": {
@@ -4728,7 +4877,7 @@
       }
     },
     {
-      "id": 35,
+      "id": 36,
       "references": [],
       "type": "table",
       "data": {
@@ -4974,7 +5123,7 @@
       }
     },
     {
-      "id": 36,
+      "id": 37,
       "references": [],
       "type": "table",
       "data": {
@@ -5079,7 +5228,7 @@
       }
     },
     {
-      "id": 37,
+      "id": 38,
       "references": [],
       "type": "table",
       "data": {
@@ -5130,7 +5279,7 @@
       }
     },
     {
-      "id": 38,
+      "id": 39,
       "references": [
         0
       ],
@@ -5153,7 +5302,7 @@
       }
     },
     {
-      "id": 39,
+      "id": 40,
       "references": [
         1
       ],
@@ -5176,7 +5325,7 @@
       }
     },
     {
-      "id": 40,
+      "id": 41,
       "references": [
         2
       ],
@@ -5195,7 +5344,7 @@
       }
     },
     {
-      "id": 41,
+      "id": 42,
       "references": [
         4
       ],
@@ -5214,7 +5363,7 @@
       }
     },
     {
-      "id": 42,
+      "id": 43,
       "references": [
         5
       ],
@@ -5233,7 +5382,7 @@
       }
     },
     {
-      "id": 43,
+      "id": 44,
       "references": [
         6
       ],
@@ -5256,7 +5405,7 @@
       }
     },
     {
-      "id": 44,
+      "id": 45,
       "references": [
         8
       ],
@@ -5279,7 +5428,7 @@
       }
     },
     {
-      "id": 45,
+      "id": 46,
       "references": [
         9
       ],
@@ -5306,7 +5455,7 @@
       }
     },
     {
-      "id": 46,
+      "id": 47,
       "references": [
         9
       ],
@@ -5329,7 +5478,7 @@
       }
     },
     {
-      "id": 47,
+      "id": 48,
       "references": [
         9
       ],
@@ -5352,7 +5501,7 @@
       }
     },
     {
-      "id": 48,
+      "id": 49,
       "references": [
         13
       ],
@@ -5371,7 +5520,7 @@
       }
     },
     {
-      "id": 49,
+      "id": 50,
       "references": [
         13
       ],
@@ -5390,7 +5539,7 @@
       }
     },
     {
-      "id": 50,
+      "id": 51,
       "references": [
         14
       ],
@@ -5413,7 +5562,7 @@
       }
     },
     {
-      "id": 51,
+      "id": 52,
       "references": [
         15
       ],
@@ -5436,7 +5585,7 @@
       }
     },
     {
-      "id": 52,
+      "id": 53,
       "references": [
         15
       ],
@@ -5455,7 +5604,7 @@
       }
     },
     {
-      "id": 53,
+      "id": 54,
       "references": [
         15
       ],
@@ -5474,7 +5623,7 @@
       }
     },
     {
-      "id": 54,
+      "id": 55,
       "references": [
         15
       ],
@@ -5493,7 +5642,7 @@
       }
     },
     {
-      "id": 55,
+      "id": 56,
       "references": [
         16
       ],
@@ -5516,7 +5665,7 @@
       }
     },
     {
-      "id": 56,
+      "id": 57,
       "references": [
         16
       ],
@@ -5535,7 +5684,7 @@
       }
     },
     {
-      "id": 57,
+      "id": 58,
       "references": [
         16
       ],
@@ -5554,38 +5703,19 @@
       }
     },
     {
-      "id": 58,
-      "references": [
-        18
-      ],
-      "type": "index",
-      "data": {
-        "on": 18,
-        "name": "notificacion_historial_recibida_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "recibida_en",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
       "id": 59,
       "references": [
-        21
+        17
       ],
       "type": "index",
       "data": {
-        "on": 21,
-        "name": "producto_coleccion_coleccion_idx",
+        "on": 17,
+        "name": "visita_misionero_visita_idx",
         "sql": null,
         "unique": false,
         "columns": [
           {
-            "column": "coleccion_id",
+            "column": "visita_id",
             "order_by": null
           }
         ]
@@ -5594,17 +5724,17 @@
     {
       "id": 60,
       "references": [
-        22
+        19
       ],
       "type": "index",
       "data": {
-        "on": 22,
-        "name": "precio_por_ciudad_campania_ciudad_idx",
+        "on": 19,
+        "name": "notificacion_historial_recibida_idx",
         "sql": null,
         "unique": false,
         "columns": [
           {
-            "column": "campania_ciudad_id",
+            "column": "recibida_en",
             "order_by": null
           }
         ]
@@ -5618,12 +5748,12 @@
       "type": "index",
       "data": {
         "on": 22,
-        "name": "precio_por_ciudad_producto_idx",
+        "name": "producto_coleccion_coleccion_idx",
         "sql": null,
         "unique": false,
         "columns": [
           {
-            "column": "producto_id",
+            "column": "coleccion_id",
             "order_by": null
           }
         ]
@@ -5632,17 +5762,17 @@
     {
       "id": 62,
       "references": [
-        22
+        23
       ],
       "type": "index",
       "data": {
-        "on": 22,
-        "name": "precio_por_ciudad_coleccion_idx",
+        "on": 23,
+        "name": "precio_por_ciudad_campania_ciudad_idx",
         "sql": null,
         "unique": false,
         "columns": [
           {
-            "column": "coleccion_id",
+            "column": "campania_ciudad_id",
             "order_by": null
           }
         ]
@@ -5656,7 +5786,7 @@
       "type": "index",
       "data": {
         "on": 23,
-        "name": "precio_general_producto_idx",
+        "name": "precio_por_ciudad_producto_idx",
         "sql": null,
         "unique": false,
         "columns": [
@@ -5675,7 +5805,7 @@
       "type": "index",
       "data": {
         "on": 23,
-        "name": "precio_general_coleccion_idx",
+        "name": "precio_por_ciudad_coleccion_idx",
         "sql": null,
         "unique": false,
         "columns": [
@@ -5689,11 +5819,49 @@
     {
       "id": 65,
       "references": [
-        25
+        24
       ],
       "type": "index",
       "data": {
-        "on": 25,
+        "on": 24,
+        "name": "precio_general_producto_idx",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "producto_id",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 66,
+      "references": [
+        24
+      ],
+      "type": "index",
+      "data": {
+        "on": 24,
+        "name": "precio_general_coleccion_idx",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "coleccion_id",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 67,
+      "references": [
+        26
+      ],
+      "type": "index",
+      "data": {
+        "on": 26,
         "name": "stock_usuario_idx",
         "sql": null,
         "unique": false,
@@ -5706,13 +5874,13 @@
       }
     },
     {
-      "id": 66,
+      "id": 68,
       "references": [
-        28
+        29
       ],
       "type": "index",
       "data": {
-        "on": 28,
+        "on": 29,
         "name": "campania_colportor_usuario_idx",
         "sql": null,
         "unique": false,
@@ -5725,13 +5893,13 @@
       }
     },
     {
-      "id": 67,
+      "id": 69,
       "references": [
-        29
+        30
       ],
       "type": "index",
       "data": {
-        "on": 29,
+        "on": 30,
         "name": "venta_colportor_idx",
         "sql": null,
         "unique": false,
@@ -5748,13 +5916,13 @@
       }
     },
     {
-      "id": 68,
+      "id": 70,
       "references": [
-        29
+        30
       ],
       "type": "index",
       "data": {
-        "on": 29,
+        "on": 30,
         "name": "venta_espacio_persona_idx",
         "sql": null,
         "unique": false,
@@ -5767,52 +5935,14 @@
       }
     },
     {
-      "id": 69,
-      "references": [
-        30
-      ],
-      "type": "index",
-      "data": {
-        "on": 30,
-        "name": "venta_item_venta_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "venta_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 70,
+      "id": 71,
       "references": [
         31
       ],
       "type": "index",
       "data": {
         "on": 31,
-        "name": "cobranza_venta_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "venta_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 71,
-      "references": [
-        32
-      ],
-      "type": "index",
-      "data": {
-        "on": 32,
-        "name": "entrega_venta_idx",
+        "name": "venta_item_venta_idx",
         "sql": null,
         "unique": false,
         "columns": [
@@ -5826,12 +5956,12 @@
     {
       "id": 72,
       "references": [
-        33
+        32
       ],
       "type": "index",
       "data": {
-        "on": 33,
-        "name": "devolucion_venta_idx",
+        "on": 32,
+        "name": "cobranza_venta_idx",
         "sql": null,
         "unique": false,
         "columns": [
@@ -5845,11 +5975,49 @@
     {
       "id": 73,
       "references": [
+        33
+      ],
+      "type": "index",
+      "data": {
+        "on": 33,
+        "name": "entrega_venta_idx",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "venta_id",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 74,
+      "references": [
         34
       ],
       "type": "index",
       "data": {
         "on": 34,
+        "name": "devolucion_venta_idx",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "venta_id",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 75,
+      "references": [
+        35
+      ],
+      "type": "index",
+      "data": {
+        "on": 35,
         "name": "deposito_ticket_idx",
         "sql": null,
         "unique": false,
@@ -5949,7 +6117,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"sync_queue\" (\"id\" TEXT NOT NULL, \"client_op_id\" TEXT NOT NULL UNIQUE, \"entity\" TEXT NOT NULL, \"op\" TEXT NOT NULL, \"payload\" TEXT NOT NULL, \"sync_version\" INTEGER NULL, \"row_pk\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"state\" TEXT NOT NULL, \"code\" TEXT NOT NULL DEFAULT '', \"message\" TEXT NOT NULL DEFAULT '', \"depends_on\" TEXT NULL, \"done_at\" INTEGER NULL, \"claimed_at\" INTEGER NULL, PRIMARY KEY (\"id\"), CHECK (op IN ('insert', 'update', 'delete', 'marcar_como_duplicado')), CHECK (state IN ('PENDING', 'IN_FLIGHT', 'INVALID', 'DONE', 'BLOCKED', 'WAITING')));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"sync_queue\" (\"id\" TEXT NOT NULL, \"client_op_id\" TEXT NOT NULL UNIQUE, \"entity\" TEXT NOT NULL, \"op\" TEXT NOT NULL, \"payload\" TEXT NOT NULL, \"sync_version\" INTEGER NULL, \"row_pk\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"state\" TEXT NOT NULL, \"code\" TEXT NOT NULL DEFAULT '', \"message\" TEXT NOT NULL DEFAULT '', \"depends_on\" TEXT NULL, \"done_at\" INTEGER NULL, \"claimed_at\" INTEGER NULL, PRIMARY KEY (\"id\"), CHECK (op IN ('insert', 'update', 'delete')), CHECK (state IN ('PENDING', 'IN_FLIGHT', 'INVALID', 'DONE', 'BLOCKED', 'WAITING')));"
         }
       ]
     },
@@ -6012,7 +6180,16 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"visita\" (\"id\" TEXT NOT NULL, \"espacio_id\" TEXT NOT NULL, \"espacio_persona_id\" TEXT NULL, \"fecha\" INTEGER NOT NULL, \"tipo_resultado\" TEXT NOT NULL, \"colportor_id\" TEXT NOT NULL, \"jornada_id\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (tipo_resultado IN ('VENTA', 'NO_CONTESTO', 'RECHAZO', 'ENTREVISTA', 'COBRANZA')));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"visita\" (\"id\" TEXT NOT NULL, \"espacio_id\" TEXT NOT NULL, \"espacio_persona_id\" TEXT NULL, \"fecha\" INTEGER NOT NULL, \"tipo_resultado\" TEXT NOT NULL, \"colportor_id\" TEXT NOT NULL, \"jornada_id\" TEXT NULL, \"entrevista_entrada\" INTEGER NULL, \"entrevista_salida\" INTEGER NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (tipo_resultado IN ('VENTA', 'NO_CONTESTO', 'RECHAZO', 'ENTREVISTA', 'COBRANZA')));"
+        }
+      ]
+    },
+    {
+      "name": "visita_misionero",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"visita_misionero\" (\"id\" TEXT NOT NULL, \"visita_id\" TEXT NOT NULL, \"producto_id\" TEXT NOT NULL, \"cantidad\" INTEGER NOT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (cantidad >= 1));"
         }
       ]
     },
@@ -6382,6 +6559,15 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE INDEX visita_espacio_idx ON visita (espacio_id)"
+        }
+      ]
+    },
+    {
+      "name": "visita_misionero_visita_idx",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX visita_misionero_visita_idx ON visita_misionero (visita_id)"
         }
       ]
     },

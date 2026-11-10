@@ -359,7 +359,11 @@ void main() {
       }
       await tocar(tester, find.text(TextosVenta.agregarALaVenta));
 
-      expect(find.text('3 · sin cobrar'), findsOneWidget);
+      // 42B·08G: «El camino a Cristo × 3», «Misionero · sin cobrar».
+      expect(find.text('El camino a Cristo × 3'), findsOneWidget);
+      expect(find.text(TextosVenta.misioneroSinCobrar), findsOneWidget);
+      // El renglón del misionero ocupa dos líneas: el total puede quedar más abajo en la lista.
+      await verVisible(tester, find.byKey(const Key('venta_total')));
       expect(tester.widget<Text>(find.byKey(const Key('venta_total'))).data, r'$ 8.900');
       await escribir(tester, _campo('venta_talonario'), '8');
       await tocar(tester, _cta);
@@ -370,7 +374,7 @@ void main() {
       );
     });
 
-    testWidgets('27A·08 una venta solo de misioneros vale \$ 0, sin monto a mano ni precio', (
+    testWidgets('27A·08 solo misioneros no es una venta: el botón queda apagado y dice adónde ir', (
       tester,
     ) async {
       final e = EntornoDeVenta();
@@ -381,24 +385,20 @@ void main() {
       }
       await tocar(tester, find.text(TextosVenta.agregarALaVenta));
 
-      expect(find.text('2 · sin cobrar'), findsOneWidget);
-      expect(tester.widget<Text>(find.byKey(const Key('venta_total'))).data, r'$ 0');
+      expect(find.text('El camino a Cristo × 2'), findsOneWidget);
       expect(find.byKey(const Key('venta_cambiar_monto')), findsNothing);
 
       await escribir(tester, _campo('venta_talonario'), '9');
-      await tocar(tester, _cta);
 
-      final r = e.ventas.recibidas.single;
-      expect(r.venta.montoTotalCentavos, 0);
-      expect(
-        [for (final i in r.items) (i.productoId, i.cantidad, i.precioUnitarioCentavos)],
-        [('p-camino', 2, 0)],
-      );
+      expect(_habilitado(tester), isFalse);
+      await verVisible(tester, find.text(TextosVenta.soloMisioneros));
+      expect(find.text(TextosVenta.soloMisioneros), findsOneWidget);
+      await tester.tap(_cta, warnIfMissed: false);
+      await asentar(tester);
+      expect(e.ventas.recibidas, isEmpty);
     });
 
-    testWidgets('quitar lo que se cobra deja el monto cambiado sin efecto: vale \$ 0', (
-      tester,
-    ) async {
+    testWidgets('quitar lo que se cobra y dejar solo misioneros apaga el botón', (tester) async {
       final e = EntornoDeVenta();
       await montarNuevaVenta(tester, e);
       await _ventaConLaColeccion(tester);
@@ -413,12 +413,8 @@ void main() {
       await escribir(tester, _campo('venta_talonario'), '9');
 
       expect(find.byKey(const Key('venta_cambiar_monto')), findsNothing);
-      expect(_habilitado(tester), isTrue);
-      await tocar(tester, _cta);
-
-      final r = e.ventas.recibidas.single;
-      expect(r.venta.montoTotalCentavos, 0);
-      expect(r.venta.motivoMontoManual, isNull);
+      expect(_habilitado(tester), isFalse);
+      expect(e.ventas.recibidas, isEmpty);
     });
 
     testWidgets('sin colecciones se parte de la primera categoría que tiene productos', (

@@ -18,7 +18,8 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_cas
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_que_paso.dart';
 import 'package:colportores_mobile/features/ventas/presentation/formato_venta.dart';
-import 'package:colportores_mobile/features/ventas/presentation/widgets/hoja_cuando_cobrar.dart';
+import 'package:colportores_mobile/features/ventas/presentation/pages/asi_quedo_la_venta_page.dart';
+import 'package:colportores_mobile/features/ventas/presentation/pages/cuando_cobrar_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -245,9 +246,14 @@ final class Arnes648 {
     }
   }
 
-  /// «Registrar» y, sin saldo a la vista, «¿Cuándo volvés a cobrar?» → «Sin fecha».
+  /// «Registrar» y, sin saldo a la vista, «¿Cuándo volvés a cobrar?» → «Sin fecha» → «Guardar», y
+  /// «Volver al mapa» en «Así quedó la venta» (42B·01).
   Future<void> registrarSinFecha(WidgetTester tester) async {
     await registrar(tester);
     await tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+    await tocarKey(tester, ClavesCuandoCobrar.guardar);
+    if (find.byKey(ClavesCierreDeVenta.volver).evaluate().isNotEmpty) {
+      await tocarKey(tester, ClavesCierreDeVenta.volver);
+    }
   }
 }

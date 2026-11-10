@@ -40,6 +40,7 @@ import 'generated/schema_v31.dart' as v31;
 import 'generated/schema_v32.dart' as v32;
 import 'generated/schema_v33.dart' as v33;
 import 'generated/schema_v34.dart' as v34;
+import 'generated/schema_v35.dart' as v35;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
@@ -2114,11 +2115,90 @@ void main() {
     );
   });
 
-  test('dado la cola del motor en la versión 33, cuando migra a la 34, conserva cada job con su '
+  test(
+    'dado visitas guardadas en la versión 33, cuando migra a la 34, no se pierde ninguna, quedan '
+    'sin horas de entrevista y aparece visita_misionero vacía (#466, #608)',
+    () async {
+      const visita = v33.VisitaData(
+        id: 'vis-1',
+        espacioId: 'esp-1',
+        espacioPersonaId: 'ep-1',
+        fecha: 1758700000000,
+        tipoResultado: 'ENTREVISTA',
+        colportorId: 'col-1',
+        jornadaId: 'jor-1',
+        createdAt: 1758700000000,
+        updatedAt: 1758700000000,
+        createdBy: 'col-1',
+        syncVersion: 2,
+      );
+      const borrada = v33.VisitaData(
+        id: 'vis-2',
+        espacioId: 'esp-1',
+        fecha: 1758800000000,
+        tipoResultado: 'RECHAZO',
+        colportorId: 'col-1',
+        createdAt: 1758800000000,
+        updatedAt: 1758900000000,
+        deletedAt: 1758900000000,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 33,
+        newVersion: 34,
+        createOld: v33.DatabaseAtV33.new,
+        createNew: v34.DatabaseAtV34.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch.insert(viejo.visita, visita);
+          batch.insert(viejo.visita, borrada);
+        },
+        validateItems: (nuevo) async {
+          final visitas = await (nuevo.select(
+            nuevo.visita,
+          )..orderBy([(v) => OrderingTerm.asc(v.id)])).get();
+          expect(
+            visitas.map(
+              (v) => [v.id, v.tipoResultado, v.jornadaId, v.entrevistaEntrada, v.entrevistaSalida],
+            ),
+            [
+              ['vis-1', 'ENTREVISTA', 'jor-1', null, null],
+              ['vis-2', 'RECHAZO', null, null, null],
+            ],
+          );
+          expect(visitas.first.espacioPersonaId, 'ep-1');
+          expect(visitas.first.syncVersion, 2);
+          expect(visitas.last.deletedAt, 1758900000000);
+          expect(await nuevo.select(nuevo.visitaMisionero).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          const columnas =
+              'INSERT INTO visita_misionero (id, visita_id, producto_id, cantidad, created_at, '
+              'updated_at) VALUES ';
+          await nuevo.customStatement("$columnas('vm-1', 'vis-1', 'p-1', 2, 1, 1)");
+          // Sin cantidad no hay misionero dejado.
+          await expectLater(
+            nuevo.customStatement("$columnas('vm-2', 'vis-1', 'p-2', 0, 1, 1)"),
+            throwsA(anything),
+          );
+          final indices = await nuevo
+              .customSelect("SELECT name FROM sqlite_master WHERE type = 'index'")
+              .get();
+          expect(
+            indices.map((r) => r.read<String>('name')),
+            contains('visita_misionero_visita_idx'),
+          );
+        },
+      );
+    },
+  );
+
+  test('dado la cola del motor en la versión 34, cuando migra a la 35, conserva cada job con su '
       'estado, su lugar y su payload, y deja entrar la unión de duplicados (#679)', () async {
     // contrato-sync-engine §6.2: `sync_queue.op` suma `marcar_como_duplicado`. SQLite no cambia un
     // CHECK: la tabla se reescribe y no puede perder ningún job (son ventas que esperan subir).
-    const alta = v33.SyncQueueData(
+    const alta = v34.SyncQueueData(
       id: 'q-1',
       clientOpId: 'op-1',
       entity: 'ubicacion',
@@ -2130,7 +2210,7 @@ void main() {
       code: '',
       message: '',
     );
-    const enEspera = v33.SyncQueueData(
+    const enEspera = v34.SyncQueueData(
       id: 'q-2',
       clientOpId: 'op-2',
       entity: 'espacio',
@@ -2145,7 +2225,7 @@ void main() {
       dependsOn: 'ub-a',
       claimedAt: 1758700000500,
     );
-    const hecho = v33.SyncQueueData(
+    const hecho = v34.SyncQueueData(
       id: 'q-3',
       clientOpId: 'op-3',
       entity: 'venta',
@@ -2161,10 +2241,10 @@ void main() {
     );
 
     await verificador.testWithDataIntegrity(
-      oldVersion: 33,
-      newVersion: 34,
-      createOld: v33.DatabaseAtV33.new,
-      createNew: v34.DatabaseAtV34.new,
+      oldVersion: 34,
+      newVersion: 35,
+      createOld: v34.DatabaseAtV34.new,
+      createNew: v35.DatabaseAtV35.new,
       openTestedDatabase: _abrir,
       createItems: (batch, viejo) {
         batch.insertAll(viejo.syncQueue, [alta, enEspera, hecho]);

@@ -29,6 +29,10 @@ final specsDeLaApp = <SyncSpec>[
   // son filas de `nota` (ADR-017) y la fila no lleva dato personal. Sin `alsoPull`: un solo escritor.
   SyncSpec.push('agenda'),
   SyncSpec.push('visita'),
+  // Lo que la colportora dejó en una entrevista sin venta («Lo que dejaste», #608; backend-supabase
+  // 0160): después de la visita de la que cuelga. Sin dato del cliente ni `colportor_id` (lo fija el
+  // servidor). Sin `alsoPull`: un solo escritor.
+  SyncSpec.push('visita_misionero'),
   // La venta y sus ítems (HU-VEN-001, #423): suben sin dato del cliente (`espacio_persona_id` es un id
   // opaco, ADR-004). `venta.motivo_monto_manual` es la única excepción de texto libre (decisión de
   // Cristian, 23/10). Sin `alsoPull`: un solo escritor.
