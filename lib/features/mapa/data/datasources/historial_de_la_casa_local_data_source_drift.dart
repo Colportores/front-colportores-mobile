@@ -2,9 +2,12 @@ import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 
 import '../../../../core/database/app_database.dart';
+import '../../../agenda/domain/entities/estado_agenda.dart';
+import '../../../agenda/domain/entities/tipo_agenda.dart';
 import '../../../agenda/domain/entities/visita.dart' show TipoResultadoVisita;
 import '../../../cobranzas/data/datasources/cobro_valido.dart';
 import '../../../cobranzas/domain/entities/cobranza.dart' show MedioCobranza;
+import '../../../cobranzas/domain/services/reparto_de_cuotas.dart';
 import '../../domain/entities/evento_de_la_casa.dart';
 import '../../domain/entities/ficha_de_persona.dart' show LineaDeFicha;
 import '../../domain/services/historial_de_la_casa.dart';
@@ -21,6 +24,8 @@ import 'notas_table.dart';
 /// - **Una venta y su visita**: la visita `VENTA` que una venta del espacio tiene como `visita_id` no se
 ///   lista aparte: la venta lleva la nota de esa visita (C·03 dibuja una sola fila).
 /// - Lo dado de baja (visitas, ventas, cobros, notas) no se muestra.
+/// - **Qué cuotas cubrió un cobro**: si la venta tiene plan (citas de cobranza con monto), se calcula
+///   con [RepartoDeCuotas.cuotasDeCadaCobro], el mismo reparto que la vista 30 A.
 /// - La duración de la entrevista queda en `null`: la visita no guarda la entrada ni la salida hasta
 ///   #466.
 ///
@@ -45,6 +50,7 @@ final class HistorialDeLaCasaLocalDataSourceDrift implements HistorialDeLaCasa {
         _db.ventas,
         _db.ventaItems,
         _db.cobranzas,
+        _db.agendas,
         _db.espacioPersonas,
         _db.personas,
         _db.notas,
@@ -80,6 +86,7 @@ final class HistorialDeLaCasaLocalDataSourceDrift implements HistorialDeLaCasa {
     for (final c in cobros) {
       pagado.update(c.ventaId, (p) => p + c.monto, ifAbsent: () => c.monto);
     }
+    final cuotasDe = await _cuotasDeLosCobros(cobros);
     final talonarioDe = {for (final v in ventas) v.id: v.numeroTalonario};
     final vinculoDeVenta = {for (final v in ventas) v.id: v.espacioPersonaId};
 
@@ -116,6 +123,7 @@ final class HistorialDeLaCasaLocalDataSourceDrift implements HistorialDeLaCasa {
           ventaId: c.ventaId,
           numeroTalonario: talonarioDe[c.ventaId],
           persona: porVinculo[vinculoDeVenta[c.ventaId]],
+          cuotas: cuotasDe[c.id],
         ),
     ]..sort(_masNuevoPrimero);
     return List.unmodifiable(eventos);
@@ -156,7 +164,7 @@ final class HistorialDeLaCasaLocalDataSourceDrift implements HistorialDeLaCasa {
       final filas = await _db
           .customSelect(
             'SELECT c.id AS id, c.venta_id AS venta_id, c.monto AS monto, c.medio AS medio, '
-            'c.fecha AS fecha FROM cobranza c '
+            'c.fecha AS fecha, c.created_at AS creado FROM cobranza c '
             'WHERE ${CobroValido.sql} AND c.venta_id IN ($marcas)',
             variables: [for (final id in lote) Variable<String>(id)],
             readsFrom: {_db.cobranzas},
@@ -170,8 +178,64 @@ final class HistorialDeLaCasaLocalDataSourceDrift implements HistorialDeLaCasa {
             monto: f.read<int>('monto'),
             medio: _medio(f.read<String>('medio')),
             fecha: DateTime.fromMillisecondsSinceEpoch(f.read<int>('fecha'), isUtc: true),
+            creado: DateTime.fromMillisecondsSinceEpoch(f.read<int>('creado'), isUtc: true),
           ),
         );
+      }
+    }
+    return salida;
+  }
+
+  /// Qué cuotas cubrió cada cobro de una venta con plan, por `cobranza.id` (C·03: «Cuota 1 de 2»). Las
+  /// cuotas son las citas de cobranza con monto de la venta (decisión «Plan cuotas»); sin citas, la
+  /// venta no tiene plan y su cobro no figura.
+  Future<Map<String, CuotasDeUnCobro>> _cuotasDeLosCobros(List<_Cobro> cobros) async {
+    final porVenta = <String, List<_Cobro>>{};
+    for (final c in cobros) {
+      (porVenta[c.ventaId] ??= []).add(c);
+    }
+    final citas = <String, List<CitaDeCuota>>{};
+    for (final lote in _lotes(porVenta.keys.toList())) {
+      final filas =
+          await (_db.select(_db.agendas)..where(
+                (a) =>
+                    a.ventaId.isIn(lote) &
+                    a.tipo.equals(TipoAgenda.cobranza.codigo) &
+                    a.montoPrevisto.isNotNull() &
+                    a.deletedAt.isNull(),
+              ))
+              .get();
+      for (final a in filas) {
+        (citas[a.ventaId!] ??= []).add(
+          CitaDeCuota(
+            agendaId: a.id,
+            fecha: a.fechaProgramada.toLocal(),
+            montoCentavos: a.montoPrevisto!,
+            estado: EstadoAgenda.desdeCodigo(a.estado),
+            creadaEn: a.createdAt,
+          ),
+        );
+      }
+    }
+    final salida = <String, CuotasDeUnCobro>{};
+    for (final MapEntry(key: ventaId, value: deLaVenta) in porVenta.entries) {
+      final plan = citas[ventaId];
+      if (plan == null) continue;
+      final cuotas = RepartoDeCuotas.cuotasDeCadaCobro(
+        citas: plan,
+        cobros: [
+          for (final c in deLaVenta)
+            CobroDelPlan(
+              montoCentavos: c.monto,
+              creadoEn: c.creado,
+              fecha: c.fecha,
+              medio: c.medio,
+            ),
+        ],
+      );
+      for (var i = 0; i < deLaVenta.length; i++) {
+        final cubiertas = cuotas[i];
+        if (cubiertas != null) salida[deLaVenta[i].id] = cubiertas;
       }
     }
     return salida;
@@ -271,6 +335,7 @@ class _Cobro {
     required this.monto,
     required this.medio,
     required this.fecha,
+    required this.creado,
   });
 
   final String id;
@@ -278,4 +343,7 @@ class _Cobro {
   final int monto;
   final MedioCobranza medio;
   final DateTime fecha;
+
+  /// Cuándo se registró (`created_at`): ordena los cobros para el reparto de las cuotas.
+  final DateTime creado;
 }

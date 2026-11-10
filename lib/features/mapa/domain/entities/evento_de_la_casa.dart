@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 
 import '../../../agenda/domain/entities/visita.dart' show TipoResultadoVisita;
 import '../../../cobranzas/domain/entities/cobranza.dart' show MedioCobranza;
+import '../../../cobranzas/domain/services/reparto_de_cuotas.dart' show CuotasDeUnCobro;
 import 'ficha_de_persona.dart' show LineaDeFicha;
 
 /// Con quién fue algo que pasó en la casa (la persona del vínculo de la visita o de la venta). Puede
@@ -136,6 +137,7 @@ final class CobroDeLaCasa extends EventoDeLaCasa {
     required this.ventaId,
     this.numeroTalonario,
     this.persona,
+    this.cuotas,
   });
 
   final int montoCentavos;
@@ -151,6 +153,19 @@ final class CobroDeLaCasa extends EventoDeLaCasa {
   /// A quién se le cobró (la persona de la venta).
   final PersonaDelEvento? persona;
 
+  /// Qué cuotas del plan de la venta cubrió este cobro, calculado con los cobros de la venta hasta
+  /// este (`RepartoDeCuotas.cuotasDeCadaCobro`). `null` si la venta no tiene plan.
+  final CuotasDeUnCobro? cuotas;
+
   @override
-  List<Object?> get props => [id, fecha, montoCentavos, medio, ventaId, numeroTalonario, persona];
+  List<Object?> get props => [
+    id,
+    fecha,
+    montoCentavos,
+    medio,
+    ventaId,
+    numeroTalonario,
+    persona,
+    cuotas,
+  ];
 }

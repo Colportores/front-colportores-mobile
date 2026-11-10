@@ -10,6 +10,8 @@ import 'package:colportores_mobile/features/mapa/data/datasources/historial_de_l
 import 'package:colportores_mobile/features/mapa/domain/entities/evento_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ficha_de_persona.dart'
     show LineaDeFicha;
+import 'package:colportores_mobile/features/mapa/presentation/textos_historial_de_la_casa.dart'
+    show FormatoHistorialDeLaCasa;
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -128,6 +130,7 @@ void main() {
     DateTime fecha, {
     String medio = 'EFECTIVO',
     DateTime? baja,
+    DateTime? creado,
   }) => db
       .into(db.cobranzas)
       .insert(
@@ -137,8 +140,37 @@ void main() {
           monto: monto,
           medio: medio,
           fecha: fecha,
-          createdAt: t0,
-          updatedAt: t0,
+          createdAt: creado ?? t0,
+          updatedAt: creado ?? t0,
+          deletedAt: Value(baja),
+        ),
+      );
+
+  /// Una cuota del plan: una cita de cobranza con monto de la venta (decisión «Plan cuotas»).
+  Future<void> cuota(
+    String id,
+    String ventaId,
+    int monto,
+    DateTime dia, {
+    String estado = 'PROGRAMADA',
+    DateTime? creada,
+    DateTime? baja,
+    bool conMonto = true,
+  }) => db
+      .into(db.agendas)
+      .insert(
+        AgendasCompanion.insert(
+          id: id,
+          espacioId: 'esp-1',
+          espacioPersonaId: const Value('ep-1'),
+          tipo: 'COBRANZA',
+          fechaProgramada: dia,
+          estado: Value(estado),
+          colportorId: 'col-1',
+          ventaId: Value(ventaId),
+          montoPrevisto: Value(conMonto ? monto : null),
+          createdAt: creada ?? t0,
+          updatedAt: creada ?? t0,
           deletedAt: Value(baja),
         ),
       );
@@ -234,6 +266,107 @@ void main() {
       expect(cobros.first.persona?.nombreDePila, 'Pedro');
     },
   );
+
+  group('qué cuotas cubrió cada cobro (C·03, decisión del 10/11)', () {
+    final armado = DateTime.utc(2026, 10, 24);
+
+    test('con plan: cuota completa, parte, varias y el cobro de antes del plan', () async {
+      await venta('ven-1', DateTime.utc(2026, 10, 12, 14), monto: 300000);
+      // Se cobró $ 600 al vender y el resto (2.400) quedó en 3 cuotas de 800.
+      await cobro('cob-0', 'ven-1', 60000, DateTime.utc(2026, 10, 12, 14, 5));
+      await cuota(
+        'ag-1',
+        'ven-1',
+        80000,
+        DateTime.utc(2026, 10, 25),
+        estado: 'CUMPLIDA',
+        creada: armado,
+      );
+      await cuota('ag-2', 'ven-1', 80000, DateTime.utc(2026, 11, 1), creada: armado);
+      await cuota('ag-3', 'ven-1', 80000, DateTime.utc(2026, 11, 8), creada: armado);
+      await cobro(
+        'cob-1',
+        'ven-1',
+        80000,
+        DateTime.utc(2026, 10, 25),
+        creado: DateTime.utc(2026, 10, 25),
+      );
+      await cobro(
+        'cob-2',
+        'ven-1',
+        40000,
+        DateTime.utc(2026, 11, 1),
+        creado: DateTime.utc(2026, 11, 1),
+      );
+      await cobro(
+        'cob-3',
+        'ven-1',
+        120000,
+        DateTime.utc(2026, 11, 8),
+        creado: DateTime.utc(2026, 11, 8),
+      );
+
+      final cobros = {
+        for (final c in (await historial.leer('esp-1')).whereType<CobroDeLaCasa>()) c.id: c,
+      };
+
+      expect(cobros['cob-0']!.cuotas, isNull);
+      expect(FormatoHistorialDeLaCasa.subtitulo(cobros['cob-0']!), 'Venta 0038');
+      expect(FormatoHistorialDeLaCasa.subtitulo(cobros['cob-1']!), 'Cuota 1 de 3');
+      expect(FormatoHistorialDeLaCasa.subtitulo(cobros['cob-2']!), 'Parte de la cuota 2 de 3');
+      expect(FormatoHistorialDeLaCasa.subtitulo(cobros['cob-3']!), 'Cuotas 2 y 3 de 3');
+    });
+
+    test('sin plan (sin citas con monto, o borradas), el cobro dice «Venta 0038»', () async {
+      await venta('ven-1', DateTime.utc(2026, 10, 12, 14));
+      await cuota(
+        'ag-1',
+        'ven-1',
+        80000,
+        DateTime.utc(2026, 10, 25),
+        conMonto: false,
+        creada: armado,
+      );
+      await cuota('ag-2', 'ven-1', 80000, DateTime.utc(2026, 11, 1), creada: armado, baja: armado);
+      await cobro(
+        'cob-1',
+        'ven-1',
+        80000,
+        DateTime.utc(2026, 10, 25),
+        creado: DateTime.utc(2026, 10, 25),
+      );
+
+      final c = (await historial.leer('esp-1')).whereType<CobroDeLaCasa>().single;
+
+      expect(c.cuotas, isNull);
+      expect(FormatoHistorialDeLaCasa.subtitulo(c), 'Venta 0038');
+    });
+
+    test('al día: una cuota nueva del plan cambia la línea del cobro por el stream', () async {
+      await venta('ven-1', DateTime.utc(2026, 10, 12, 14));
+      await cobro(
+        'cob-1',
+        'ven-1',
+        80000,
+        DateTime.utc(2026, 10, 25),
+        creado: DateTime.utc(2026, 10, 25),
+      );
+      final lineas = historial
+          .observar('esp-1')
+          .map((e) => FormatoHistorialDeLaCasa.subtitulo(e.whereType<CobroDeLaCasa>().single));
+      final vistas = <String?>[];
+      final sub = lineas.listen(vistas.add);
+      await pumpEventQueue();
+
+      await cuota('ag-1', 'ven-1', 80000, DateTime.utc(2026, 10, 25), creada: armado);
+      await cuota('ag-2', 'ven-1', 80000, DateTime.utc(2026, 11, 1), creada: armado);
+      await pumpEventQueue();
+      await sub.cancel();
+
+      expect(vistas.first, 'Venta 0038');
+      expect(vistas.last, 'Cuota 1 de 2');
+    });
+  });
 
   test('una venta cobrada de más no debe nada', () async {
     await venta('ven-1', DateTime.utc(2026, 10, 12), monto: 100000);

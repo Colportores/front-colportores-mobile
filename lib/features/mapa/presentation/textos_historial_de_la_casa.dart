@@ -1,5 +1,6 @@
 import '../../agenda/domain/entities/visita.dart' show TipoResultadoVisita;
 import '../../cobranzas/domain/entities/cobranza.dart' show MedioCobranza;
+import '../../cobranzas/domain/services/reparto_de_cuotas.dart' show CuotasDeUnCobro;
 import '../../ventas/presentation/formato_venta.dart' show TextosVenta;
 import '../domain/entities/evento_de_la_casa.dart';
 import '../domain/entities/ficha_de_persona.dart' show LineaDeFicha;
@@ -131,6 +132,24 @@ abstract final class FormatoHistorialDeLaCasa {
   /// «Salud y Hogar» o «Nuestros Hijos × 12»: el valor de la fila «Libro» de un renglón (C·04).
   static String libro(LineaDeFicha l) => l.cantidad > 1 ? '${l.nombre} × ${l.cantidad}' : l.nombre;
 
+  /// La tercera línea de un cobro de una venta con plan (C·03): «Cuota 1 de 2», «Cuotas 1 y 2 de 3»,
+  /// «Cuotas 1 a 3 de 4», «Parte de la cuota 2 de 3». Si el cobro completa unas cuotas y deja otra a
+  /// medias, las nombra a las dos: «Cuota 1 y parte de la 2 de 3».
+  static String cuotas(CuotasDeUnCobro c) {
+    final de = ' de ${c.deTotal}';
+    final n = c.completas;
+    final parte = c.aMedias;
+    if (n.isEmpty) return 'Parte de la cuota $parte$de';
+    final seguidas = [for (var i = 1; i < n.length; i++) n[i] == n[i - 1] + 1].every((s) => s);
+    final nombre = switch (n.length) {
+      1 => 'Cuota ${n.first}',
+      2 => 'Cuotas ${n.first} y ${n.last}',
+      _ when seguidas => 'Cuotas ${n.first} a ${n.last}',
+      _ => 'Cuotas ${n.sublist(0, n.length - 1).join(', ')} y ${n.last}',
+    };
+    return parte == null ? '$nombre$de' : '$nombre y parte de la $parte$de';
+  }
+
   static String _medio(MedioCobranza medio) => switch (medio) {
     MedioCobranza.efectivo => 'en efectivo',
     MedioCobranza.tarjeta => 'con tarjeta',
@@ -163,14 +182,16 @@ abstract final class FormatoHistorialDeLaCasa {
   /// «✎ volver con la esposa»: la nota de la visita, en una línea.
   static String conNota(String nota) => '✎ ${nota.replaceAll(RegExp(r'\s+'), ' ').trim()}';
 
-  /// La línea de abajo: la nota de una visita, «$ 4.800 · ✎ quiere Nuestros Hijos» de una venta,
-  /// «Venta 0038» de un cobro. `null` si no hay.
+  /// La línea de abajo: la nota de una visita, «$ 4.800 · ✎ quiere Nuestros Hijos» de una venta; de un
+  /// cobro, las cuotas que cubrió si la venta tiene plan («Cuota 1 de 2», [cuotas]) o si no «Venta
+  /// 0038» (decisión del 10/11, P1 del QA de #677). `null` si no hay.
   static String? subtitulo(EventoDeLaCasa e) => switch (e) {
     VisitaDeLaCasa(:final nota) => nota == null ? null : conNota(nota),
     VentaDeLaCasa(:final montoCentavos, :final nota) =>
       nota == null
           ? FormatoBajaPersona.monto(montoCentavos)
           : '${FormatoBajaPersona.monto(montoCentavos)} · ${conNota(nota)}',
+    CobroDeLaCasa(:final cuotas?) => FormatoHistorialDeLaCasa.cuotas(cuotas),
     CobroDeLaCasa(:final numeroTalonario) =>
       numeroTalonario == null ? null : 'Venta $numeroTalonario',
   };

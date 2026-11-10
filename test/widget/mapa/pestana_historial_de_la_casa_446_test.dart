@@ -9,6 +9,8 @@ import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart'
     show TipoResultadoVisita;
 import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart'
     show MedioCobranza;
+import 'package:colportores_mobile/features/cobranzas/domain/services/reparto_de_cuotas.dart'
+    show CuotasDeUnCobro;
 import 'package:colportores_mobile/features/mapa/domain/entities/evento_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ficha_de_persona.dart'
     show LineaDeFicha;
@@ -182,6 +184,36 @@ void main() {
         // No contestó, sin persona ni nota.
         expect(find.text('03/10 · NO CONTESTÓ'), findsOneWidget);
         expect(find.text('Nadie atendió'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado un cobro de una venta con plan, la línea de abajo dice la cuota que cubrió (C·03: «Cuota 1 de 2»)',
+      (tester) async {
+        final conPlan = CobroDeLaCasa(
+          id: 'cob-1',
+          fecha: local(10, 25, 14, 20),
+          montoCentavos: 60000,
+          medio: MedioCobranza.efectivo,
+          ventaId: 'ven-1',
+          numeroTalonario: '0038',
+          persona: pedro,
+          cuotas: const CuotasDeUnCobro(deTotal: 2, completas: [1]),
+        );
+        final parte = CobroDeLaCasa(
+          id: 'cob-2',
+          fecha: local(10, 24, 10),
+          montoCentavos: 20000,
+          medio: MedioCobranza.efectivo,
+          ventaId: 'ven-2',
+          numeroTalonario: '0040',
+          cuotas: const CuotasDeUnCobro(deTotal: 3, aMedias: 2),
+        );
+        await montar(tester, eventos: [conPlan, parte]);
+
+        expect(find.text('Cuota 1 de 2'), findsOneWidget);
+        expect(find.text('Parte de la cuota 2 de 3'), findsOneWidget);
+        expect(find.text('Venta 0038'), findsNothing);
       },
     );
 
