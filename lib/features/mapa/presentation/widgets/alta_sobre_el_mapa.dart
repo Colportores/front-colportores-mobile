@@ -44,7 +44,8 @@ abstract final class TextosAltaMapa {
   static const crearIgual = 'Crear igual';
 
   /// Propuesta del implementador (el canvas no dibuja la búsqueda sin resultados).
-  static const sinResultados = 'Ninguna ciudad de tu campaña se llama así.';
+  static const sinResultados =
+      'Ninguna ciudad de tu campaña se llama así. Revisá cómo la escribiste.';
 
   static String gps(double metros) => 'GPS ±${metros.round()} m';
   static String usar(String ciudad) => 'Usar $ciudad';
