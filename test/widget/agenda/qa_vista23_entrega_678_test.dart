@@ -2,7 +2,6 @@
 // el QA de #536 (`qa_vista23_entrega_433_*`) no cubría porque su arnés no engancha «Registrar
 // resultado» como lo hace `main.dart`, y los artboards 23C·03, 23C·05, 23C·06 y 23C·07 con una agenda
 // de tipo ENTREGA, más la fila vencida y los filtros por tipo.
-// Los hallazgos van con `skip:` salvo con `--dart-define=QA_HALLAZGOS=true`.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -21,8 +20,6 @@ import '../../helpers/qa_vista23_409_arnes.dart'
     show modificar409, sinTextoCortado409, subirHora409, tocar409;
 import '../../helpers/qa_vista23_entrega_433_arnes.dart';
 import '../../helpers/qa_vista23_entrega_678_arnes.dart';
-
-const _qaHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 DetalleDeAgenda _entrega({EstadoAgenda estado = EstadoAgenda.programada}) => DetalleDeAgenda(
   agenda: agendaDelDetalle(tipo: TipoAgenda.entrega, estado: estado, ventaId: 'ven-1'),
@@ -308,24 +305,19 @@ void main() {
       await desmontar455(tester);
     });
 
-    // QA #433: la fila dice «Pasó la hora · registrá qué pasó» pero a una entrega no se le ofrece
-    // «Registrar» (`agenda_page.dart:389`) y el detalle no tiene cómo registrar «Entregado hoy»
-    // (27C es de #435): la indicación no tiene a dónde llevar.
+    // QA #433: una entrega no ofrece «Registrar» (el detalle no registra «Entregado hoy» hasta #435),
+    // así que su fila vencida dice solo «Pasó la hora», sin «registrá qué pasó» (las entrevistas
+    // siguen como 23B·02).
     testWidgets(
-      'si la fila dice «registrá qué pasó» hay un botón «Registrar» (o no lo dice)',
+      'la fila vencida de una entrega dice solo «Pasó la hora», sin indicación sin acción',
       (tester) async {
         await vencida(tester);
 
-        final dice = find.textContaining('registrá qué pasó').evaluate().isNotEmpty;
-        final ofrece = find.byKey(const Key('agenda_registrar_ag-1')).evaluate().isNotEmpty;
-        expect(
-          dice && !ofrece,
-          isFalse,
-          reason: 'indicación sin acción: «Pasó la hora · registrá qué pasó»',
-        );
+        expect(find.text('Pasó la hora'), findsOneWidget);
+        expect(find.textContaining('registrá qué pasó'), findsNothing);
+        expect(find.byKey(const Key('agenda_registrar_ag-1')), findsNothing);
         await desmontar455(tester);
       },
-      skip: !_qaHallazgos,
     );
   });
 
