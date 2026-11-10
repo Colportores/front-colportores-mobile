@@ -384,7 +384,7 @@ void main() {
 
       await tocar(tester, entrega);
 
-      expect(m.entregas, [(personaId: 'per-1', espacioId: 'esp-1')]);
+      expect(m.entregas, [(personaId: 'per-1', espacioId: 'esp-1', ventaId: null)]);
     });
 
     testWidgets('sin destino no se dibuja y «+ Agendar cobranza» sigue', (tester) async {

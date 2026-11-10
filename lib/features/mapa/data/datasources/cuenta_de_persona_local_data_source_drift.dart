@@ -110,11 +110,12 @@ final class CuentaDePersonaLocalDataSourceDrift {
       (grupos[(fila.read<String>('venta_id'), fila.read<int>('fecha'))] ??= []).add(fila);
     }
     return [
-      for (final MapEntry(key: (_, fecha), value: grupo) in grupos.entries)
+      for (final MapEntry(key: (ventaId, fecha), value: grupo) in grupos.entries)
         EntregaEnFicha(
           id: grupo.first.read<String>('id'),
           fecha: _fecha(fecha),
           pendiente: false,
+          ventaId: ventaId,
           lineas: [
             for (final fila in grupo)
               // Un producto que el catálogo ya no trae (la réplica es de solo lectura) queda como
