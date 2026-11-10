@@ -8,6 +8,8 @@ import '../../../agenda/domain/entities/visita.dart' show TipoResultadoVisita;
 import '../../../cobranzas/data/datasources/cobro_valido.dart';
 import '../../../cobranzas/domain/entities/cobranza.dart' show MedioCobranza;
 import '../../../cobranzas/domain/services/reparto_de_cuotas.dart';
+import '../../../ventas/data/models/venta_model.dart' show VentaItemModel;
+import '../../../ventas/domain/entities/componente_vendido.dart';
 import '../../domain/entities/evento_de_la_casa.dart';
 import '../../domain/entities/ficha_de_persona.dart' show LineaDeFicha;
 import '../../domain/services/historial_de_la_casa.dart';
@@ -280,10 +282,16 @@ final class HistorialDeLaCasaLocalDataSourceDrift implements HistorialDeLaCasa {
                 ..orderBy([(i) => OrderingTerm.asc(i.createdAt), (i) => OrderingTerm.asc(i.id)]))
               .get();
       if (items.isEmpty) continue;
+      final componentes = {
+        for (final i in items)
+          if (i.coleccionId != null)
+            i.id: VentaItemModel.componentesDesdeJson(i.componentes) ?? const <ComponenteVendido>[],
+      };
       final productos = await _nombres(
         [
           for (final i in items)
             if (i.productoId != null) i.productoId!,
+          for (final c in componentes.values.expand((c) => c)) c.productoId,
         ],
         (lote) async => {
           for (final f in await (_db.select(_db.productos)..where((p) => p.id.isIn(lote))).get())
@@ -304,7 +312,21 @@ final class HistorialDeLaCasaLocalDataSourceDrift implements HistorialDeLaCasa {
         final nombre = i.productoId != null
             ? productos[i.productoId] ?? 'Producto'
             : colecciones[i.coleccionId] ?? 'Colección';
-        (salida[i.ventaId] ??= []).add(LineaDeFicha(nombre: nombre, cantidad: i.cantidad));
+        // Un combo lleva sus libros (los de una unidad): «Colección de N libros» cuenta libros y el
+        // detalle los nombra (decisión del 10/11, rev 1120). Un libro sin nombre en el catálogo va vacío.
+        final libros = componentes[i.id];
+        (salida[i.ventaId] ??= []).add(
+          LineaDeFicha(
+            nombre: nombre,
+            cantidad: i.cantidad,
+            libros: libros == null
+                ? null
+                : [
+                    for (final c in libros)
+                      LineaDeFicha(nombre: productos[c.productoId] ?? '', cantidad: c.cantidad),
+                  ],
+          ),
+        );
       }
     }
     return salida;

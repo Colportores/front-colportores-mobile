@@ -109,7 +109,7 @@ void main() {
         'HOY 14:20 · COBRO',
         '${FormatoBajaPersona.monto(60000)} en efectivo · Pedro',
         '12/10 · VENTA 0038',
-        'Salud y Hogar · Pedro',
+        'Colección de 1 libro · Pedro',
         '05/10 · ENTREVISTA DADA',
         'Pedro Gómez',
         '✎ volver con la esposa',
@@ -630,7 +630,7 @@ void main() {
 
         final venta = tester.getSemantics(fila('ven-1'));
         expect(venta.label, contains('VENTA 0038'));
-        expect(venta.label, contains('Salud y Hogar'));
+        expect(venta.label, contains('Colección de 1 libro · Pedro'));
         expect(venta.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
         expect(venta.flagsCollection.isButton, isTrue);
         await tester.ensureVisible(fila('cob-1'));

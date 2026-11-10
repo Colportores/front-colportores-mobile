@@ -23,8 +23,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/qa_vista39_446_arnes.dart';
 
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 CobroDeLaCasa _cobro(String id, CuotasDeUnCobro? cuotas, {String? talonario = '0038'}) =>
     CobroDeLaCasa(
       id: id,
@@ -51,7 +49,7 @@ final _variantes = <(String, CuotasDeUnCobro, String)>[
   (
     'doce',
     const CuotasDeUnCobro(deTotal: 12, completas: [10, 11], aMedias: 12),
-    'Cuotas 10 y 11 y parte de la 12 de 12',
+    'Cuotas 10 y 11, y parte de la 12 de 12',
   ),
 ];
 
@@ -314,35 +312,33 @@ void main() {
           await asentar446(tester);
 
           expect(find.byKey(ClavesDetalleDeVisita.hoja), findsNothing);
-          expect(find.textContaining('Colección'), findsNothing);
+          // La fila de la venta dice «Colección de 1 libro · Pedro» (C·03, QA ronda 3); el cobro no
+          // abrió ningún detalle con su propia «Colección».
+          expect(find.textContaining('Colección'), findsOneWidget);
         },
       );
 
-      testWidgets(
-        'dado una venta sin renglones, el detalle no dice «Colección de 0 libros»',
-        (tester) async {
-          await montarHoja446(
-            tester,
-            eventos: [
-              VentaDeLaCasa(
-                id: 'v-raro',
-                fecha: fecha446(10, 20, 10),
-                numeroTalonario: '0001',
-                montoCentavos: 5000,
-                pagadoCentavos: 0,
-                lineas: const [],
-              ),
-            ],
-          );
-          await tocarFila446(tester, 'v-raro');
+      testWidgets('dado una venta sin renglones, el detalle no dice «Colección de 0 libros»', (
+        tester,
+      ) async {
+        await montarHoja446(
+          tester,
+          eventos: [
+            VentaDeLaCasa(
+              id: 'v-raro',
+              fecha: fecha446(10, 20, 10),
+              numeroTalonario: '0001',
+              montoCentavos: 5000,
+              pagadoCentavos: 0,
+              lineas: const [],
+            ),
+          ],
+        );
+        await tocarFila446(tester, 'v-raro');
 
-          // La fila de la lista dice «Venta» a secas; el detalle no debería contradecirla con «0 libros».
-          expect(find.textContaining('0 libros'), findsNothing);
-        },
-        // skip: QA #446: una venta sin renglones (dato roto, no alcanzable desde la app) dice «Colección de
-        // 0 libros» en el detalle, y la fila de la lista dice «Venta» (menor).
-        skip: !_conHallazgos,
-      );
+        // La fila de la lista dice «Venta» a secas; el detalle no debería contradecirla con «0 libros».
+        expect(find.textContaining('0 libros'), findsNothing);
+      });
     },
   );
 }

@@ -31,6 +31,7 @@ abstract final class TextosHistorialDeLaCasa {
   static const ventaRegistrada = 'Venta registrada';
   static const venta = 'Venta';
   static const libro = 'Libro';
+  static const combo = 'Combo';
   static const duracion = 'Duración';
   static const filtroDelHistorial = 'MOSTRAR';
   static const verTodo = 'Ver todo';
@@ -120,24 +121,35 @@ abstract final class FormatoHistorialDeLaCasa {
     return nombre.isEmpty ? base : '$base · $nombre';
   }
 
-  /// «Salud y Hogar + Nuestros Hijos × 2»: lo que se vendió, con la cantidad si es más de una.
-  static String lineas(List<LineaDeFicha> lineas) =>
-      lineas.map((l) => l.cantidad > 1 ? '${l.nombre} × ${l.cantidad}' : l.nombre).join(' + ');
-
-  /// «Colección de 16 libros»: la primera fila del detalle de una venta (C·04), con N la suma de las
-  /// cantidades de sus renglones.
+  /// «Colección de 16 libros»: cómo se nombra lo vendido en la fila de la venta (C·03) y en la primera
+  /// fila de su detalle (C·04). N cuenta libros: un combo suma los suyos (decisión del 10/11, rev 1120).
   static String coleccion(List<LineaDeFicha> lineas) =>
-      TextosVenta.coleccionDe(lineas.fold<int>(0, (n, l) => n + l.cantidad));
+      TextosVenta.coleccionDe(lineas.fold<int>(0, (n, l) => n + l.cuantosLibros));
 
-  /// «Salud y Hogar» o «Nuestros Hijos × 12»: el valor de la fila «Libro» de un renglón (C·04).
-  static String libro(LineaDeFicha l) => l.cantidad > 1 ? '${l.nombre} × ${l.cantidad}' : l.nombre;
+  /// «Salud y Hogar» o «Nuestros Hijos × 12»: el valor de una fila «Libro» (C·04).
+  static String libro(String nombre, int cantidad) => cantidad > 1 ? '$nombre × $cantidad' : nombre;
+
+  /// Las filas «Libro · nombre» del detalle de una venta (C·04), una por libro: los de un combo uno
+  /// por uno, con su cantidad por la del renglón. Si un libro del combo no tiene nombre (o el combo
+  /// no dice sus libros), el combo va en una fila «Combo · nombre del combo».
+  static List<(String, String)> filasDeLibros(List<LineaDeFicha> lineas) => [
+    for (final l in lineas)
+      if (l.libros case final libros?) ...[
+        for (final b in libros)
+          if (b.nombre.isNotEmpty)
+            (TextosHistorialDeLaCasa.libro, libro(b.nombre, l.cantidad * b.cantidad)),
+        if (libros.isEmpty || libros.any((b) => b.nombre.isEmpty))
+          (TextosHistorialDeLaCasa.combo, libro(l.nombre, l.cantidad)),
+      ] else
+        (TextosHistorialDeLaCasa.libro, libro(l.nombre, l.cantidad)),
+  ];
 
   /// La tercera línea de un cobro de una venta con plan (C·03): «Cuota 1 de 2», «Cuotas 1 y 2 de 3»,
   /// «Cuotas 1 a 3 de 4», «Parte de la cuota 2 de 3». Si el cobro completa unas cuotas y deja otra a
   /// medias, las nombra a las dos: «Cuota 1 y parte de la 2 de 3».
   static String cuotas(CuotasDeUnCobro c) {
     final de = ' de ${c.deTotal}';
-    final n = c.completas;
+    final n = [...c.completas]..sort();
     final parte = c.aMedias;
     if (n.isEmpty) return 'Parte de la cuota $parte$de';
     final seguidas = [for (var i = 1; i < n.length; i++) n[i] == n[i - 1] + 1].every((s) => s);
@@ -147,7 +159,9 @@ abstract final class FormatoHistorialDeLaCasa {
       _ when seguidas => 'Cuotas ${n.first} a ${n.last}',
       _ => 'Cuotas ${n.sublist(0, n.length - 1).join(', ')} y ${n.last}',
     };
-    return parte == null ? '$nombre$de' : '$nombre y parte de la $parte$de';
+    if (parte == null) return '$nombre$de';
+    // Con varias cuotas, coma antes de la parte: «Cuotas 1 y 2, y parte de la 3 de 3» (rev 1120, P2).
+    return n.length == 1 ? '$nombre y parte de la $parte$de' : '$nombre, y parte de la $parte$de';
   }
 
   static String _medio(MedioCobranza medio) => switch (medio) {
@@ -156,8 +170,8 @@ abstract final class FormatoHistorialDeLaCasa {
     MedioCobranza.transferencia => 'por transferencia',
   };
 
-  /// El título: «Pedro Gómez» (entrevista), «Nadie atendió», «$ 600 en efectivo · Pedro», «Salud y
-  /// Hogar · Pedro».
+  /// El título: «Pedro Gómez» (entrevista), «Nadie atendió», «$ 600 en efectivo · Pedro», «Colección
+  /// de 1 libro · Pedro».
   static String titulo(EventoDeLaCasa e) => switch (e) {
     VisitaDeLaCasa(:final resultado, :final persona) => switch (resultado) {
       TipoResultadoVisita.entrevista =>
@@ -169,8 +183,9 @@ abstract final class FormatoHistorialDeLaCasa {
       TipoResultadoVisita.cobranza => _conPersona(TextosHistorialDeLaCasa.pasadaACobrar, persona),
       TipoResultadoVisita.venta => _conPersona(TextosHistorialDeLaCasa.ventaRegistrada, persona),
     },
+    // C·03: «Colección de 1 libro · Pedro» (decisión del 10/11, QA ronda 3).
     VentaDeLaCasa(:final lineas, :final persona) => _conPersona(
-      lineas.isEmpty ? TextosHistorialDeLaCasa.venta : FormatoHistorialDeLaCasa.lineas(lineas),
+      lineas.isEmpty ? TextosHistorialDeLaCasa.venta : coleccion(lineas),
       persona,
     ),
     CobroDeLaCasa(:final montoCentavos, :final medio, :final persona) => _conPersona(

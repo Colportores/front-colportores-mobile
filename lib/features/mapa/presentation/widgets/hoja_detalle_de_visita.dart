@@ -89,11 +89,16 @@ class _HojaDetalleDeVisitaState extends State<HojaDetalleDeVisita> {
       :final saldoCentavos,
     ) =>
       [
-        // C·04: «Colección de N libros · $ total» y una fila «Libro · <nombre>» por renglón (decisión
-        // del 10/11, P1 del QA de #677).
-        _Dato(FormatoHistorialDeLaCasa.coleccion(lineas), FormatoBajaPersona.monto(montoCentavos)),
-        for (final l in lineas)
-          _Dato(TextosHistorialDeLaCasa.libro, FormatoHistorialDeLaCasa.libro(l)),
+        // C·04: «Colección de N libros · $ total» y una fila «Libro · <nombre>» por libro (decisiones
+        // del 10/11: P1 del QA de #677 y rev 1120). Sin renglones, «Venta»: no se dice «0 libros».
+        _Dato(
+          lineas.isEmpty
+              ? TextosHistorialDeLaCasa.venta
+              : FormatoHistorialDeLaCasa.coleccion(lineas),
+          FormatoBajaPersona.monto(montoCentavos),
+        ),
+        for (final (clave, valor) in FormatoHistorialDeLaCasa.filasDeLibros(lineas))
+          _Dato(clave, valor),
         _Dato(TextosHistorialDeLaCasa.pagado, FormatoBajaPersona.monto(pagadoCentavos)),
         _Dato(TextosHistorialDeLaCasa.saldo, FormatoBajaPersona.monto(saldoCentavos), fuerte: true),
       ],

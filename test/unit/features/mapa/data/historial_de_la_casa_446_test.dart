@@ -106,6 +106,7 @@ void main() {
     String? producto,
     String? coleccion,
     int n = 1,
+    List<Object?> componentes = const [],
   }) => db
       .into(db.ventaItems)
       .insert(
@@ -114,7 +115,7 @@ void main() {
           ventaId: ventaId,
           productoId: Value(producto),
           coleccionId: Value(coleccion),
-          componentes: Value(coleccion == null ? null : const <Object?>[]),
+          componentes: Value(coleccion == null ? null : componentes),
           cantidad: n,
           precioUnitario: 1000,
           subtotal: 1000 * n,
@@ -375,6 +376,60 @@ void main() {
     final v = (await historial.leer('esp-1')).whereType<VentaDeLaCasa>().single;
 
     expect(v.saldoCentavos, 0);
+  });
+
+  test('un combo lleva sus libros con nombre: «Colección de 5 libros» (rev 1120)', () async {
+    for (final (id, nombre) in [('pro-2', 'Nuestros Hijos'), ('pro-3', 'Vida Feliz')]) {
+      await db
+          .into(db.productos)
+          .insert(
+            ProductosCompanion.insert(
+              id: id,
+              nombre: nombre,
+              tipo: 'LIBRO',
+              createdAt: t0,
+              updatedAt: t0,
+            ),
+          );
+    }
+    await venta('ven-1', DateTime.utc(2026, 10, 12));
+    await renglon(
+      'it-1',
+      'ven-1',
+      coleccion: 'col-borrada',
+      componentes: const [
+        {'producto_id': 'pro-1', 'cantidad': 1},
+        {'producto_id': 'pro-2', 'cantidad': 1},
+        {'producto_id': 'pro-3', 'cantidad': 2},
+        {'producto_id': 'fuera-del-catalogo', 'cantidad': 1},
+      ],
+    );
+
+    final v = (await historial.leer('esp-1')).single as VentaDeLaCasa;
+
+    expect(v.lineas.single.libros, const [
+      LineaDeFicha(nombre: 'Salud y Hogar', cantidad: 1),
+      LineaDeFicha(nombre: 'Nuestros Hijos', cantidad: 1),
+      LineaDeFicha(nombre: 'Vida Feliz', cantidad: 2),
+      LineaDeFicha(nombre: '', cantidad: 1),
+    ]);
+    expect(FormatoHistorialDeLaCasa.titulo(v), 'Colección de 5 libros · Pedro');
+    expect(FormatoHistorialDeLaCasa.filasDeLibros(v.lineas), [
+      ('Libro', 'Salud y Hogar'),
+      ('Libro', 'Nuestros Hijos'),
+      ('Libro', 'Vida Feliz × 2'),
+      ('Combo', 'Colección'),
+    ]);
+  });
+
+  test('un producto suelto no es un combo', () async {
+    await venta('ven-1', DateTime.utc(2026, 10, 12));
+    await renglon('it-1', 'ven-1', producto: 'pro-1', n: 2);
+
+    final linea = ((await historial.leer('esp-1')).single as VentaDeLaCasa).lineas.single;
+
+    expect(linea.esCombo, isFalse);
+    expect(linea.cuantosLibros, 2);
   });
 
   test('una colección sin nombre en el catálogo queda como «Colección»', () async {

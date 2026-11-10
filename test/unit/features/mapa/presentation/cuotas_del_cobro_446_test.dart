@@ -86,6 +86,20 @@ void main() {
       expect(_lineas(tresDe800, [_cobro(100000, 9)], 0), 'Cuota 1 y parte de la 2 de 3');
     });
 
+    test('dado un cobro que cubre dos y deja la tercera a medias, va con coma (rev 1120, P2)', () {
+      final tresDe1000 = [_cita(25, 100000), _cita(28, 100000), _cita(31, 100000)];
+
+      expect(_lineas(tresDe1000, [_cobro(250000, 9)], 0), 'Cuotas 1 y 2, y parte de la 3 de 3');
+    });
+
+    test('los números de las cuotas van en orden aunque se hayan cubierto en otro', () {
+      const desordenadas = CuotasDeUnCobro(deTotal: 4, completas: [2, 1], aMedias: 3);
+      const salteadas = CuotasDeUnCobro(deTotal: 5, completas: [4, 1, 2]);
+
+      expect(FormatoHistorialDeLaCasa.cuotas(desordenadas), 'Cuotas 1 y 2, y parte de la 3 de 4');
+      expect(FormatoHistorialDeLaCasa.cuotas(salteadas), 'Cuotas 1, 2 y 4 de 5');
+    });
+
     test('dado un cobro que cubre de más, nombra solo las cuotas del plan', () {
       expect(_lineas(dosDe600, [_cobro(150000, 9)], 0), 'Cuotas 1 y 2 de 2');
     });

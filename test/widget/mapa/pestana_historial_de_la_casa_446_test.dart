@@ -175,7 +175,7 @@ void main() {
         expect(find.text('Venta 0038'), findsOneWidget);
         // Venta con la nota de su visita.
         expect(find.text('12/10 · VENTA 0038'), findsOneWidget);
-        expect(find.text('Salud y Hogar · Pedro'), findsOneWidget);
+        expect(find.text('Colección de 1 libro · Pedro'), findsOneWidget);
         expect(find.text('${monto(480000)} · ✎ quiere Nuestros Hijos'), findsOneWidget);
         // Entrevista dada con su duración.
         expect(find.text('05/10 · ENTREVISTA DADA · 22 MIN'), findsOneWidget);
@@ -565,6 +565,43 @@ void main() {
         expect(find.byKey(ClavesDetalleDeVisita.cerrar), findsOneWidget);
         // Sin pantalla donde ver una venta, «Ver la venta» no se ofrece.
         expect(find.byKey(ClavesDetalleDeVisita.verLaVenta), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'dado una venta de un combo de 5 libros, la fila y el detalle dicen «Colección de 5 libros» '
+      'y el detalle nombra cada libro (rev 1120)',
+      (tester) async {
+        final combo = VentaDeLaCasa(
+          id: 'ven-c',
+          fecha: local(10, 12, 14),
+          numeroTalonario: '0041',
+          montoCentavos: 900000,
+          pagadoCentavos: 0,
+          lineas: const [
+            LineaDeFicha(
+              nombre: 'Colección Familia',
+              cantidad: 1,
+              libros: [
+                LineaDeFicha(nombre: 'Salud y Hogar', cantidad: 1),
+                LineaDeFicha(nombre: 'Nuestros Hijos', cantidad: 1),
+                LineaDeFicha(nombre: 'Vida Feliz', cantidad: 3),
+              ],
+            ),
+          ],
+          persona: pedro,
+        );
+        await montar(tester, eventos: [combo]);
+
+        expect(find.text('Colección de 5 libros · Pedro'), findsOneWidget);
+
+        await tester.tap(fila('ven-c'));
+        await asentar(tester);
+
+        expect(find.text('Colección de 5 libros'), findsOneWidget);
+        expect(find.text(TextosHistorialDeLaCasa.libro), findsNWidgets(3));
+        expect(find.text('Vida Feliz × 3'), findsOneWidget);
+        expect(find.text('Colección de 1 libro'), findsNothing);
       },
     );
 
@@ -1237,7 +1274,7 @@ void main() {
         final etiqueta = FormatoHistorialDeLaCasa.paraLector(ventaDelDoce, ahora);
 
         expect(etiqueta, contains('12/10 · VENTA 0038'));
-        expect(etiqueta, contains('Salud y Hogar · Pedro'));
+        expect(etiqueta, contains('Colección de 1 libro · Pedro'));
         expect(etiqueta, contains('✎ quiere Nuestros Hijos'));
         final nodo = tester.getSemantics(fila('ven-1')).getSemanticsData();
         expect(nodo.label, etiqueta);
