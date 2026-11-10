@@ -81,6 +81,20 @@ abstract final class ProyeccionMercator {
     return (x: giro.x + ancho / 2, y: giro.y + alto / 2);
   }
 
+  /// Lo inverso de [aPantalla]: el punto del mapa que cae en ([x], [y]) de una vista de [ancho] ×
+  /// [alto] con [camara] (por ejemplo, donde se soltó el pin de una casa nueva, vista 41).
+  static Coordenadas dePantalla(
+    double x,
+    double y,
+    CamaraMapa camara, {
+    required double ancho,
+    required double alto,
+  }) {
+    final centro = aPixeles(camara.centro, camara.zoom);
+    final giro = _girar(x - ancho / 2, y - alto / 2, -camara.rumbo);
+    return aCoordenadas(centro.x + giro.x, centro.y + giro.y, camara.zoom);
+  }
+
   /// El centro que hay que darle a una cámara de [zoom] y [rumbo] para que [punto] caiga a
   /// ([desplazamientoX], [desplazamientoY]) píxeles del centro de la vista (en la pantalla: `y` hacia
   /// abajo). Con rumbo 0 es correr el centro lo contrario de ese desplazamiento; con otro, el

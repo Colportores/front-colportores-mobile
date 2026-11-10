@@ -284,7 +284,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
         const SizedBox(height: 14),
         for (var i = 0; i < _candidatas.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
-          _TarjetaCandidata(
+          TarjetaCandidataDuplicado(
             candidata: _candidatas[i],
             letra: varias ? FormatoUbicaciones.rotuloCandidata(i) : null,
             ciudad: widget.nombresCiudad[_candidatas[i].ubicacion.ciudadId],
@@ -353,7 +353,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
         const SizedBox(height: 10),
         Row(
           children: [
-            _Letra(FormatoUbicaciones.rotuloCandidata(0)),
+            LetraCandidata(FormatoUbicaciones.rotuloCandidata(0)),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -510,8 +510,8 @@ class _MotivoRapido extends StatelessWidget {
   }
 }
 
-class _Letra extends StatelessWidget {
-  const _Letra(this.letra);
+class LetraCandidata extends StatelessWidget {
+  const LetraCandidata(this.letra, {super.key});
 
   final String letra;
 
@@ -541,8 +541,9 @@ class _Letra extends StatelessWidget {
   }
 }
 
-class _TarjetaCandidata extends StatelessWidget {
-  const _TarjetaCandidata({
+class TarjetaCandidataDuplicado extends StatelessWidget {
+  const TarjetaCandidataDuplicado({
+    super.key,
     required this.candidata,
     required this.letra,
     required this.ciudad,
@@ -590,7 +591,7 @@ class _TarjetaCandidata extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (letra != null) ...[_Letra(letra!), const SizedBox(width: 10)],
+              if (letra != null) ...[LetraCandidata(letra!), const SizedBox(width: 10)],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
