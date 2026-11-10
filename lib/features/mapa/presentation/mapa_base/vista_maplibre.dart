@@ -65,6 +65,7 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     if (!listEquals(config.puntos, antes.puntos)) unawaited(_empujarPuntos());
     if (config.precision != antes.precision) unawaited(_empujarPrecision());
     if (config.cercania != antes.cercania) unawaited(_empujarCercania());
+    if (!listEquals(config.zonas, antes.zonas)) unawaited(_empujarZonas());
   }
 
   /// El estilo no cambia mientras no cambie lo que lo define: cambiarlo recarga la vista entera.
@@ -184,6 +185,28 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     }
   }
 
+  /// Las zonas y sus nombres (#511): dos fuentes que se actualizan juntas, para que una zona y su
+  /// nombre no se vean en cuadros distintos.
+  Future<void> _empujarZonas() async {
+    final controlador = _controlador;
+    if (controlador == null || !_estiloListo) return;
+    final zonas = widget.config.zonas;
+    try {
+      await Future.wait([
+        controlador.setGeoJsonSource(
+          ConstructorEstiloMapa.fuenteZonas,
+          ConstructorEstiloMapa.coleccionZonas(zonas),
+        ),
+        controlador.setGeoJsonSource(
+          ConstructorEstiloMapa.fuenteZonasRotulos,
+          ConstructorEstiloMapa.coleccionRotulosDeZonas(zonas),
+        ),
+      ]);
+    } on Object catch (e, s) {
+      AppLogger.instance.error(_modulo, 'zonas', 'No se pudieron actualizar las zonas', {}, e, s);
+    }
+  }
+
   Future<void> _empujarCercania() async {
     final controlador = _controlador;
     if (controlador == null || !_estiloListo) return;
@@ -207,11 +230,13 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     unawaited(_empujarPuntos());
     unawaited(_empujarPrecision());
     unawaited(_empujarCercania());
+    unawaited(_empujarZonas());
   }
 
   CamaraMapa _aCamara(ml.CameraPosition posicion) => CamaraMapa(
     centro: Coordenadas(lat: posicion.target.latitude, lon: posicion.target.longitude),
     zoom: posicion.zoom,
+    rumbo: posicion.bearing,
   );
 
   void _alQuedarQuieta() {
@@ -417,7 +442,13 @@ class _PuertoMapLibre implements PuertoVistaMapa {
   @override
   Future<void> moverCamara(CamaraMapa camara) async {
     await _controlador.moveCamera(
-      ml.CameraUpdate.newLatLngZoom(ml.LatLng(camara.centro.lat, camara.centro.lon), camara.zoom),
+      ml.CameraUpdate.newCameraPosition(
+        ml.CameraPosition(
+          target: ml.LatLng(camara.centro.lat, camara.centro.lon),
+          zoom: camara.zoom,
+          bearing: camara.rumbo,
+        ),
+      ),
     );
   }
 }

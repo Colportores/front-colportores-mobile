@@ -341,12 +341,9 @@ void main() {
         throwsA(
           isA<ServidorException>()
               .having((e) => e.status, 'status', 500)
-              .having(
-                (e) => e.mensaje,
-                'mensaje',
-                'No se pudo completar la operación (unexpected_failure).',
-              )
-              .having((e) => e.mensaje, 'mensaje', isNot(contains('boom con datos del usuario'))),
+              // Sin texto: ni el código ni el mensaje de Supabase llegan a la pantalla; el código
+              // queda en el log y cada pantalla dice qué hacer (#542).
+              .having((e) => e.mensaje, 'mensaje', isNull),
         ),
       );
     });

@@ -586,36 +586,30 @@ void main() {
       notas: [notaDePrueba('b1', 'Una borrada', borrada: DateTime(2026, 10, 22, 14, 30))],
     );
 
-    // skip: QA #144 — «Restaurar» (E·05) va debajo de la tarjeta; el canvas (Bloques `r`) lo pone dentro, a la derecha.
-    testWidgets(
-      'E·05: «Restaurar» está dentro de la tarjeta de la nota borrada, como el canvas',
-      (tester) async {
-        await montarPantalla144(
-          tester,
-          celdas144[2],
-          repo: notaBorrada,
-          pantalla: Pantalla144.borradas,
-        );
-        final tarjeta = tester.getRect(find.byKey(const ValueKey('borrada_b1')).first);
-        final boton = tester.getCenter(find.text('Restaurar'));
-        final tarjetaVisible = tester.getRect(
-          find
-              .descendant(
-                of: find.byKey(const ValueKey('borrada_b1')),
-                matching: find.byType(Container),
-              )
-              .first,
-        );
-        expect(
-          tarjetaVisible.contains(boton),
-          isTrue,
-          reason: 'tarjeta $tarjeta, Restaurar $boton',
-        );
-      },
-      skip: !verHallazgos144,
-    );
+    // QA #144 — «Restaurar» (E·05) va dentro de la tarjeta, a la derecha, como el canvas (Bloques `r`).
+    testWidgets('E·05: «Restaurar» está dentro de la tarjeta de la nota borrada, como el canvas', (
+      tester,
+    ) async {
+      await montarPantalla144(
+        tester,
+        celdas144[2],
+        repo: notaBorrada,
+        pantalla: Pantalla144.borradas,
+      );
+      final tarjeta = tester.getRect(find.byKey(const ValueKey('borrada_b1')).first);
+      final boton = tester.getCenter(find.text('Restaurar'));
+      final tarjetaVisible = tester.getRect(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey('borrada_b1')),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(tarjetaVisible.contains(boton), isTrue, reason: 'tarjeta $tarjeta, Restaurar $boton');
+    });
 
-    // skip: QA #144 — «Restaurar» pierde la fuente Inter: el `textStyle` del botón no lleva familia y reemplaza al del tema.
+    // QA #144 — «Restaurar» lleva la fuente Inter: el `textStyle` del botón trae su familia.
     testWidgets('E·05: «Restaurar» se escribe con Inter, como el resto de la app', (tester) async {
       await montarPantalla144(
         tester,
@@ -627,9 +621,9 @@ void main() {
         find.descendant(of: find.byType(TextButton), matching: find.byType(RichText)).first,
       );
       expect(rich.text.style?.fontFamily, 'Inter');
-    }, skip: !verHallazgos144);
+    });
 
-    // skip: QA #144 — el lector dice «Restaurar la nota de el 05/10» (falta «del»).
+    // QA #144 — el lector dice «Restaurar la nota del 05/10», no «de el 05/10».
     testWidgets('E·05: el lector dice «de la nota del 05/10», no «de el 05/10»', (tester) async {
       final semantica = tester.ensureSemantics();
       await montarPantalla144(
@@ -648,8 +642,9 @@ void main() {
         pantalla: Pantalla144.borradas,
       );
       expect(find.bySemanticsLabel(RegExp(r'Restaurar la nota de el ')), findsNothing);
+      expect(find.bySemanticsLabel('Restaurar la nota del 05/10'), findsOneWidget);
       semantica.dispose();
-    }, skip: !verHallazgos144);
+    });
   });
 
   group('privacidad', () {

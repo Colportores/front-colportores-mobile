@@ -345,6 +345,36 @@ void main() {
       );
     });
 
+    testWidgets(
+      'un rechazo del servidor sin traducción (4xx con código) dice qué pasa y qué hacer, sin '
+      'el código ni el genérico (decisión del 29/10 en #542)',
+      (tester) async {
+        // `signup_disabled`, `validation_failed`…: el remoto ya no arma texto con el código.
+        final remote = _RemoteQueLanzaAlRegistrar(const ServidorException(status: 400));
+        await _montarPagina(tester, remote: remote);
+        await tester.pumpAndSettle();
+
+        await _completarFormulario(tester);
+        await _tocarContinuar(tester);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('registro_error_general')), findsOneWidget);
+        expect(
+          find.text('No pudimos crear tu cuenta. Probá de nuevo en unos minutos.'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('El servidor no pudo procesar'), findsNothing);
+        expect(find.textContaining('No se pudo completar la operación'), findsNothing);
+
+        // Y el botón vuelve a quedar habilitado para reintentar.
+        await tester.ensureVisible(find.byKey(const Key('registro_continuar')));
+        expect(
+          tester.widget<ButtonStyleButton>(find.byKey(const Key('registro_continuar'))).enabled,
+          isTrue,
+        );
+      },
+    );
+
     // Criterio de aceptación "Registro exitoso con datos válidos" de HU-AUTH-001, según quedó
     // tras el PR #79 (#19): con "Confirm email" activo, Supabase no deja la sesión iniciada y la
     // UI tiene que navegar (pushReplacement, no pop) a VerificacionEmailPage. El otro test de

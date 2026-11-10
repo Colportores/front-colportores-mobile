@@ -23,6 +23,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/entrevista_falsos.dart';
 import '../../helpers/qa_vista39_450_arnes.dart';
+import '../../helpers/venta_ui_falsos.dart' show EntornoDeVenta;
 
 void main() {
   group('texto literal del canvas 39', () {
@@ -83,16 +84,13 @@ void main() {
       expect(find.text('¿HUBO VENTA?'), findsOneWidget);
     });
 
-    testWidgets(
-      'R·07: el canvas dibuja solo Entrada y Salida, sin la fila «Duración» de R·06',
-      (tester) async {
-        await llegar(tester, Estado39.r07);
+    testWidgets('R·07: el canvas dibuja solo Entrada y Salida, sin la fila «Duración» de R·06', (
+      tester,
+    ) async {
+      await llegar(tester, Estado39.r07);
 
-        expect(find.byKey(ClavesEntrevista.duracion), findsNothing);
-      },
-      // skip: QA #450 — R·07 muestra «Duración» (22 min) y el canvas no la dibuja (menor).
-      skip: true,
-    );
+      expect(find.byKey(ClavesEntrevista.duracion), findsNothing);
+    });
   });
 
   group('matriz de estados × tamaños × letra', () {
@@ -151,9 +149,8 @@ void main() {
 
         final rotulo = tester.renderObject<RenderParagraph>(find.text(TextosEntrevista.campoNota));
         expect(rotulo.didExceedMaxLines, isFalse, reason: 'el rótulo termina en «OPCI…»');
+        await capturar(tester, 'nota_360x640_x2');
       },
-      // skip: QA #450 — a 200 % el rótulo flotante del campo termina en «OPCI…» y se pierde «OPCIONAL».
-      skip: true,
     );
   });
 
@@ -344,21 +341,33 @@ void main() {
       },
     );
 
-    testWidgets(
-      'cerrar R·06 mientras guarda: la colportora ve igual la confirmación «Guardado…»',
-      (tester) async {
-        final r = await llegar(tester, Estado39.r06Guardando);
+    testWidgets('R·06 con el guardado en vuelo no se cierra ni arrastrándola hacia abajo', (
+      tester,
+    ) async {
+      final r = await llegar(tester, Estado39.r06Guardando);
 
-        await tester.binding.handlePopRoute();
-        await tester.pumpAndSettle();
-        r.montaje.agenda.compuerta!.complete();
-        await tester.pumpAndSettle();
+      await tester.drag(find.byKey(ClavesEntrevista.hojaTermino), const Offset(0, 600));
+      await tester.pumpAndSettle();
 
-        expect(find.text(TextosEntrevista.guardada('Grecia 3307')), findsOneWidget);
-      },
-      // skip: QA #450 — la hoja se puede cerrar mientras guarda y entonces no hay confirmación.
-      skip: true,
-    );
+      expect(find.byKey(ClavesEntrevista.hojaTermino), findsOneWidget);
+      expect(find.text(TextosEntrevista.guardando), findsOneWidget);
+      r.montaje.agenda.compuerta!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text(TextosEntrevista.guardada('Grecia 3307')), findsOneWidget);
+    });
+
+    testWidgets('cerrar R·06 mientras guarda: la colportora ve igual la confirmación «Guardado…»', (
+      tester,
+    ) async {
+      final r = await llegar(tester, Estado39.r06Guardando);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      r.montaje.agenda.compuerta!.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text(TextosEntrevista.guardada('Grecia 3307')), findsOneWidget);
+    });
 
     testWidgets('con el guardado trabado y una falla después, el botón vuelve y se reintenta', (
       tester,
@@ -419,21 +428,18 @@ void main() {
       expect(r.montaje.agenda.recibidas, hasLength(1));
     });
 
-    testWidgets(
-      'el reloj atrasado no muestra una duración negativa como «menos de 1 min»',
-      (tester) async {
-        final r = await llegar(tester, Estado39.r06);
-        await tester.binding.handlePopRoute();
-        await tester.pumpAndSettle();
-        r.montaje.reloj = () => DateTime(2026, 10, 23, 14, 10);
-        await tocar(tester, find.byKey(ClavesEntrevista.avisoFijo));
-        await tocar(tester, find.byKey(ClavesEntrevista.finalizar));
+    testWidgets('el reloj atrasado no muestra una duración negativa como «menos de 1 min»', (
+      tester,
+    ) async {
+      final r = await llegar(tester, Estado39.r06);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      r.montaje.reloj = () => DateTime(2026, 10, 23, 14, 10);
+      await tocar(tester, find.byKey(ClavesEntrevista.avisoFijo));
+      await tocar(tester, find.byKey(ClavesEntrevista.finalizar));
 
-        expect(find.text('menos de 1 min'), findsNothing);
-      },
-      // skip: QA #450 — con el reloj atrasado R·06 dice «menos de 1 min» (menor).
-      skip: true,
-    );
+      expect(find.text('menos de 1 min'), findsNothing);
+    });
   });
 
   group('una entrevista que quedó abierta de días atrás', () {
@@ -505,18 +511,37 @@ void main() {
     });
   });
 
-  group('«Sí, registrar la venta»', () {
-    testWidgets('devuelve las horas, no guarda y deja la entrevista y su aviso a la vista', (
+  group('«Sí, registrar la venta» (#428)', () {
+    testWidgets('abre la venta con la casa y la persona, y no guarda nada hasta que se guarde', (
       tester,
     ) async {
-      final r = await llegar(tester, Estado39.r06);
+      final montaje = MontajeEntrevista()..extra.addAll(EntornoDeVenta().overrides);
+      final r = await llegar(tester, Estado39.r06, montaje: montaje);
 
       await tocar(tester, find.byKey(ClavesEntrevista.registrarVenta));
 
-      expect(r.salida, isA<QuiereRegistrarLaVenta>());
+      expect(find.byKey(const Key('nueva_venta_pagina')), findsOneWidget);
+      expect(r.montaje.agenda.recibidas, isEmpty);
+      expect(r.montaje.almacen.guardadas, hasLength(1));
+    });
+
+    testWidgets('si la venta no se completa, la entrevista y su aviso siguen a la vista', (
+      tester,
+    ) async {
+      final montaje = MontajeEntrevista()..extra.addAll(EntornoDeVenta().overrides);
+      final r = await llegar(tester, Estado39.r06, montaje: montaje);
+
+      await tocar(tester, find.byKey(ClavesEntrevista.registrarVenta));
+      await tocar(tester, find.byKey(const Key('venta_atras')));
+
+      expect(r.salida, isA<VentaSinCompletar>());
       expect(r.montaje.agenda.recibidas, isEmpty);
       expect(r.montaje.almacen.guardadas, hasLength(1));
       expect(find.byKey(ClavesEntrevista.avisoFijo), findsOneWidget);
+      expect(
+        find.text('La venta no se guardó. La entrevista con Pedro Gómez sigue en curso.'),
+        findsOneWidget,
+      );
     });
   });
 

@@ -5,9 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../../../datos/drift_sync_meta.dart';
 import '../../../mapa/domain/services/ciudades_para_alta.dart';
-import '../../../mapa/domain/value_objects/coordenadas.dart';
 import '../../../mapa/presentation/providers/alta_ubicacion_providers.dart'
-    show ciudadesParaAltaProvider, proveedorGpsProvider;
+    show ciudadesParaAltaProvider;
+import '../../../mapa/presentation/providers/ubicacion_colportor_provider.dart';
 import '../../data/datasources/catalogo_local_data_source.dart';
 import '../../data/datasources/ciudades_para_precios_local_data_source.dart';
 import '../../data/repositories/consulta_de_precios_repository_impl.dart';
@@ -67,10 +67,6 @@ final diasDeAntiguedadDePreciosProvider = Provider<DiasDeAntiguedadDePrecios>((r
 /// El reloj de la pantalla («cuántos días tienen los precios», el día que rige); un test lo reemplaza.
 final relojPreciosProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
-/// Cuánto se espera al GPS antes de abrir con la ciudad de la zona: abrir Precios no puede quedar
-/// colgado en una lectura que no llega. Un test lo reemplaza.
-final esperaDelGpsPreciosProvider = Provider<Duration>((ref) => const Duration(seconds: 8));
-
 /// Riverpod 3 reintenta 10 veces lo que falla: la pantalla muestra el error enseguida (26·10) y el
 /// «Reintentar» es de quien lo toca.
 Duration? _sinReintentos(int intento, Object error) => null;
@@ -103,18 +99,15 @@ final aperturaDePreciosProvider = FutureProvider.autoDispose.family<AperturaDePr
   );
 }, retry: _sinReintentos);
 
-/// La `ciudad.id` en la que el GPS ubica a la colportora, o `null` si no hay GPS (apagado, sin
-/// permiso, sin señal, lectura que no llega) o no la ubica en ninguna zona de sus campañas. Nunca
-/// lanza: sin GPS Precios abre igual, con la ciudad de su zona.
+/// La `ciudad.id` en la que el GPS ubica a la colportora, o `null` si no hay una lectura (apagado,
+/// sin permiso, sin señal, o el mapa todavía no la pidió) o no la ubica en ninguna zona de sus
+/// campañas. Precios **no** pide el GPS ni el permiso (decisión de Cristian, 04/11, #651): usa la
+/// última lectura de [ubicacionColportorProvider] y, si no hay, abre con la ciudad de su zona. Nunca
+/// lanza ni espera.
 Future<String?> _ciudadDelGps(Ref ref, String colportorId) async {
   try {
-    final espera = ref.read(esperaDelGpsPreciosProvider);
-    final lectura = await ref.read(proveedorGpsProvider).posicionActual().timeout(espera);
-    final Coordenadas? punto = lectura.fold<Coordenadas?>((_) => null, (l) {
-      final c = l.coordenadas;
-      return c.sonCero || !c.estanEnRango ? null : c;
-    });
-    if (punto == null) return null;
+    final punto = ref.read(ubicacionColportorProvider).lectura?.coordenadas;
+    if (punto == null || punto.sonCero || !punto.estanEnRango) return null;
     final propuesta = await ref
         .read(ciudadesParaAltaProvider)
         .proponer(colportorId: colportorId, punto: punto);

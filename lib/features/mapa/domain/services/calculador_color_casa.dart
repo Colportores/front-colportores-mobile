@@ -21,8 +21,9 @@ typedef ResultadoDeVisitaFechado = ({TipoResultadoVisita resultado, DateTime fec
 /// encima de cualquiera de los tres. El resultado sigue sin depender del orden en que llegan los
 /// datos: la fecha de la visita decide, y a igual instante gana la de número más chico.
 ///
-/// Aportan las agendas, las visitas y las ventas (prioridades 1, 3, 5, 6 y 7). La entrega y la cobranza
-/// (HU-VEN-002, HU-COB-001) suman las 2 y 4: un parámetro nuevo acá, sin tocar a quien ya llama.
+/// Aportan las agendas, las visitas, las ventas y sus cobros (prioridades 1, 3, 4, 5, 6 y 7). La
+/// entrega (HU-VEN-002) suma la 2 y hace que la 4 se pueda pintar: un parámetro nuevo acá, sin
+/// tocar a quien ya llama.
 abstract final class CalculadorColorCasa {
   /// El color de una casa con [agendasPendientes] (los tipos de sus agendas que siguen esperando
   /// su visita) y [resultadosDeVisitas] (el resultado y la fecha de cada una de sus visitas), o
@@ -39,8 +40,20 @@ abstract final class CalculadorColorCasa {
     Iterable<TipoAgenda> agendasPendientes = const [],
     Iterable<ResultadoDeVisitaFechado> resultadosDeVisitas = const [],
     Iterable<int> montosDeVentas = const [],
+    Iterable<({int montoCentavos, int cobradoCentavos, bool entregada})> ventas = const [],
   }) => ColorHouseStatus.elDeMayorPrioridad(
     [
+      // Una venta con cobros (HU-COB-001): con saldo sigue pendiente (1; la entrega todavía no se
+      // registra en el teléfono, así que no se distingue la cobranza sola, 2). «Venta completa» (4) es
+      // el saldo en cero **y** todo entregado (decisión del 28/10 sobre el canvas 28·07): pagada y sin
+      // entregar la casa sigue en 1 hasta que se registra la entrega (decisión de Cristian, «Pendiente
+      // hasta entregar»). Una venta de $ 0 no pinta.
+      for (final venta in ventas)
+        if (venta.montoCentavos > 0)
+          if (venta.cobradoCentavos >= venta.montoCentavos && venta.entregada)
+            ColorHouseStatus.ventaCompleta
+          else
+            ColorHouseStatus.entregaYCobranzaPendiente,
       // Una venta con algo para cobrar, sin entrega ni cobro registrados todavía (esas tablas llegan
       // con HU-VEN-002 y HU-COB-001): entrega y cobranza pendientes (1). Una venta de $ 0 (solo
       // misioneros, que no cuentan como venta) no pinta por sí sola: la casa queda «entrevista dada».

@@ -80,4 +80,59 @@ void main() {
       expect(TextosEspacios.agregado(' 101 '), 'Depto 101 agregado.');
     });
   });
+
+  group('dados de baja y «Reactivar» (#473)', () {
+    test('la cabecera y el lector: «Dados de baja», con la cuenta', () {
+      expect(TextosEspacios.dadosDeBaja, 'Dados de baja');
+      expect(TextosEspacios.dadosDeBajaSemantica(2), 'Dados de baja, 2 deptos');
+      expect(TextosEspacios.dadosDeBajaSemantica(1), 'Dados de baja, 1 depto');
+    });
+
+    test('la fila: el piso, y el lector la lee como dada de baja con su «Reactivar»', () {
+      expect(TextosEspacios.pisoDeLaFila(' 2 '), 'Piso 2');
+      expect(TextosEspacios.filaBajaSemantica(espacioDe('e', '103')), 'Depto 103. Dado de baja.');
+      expect(TextosEspacios.filaBajaSemantica(espacioDe('e', null)), 'Sin número. Dado de baja.');
+      expect(TextosEspacios.reactivarSemantica(espacioDe('e', '103')), 'Reactivar Depto 103');
+    });
+
+    test('el aviso de la reactivación sigue al de la casa (09·04), dicho para un depto', () {
+      expect(
+        TextosEspacios.reactivado(espacioDe('e', ' 103 '), TipoUbicacion.edificio),
+        'Depto 103 reactivado. Vuelve a aparecer en el edificio.',
+      );
+      expect(
+        TextosEspacios.reactivado(espacioDe('e', 'Local 1'), TipoUbicacion.negocio),
+        'Depto Local 1 reactivado. Vuelve a aparecer en el negocio.',
+      );
+    });
+
+    test('un depto sin número no se llama «Depto Sin número»', () {
+      expect(
+        TextosEspacios.reactivado(espacioDe('e', null), TipoUbicacion.edificio),
+        'Depto sin número reactivado. Vuelve a aparecer en el edificio.',
+      );
+      expect(
+        TextosEspacios.reactivarRepetido(espacioDe('e', null), TipoUbicacion.edificio),
+        startsWith('No se puede reactivar este depto sin número:'),
+      );
+    });
+
+    test('el número tomado por otro depto: dice por qué y qué hacer', () {
+      expect(
+        TextosEspacios.reactivarRepetido(espacioDe('e', '103'), TipoUbicacion.edificio),
+        'No se puede reactivar el depto 103: ya hay otro con ese número en este edificio. '
+        'Cambiale el número al que está activo y probá de nuevo.',
+      );
+      expect(
+        TextosEspacios.reactivarRepetido(espacioDe('e', '4'), TipoUbicacion.negocio),
+        contains('en este negocio.'),
+      );
+    });
+
+    test('los avisos que guían cuando algo falla', () {
+      expect(TextosEspacios.noPudimosReactivar, contains('Probá de nuevo'));
+      expect(TextosEspacios.noPudimosDeshacer, contains('desde su edición'));
+      expect(TextosEspacios.errorBajas, contains('Probá de nuevo'));
+    });
+  });
 }

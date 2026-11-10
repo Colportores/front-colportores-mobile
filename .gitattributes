@@ -10,3 +10,6 @@ dockerfile.dev text eol=lf
 *.jar binary
 *.keystore binary
 *.jks binary
+
+# Registro de capacidades: dos PR que agregan filas no deben chocar
+docs/registro-capacidades.md merge=union

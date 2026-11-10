@@ -4,9 +4,8 @@
 // diálogos, el teclado abierto en 360×640, las guías de accesibilidad de los estados que faltaban
 // (cargando, no existe, error, guardando, aviso de falla) y los textos pegados con emoji.
 //
-// Los tests que documentan un hallazgo van con `skip: true` y, arriba, el comentario
-// `// skip: QA #202 — <hallazgo>` (en `testWidgets` el `skip` es un bool). Los de la ronda 1 ya
-// están arreglados (el implementador les sacó el `skip` en la ronda final).
+// Los hallazgos de QA #202 (ronda 1) ya están arreglados: no queda ningún test con `skip` en este
+// archivo.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';

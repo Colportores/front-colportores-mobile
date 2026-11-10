@@ -13,6 +13,9 @@ enum ClaseAvisoDrive {
 
   /// Falta conexión. Borde de trazos gris, con «✕».
   sinConexion,
+
+  /// Salió a medias: se hizo lo que se pudo y se dice qué quedó afuera. Ámbar, con «!».
+  advertencia,
 }
 
 /// Aviso con marca y borde del color de su clase, y una acción opcional («Reconectar»). Es una
@@ -24,14 +27,21 @@ class AvisoDrive extends StatelessWidget {
     required this.texto,
     this.accion,
     this.alAccionar,
-  }) : assert((accion == null) == (alAccionar == null), 'la acción y su texto van juntos');
+    this.detalle,
+  }) : assert(accion != null || alAccionar == null, 'sin texto de acción no hay a qué accionar');
 
   final ClaseAvisoDrive clase;
   final String texto;
 
   /// Rótulo de la acción (por ejemplo «Reconectar»).
   final String? accion;
+
+  /// Qué hace la acción. Con [accion] y sin esto, el botón queda apagado (un reintento en curso).
   final VoidCallback? alAccionar;
+
+  /// Una línea de más bajo el texto (por ejemplo, por qué falló el último intento). Al aparecer, el
+  /// lector de pantalla la anuncia: el aviso es una región viva.
+  final String? detalle;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +51,7 @@ class AvisoDrive extends StatelessWidget {
       ClaseAvisoDrive.error => (theme.colorScheme.error, '!'),
       ClaseAvisoDrive.info => (const Color(0xFF2A3A52), 'i'),
       ClaseAvisoDrive.sinConexion => (colores.gris, '✕'),
+      ClaseAvisoDrive.advertencia => (const Color(0xFF8A6A12), '!'),
     };
     final contenido = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -64,7 +75,22 @@ class AvisoDrive extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: Text(texto, style: theme.textTheme.bodyMedium?.copyWith(height: 1.45)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 6,
+                  children: [
+                    Text(texto, style: theme.textTheme.bodyMedium?.copyWith(height: 1.45)),
+                    if (detalle != null)
+                      Text(
+                        detalle!,
+                        key: const Key('aviso_drive_detalle'),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          height: 1.45,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),

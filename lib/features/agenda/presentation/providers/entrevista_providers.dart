@@ -18,6 +18,7 @@ import '../../domain/repositories/borrador_de_nota_de_entrevista.dart';
 import '../../domain/repositories/entrevista_en_curso_repository.dart';
 import '../../domain/services/destino_de_entrevista.dart';
 import '../../domain/services/ultima_visita_del_colportor.dart';
+import '../../domain/usecases/cerrar_entrevista_con_venta_use_case.dart';
 import '../../domain/usecases/empezar_entrevista_use_case.dart';
 import '../../domain/usecases/finalizar_entrevista_use_case.dart';
 import '../../domain/usecases/registrar_resultado_visita_use_case.dart';
@@ -66,6 +67,17 @@ final finalizarEntrevistaUseCaseProvider = Provider<FinalizarEntrevistaUseCase>(
     ref.watch(entrevistaEnCursoRepositoryProvider),
     ref.watch(destinoDeEntrevistaProvider),
     ref.watch(borradorDeNotaDeEntrevistaProvider),
+    ahora: ref.watch(relojEntrevistaProvider),
+  ),
+);
+
+/// «Sí, registrar la venta» (R·06 / R·07): prepara la visita `VENTA`, la guarda dentro de la
+/// transacción de la venta y suelta la entrevista una vez guardada.
+final cerrarEntrevistaConVentaUseCaseProvider = Provider<CerrarEntrevistaConVentaUseCase>(
+  (ref) => CerrarEntrevistaConVentaUseCase(
+    ref.watch(registrarResultadoVisitaUseCaseProvider),
+    ref.watch(entrevistaEnCursoRepositoryProvider),
+    ref.watch(destinoDeEntrevistaProvider),
     ahora: ref.watch(relojEntrevistaProvider),
   ),
 );
@@ -215,7 +227,7 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
   /// seguidos no escriben dos horas de inicio distintas.
   Future<Either<Failure, EntrevistaEnCurso>> empezar({
     required String espacioId,
-    required String espacioPersonaId,
+    String? espacioPersonaId,
     String? agendaId,
     String? jornadaId,
   }) {
@@ -238,7 +250,7 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
 
   Future<Either<Failure, EntrevistaEnCurso>> _empezar({
     required String espacioId,
-    required String espacioPersonaId,
+    String? espacioPersonaId,
     String? agendaId,
     String? jornadaId,
   }) async {
@@ -348,6 +360,83 @@ final class EntrevistaEnCursoNotifier extends Notifier<EstadoEntrevista> {
     } finally {
       _finalizando = false;
     }
+  }
+
+  /// A una entrevista que empezó **sin persona** le pone con quién fue: la persona que la colportora
+  /// acaba de dar de alta para registrar la venta (decisión de Cristian, 05/11, «Entrev. s/n»). Queda
+  /// en el estado y en el almacén: si la venta no se completa, la entrevista sigue en curso con esa
+  /// persona y no se vuelve a pedir el nombre (ni se da de alta dos veces). Si el almacén falla, queda
+  /// en el estado y en el log: la venta sigue igual con esa persona. No hace nada si no hay entrevista o
+  /// si ya tenía persona.
+  Future<void> ponerPersona(String espacioPersonaId) async {
+    final entrevista = state.entrevista;
+    if (entrevista == null || entrevista.espacioPersonaId != null) return;
+    final conPersona = EntrevistaEnCurso(
+      colportorId: entrevista.colportorId,
+      espacioId: entrevista.espacioId,
+      espacioPersonaId: espacioPersonaId,
+      ids: entrevista.ids,
+      inicio: entrevista.inicio,
+      agendaId: entrevista.agendaId,
+      jornadaId: entrevista.jornadaId,
+    );
+    if (ref.mounted) state = state.copiar(entrevista: () => conPersona);
+    try {
+      await ref.read(entrevistaEnCursoRepositoryProvider).guardar(conPersona);
+    } on Object catch (e) {
+      AppLogger.instance.warn(
+        LogModulo.agenda,
+        'ENTREVISTA_PERSONA',
+        'no se pudo guardar la persona de la entrevista en curso',
+        {'tipo': e.runtimeType.toString()},
+      );
+    }
+  }
+
+  /// «Sí, registrar la venta»: arma lo que la venta necesita de la entrevista en curso (dónde y con
+  /// quién, la visita `VENTA`) con las horas que confirmó la colportora. **No guarda nada** y la
+  /// entrevista sigue en curso: si la venta no se completa, no cambió nada (R44).
+  Future<Either<Failure, VentaDeLaEntrevista>> prepararVenta({
+    required DateTime entrada,
+    required DateTime salida,
+  }) async {
+    final entrevista = state.entrevista;
+    if (entrevista == null) return const Left(sinEntrevistaEnCurso);
+    try {
+      // La última nota ya está en la base antes de que la visita la reemplace con el texto final.
+      await _escrituraDeNota;
+      return await ref
+          .read(cerrarEntrevistaConVentaUseCaseProvider)
+          .preparar(
+            FinalizarEntrevistaParams.de(
+              entrevista,
+              entrada: entrada,
+              salida: salida,
+              nota: state.notaBorrador,
+            ),
+          );
+    } on Object catch (e) {
+      return Left(FailureInesperado(causa: e.runtimeType.toString()));
+    }
+  }
+
+  /// Guarda la visita `VENTA`: se pasa como `antesDeGuardar` de la venta, que la corre dentro de su
+  /// transacción. Lanza si no se pudo (la venta no se guarda).
+  Future<void> guardarVisitaDeLaVenta(VentaDeLaEntrevista venta) =>
+      ref.read(cerrarEntrevistaConVentaUseCaseProvider).guardarVisita(venta);
+
+  /// La venta quedó guardada: la entrevista ya no está en curso. Si el almacén falla devuelve la
+  /// falla y la entrevista sigue en curso (la venta y la visita ya están; se cierra después con los
+  /// mismos ids).
+  Future<Either<Failure, Unit>> soltarTrasLaVenta(VentaDeLaEntrevista venta) async {
+    final resultado = await ref.read(cerrarEntrevistaConVentaUseCaseProvider).soltar(venta);
+    if (ref.mounted) {
+      resultado.fold<void>(
+        (_) {},
+        (_) => state = state.copiar(entrevista: () => null, recuperada: false, notaBorrador: ''),
+      );
+    }
+    return resultado;
   }
 
   /// R·07: termina una entrevista **sin inicio registrado** (no hay entrevista en curso): guarda la

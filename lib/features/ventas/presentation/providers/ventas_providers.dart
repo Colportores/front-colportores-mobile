@@ -60,3 +60,20 @@ final preciosDeLaVentaProvider = FutureProvider.autoDispose.family<PreciosDeLaVe
   final leido = await ref.watch(fuenteDePreciosDeLaVentaProvider).leer(espacioPersonaId);
   return leido.fold<PreciosDeLaVenta>((falla) => throw falla, (precios) => precios);
 }, retry: _sinReintentos);
+
+/// Lo que «Cobrar ahora» de 27A·14 le pasa al cobro (vista 28): la venta recién registrada y con quién
+/// y dónde fue. `colportorId` es el usuario con la sesión iniciada.
+typedef ContextoDeCobroDeLaVenta = ({
+  String ventaId,
+  String espacioId,
+  String? espacioPersonaId,
+  String colportorId,
+});
+
+/// A dónde lleva «Cobrar ahora» de «Venta registrada: ¿y ahora?» (27A·14): abre el cobro en efectivo
+/// (vista 28, #439) y devuelve `true` si se cobró. `null` = el cobro no está enganchado: la pantalla
+/// no dibuja el grupo COBRO, porque un botón que no lleva a ningún lado sería mentir (decisión del
+/// 27/10, P7 de #158). Quien monta `VentaRegistradaPage` pasa `conCobro: ref.read(...) != null`.
+final cobrarDespuesDeLaVentaProvider = Provider<Future<bool> Function(ContextoDeCobroDeLaVenta)?>(
+  (ref) => null,
+);

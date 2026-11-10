@@ -1,5 +1,5 @@
 // QA de #320 / PR #322 (vista 03 «Alta de ubicación», HU-UBI-001): el motivo de «Registrar» apagado
-// («Elegí el tipo de ubicación para registrar.», «Marcá el punto…», «Elegí «Ajustar manualmente»…»)
+// («Marcá el punto…», «Elegí «Ajustar manualmente»…»; el tipo ya viene en «Casa», #665)
 // también se ve con el teclado abierto (decisión §2 b de #305).
 //
 // Complementa al grupo `#320` de `alta_ubicacion_registrar_fijo_test.dart` (360×640, texto 1× y 2×,
@@ -10,8 +10,7 @@
 // Geometría con las fuentes reales del proyecto (con la de prueba cada letra mide un cuadrado). Las
 // guías de accesibilidad van en `alta_ubicacion_qa_320_guias_test.dart`.
 //
-// Los tests que documentan un hallazgo van con `skip: true` y, arriba, el comentario
-// `// skip: QA #322 — <hallazgo>` (en `testWidgets` el `skip` es un bool).
+// Los hallazgos de QA #322 ya están arreglados: no queda ningún test con `skip` en este archivo.
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,12 +26,10 @@ String _x(double escala) => escala == escala.roundToDouble()
 
 /// Los estados del alta que muestran un motivo bajo «Registrar» y el texto de cada uno.
 const _conMotivo = <(EstadoAlta, String)>[
-  (EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo),
   (EstadoAlta.gpsImpreciso, TextosAlta.elegiPrecision),
   (EstadoAlta.sinGps, TextosAlta.marcaElPunto),
   (EstadoAlta.sinGpsSinConexion, TextosAlta.marcaElPunto),
   (EstadoAlta.sinCiudades, TextosAlta.marcaElPunto),
-  (EstadoAlta.numeroEditado, TextosAlta.elegiElTipo),
 ];
 
 bool _enLoQueSeDesplaza(Finder f) =>
@@ -102,9 +99,7 @@ void main() {
         for (final (estado, texto) in _conMotivo) {
           // El estado más ancho del canvas (GPS impreciso) y el más corto bastan en 3×: el resto
           // repite la misma geometría.
-          if (escala == 3.0 &&
-              estado != EstadoAlta.gpsPreciso &&
-              estado != EstadoAlta.gpsImpreciso) {
+          if (escala == 3.0 && estado != EstadoAlta.gpsImpreciso) {
             continue;
           }
           testWidgets(
@@ -121,7 +116,6 @@ void main() {
               // Un solo motivo a la vez.
               for (final otro in {
                 TextosAlta.marcaElPunto,
-                TextosAlta.elegiElTipo,
                 TextosAlta.elegiPrecision,
                 TextosAlta.elegiLaCiudad,
               }.difference({texto})) {
@@ -144,7 +138,7 @@ void main() {
           (tester) async {
             await abrirEn(
               tester,
-              EstadoAlta.gpsPreciso,
+              EstadoAlta.gpsImpreciso,
               tamano: tamano,
               escala: escala,
               teclado: teclado,
@@ -171,7 +165,7 @@ void main() {
               expect(find.widgetWithText(TextField, valor), findsOneWidget);
               await _registrarEntero(tester, libre, 'escribiendo la $nombre');
               expect(
-                find.text(TextosAlta.elegiElTipo),
+                find.text(TextosAlta.elegiPrecision),
                 findsOneWidget,
                 reason: 'el motivo no se va',
               );
@@ -188,7 +182,7 @@ void main() {
       '360×640 · texto 1,3×: un teclado cada vez más alto pasa el motivo debajo → en lo que '
       'se desplaza sin perder el foco ni lo escrito',
       (tester) async {
-        await abrirEn(tester, EstadoAlta.gpsPreciso, escala: 1.3);
+        await abrirEn(tester, EstadoAlta.sinGps, escala: 1.3);
         await tester.enterText(campoNumero, '1240');
         await asentar(tester);
         final foco = tester.widget<TextField>(campoNumero).focusNode;
@@ -201,7 +195,7 @@ void main() {
           final donde = 'teclado de ${teclado.round()} dp';
 
           expect(tester.takeException(), isNull, reason: '$donde: sin overflow');
-          expect(find.text(TextosAlta.elegiElTipo), findsOneWidget, reason: '$donde: motivo');
+          expect(find.text(TextosAlta.marcaElPunto), findsOneWidget, reason: '$donde: motivo');
           expect(
             find.widgetWithText(TextField, '1240'),
             findsOneWidget,
@@ -209,7 +203,7 @@ void main() {
           );
           if (foco != null) expect(foco.hasFocus, isTrue, reason: '$donde: el foco sigue');
           await _registrarEntero(tester, 640 - teclado, donde);
-          if (_enLoQueSeDesplaza(find.text(TextosAlta.elegiElTipo))) {
+          if (_enLoQueSeDesplaza(find.text(TextosAlta.marcaElPunto))) {
             arriba++;
           } else {
             debajo++;
@@ -252,21 +246,21 @@ void main() {
   });
 
   group('QA #322 · la acción con el motivo a la vista', () {
-    testWidgets('360×640 · texto 2× · teclado: elegir «Casa» apaga el motivo y «Registrar» registra '
-        'una sola vez aun con dos toques seguidos', (tester) async {
-      final m = await abrirEn(tester, EstadoAlta.gpsPreciso, escala: 2, teclado: tecladoAbierto);
+    testWidgets('360×640 · texto 2× · teclado: decidir la precisión apaga el motivo y «Registrar» '
+        'registra una sola vez aun con dos toques seguidos', (tester) async {
+      final m = await abrirEn(tester, EstadoAlta.gpsImpreciso, escala: 2, teclado: tecladoAbierto);
       expect(registrarHabilitado(tester), isFalse);
-      expect(find.text(TextosAlta.elegiElTipo), findsOneWidget);
+      expect(find.text(TextosAlta.elegiPrecision), findsOneWidget);
 
-      // El tipo de ubicación está arriba, en lo que se desplaza: se lo lleva a la vista y se lo toca.
-      await tester.ensureVisible(find.text('Casa'));
+      // «Continuar» está arriba, en lo que se desplaza: se lo lleva a la vista y se lo toca.
+      await tester.ensureVisible(find.text(TextosAlta.continuar));
       await tester.pump();
-      await tester.tap(find.text('Casa'));
+      await tester.tap(find.text(TextosAlta.continuar));
       await asentar(tester);
 
-      expect(find.text(TextosAlta.elegiElTipo), findsNothing);
+      expect(find.text(TextosAlta.elegiPrecision), findsNothing);
       expect(registrarHabilitado(tester), isTrue);
-      await _registrarEntero(tester, 640 - tecladoAbierto, 'con «Casa»');
+      await _registrarEntero(tester, 640 - tecladoAbierto, 'con «Continuar»');
 
       await tester.tap(botonRegistrarFijo);
       await tester.tap(botonRegistrarFijo, warnIfMissed: false);
@@ -291,7 +285,7 @@ void main() {
       ('412×915', telefonoGrande, 3.0, 48, abajo),
       ('320×568', _telefono320x568, 1.0, 0, abajo),
       ('320×568', _telefono320x568, 2.0, 0, abajo),
-      ('320×568', _telefono320x568, 2.0, 48, !abajo),
+      ('320×568', _telefono320x568, 2.0, 48, abajo),
       ('320×568', _telefono320x568, 3.0, 0, !abajo),
     ];
     for (final (nombreTel, tamano, escala, barra, debajoDelBoton) in lugar) {
@@ -301,12 +295,12 @@ void main() {
       ) async {
         await abrirEn(
           tester,
-          EstadoAlta.gpsPreciso,
+          EstadoAlta.sinGps,
           tamano: tamano,
           escala: escala,
           barraInferior: barra,
         );
-        final motivo = find.text(TextosAlta.elegiElTipo);
+        final motivo = find.text(TextosAlta.marcaElPunto);
 
         expect(motivo, findsOneWidget);
         expect(_enLoQueSeDesplaza(motivo), !debajoDelBoton);

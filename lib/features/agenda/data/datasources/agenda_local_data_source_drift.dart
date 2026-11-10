@@ -5,6 +5,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../../cobranzas/data/datasources/cuotas_local_data_source_drift.dart';
 import '../../../mapa/data/datasources/audit_log_table.dart';
 import '../../../mapa/data/datasources/notas_table.dart';
 import '../../../mapa/domain/services/house_status_updater.dart';
@@ -59,6 +60,7 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     if (existente != null) return (agenda: _aAgenda(existente), yaEstaba: true);
 
     await _exigirEspacioYVinculo(agenda.espacioId, agenda.espacioPersonaId);
+    await _exigirUbicacionAlt(agenda.ubicacionAltId);
     await _db.into(_db.agendas).insert(_aFilaAgenda(agenda));
     await _encolador.encolar(
       'agenda',
@@ -75,28 +77,45 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
   });
 
   @override
-  Future<AgendaCancelada> cancelar(String agendaId, {required DateTime ahora}) =>
-      _db.transaction(() async {
-        final fila = await _agendaPorId(agendaId);
-        if (fila == null || fila.deletedAt != null) {
-          throw const AgendaRechazadaException(_Motivo.agendaInexistente);
-        }
-        final estado = EstadoAgenda.desdeCodigo(fila.estado);
-        // Un segundo toque sobre «Cancelar» no es un error: ya está cancelada y no se vuelve a
-        // escribir ni a encolar.
-        if (estado == EstadoAgenda.cancelada) return (agenda: _aAgenda(fila), escribio: false);
-        if (estado.estaCerrada) throw const AgendaRechazadaException(_Motivo.agendaCerrada);
+  Future<AgendaCancelada> cancelar(
+    String agendaId, {
+    required DateTime ahora,
+  }) => _db.transaction(() async {
+    final fila = await _agendaPorId(agendaId);
+    if (fila == null || fila.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.agendaInexistente);
+    }
+    final estado = EstadoAgenda.desdeCodigo(fila.estado);
+    // Un segundo toque sobre «Cancelar» no es un error: ya está cancelada y no se vuelve a
+    // escribir ni a encolar.
+    if (estado == EstadoAgenda.cancelada) return (agenda: _aAgenda(fila), escribio: false);
+    if (estado.estaCerrada) throw const AgendaRechazadaException(_Motivo.agendaCerrada);
 
-        final guardada = await _escribirAgenda(
-          agendaId,
-          AgendasCompanion(
-            estado: Value(EstadoAgenda.cancelada.codigo),
-            updatedAt: Value(instanteMs(ahora)),
-          ),
-        );
-        await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
-        return (agenda: guardada, escribio: true);
-      });
+    // Una cuota del plan de una venta no se pierde al cancelarla: su monto pasa a las que siguen
+    // (HU-COB-004, «Plan cuotas»). Se mide antes de cancelar, con la cuota todavía abierta. La
+    // última cuota abierta del plan siempre es lo que falta: no se cancela, se reprograma (decisión
+    // del 03/11, #608).
+    if (fila.montoPrevisto != null) {
+      final cuotas = CuotasLocalDataSourceDrift(
+        _db,
+        encolador: _encolador,
+        estadoDeLasCasas: _estadoDeLasCasas,
+      );
+      if (await cuotas.esLaUltimaCuotaAbierta(agendaId)) {
+        throw const AgendaRechazadaException(_Motivo.ultimaCuotaDelPlan);
+      }
+      await cuotas.trasladarLaCancelada(agendaId, ahora: ahora);
+    }
+    final guardada = await _escribirAgenda(
+      agendaId,
+      AgendasCompanion(
+        estado: Value(EstadoAgenda.cancelada.codigo),
+        updatedAt: Value(instanteMs(ahora)),
+      ),
+    );
+    await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
+    return (agenda: guardada, escribio: true);
+  });
 
   @override
   Future<AgendaEditada> modificar(CambiosDeAgenda cambios, {required DateTime ahora}) =>
@@ -110,6 +129,10 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
         // llegar cancelada del servidor.
         if (EstadoAgenda.desdeCodigo(fila.estado).estaCerrada) {
           throw const AgendaRechazadaException(_Motivo.agendaCerrada);
+        }
+        // Una cuota del plan se reprograma, pero sigue siendo una cobranza con su venta y su monto.
+        if (fila.montoPrevisto != null && cambios.tipo != TipoAgenda.cobranza) {
+          throw const AgendaRechazadaException(_Motivo.cuotaDelPlan);
         }
 
         final instante = instanteMs(ahora);
@@ -245,6 +268,7 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     }
 
     await _exigirEspacioYVinculo(visita.espacioId, visita.espacioPersonaId);
+    await _exigirJornada(visita.jornadaId);
     final (:agenda, :ignorada) = agendaId == null
         ? (agenda: null, ignorada: null)
         : await _agendaACumplir(agendaId, visita);
@@ -257,16 +281,23 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     );
     // Una agenda que sirve pasa a `CUMPLIDA` con el resultado que la cumple, o a `NO_CUMPLIDA` con
     // «No contestó» (HU-VIS-005; decisión del 23/10, «No cumplida»): en los dos casos apunta a la
-    // visita. Sin agenda, la visita espontánea nace con la suya, ya cumplida; salvo la de cobranza: pasar
+    // visita. Salvo una cuota del plan (decisión del 03/11, #608): «No contestó» queda en la visita
+    // pero no cierra la cuota, que sigue `PROGRAMADA` (y pasada la fecha se ve «Vencida»). Sin agenda, la visita espontánea nace con la suya, ya cumplida; salvo la de cobranza: pasar
     // a cobrar no es una entrevista que haya quedado hecha, así que queda en el historial sin agenda
     // (decisión del 25/10, «Cobranza sin cita no crea agenda»).
     final noLaCumple = agenda != null && !visita.tipoResultado.cumpleLaAgenda;
+    final esCuota =
+        agenda != null &&
+        agenda.tipo == TipoAgenda.cobranza.codigo &&
+        agenda.ventaId != null &&
+        agenda.montoPrevisto != null;
+    final cuotaSinRespuesta = noLaCumple && esCuota;
     String? agendaCreadaId;
     if (agenda == null) {
       if (visita.tipoResultado != TipoResultadoVisita.cobranza) {
         agendaCreadaId = await _crearAgendaCumplida(visita);
       }
-    } else {
+    } else if (!cuotaSinRespuesta) {
       await _escribirAgenda(
         agenda.id,
         AgendasCompanion(
@@ -298,9 +329,9 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
       visita: visita,
       yaEstaba: false,
       agendaIgnorada: ignorada,
-      agendaNoCumplida: noLaCumple,
+      agendaNoCumplida: noLaCumple && !esCuota,
       agendaCreadaId: agendaCreadaId,
-      agendaAfectadaId: agenda?.id,
+      agendaAfectadaId: cuotaSinRespuesta ? null : agenda?.id,
     );
   });
 
@@ -418,6 +449,31 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     }
   }
 
+  /// La ubicación alternativa de una agenda tiene que estar viva en el teléfono: el servidor exige
+  /// la FK (`agenda.ubicacion_alt_id`) y una rota deja la operación en `INVALID` sin que la agenda
+  /// suba. Sin ubicación alternativa no hay nada que mirar.
+  Future<void> _exigirUbicacionAlt(String? ubicacionId) async {
+    if (ubicacionId == null) return;
+    final fila = await (_db.select(
+      _db.ubicaciones,
+    )..where((u) => u.id.equals(ubicacionId))).getSingleOrNull();
+    if (fila == null || fila.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.ubicacionAltInexistente);
+    }
+  }
+
+  /// La jornada de una visita tiene que estar viva en el teléfono (FK `visita.jornada_id`). Una
+  /// visita sin jornada es válida (la espontánea de otro día, HU-VIS-005).
+  Future<void> _exigirJornada(String? jornadaId) async {
+    if (jornadaId == null) return;
+    final fila = await (_db.select(
+      _db.jornadas,
+    )..where((j) => j.id.equals(jornadaId))).getSingleOrNull();
+    if (fila == null || fila.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.jornadaInexistente);
+    }
+  }
+
   /// La agenda que [visita] cumple, o por qué no sirve: una agenda inexistente, de otra casa o de
   /// otra persona, o ya cerrada, no frena la visita (no se pierde lo que la colportora acaba de
   /// registrar), que se guarda como espontánea y deja la agenda como estaba.
@@ -523,6 +579,12 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     await _estadoDeLasCasas.recalcular(ubicacionId, ahora: ahora, colportorId: colportorId);
   }
 
+  /// La entidad de una fila de `agenda`: la usan las cuotas del plan (HU-COB-004), que son citas.
+  static Agenda desdeFila(AgendaFila fila) => _aAgenda(fila);
+
+  /// La fila de [agenda] lista para insertar.
+  static AgendasCompanion aFila(Agenda agenda) => _aFilaAgenda(agenda);
+
   static Agenda _aAgenda(AgendaFila fila) => Agenda(
     id: fila.id,
     espacioId: fila.espacioId,
@@ -535,6 +597,8 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     estado: EstadoAgenda.desdeCodigo(fila.estado),
     colportorId: fila.colportorId,
     visitaId: fila.visitaId,
+    ventaId: fila.ventaId,
+    montoPrevistoCentavos: fila.montoPrevisto,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,
@@ -573,6 +637,8 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     estado: Value(a.estado.codigo),
     colportorId: a.colportorId,
     visitaId: Value(a.visitaId),
+    ventaId: Value(a.ventaId),
+    montoPrevisto: Value(a.montoPrevistoCentavos),
     createdAt: a.auditoria.createdAt,
     updatedAt: a.auditoria.updatedAt,
     createdBy: Value(a.auditoria.createdBy),

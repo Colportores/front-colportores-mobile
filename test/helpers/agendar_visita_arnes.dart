@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/notificaciones/fakes/permiso_notificaciones_sistema_en_memoria.dart';
 import 'package:colportores_mobile/core/notificaciones/permiso_notificaciones_sistema.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
@@ -12,13 +13,16 @@ import 'package:colportores_mobile/features/agenda/data/recordatorios/fakes/reco
 import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/entrevista_cercana.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita_guardada.dart';
 import 'package:colportores_mobile/features/agenda/domain/repositories/agenda_repository.dart';
+import 'package:colportores_mobile/features/agenda/domain/repositories/entrevistas_cercanas_repository.dart';
 import 'package:colportores_mobile/features/agenda/presentation/flujo_agendar_visita.dart';
 import 'package:colportores_mobile/features/agenda/presentation/providers/agenda_providers.dart';
+import 'package:colportores_mobile/features/agenda/presentation/providers/entrevistas_cercanas_providers.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/espacio_repository.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
@@ -99,6 +103,33 @@ final class AgendaRepositorioQueAgenda implements AgendaRepository {
   }) => throw UnimplementedError();
 }
 
+/// [EntrevistasCercanasRepository] en memoria: devuelve [entrevistas], espera a [compuerta] si la hay y
+/// falla con [falla] si se la pone (vista 39, R·02).
+final class EntrevistasCercanasFalsas implements EntrevistasCercanasRepository {
+  EntrevistasCercanasFalsas(this.entrevistas, {this.compuerta, this.falla});
+
+  List<EntrevistaCercana> entrevistas;
+  Completer<void>? compuerta;
+  Object? falla;
+
+  /// Los `espacioId` y `desde` con que se pidió, uno por lectura.
+  final pedidas = <({String espacioId, String colportorId, DateTime desde, double radio})>[];
+
+  @override
+  Future<List<EntrevistaCercana>> leer({
+    required String colportorId,
+    required String espacioId,
+    required DateTime desde,
+    double radioMetros = radioDeEntrevistasCercanasMetros,
+  }) async {
+    pedidas.add((espacioId: espacioId, colportorId: colportorId, desde: desde, radio: radioMetros));
+    await compuerta?.future;
+    final error = falla;
+    if (error != null) throw error;
+    return entrevistas;
+  }
+}
+
 /// [EspacioRepository] cuya lectura de la casa espera a [compuerta].
 final class EspacioRepositorioLento implements EspacioRepository {
   EspacioRepositorioLento(this.contexto, this.compuerta);
@@ -173,6 +204,8 @@ Future<ArnesAgendar> montarAgendar(
   double escala = 1,
   Size tamano = const Size(390, 844),
   bool abrir = true,
+  EntrevistasCercanasRepository? cercanas,
+  AppLogger? logger,
 }) async {
   final arnes = ArnesAgendar(
     repo: repo ?? AgendaRepositorioQueAgenda(),
@@ -193,6 +226,8 @@ Future<ArnesAgendar> montarAgendar(
         generadorIdVisitaProvider.overrideWithValue(() => 'id-${++n}'),
         relojVisitaProvider.overrideWithValue(() => arnes.ahora),
         ...arnes.telefono.overrides,
+        if (cercanas != null) entrevistasCercanasRepositoryProvider.overrideWithValue(cercanas),
+        if (logger != null) entrevistasCercanasLoggerProvider.overrideWithValue(logger),
         personaRepositoryProvider.overrideWithValue(personasRepo),
         espacioRepositoryProvider.overrideWithValue(
           casaDemorada != null

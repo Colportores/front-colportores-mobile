@@ -66,6 +66,47 @@ abstract final class ProyeccionMercator {
     return math.sqrt(math.pow(pa.x - pb.x, 2) + math.pow(pa.y - pb.y, 2));
   }
 
+  /// Dónde cae [punto] en una vista de [ancho] × [alto] píxeles con [camara], desde la esquina
+  /// superior izquierda, con el rumbo de la cámara aplicado: con rumbo 0 es el desplazamiento Mercator
+  /// de siempre, y con otro el mapa está girado alrededor del centro de la vista.
+  static ({double x, double y}) aPantalla(
+    Coordenadas punto,
+    CamaraMapa camara, {
+    required double ancho,
+    required double alto,
+  }) {
+    final enMundo = aPixeles(punto, camara.zoom);
+    final centro = aPixeles(camara.centro, camara.zoom);
+    final giro = _girar(enMundo.x - centro.x, enMundo.y - centro.y, camara.rumbo);
+    return (x: giro.x + ancho / 2, y: giro.y + alto / 2);
+  }
+
+  /// El centro que hay que darle a una cámara de [zoom] y [rumbo] para que [punto] caiga a
+  /// ([desplazamientoX], [desplazamientoY]) píxeles del centro de la vista (en la pantalla: `y` hacia
+  /// abajo). Con rumbo 0 es correr el centro lo contrario de ese desplazamiento; con otro, el
+  /// desplazamiento gira con el mapa.
+  static Coordenadas centroQueDejaEn(
+    Coordenadas punto, {
+    required double zoom,
+    double rumbo = 0,
+    double desplazamientoX = 0,
+    double desplazamientoY = 0,
+  }) {
+    final enMundo = aPixeles(punto, zoom);
+    final mundo = _girar(desplazamientoX, desplazamientoY, -rumbo);
+    return aCoordenadas(enMundo.x - mundo.x, enMundo.y - mundo.y, zoom);
+  }
+
+  /// Gira ([x], [y]) (con `y` hacia abajo) el rumbo [grados] hacia la izquierda: lo que está al
+  /// [grados] a la derecha del norte pasa a estar arriba.
+  static ({double x, double y}) _girar(double x, double y, double grados) {
+    if (grados == 0) return (x: x, y: y);
+    final radianes = grados * math.pi / 180;
+    final c = math.cos(radianes);
+    final s = math.sin(radianes);
+    return (x: x * c + y * s, y: -x * s + y * c);
+  }
+
   /// El área que se ve con [camara] en una vista de [ancho] × [alto] píxeles. Si la vista abarca
   /// más que el mundo, es el mundo entero a lo ancho; si cruza el antimeridiano, `oeste > este`
   /// (ver [AreaMapa]).

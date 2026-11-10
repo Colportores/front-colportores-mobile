@@ -4,17 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/error/failure.dart';
 import '../../../auth/presentation/providers/estado_cuenta_providers.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/espacio.dart';
+import '../../domain/entities/resultado_baja_espacio.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/services/agrupador_espacios.dart';
+import '../../domain/usecases/dar_de_baja_espacio_use_case.dart';
+import '../../domain/usecases/restaurar_espacio_use_case.dart';
 import '../formato_espacios.dart';
 import '../formato_ubicaciones.dart';
 import '../pages/modificar_ubicacion_page.dart';
 import '../providers/espacios_providers.dart';
+import 'aviso_con_deshacer.dart';
 import 'hoja_depto.dart';
+import 'hoja_reactivar.dart' show TextosReactivar;
 import 'piezas_alta.dart';
+import 'piezas_espacios_baja.dart';
 import 'piezas_lista_ubicaciones.dart';
 
 /// Las claves de la hoja de una ubicación (vista 11·01).
@@ -132,6 +139,19 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
     });
   }
 
+  /// Los deptos dados de baja cuya reactivación está en curso: su «Reactivar» dice «Reactivando…» y no
+  /// se vuelve a tocar (un doble toque no reactiva dos veces).
+  final _reactivando = <String>{};
+
+  /// «Dados de baja» desplegado o plegado (plegado al abrir la hoja).
+  var _bajasAbiertas = false;
+
+  /// El aviso con «Deshacer» de la última reactivación, o lo que pasó al deshacerla. Va DENTRO de la
+  /// hoja por lo mismo que [_aviso]: un `SnackBar` lo taparía la hoja modal.
+  _AvisoReactivado? _reactivado;
+  var _serieAviso = 0;
+  Timer? _plazo;
+
   final _claves = <String, GlobalKey>{};
 
   /// El controlador de la lista que da la hoja arrastrable (cambia en cada dibujo).
@@ -140,6 +160,12 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
   /// Lo que se dibujó en la lista la última vez (grupos y deptos, en orden): para estimar dónde cae una
   /// fila que todavía no se construyó.
   List<Object> _plana = const [];
+
+  @override
+  void dispose() {
+    _plazo?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -161,31 +187,39 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
           elevation: 8,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           clipBehavior: Clip.antiAlias,
-          child: ubicacion.when(
-            loading: () => _Cuerpo(
-              controlador: controlador,
-              alCerrar: _cerrar,
-              hijos: const [
-                _Mensaje(clave: ClavesHojaUbicacion.cargando, texto: TextosEspacios.cargando),
-              ],
-            ),
-            error: (_, _) => _Cuerpo(
-              controlador: controlador,
-              alCerrar: _cerrar,
-              hijos: [
-                _ErrorLectura(
-                  texto: TextosEspacios.errorUbicacion,
-                  alReintentar: () => ref.invalidate(ubicacionDeLaHojaProvider(widget.ubicacionId)),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ubicacion.when(
+                loading: () => _Cuerpo(
+                  controlador: controlador,
+                  alCerrar: _cerrar,
+                  hijos: const [
+                    _Mensaje(clave: ClavesHojaUbicacion.cargando, texto: TextosEspacios.cargando),
+                  ],
                 ),
-              ],
-            ),
-            data: (u) => u == null
-                ? _Cuerpo(
-                    controlador: controlador,
-                    alCerrar: _cerrar,
-                    hijos: const [_Mensaje(texto: TextosEspacios.errorUbicacion)],
-                  )
-                : _contenido(context, u, controlador),
+                error: (_, _) => _Cuerpo(
+                  controlador: controlador,
+                  alCerrar: _cerrar,
+                  hijos: [
+                    _ErrorLectura(
+                      texto: TextosEspacios.errorUbicacion,
+                      alReintentar: () =>
+                          ref.invalidate(ubicacionDeLaHojaProvider(widget.ubicacionId)),
+                    ),
+                  ],
+                ),
+                data: (u) => u == null
+                    ? _Cuerpo(
+                        controlador: controlador,
+                        alCerrar: _cerrar,
+                        hijos: const [_Mensaje(texto: TextosEspacios.errorUbicacion)],
+                      )
+                    : _contenido(context, u, controlador),
+              ),
+              if (_reactivado case final aviso?)
+                Positioned(left: 12, right: 12, bottom: 12, child: _tarjetaReactivado(aviso)),
+            ],
           ),
         );
       },
@@ -197,6 +231,7 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
   Widget _contenido(BuildContext context, Ubicacion u, ScrollController controlador) {
     final esCasa = u.tipo == TipoUbicacion.casa;
     final espacios = esCasa ? null : ref.watch(espaciosDeUbicacionProvider(u.id));
+    final bajas = esCasa ? null : ref.watch(espaciosDadosDeBajaProvider(u.id));
     final distancia = widget.distanciaMetros;
     final rotulo = [
       FormatoUbicaciones.tipo(u.tipo),
@@ -276,11 +311,16 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
         lista: const [],
       ),
       data: (lista) {
+        // «Dados de baja» va al pie de la lista, plegado, y solo si hay alguno.
+        final pie = _pieDeBajas(bajas);
+        final holgura = _holguraAbajo(context);
         if (lista.isEmpty) {
           return _CuerpoSlivers(
             controlador: controlador,
             cabecera: [...hijos, const _VacioEspacios()],
-            lista: const [],
+            lista: pie,
+            constructor: (contexto, fila) => _construirFila(u, fila),
+            holgura: holgura,
           );
         }
         final grupos = AgrupadorEspacios.porPiso(lista);
@@ -291,20 +331,60 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
         return _CuerpoSlivers(
           controlador: controlador,
           cabecera: hijos,
-          lista: filas,
-          constructor: (contexto, fila) {
-            if (fila is GrupoDePiso) return _CabeceraGrupo(grupo: fila);
-            final e = fila as Espacio;
-            return _FilaDepto(
-              key: _claveFila(e.id),
-              espacio: e,
-              resaltado: e.id == _resaltado,
-              alTocar: _abriendo ? null : () => unawaited(_editarDepto(u, e)),
-            );
-          },
+          lista: [...filas, ...pie],
+          constructor: (contexto, fila) => _construirFila(u, fila),
+          holgura: holgura,
         );
       },
     );
+  }
+
+  /// Una fila de la lista: el rótulo de un piso, un depto, o lo de «Dados de baja».
+  Widget _construirFila(Ubicacion u, Object fila) => switch (fila) {
+    GrupoDePiso() => _CabeceraGrupo(grupo: fila),
+    Espacio() => _FilaDepto(
+      key: _claveFila(fila.id),
+      espacio: fila,
+      resaltado: fila.id == _resaltado,
+      alTocar: _abriendo ? null : () => unawaited(_editarDepto(u, fila)),
+    ),
+    _CabeceraBajas(:final cantidad, :final abierta) => CabeceraDadosDeBaja(
+      cantidad: cantidad,
+      abierta: abierta,
+      alAlternar: () => setState(() => _bajasAbiertas = !_bajasAbiertas),
+    ),
+    _FilaBaja(:final espacio) => FilaDeptoDeBaja(
+      espacio: espacio,
+      reactivando: _reactivando.contains(espacio.id),
+      alReactivar: () => unawaited(_reactivar(u, espacio)),
+    ),
+    _ErrorBajas() => ErrorDadosDeBaja(
+      alReintentar: () => ref.invalidate(espaciosDadosDeBajaProvider(u.id)),
+    ),
+    _ => const SizedBox.shrink(),
+  };
+
+  /// Las filas de «Dados de baja»: la cabecera con la cuenta y, desplegada, un depto por fila. Mientras
+  /// carga no se muestra nada; si la lectura falla (y no hay una lista vieja que mostrar), el aviso con
+  /// «Reintentar».
+  List<Object> _pieDeBajas(AsyncValue<List<Espacio>>? bajas) {
+    if (bajas == null) return const [];
+    final lista = bajas.value;
+    if (lista == null) return bajas.hasError ? const [_ErrorBajas()] : const [];
+    if (lista.isEmpty) return const [];
+    return [
+      _CabeceraBajas(cantidad: lista.length, abierta: _bajasAbiertas),
+      if (_bajasAbiertas)
+        for (final espacio in lista) _FilaBaja(espacio),
+    ];
+  }
+
+  /// El espacio libre al final de la lista: con el aviso de «Deshacer» a la vista, lo que alcanza para
+  /// que la última fila se pueda subir por encima de él.
+  double _holguraAbajo(BuildContext context) {
+    if (_reactivado == null) return 24;
+    final grande = MediaQuery.textScalerOf(context).scale(14) / 14 > 1.3;
+    return grande ? 260 : 120;
   }
 
   GlobalKey _claveFila(String id) => _claves.putIfAbsent(id, GlobalKey.new);
@@ -363,6 +443,7 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
         _mostrarFila(espacioId);
       case DeptoDadoDeBaja(:final espacio):
         setState(() => _resaltado = null);
+        ref.invalidate(espaciosDadosDeBajaProvider(widget.ubicacionId));
         unawaited(
           SemanticsService.sendAnnouncement(
             View.of(context),
@@ -411,6 +492,113 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
     return 0;
   }
 
+  // ---------------------------------------------------------------- reactivar
+
+  void _refrescarListas() {
+    ref.invalidate(espaciosDeUbicacionProvider(widget.ubicacionId));
+    ref.invalidate(espaciosDadosDeBajaProvider(widget.ubicacionId));
+  }
+
+  /// «Reactivar» un depto dado de baja y, ya reactivado, el aviso con «Deshacer» de 8 s (la 09·04 de la
+  /// casa, dicha para un depto). El depto vuelve a la lista con todo lo suyo: personas, visitas y ventas
+  /// no se tocaron con la baja. Un depto a la vez por fila: mientras se reactiva, su botón queda apagado.
+  Future<void> _reactivar(Ubicacion u, Espacio e) async {
+    if (_reactivando.contains(e.id)) return;
+    if (_frena()) return;
+    final restaurar = ref.read(restaurarEspacioUseCaseProvider);
+    setState(() {
+      _aviso = null;
+      _reactivando.add(e.id);
+    });
+    Failure? falla;
+    Espacio? reactivado;
+    try {
+      final resultado = await restaurar(RestaurarEspacioParams(id: e.id));
+      falla = resultado.fold<Failure?>((f) => f, (_) => null);
+      reactivado = resultado.fold<Espacio?>((_) => null, (r) => r);
+    } on Object catch (causa) {
+      falla = FailureInesperado(causa: causa);
+    }
+    if (!mounted) return;
+    setState(() => _reactivando.remove(e.id));
+    _refrescarListas();
+    if (reactivado == null) {
+      _avisar(_mensajeReactivar(falla, e, u.tipo));
+      return;
+    }
+    _mostrarReactivado(
+      _AvisoReactivado(
+        serie: ++_serieAviso,
+        texto: TextosEspacios.reactivado(reactivado, u.tipo),
+        espacio: reactivado,
+      ),
+    );
+  }
+
+  String _mensajeReactivar(Failure? falla, Espacio e, TipoUbicacion tipo) => switch (falla) {
+    FailureValidacion(:final campos) when campos.containsKey('numeroDepto') =>
+      TextosEspacios.reactivarRepetido(e, tipo),
+    FailureValidacion(:final campos) when campos.containsKey('ubicacionId') =>
+      TextosEspacios.ubicacionDeBaja,
+    _ => TextosEspacios.noPudimosReactivar,
+  };
+
+  /// Pone [aviso] en lugar del anterior (cada «Deshacer» es de su depto) y arranca su plazo de 8 s. Con
+  /// un lector de pantalla no hay plazo (WCAG 2.2.1): el aviso queda hasta que se cierre.
+  void _mostrarReactivado(_AvisoReactivado aviso) {
+    _plazo?.cancel();
+    setState(() => _reactivado = aviso);
+    if (MediaQuery.accessibleNavigationOf(context)) return;
+    final serie = aviso.serie;
+    _plazo = Timer(TextosReactivar.duracionDeshacer, () {
+      final actual = _reactivado;
+      // Un aviso más nuevo, o uno que está deshaciendo, no se cierra por el plazo del anterior.
+      if (!mounted || actual == null || actual.serie != serie || actual.ocupado) return;
+      setState(() => _reactivado = null);
+    });
+  }
+
+  /// «Deshacer»: vuelve a dar de baja el depto. Ya estuvo de baja, así que no se vuelve a preguntar por
+  /// sus personas. Si no se puede, lo dice y la baja se hace desde la edición del depto.
+  Future<void> _deshacer(_AvisoReactivado aviso) async {
+    final espacio = aviso.espacio;
+    final actual = _reactivado;
+    if (espacio == null || actual == null || actual.ocupado || actual.serie != aviso.serie) return;
+    final darDeBaja = ref.read(darDeBajaEspacioUseCaseProvider);
+    _plazo?.cancel();
+    setState(() => _reactivado = aviso.deshaciendo());
+    var deshecho = false;
+    try {
+      final resultado = await darDeBaja(
+        DarDeBajaEspacioParams(id: espacio.id, confirmaConPersonas: true),
+      );
+      deshecho = resultado.fold((_) => false, (r) => r is BajaRealizada);
+    } on Object {
+      // Cualquier falla se dice igual: no se pudo deshacer.
+      deshecho = false;
+    }
+    if (!mounted) return;
+    _refrescarListas();
+    final texto = deshecho ? TextosReactivar.deshecha : TextosEspacios.noPudimosDeshacer;
+    if (_reactivado?.serie == aviso.serie) {
+      _mostrarReactivado(_AvisoReactivado(serie: ++_serieAviso, texto: texto));
+    } else if (!deshecho) {
+      // Mientras tanto salió otro aviso: el que falló no se pierde, sale arriba.
+      _avisar(texto);
+    }
+  }
+
+  Widget _tarjetaReactivado(_AvisoReactivado aviso) {
+    final sinPlazo = MediaQuery.accessibleNavigationOf(context);
+    return AvisoDeshacerEnHoja(
+      texto: aviso.texto,
+      etiquetaDeshacer: aviso.espacio == null ? null : TextosReactivar.deshacer,
+      alDeshacer: aviso.ocupado ? null : () => unawaited(_deshacer(aviso)),
+      alCerrar: sinPlazo && !aviso.ocupado ? () => setState(() => _reactivado = null) : null,
+      etiquetaCerrar: TextosEspacios.cerrarAviso,
+    );
+  }
+
   Future<void> _editar(Ubicacion u) async {
     if (_abriendo) return;
     if (_frena()) return;
@@ -441,6 +629,48 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
   }
 }
 
+/// El aviso con «Deshacer» de una reactivación, o (sin [espacio]) lo que pasó al deshacerla.
+final class _AvisoReactivado {
+  const _AvisoReactivado({
+    required this.serie,
+    required this.texto,
+    this.espacio,
+    this.ocupado = false,
+  });
+
+  /// Distingue un aviso de otro: el plazo de uno no cierra al siguiente.
+  final int serie;
+  final String texto;
+
+  /// El depto que se reactivó y que «Deshacer» vuelve a dar de baja; `null`: no hay nada que deshacer.
+  final Espacio? espacio;
+
+  /// «Deshacer» está en curso: el botón queda apagado y el plazo no cierra el aviso.
+  final bool ocupado;
+
+  _AvisoReactivado deshaciendo() =>
+      _AvisoReactivado(serie: serie, texto: texto, espacio: espacio, ocupado: true);
+}
+
+/// Las filas del pie de la lista: la cabecera de «Dados de baja», un depto dado de baja y el error de
+/// leerlos.
+final class _CabeceraBajas {
+  const _CabeceraBajas({required this.cantidad, required this.abierta});
+
+  final int cantidad;
+  final bool abierta;
+}
+
+final class _FilaBaja {
+  const _FilaBaja(this.espacio);
+
+  final Espacio espacio;
+}
+
+final class _ErrorBajas {
+  const _ErrorBajas();
+}
+
 // -------------------------------------------------------------------- piezas
 
 /// El armazón de la hoja cuando no hay nada que listar (cargando, error): el asa, el cierre y [hijos].
@@ -469,12 +699,16 @@ class _CuerpoSlivers extends StatelessWidget {
     required this.cabecera,
     required this.lista,
     this.constructor,
+    this.holgura = 24,
   });
 
   final ScrollController controlador;
   final List<Widget> cabecera;
   final List<Object> lista;
   final Widget Function(BuildContext, Object)? constructor;
+
+  /// El espacio libre al final de la lista.
+  final double holgura;
 
   @override
   Widget build(BuildContext context) {
@@ -507,7 +741,7 @@ class _CuerpoSlivers extends StatelessWidget {
             itemCount: lista.length,
             itemBuilder: (contexto, i) => constructor!(contexto, lista[i]),
           ),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        SliverToBoxAdapter(child: SizedBox(height: holgura)),
       ],
     );
   }

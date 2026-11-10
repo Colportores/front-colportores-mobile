@@ -6,7 +6,8 @@ import '../jornada_local_data_source.dart';
 /// Sirve para desarrollar la UI (#71) y para los tests del repositorio sin abrir una DB; la
 /// implementación de producción es `JornadaLocalDataSourceDrift`. **No es código de producción**:
 /// no persiste nada entre ejecuciones.
-final class JornadaLocalDataSourceEnMemoria implements JornadaLocalDataSource {
+final class JornadaLocalDataSourceEnMemoria
+    implements JornadaLocalDataSource, JornadasAbiertasDataSource {
   JornadaLocalDataSourceEnMemoria({Iterable<JornadaModel> iniciales = const []}) {
     for (final jornada in iniciales) {
       _jornadas[jornada.id] = jornada;
@@ -56,6 +57,12 @@ final class JornadaLocalDataSourceEnMemoria implements JornadaLocalDataSource {
     }
     return siguiente;
   }
+
+  @override
+  Future<List<JornadaModel>> abiertas(String colportorId) async => [
+    for (final jornada in _jornadas.values)
+      if (jornada.colportorId == colportorId && jornada.estaAbierta) jornada,
+  ]..sort((a, b) => a.inicio.compareTo(b.inicio));
 
   JornadaModel? _activa(String colportorId) {
     for (final jornada in _jornadas.values) {

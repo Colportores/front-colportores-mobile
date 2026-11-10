@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/entrevista_falsos.dart';
 import '../helpers/mapa_base_falso.dart' show overridesPestanaMapa;
+import '../helpers/venta_ui_falsos.dart' show EntornoDeVenta;
 
 final _sesion = Sesion(
   usuarioId: 'col-1',
@@ -156,25 +157,42 @@ void main() {
     );
   });
 
-  testWidgets('«Sí, registrar la venta» no cierra la jornada ni guarda la entrevista', (
-    tester,
-  ) async {
-    await montaje.almacen.guardar(entrevistaDePrueba());
-    await montar(tester);
+  testWidgets(
+    '«Sí, registrar la venta» sin completarla no cierra la jornada ni guarda la entrevista (R44)',
+    (tester) async {
+      montaje.extra.addAll(EntornoDeVenta().overrides);
+      await montaje.almacen.guardar(entrevistaDePrueba());
+      await montar(tester);
 
-    await finalizarJornada(tester);
-    await tester.tap(find.byKey(ClavesEntrevista.filaSalida));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('hoja_hora_usar')));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(ClavesEntrevista.registrarVenta));
-    await tester.tap(find.byKey(ClavesEntrevista.registrarVenta));
-    await tester.pumpAndSettle();
+      await finalizarJornada(tester);
+      await tester.tap(find.byKey(ClavesEntrevista.filaSalida));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hoja_hora_usar')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(ClavesEntrevista.registrarVenta));
+      await tester.tap(find.byKey(ClavesEntrevista.registrarVenta));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('nueva_venta_pagina')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('venta_atras')));
+      await tester.pumpAndSettle();
 
-    expect(jornadaAbierta(), isTrue);
-    expect(montaje.agenda.recibidas, isEmpty);
-    expect(montaje.almacen.guardadas, hasLength(1));
-  });
+      expect(jornadaAbierta(), isTrue);
+      expect(montaje.agenda.recibidas, isEmpty);
+      expect(montaje.almacen.guardadas, hasLength(1));
+      expect(
+        find.text(
+          'La venta no se guardó. La entrevista con Pedro Gómez sigue en curso. '
+          'Terminala para poder cerrar la jornada.',
+        ),
+        findsOneWidget,
+      );
+      // «Finalizar jornada» vuelve a responder: nada quedó «finalizando».
+      expect(
+        tester.widget<FilledButton>(find.byKey(const Key('jornada_finalizar'))).onPressed,
+        isNotNull,
+      );
+    },
+  );
 
   testWidgets('si la entrevista no se pudo guardar, la jornada sigue abierta', (tester) async {
     await montaje.almacen.guardar(entrevistaDePrueba());

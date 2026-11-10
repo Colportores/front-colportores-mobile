@@ -45,7 +45,9 @@ final class ConfirmarRecuperacionPasswordParams extends Equatable {
 /// Los pasos 2 y 4 corren en [TurnoDbLocal], como los otros flujos de la DB local.
 ///
 /// Los pasos 4 y 5 no deshacen el 3: la contraseña ya cambió. Si fallan, el repositorio deja la
-/// falla en el log y el resultado es igual un éxito, porque el usuario no puede hacer nada con eso.
+/// falla en el log y el resultado es igual un éxito. Si lo que falló fue el paso 5, el repositorio
+/// lo recuerda ([otrasSesionesSinCerrar]): la pantalla de éxito avisa que se cierran al volver a
+/// entrar, y el próximo login lo reintenta.
 ///
 /// ## Si el re-envoltorio no llega a hacerse (#125)
 ///
@@ -68,6 +70,11 @@ final class ConfirmarRecuperacionPasswordUseCase
   final RecuperacionPasswordRepository _recuperacion;
   final DbLocalRepository _dbLocal;
   final TurnoDbLocal _turno;
+
+  /// Si la contraseña cambió pero no se pudieron cerrar las sesiones de los otros teléfonos: la
+  /// pantalla de éxito lo dice, y el próximo login lo reintenta
+  /// (`CerrarOtrasSesionesPendientesUseCase`).
+  bool get otrasSesionesSinCerrar => _recuperacion.otrasSesionesSinCerrar;
 
   @override
   Future<Either<Failure, Unit>> call(ConfirmarRecuperacionPasswordParams params) async {

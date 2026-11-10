@@ -753,7 +753,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Todas ▾'), findsOneWidget);
-      expect(find.text('Hoy y los próximos 7 días'), findsOneWidget, reason: 'la pantalla sigue');
+      // Con «Todas» la pestaña mira la campaña (#508): el subtítulo lo dice.
+      expect(find.text('En esta campaña'), findsOneWidget, reason: 'la pantalla sigue');
     });
 
     _probar('un doble toque en «Pendientes ▾» abre una sola hoja', (tester) async {

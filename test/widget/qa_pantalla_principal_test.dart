@@ -434,7 +434,8 @@ void main() {
                 (p) =>
                     p != PestanaInicio.mapa &&
                     p != PestanaInicio.lista &&
-                    p != PestanaInicio.agenda,
+                    p != PestanaInicio.agenda &&
+                    p != PestanaInicio.cuenta,
               )) {
         await _tocar(tester, 'inicio_pestana_${pestana.name}');
         final seccion = find.byKey(Key('pestana_${pestana.name}'));

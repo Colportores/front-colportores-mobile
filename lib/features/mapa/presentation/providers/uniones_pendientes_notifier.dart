@@ -40,6 +40,11 @@ final class UnionPendiente extends Equatable {
 
   @override
   List<Object?> get props => [clavePar, conservarId, duplicadaId, direccion, esperaElCierre];
+
+  /// [props] lleva la dirección y los ids de las ubicaciones: `EquatableConfig.stringify` arranca en
+  /// `true` en debug, así que sin esto `toString()` los volcaría (convenciones §7.5, sin PII en logs).
+  @override
+  bool? get stringify => false;
 }
 
 /// Una unión que se intentó hacer y no se pudo, con el motivo.
@@ -55,6 +60,10 @@ final class FallaUnion extends Equatable {
 
   @override
   List<Object?> get props => [union, falla];
+
+  /// Lleva la unión (dirección e ids): ver [UnionPendiente.stringify].
+  @override
+  bool? get stringify => false;
 }
 
 /// Lo que la pantalla de «Posibles duplicados» tiene que saber de las uniones en marcha.
@@ -106,6 +115,10 @@ final class UnionesPendientesState extends Equatable {
 
   @override
   List<Object?> get props => [pendiente, ocultas, duplicadasEnCurso, fallas];
+
+  /// Lleva ids de ubicaciones y uniones con dirección: ver [UnionPendiente.stringify].
+  @override
+  bool? get stringify => false;
 }
 
 /// Las uniones que fallaron cuando la pantalla de «Posibles duplicados» ya no estaba (la colportora

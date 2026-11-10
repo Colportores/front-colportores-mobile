@@ -1,4 +1,5 @@
 import '../../catalogo/presentation/formato_precios.dart' show FormatoPrecios;
+import '../domain/usecases/registrar_venta_use_case.dart' show RegistrarVentaUseCase;
 
 /// Los textos de la vista 27 (Registrar venta, HU-VEN-001): los del canvas tal cual, y los que el
 /// canvas no dibuja marcados «A confirmar» (mapa §2: texto).
@@ -60,6 +61,8 @@ abstract final class TextosVenta {
   static const motivoFalta = 'Escribí por qué cambiaste el monto.';
   static const montoInvalido = 'Escribí un monto válido, por ejemplo 8.500.';
   static const talonarioVacio = 'Escribí el número del talonario para registrar la venta.';
+  static const talonarioRepetidoNota = 'Revisá el número del talonario para registrar la venta.';
+  static const guardando = 'Guardando la venta';
   static const sinProductos = 'Elegí al menos un producto para registrar la venta.';
   static const cargandoPrecios = 'Cargando los precios';
   static const errorPrecios = 'No pudimos leer los precios guardados en tu teléfono.';
@@ -80,6 +83,18 @@ abstract final class TextosVenta {
   static const subtituloLibro = 'Libro';
   static const misionero = '✦ Misionero';
   static const revista = 'Revista';
+
+  /// El aviso cuando la venta no se guardó porque algo cargado no es válido (reintentar sin cambiar
+  /// nada no lo arregla): dice qué es y qué hacer.
+  static String revisaLoCargado(String detalle) {
+    final sinPunto = detalle.trimRight().replaceFirst(RegExp(r'\.+$'), '');
+    return '$sinPunto. Revisá lo que cargaste y probá de nuevo.';
+  }
+
+  /// Cuando la persona de la venta ya no está en el teléfono: editar lo cargado no lo arregla, hay
+  /// que volver y elegirla de nuevo.
+  static const personaYaNoEsta =
+      'La persona de esta venta ya no está en tu teléfono. Volvé atrás y elegí a la persona de nuevo.';
 
   static String ubicacion(String ciudad) => '◉ Precios de $ciudad, según la casa del cliente.';
 
@@ -135,7 +150,9 @@ abstract final class FormatoVenta {
     final pesos = int.tryParse(t);
     if (pesos == null || pesos > 21474836) return null;
     final centavos = decimales.isEmpty ? 0 : int.parse(decimales.padRight(2, '0'));
-    return pesos * 100 + centavos;
+    final total = pesos * 100 + centavos;
+    // Lo más que cabe en el entero del servidor: 21.474.836,47 (el último peso no llega a los 99).
+    return total > RegistrarVentaUseCase.maximoCentavos ? null : total;
   }
 
   /// Lo que se escribe en el campo de monto cuando se abre: «8.900» o «8.900,50».

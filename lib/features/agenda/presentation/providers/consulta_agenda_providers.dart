@@ -46,6 +46,32 @@ final agendaLeidaProvider = StreamProvider.autoDispose.family<List<ItemAgenda>, 
       .observar(colportorId: clave.colportorId, desde: ventana.desdeUtc, hasta: ventana.hastaUtc);
 }, retry: _sinReintentos);
 
+/// Las agendas de **la campaña en curso**, de todos los estados, reactivas: la lista de un estado
+/// cerrado o «Todas» (HU-VIS-002, decisión de Cristian, 27/10, «Rango filtro»). Igual que
+/// [agendaLeidaProvider], los filtros y el «Ver más» se aplican después, en memoria. Al cambiar el día
+/// la clave cambia y se vuelve a leer.
+final agendaCampaniaLeidaProvider = StreamProvider.autoDispose
+    .family<List<ItemAgenda>, ClaveAgenda>(
+      (ref, clave) => ref
+          .watch(consultaAgendaRepositoryProvider)
+          .observarCampania(colportorId: clave.colportorId, hoy: clave.inicioDeHoy),
+      retry: _sinReintentos,
+    );
+
+/// Qué casa lee «Visitas agendadas»: el colportor y la ubicación.
+typedef ClaveVisitasDeLaCasa = ({String colportorId, String ubicacionId});
+
+/// Las visitas `PROGRAMADA` de una casa, reactivas (la lista «Visitas agendadas» de la hoja de la casa,
+/// vista 23, 23B·10, #491). Agendar, cancelar o registrar una visita, o dar de baja la casa o el
+/// depto, las vuelve a emitir.
+final visitasAgendadasDeLaCasaProvider = StreamProvider.autoDispose
+    .family<List<ItemAgenda>, ClaveVisitasDeLaCasa>(
+      (ref, clave) => ref
+          .watch(consultaAgendaRepositoryProvider)
+          .observarDeLaCasa(colportorId: clave.colportorId, ubicacionId: clave.ubicacionId),
+      retry: _sinReintentos,
+    );
+
 /// Los filtros de la agenda del colportor [colportorId]: por tipo y por estado. Se conservan mientras
 /// la pantalla esté montada (la hoja «Agendados» del mapa usa los mismos).
 final class FiltrosAgendaNotifier extends Notifier<FiltrosAgenda> {
@@ -67,10 +93,18 @@ final class FiltrosAgendaNotifier extends Notifier<FiltrosAgenda> {
 final filtrosAgendaProvider = NotifierProvider.autoDispose
     .family<FiltrosAgendaNotifier, FiltrosAgenda, String>(FiltrosAgendaNotifier.new);
 
-/// A dónde lleva «+ Agendar» (vista 23A, #408): abre el formulario de agendar sin casa elegida.
-/// Devuelve `true` si se agendó. **Sin destino** (`null`) el botón no se muestra, como los de la
-/// hoja de la casa: los botones llegan con la HU que los resuelve.
+/// A dónde lleva «+ Agendar» (vista 23B, #568): elige la casa en la lista de ubicaciones, pregunta con
+/// quién y abre «Agendar visita» (23A·01) con ellas. Devuelve `true` si se agendó. **Sin destino**
+/// (`null`) el botón no se muestra, como los de la hoja de la casa: los botones llegan con la HU que
+/// los resuelve.
 final agendarDesdeLaAgendaProvider = Provider<FutureOr<Object?> Function()?>((ref) => null);
+
+/// A dónde lleva «+ Agendar» del rótulo de un **día futuro** (23B·01, #568): lo mismo que
+/// [agendarDesdeLaAgendaProvider], con ese día como fecha inicial de «Agendar visita». Recibe el día a
+/// medianoche. Sin destino (`null`) el rótulo usa [agendarDesdeLaAgendaProvider], con la fecha de siempre.
+final agendarEnUnDiaDesdeLaAgendaProvider = Provider<FutureOr<Object?> Function(DateTime dia)?>(
+  (ref) => null,
+);
 
 /// A dónde lleva tocar una agenda (vista 23C·01, #409): su detalle. Recibe el `id` de la agenda.
 /// **Sin destino** (`null`) las filas no se tocan y no llevan la flecha «›».

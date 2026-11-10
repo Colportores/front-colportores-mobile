@@ -16,6 +16,7 @@ env:
   # tool/riverpod_lint_plugin y analysis_options.yaml declara `riverpod_lint: ^3.1.9` (ver #87).
   FLUTTER_VERSION: "3.44.0"
 
+# Solo los checks que gatean el merge. Los compilados (APK/AAB) y las publicaciones salen de staging.yml y production.yml.
 jobs:
   # Formato, análisis, motor y proveedores de auth: ~5 min, en paralelo con los tests.
   estatico:
@@ -143,39 +144,4 @@ jobs:
         with:
           name: coverage
           path: coverage/lcov.info
-          retention-days: 7
-
-  build-android:
-    name: build apk (debug)
-    needs: cobertura
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          # `maplibre_gl` (el mapa, #286) compila su parte de Android con Java 21.
-          java-version: "21"
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      - run: flutter pub get
-      - run: dart run build_runner build
-
-      # Con las variables cargadas el APK sale apuntando a Supabase; sin ellas, con los fakes.
-      - run: >-
-          flutter build apk --debug
-          --dart-define=SUPABASE_URL=${{ vars.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ vars.SUPABASE_ANON_KEY }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: app-debug.apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 7

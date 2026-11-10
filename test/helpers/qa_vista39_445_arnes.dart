@@ -246,6 +246,10 @@ Future<Montaje445> llegarA445(
         tamano: tamano,
         escala: escala,
       );
+      // Con «Editar casa» junto a la dirección (#652) la cabecera ocupa más en el teléfono chico con
+      // texto al 200 %: la fila de la persona se trae a la vista antes de tocarla.
+      await tester.ensureVisible(find.byKey(ClavesHojaCasa.abrirPersona).last);
+      await tester.pump();
       await tester.tap(find.byKey(ClavesHojaCasa.abrirPersona).last);
       await tester.pump();
       await tester.pump();

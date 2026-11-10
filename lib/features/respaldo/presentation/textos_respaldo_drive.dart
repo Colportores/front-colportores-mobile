@@ -32,6 +32,18 @@ abstract final class TextosRespaldoDrive {
     return 'Último respaldo: $cuando $hora';
   }
 
+  /// El aviso de Inicio con más de 7 días sin un respaldo exitoso (HU-SYNC-005, «Aviso por > 7 días
+  /// sin backup»): el literal de la HU, con [dias] en lugar del número. «Reintentar» y
+  /// «Reintentando…» son propuesta (mapa §2, texto, a confirmar).
+  static String avisoSinRespaldo(int dias) =>
+      'Llevás $dias días sin respaldo. Revisá tu conexión y reintentá.';
+  static const reintentando = 'Reintentando…';
+
+  /// Lo que se le dice tras tocar «Reintentar» si no se pudo (decisión del 29/10, QA #185): sin
+  /// conexión, y cualquier otro fallo. Salen dentro del mismo aviso.
+  static const reintentoSinConexion = 'Necesitás conexión para hacer el respaldo.';
+  static const reintentoFallido = 'No pudimos hacer el respaldo. Probá de nuevo en un rato.';
+
   // Los avisos de arriba de Configuración.
   static const avisoRevocado =
       'Google ya no nos deja guardar tu respaldo. Volvé a conectar tu Drive para no perder datos.';
