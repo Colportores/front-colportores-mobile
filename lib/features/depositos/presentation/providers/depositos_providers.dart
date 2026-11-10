@@ -5,10 +5,12 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/database/transaccion_local_drift.dart';
 import '../../../../core/domain/transaccion_local.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../../../core/usecases/use_case.dart';
 import '../../../tickets/presentation/providers/tickets_providers.dart';
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../data/datasources/campania_del_alquiler_drift.dart';
 import '../../data/datasources/deposito_local_data_source_drift.dart';
+import '../../data/datasources/tickets_de_deposito_sin_subir_drift.dart';
 import '../../data/repositories/deposito_repository_impl.dart';
 import '../../domain/repositories/deposito_repository.dart';
 import '../../domain/usecases/registrar_deposito_con_ticket_use_case.dart';
@@ -74,4 +76,20 @@ final campaniaDelAlquilerProvider = FutureProvider.autoDispose.family<String?, S
   if (db == null) return null;
   final hoy = ReglasDeVenta.diaDeMontevideo(ref.watch(relojDepositoProvider)().toUtc());
   return CampaniaDelAlquilerDrift(db).leer(colportorId, hoy);
+});
+
+/// Cuántos tickets de depósito no pudieron subir su foto (vista 38A-08): pendientes después de un
+/// intento fallido. Sin DB, ninguno.
+final ticketsDeDepositoSinSubirProvider = StreamProvider.autoDispose<int>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return Stream.value(0);
+  return TicketsDeDepositoSinSubirDrift(db).observar();
+});
+
+/// «Reintentar ahora» de 38A-08: una pasada de la cola de fotos ya, sin esperar el próximo reintento.
+/// Si falla, la foto sigue pendiente y la cola la vuelve a probar sola. Un test lo reemplaza.
+final reintentarSubidaDeTicketsProvider = Provider<Future<void> Function()>((ref) {
+  return () async {
+    await ref.read(subirFotosDeTicketsUseCaseProvider)(const NoParams());
+  };
 });

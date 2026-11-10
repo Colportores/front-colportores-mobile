@@ -25,6 +25,7 @@ import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_m
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart'
     show ContextoDeCobro, ContextoDeVisita;
+import 'package:colportores_mobile/features/mapa/presentation/widgets/alta_sobre_el_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/aviso_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';
@@ -234,12 +235,12 @@ void main() {
         await tester.pump(const Duration(milliseconds: 60));
       }
 
-      // El alta es la pantalla de verdad, con el punto del tap «marcado a mano» y la ciudad ya
-      // propuesta (no hace falta elegirla).
+      // El alta es la de verdad, sobre el mismo mapa (vista 41, #655): el pin en el punto del tap
+      // (sin dirección del mapa, el título son sus coordenadas) y la ciudad ya propuesta.
+      expect(find.byKey(ClavesAltaMapa.hoja), findsOneWidget);
       expect(find.text('-34.90000, -56.20000'), findsOneWidget);
-      expect(find.text('Marcado a mano'), findsOneWidget);
       expect(find.text('Canelones'), findsOneWidget);
-      expect(find.text('de tu campaña · Cambiar'), findsOneWidget);
+      expect(find.text('Confirmar posición'), findsOneWidget);
       expect(ciudades.propuestas, contains(punto));
       expect(tester.takeException(), isNull);
     });
