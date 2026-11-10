@@ -24,6 +24,15 @@ abstract interface class EntregaRepository {
     required String Function() generarId,
   });
 
+  /// Guarda las [filas] de la entrega de la venta [ventaId] que la colportora armó en la pantalla
+  /// «Entregar ahora» (27B): las entregadas y las que dejó para otro día (`pendiente`).
+  ///
+  /// - Si la venta ya tiene filas de entrega, no escribe nada y devuelve las que había
+  ///   ([EntregaRegistrada.yaEstaba]): un doble toque o un reintento no entrega dos veces.
+  /// - Una venta que no está en el teléfono, o cualquier otra falla, es [FailureEntregaNoGuardada]:
+  ///   no se guarda nada.
+  Future<Either<Failure, EntregaRegistrada>> registrarEntrega(String ventaId, List<Entrega> filas);
+
   /// Las filas vivas de la venta [ventaId] (vacío si todavía no se entregó nada). Solo lee. Si no se
   /// puede leer es [FailureEntregaNoDisponible]: no es lo mismo que «nada entregado».
   Future<Either<Failure, List<Entrega>>> deLaVenta(String ventaId);
