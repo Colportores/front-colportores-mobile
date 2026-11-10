@@ -159,6 +159,43 @@ void main() {
     );
   });
 
+  group('las filas del detalle de una venta siguen el canvas C·04 (decisión del 10/11, P1 del QA)', () {
+    // skip: QA #446: la decisión del 10/11 pide «Colección de N libros · $ total» y una fila
+    // «Libro · <nombre>» por línea; el código sigue con «<nombre> × k» y «Total» (bloqueante).
+    testWidgets(
+      'dado la venta 0038 de un libro, el detalle dice «Colección de 1 libro», «Libro · Salud y Hogar», '
+      '«Pagado» y «Saldo»',
+      (tester) async {
+        await conFuentes(tester);
+        await montarHoja446(tester);
+        await tocarFila446(tester, 'ven-1');
+
+        expect(find.text('Colección de 1 libro'), findsOneWidget);
+        expect(find.text('Libro'), findsOneWidget);
+        expect(find.text('Salud y Hogar'), findsOneWidget);
+        expect(find.text('Pagado'), findsOneWidget);
+        expect(find.text('Saldo'), findsOneWidget);
+        expect(find.text('Total'), findsNothing);
+      },
+      skip: !_conHallazgos,
+    );
+
+    // skip: QA #446: ídem con varias líneas (3 + 1 + 12 = 16 libros), con « × k» si k > 1.
+    testWidgets(
+      'dado una venta de tres líneas, el detalle dice «Colección de 16 libros» y una fila «Libro» por línea',
+      (tester) async {
+        await conFuentes(tester);
+        await montarHoja446(tester, eventos: textosLargos446());
+        await tocarFila446(tester, 'l1');
+
+        expect(find.text('Colección de 16 libros'), findsOneWidget);
+        expect(find.text('Libro'), findsNWidgets(3));
+        expect(find.textContaining('Nuestros Hijos'), findsWidgets);
+      },
+      skip: !_conHallazgos,
+    );
+  });
+
   group('texto cortado con letra al 200 %', () {
     for (final tamano in const [t360x640, t412x915]) {
       testWidgets('dado C·03 a ${tamano.width.toInt()}×${tamano.height.toInt()} con letra ×2, '
