@@ -27,32 +27,36 @@ void main() {
       expect(find.text(r'▼ $ 1.300 contra la semana pasada'), findsOneWidget);
     });
 
-    testWidgets('en V1 no se dibuja nada de lo V2 ni lo que no lleva a ningún lado: ni deuda, ni '
-        'acciones, ni enlaces, ni previews, ni «Próximamente»', (tester) async {
-      await montarCuenta(tester, RepositorioDeCuentaControlable(inicial: resumenDelCanvas));
+    testWidgets(
+      'en V1 no se dibuja nada de lo V2 ni lo que no lleva a ningún lado: de las acciones '
+      'solo «Registrar depósito» (HU-CTA-004, #443); ni enlaces, ni previews, ni «Próximamente»',
+      (tester) async {
+        await montarCuenta(tester, RepositorioDeCuentaControlable(inicial: resumenDelCanvas));
 
-      for (final texto in [
-        'DEPOSITADO',
-        '+ Hacer un pedido',
-        'Cargar ticket',
-        'Registrar depósito',
-        'Mis pedidos',
-        'Mis tickets',
-        'Alquiler',
-        'Stock y beca',
-        'TAMBIÉN',
-        'Stock',
-        'Beca',
-        'Próximamente',
-      ]) {
-        expect(find.textContaining(texto), findsNothing, reason: texto);
-      }
-      // Lo único que se toca son tres tarjetas: la deuda con la casa editora (33B, HU-CTA-002) y las dos
-      // que abren su detalle en «Mi plata» (HU-CTA-003); «Depositado» no se dibuja hasta la primera bajada.
-      expect(find.text('›'), findsNWidgets(3));
-      expect(find.byType(InkWell), findsNWidgets(3));
-      expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
-    });
+        for (final texto in [
+          'DEPOSITADO',
+          '+ Hacer un pedido',
+          'Cargar ticket',
+          'Mis pedidos',
+          'Mis tickets',
+          'Alquiler',
+          'Stock y beca',
+          'TAMBIÉN',
+          'Stock',
+          'Beca',
+          'Próximamente',
+        ]) {
+          expect(find.textContaining(texto), findsNothing, reason: texto);
+        }
+        // Lo que se toca: tres tarjetas, la deuda con la casa editora (33B, HU-CTA-002) y las dos que abren
+        // su detalle en «Mi plata» (HU-CTA-003), y «Registrar depósito» (33A·01 ACCIONES, HU-CTA-004);
+        // «Depositado» no se dibuja hasta la primera bajada.
+        expect(find.text('›'), findsNWidgets(3));
+        expect(find.byType(InkWell), findsNWidgets(4));
+        expect(find.text('Registrar depósito'), findsOneWidget);
+        expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
+      },
+    );
 
     testWidgets('una cifra que subió y una que bajó se leen con su verbo, sin las flechas', (
       tester,

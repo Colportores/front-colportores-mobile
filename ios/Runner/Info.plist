@@ -6,6 +6,10 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Usamos tu ubicación para marcar en el mapa el lugar que vas a registrar.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Usamos la cámara para sacar la foto del ticket del depósito.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Usamos tus fotos para elegir la del ticket del depósito.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
