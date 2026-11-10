@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/database_providers.dart';
+import '../../data/datasources/cobranzas_sin_fecha_drift.dart';
 import '../../data/repositories/consulta_agenda_repository_drift.dart';
+import '../../domain/entities/cobranza_por_agendar.dart';
 import '../../domain/entities/filtros_agenda.dart';
 import '../../domain/entities/item_agenda.dart';
 import '../../domain/entities/tipo_agenda.dart';
@@ -57,6 +59,16 @@ final agendaCampaniaLeidaProvider = StreamProvider.autoDispose
           .observarCampania(colportorId: clave.colportorId, hoy: clave.inicioDeHoy),
       retry: _sinReintentos,
     );
+
+/// Las ventas del colportor con saldo y sin ninguna cobranza agendada (el grupo «Sin fecha» del final
+/// de la Agenda, 42B·01G; decisión del 10/11, P4 del PR #681), reactivas: agendarles la cobranza las
+/// saca solas.
+final cobranzasSinFechaProvider = StreamProvider.autoDispose
+    .family<List<CobranzaPorAgendar>, String>((ref, colportorId) {
+      final db = ref.watch(dbLocalProvider);
+      if (db == null) throw StateError('La base de datos local no está abierta');
+      return CobranzasSinFechaDrift(db).observar(colportorId);
+    }, retry: _sinReintentos);
 
 /// Qué casa lee «Visitas agendadas»: el colportor y la ubicación.
 typedef ClaveVisitasDeLaCasa = ({String colportorId, String ubicacionId});

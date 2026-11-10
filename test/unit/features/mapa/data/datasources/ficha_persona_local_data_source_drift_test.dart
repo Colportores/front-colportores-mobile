@@ -167,6 +167,59 @@ void main() {
     expect(venta.lineas.single.nombre, 'Producto');
   });
 
+  // 42B·08E (decisión del 10/11, P7 del PR #681): la visita en la que se dejaron misioneros dice
+  // cuántos («✦ 3 misioneros»); los borrados no cuentan y la lectura es reactiva.
+  group('misioneros dejados en la visita (42B·08E)', () {
+    Future<void> dejar(String id, String visita, int cantidad, {DateTime? borrado}) => db
+        .into(db.visitaMisioneros)
+        .insert(
+          VisitaMisionerosCompanion.insert(
+            id: id,
+            visitaId: visita,
+            productoId: 'mis-1',
+            cantidad: cantidad,
+            createdAt: t0,
+            updatedAt: t0,
+            deletedAt: Value(borrado),
+          ),
+        );
+
+    setUp(() async {
+      await sembrarPersona();
+      await sembrarProducto('mis-1', 'El camino a Cristo');
+    });
+
+    test('suma lo que se dejó en cada visita, sin lo borrado', () async {
+      await insertarVisita(db, visitaDe('vis-1', creada: DateTime.utc(2026, 10, 5, 14)));
+      await insertarVisita(db, visitaDe('vis-2', creada: DateTime.utc(2026, 10, 6, 14)));
+      await dejar('vm-1', 'vis-1', 2);
+      await dejar('vm-2', 'vis-1', 1);
+      await dejar('vm-3', 'vis-1', 5, borrado: t0);
+
+      final historial = (await fuente.observar('per-1').first)!.historial;
+      final porId = {for (final m in historial) m.id: m as VisitaEnFicha};
+
+      expect(porId['vis-1']!.misioneros, 3);
+      expect(porId['vis-2']!.misioneros, 0);
+    });
+
+    test('es reactiva: dejar un misionero vuelve a leer la visita', () async {
+      await insertarVisita(db, visitaDe('vis-1'));
+      final cuantos = <int>[];
+      final sub = fuente
+          .observar('per-1')
+          .listen((l) => cuantos.add((l!.historial.single as VisitaEnFicha).misioneros));
+      addTearDown(sub.cancel);
+
+      await pumpEventQueue();
+      await dejar('vm-1', 'vis-1', 3);
+      await pumpEventQueue();
+
+      expect(cuantos.first, 0);
+      expect(cuantos.last, 3);
+    });
+  });
+
   test('lo borrado (visitas, ventas y renglones) no aparece', () async {
     await sembrarPersona();
     await sembrarProducto('pro-1', 'Salud y Hogar');

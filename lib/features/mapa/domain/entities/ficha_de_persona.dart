@@ -32,12 +32,21 @@ sealed class MovimientoDeFicha extends Equatable {
 
 /// Una visita (`visita`) con su resultado: «Entrevista hecha», «No contestó»…
 final class VisitaEnFicha extends MovimientoDeFicha {
-  const VisitaEnFicha({required super.id, required super.fecha, required this.resultado});
+  const VisitaEnFicha({
+    required super.id,
+    required super.fecha,
+    required this.resultado,
+    this.misioneros = 0,
+  });
 
   final TipoResultadoVisita resultado;
 
+  /// Cuántos misioneros se dejaron en esa visita sin venta («Lo que dejaste», 42B·08E): la fila dice
+  /// «✦ 3 misioneros». 0 si no se dejó ninguno.
+  final int misioneros;
+
   @override
-  List<Object?> get props => [id, fecha, resultado];
+  List<Object?> get props => [id, fecha, resultado, misioneros];
 }
 
 /// Una venta (`venta`) con lo que se vendió.
