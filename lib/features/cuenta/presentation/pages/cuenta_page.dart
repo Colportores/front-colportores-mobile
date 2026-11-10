@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
+import '../../../depositos/presentation/pages/registrar_deposito_page.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../domain/entities/resumen_de_cuenta.dart';
 import '../providers/cuenta_providers.dart';
@@ -27,7 +28,8 @@ import 'mi_plata_page.dart';
 /// solo lo que el coordinador validó y baja del servidor por el pull: mientras el teléfono no bajó nada
 /// no se dibuja (ni un cero), y sin conexión un aviso dice de cuándo es (33A·02). La deuda la cuenta el
 /// servidor (HU-CTA-002): se muestra lo último que llegó y su toque abre el detalle por pedido (33B).
-/// Las tres cifras se tocan y abren su detalle en «Mi plata» (HU-CTA-003, 33C).
+/// Las tres cifras se tocan y abren su detalle en «Mi plata» (HU-CTA-003, 33C). Debajo, «ACCIONES» con
+/// «Registrar depósito» (HU-CTA-004, vista 33 D).
 class CuentaPage extends ConsumerStatefulWidget {
   const CuentaPage({super.key, required this.colportorId, this.activa = true});
 
@@ -56,6 +58,19 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       );
     } finally {
       _abriendo = false;
+    }
+  }
+
+  /// Ya se está abriendo «Registrar depósito».
+  var _abriendoDeposito = false;
+
+  Future<void> _registrarDeposito() async {
+    if (_abriendoDeposito) return;
+    _abriendoDeposito = true;
+    try {
+      await RegistrarDepositoPage.abrir(context, colportorId: widget.colportorId);
+    } finally {
+      _abriendoDeposito = false;
     }
   }
 
@@ -143,6 +158,15 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                       alAbrir: () => _abrir(tipo),
                       cifra: cifra,
                     ),
+                AccionesDeCuenta(
+                  acciones: [
+                    (
+                      texto: TextosCuenta.registrarDeposito,
+                      clave: const Key('cuenta_registrar_deposito'),
+                      alTocar: () => unawaited(_registrarDeposito()),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),

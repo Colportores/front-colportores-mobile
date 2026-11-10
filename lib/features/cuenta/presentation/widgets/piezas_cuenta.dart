@@ -411,3 +411,59 @@ class BannerErrorCuenta extends StatelessWidget {
     );
   }
 }
+
+/// «ACCIONES» de 33A·01: los atajos de la plata, como pastillas de 48 dp de alto que se acomodan en
+/// varias líneas con el texto grande.
+class AccionesDeCuenta extends StatelessWidget {
+  const AccionesDeCuenta({super.key, required this.acciones});
+
+  /// Cada acción con su texto, su clave y qué hace.
+  final List<({String texto, Key clave, VoidCallback alTocar})> acciones;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ExcludeSemantics(
+            child: Text(
+              TextosCuenta.acciones,
+              style: TextStyle(
+                fontFamily: 'JetBrainsMono',
+                fontSize: 10.5,
+                letterSpacing: 1.6,
+                color: ColoresCuenta.gris,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final a in acciones)
+                OutlinedButton(
+                  key: a.clave,
+                  onPressed: a.alTocar,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    foregroundColor: ColoresCuenta.azul,
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: ColoresCuenta.borde, width: 1.5),
+                    shape: const StadiumBorder(),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  child: Text(
+                    a.texto,
+                    style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

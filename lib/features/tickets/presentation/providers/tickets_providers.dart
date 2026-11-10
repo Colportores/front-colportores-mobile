@@ -17,6 +17,7 @@ import '../../data/repositories/ticket_repository_impl.dart';
 import '../../data/services/servidor_de_fotos_supabase.dart';
 import '../../domain/entities/ticket.dart';
 import '../../domain/repositories/ticket_repository.dart';
+import '../../domain/services/captura_de_foto.dart';
 import '../../domain/services/politica_de_compresion.dart';
 import '../../domain/services/puertos_de_fotos.dart';
 import '../../domain/usecases/borrar_copia_local_de_ticket_use_case.dart';
@@ -78,10 +79,9 @@ final class _SinServidorDeFotos implements ServidorDeFotosDeTicket {
   }) async => const SubidaFallida(codigo: 'sin_servidor', reintentable: true);
 }
 
-/// El que achica la imagen. **Sin adaptador todavía**: comprimir a JPEG necesita una librería de
-/// imágenes y elegirla es una decisión de stack que espera a Cristian (pendiente del issue #426). Hasta
-/// entonces lanza `UnimplementedError`, en vez de mandar una foto sin comprimir; la política de cuánto
-/// achicar ([PoliticaDeCompresion]) ya está lista y probada con un compresor de prueba.
+/// El que achica la imagen. `main.dart` lo reemplaza con `CompresorFlutterImageCompress`; sin reemplazo
+/// (tests y demo) lanza `UnimplementedError`, en vez de mandar una foto sin comprimir. La política de
+/// cuánto achicar es [PoliticaDeCompresion].
 final compresorDeImagenProvider = Provider<CompresorDeImagen>(
   (ref) => const _CompresorSinAdaptador(),
 );
@@ -98,6 +98,17 @@ final class _CompresorSinAdaptador implements CompresorDeImagen {
     'Falta el adaptador de compresión de imágenes (decisión de stack pendiente, #426)',
   );
 }
+
+/// La cámara y la galería del teléfono. `main.dart` la reemplaza con `CapturadorImagePicker` y el
+/// compresor con `CompresorFlutterImageCompress` (decisión de Cristian del 03/11 en #169: `image_picker`
+/// + `flutter_image_compress`). Sin reemplazo (tests y demo) es `null` y la app no ofrece sacar la foto
+/// del ticket.
+final capturadorDeFotoProvider = Provider<CapturadorDeFoto?>((ref) => null);
+
+/// Se puede cargar la foto del ticket: hay cámara y galería.
+final fotoDelTicketDisponibleProvider = Provider<bool>(
+  (ref) => ref.watch(capturadorDeFotoProvider) != null,
+);
 
 /// Persistencia de los tickets: encola el sync en la misma transacción.
 final ticketRepositoryProvider = Provider<TicketRepository>(

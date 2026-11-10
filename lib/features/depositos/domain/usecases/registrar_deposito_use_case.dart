@@ -85,32 +85,42 @@ final class RegistrarDepositoUseCase
     return limpio == null || limpio.isEmpty ? null : limpio;
   }
 
-  @override
-  Future<Either<Failure, DepositoRegistrado>> call(RegistrarDepositoParams params) async {
+  /// Por qué [params] no se puede guardar, con las mismas reglas con las que el servidor rechazaría la
+  /// fila (`23514`), o `null` si se puede. [ahora] es el «hoy» contra el que se mide la fecha. La usa
+  /// también el registro con el ticket del banco (`RegistrarDepositoConTicketUseCase`) para no escribir
+  /// el ticket de un depósito que no va a entrar.
+  static Failure? validar(RegistrarDepositoParams params, DateTime ahora) {
     if (params.depositoId.trim().isEmpty || params.colportorId.trim().isEmpty) {
-      return const Left(FailureDepositoNoGuardado(causa: 'faltan_ids'));
+      return const FailureDepositoNoGuardado(causa: 'faltan_ids');
     }
     if (params.montoCentavos <= 0 || params.montoCentavos > maximoCentavos) {
-      return const Left(FailureDepositoMontoInvalido());
+      return const FailureDepositoMontoInvalido();
     }
-    final ahora = _ahora().toUtc();
-    final fecha = (params.fecha ?? ahora).toUtc();
+    final hoy = ahora.toUtc();
+    final fecha = (params.fecha ?? hoy).toUtc();
     // «Después de hoy» se mide en días de Montevideo: depositar hoy a la noche no es del futuro.
-    if (ReglasDeVenta.diaDeMontevideo(fecha).isAfter(ReglasDeVenta.diaDeMontevideo(ahora))) {
-      return const Left(FailureDepositoFechaInvalida());
+    if (ReglasDeVenta.diaDeMontevideo(fecha).isAfter(ReglasDeVenta.diaDeMontevideo(hoy))) {
+      return const FailureDepositoFechaInvalida();
     }
-
     final ticketId = _limpio(params.ticketId);
-    if (params.destino.llevaTicket && ticketId == null) {
-      return const Left(FailureDepositoSinTicket());
-    }
+    if (params.destino.llevaTicket && ticketId == null) return const FailureDepositoSinTicket();
     if (!params.destino.llevaTicket && ticketId != null) {
-      return const Left(FailureDepositoRetiroConTicket());
+      return const FailureDepositoRetiroConTicket();
     }
+    if (params.concepto == ConceptoDeDeposito.alquiler && _limpio(params.campaniaId) == null) {
+      return const FailureDepositoSinCampania();
+    }
+    return null;
+  }
+
+  @override
+  Future<Either<Failure, DepositoRegistrado>> call(RegistrarDepositoParams params) async {
+    final ahora = _ahora().toUtc();
+    final falla = validar(params, ahora);
+    if (falla != null) return Left(falla);
+    final fecha = (params.fecha ?? ahora).toUtc();
+    final ticketId = _limpio(params.ticketId);
     final campaniaId = _limpio(params.campaniaId);
-    if (params.concepto == ConceptoDeDeposito.alquiler && campaniaId == null) {
-      return const Left(FailureDepositoSinCampania());
-    }
 
     return _repository.registrar(
       Deposito(
