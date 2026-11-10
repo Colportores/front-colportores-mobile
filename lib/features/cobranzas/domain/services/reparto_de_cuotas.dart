@@ -17,6 +17,10 @@ enum ProblemaDeCuota {
 
   /// Menor que lo que ya se cobró de esa cuota (al modificar un plan con pagos parciales).
   menorQueLoPagado,
+
+  /// Se quiso escribir a mano la última cuota del plan: siempre es lo que falta (decisión del 03/11,
+  /// #608). Para cambiarla se cambian las anteriores.
+  ultimaCalculada,
 }
 
 /// El resultado de cambiar el monto de una cuota (30A-02B): los montos de todas y cuáles se ajustaron
@@ -84,9 +88,6 @@ final class AplicacionDePago extends Equatable {
     return partes.last;
   }
 
-  /// El número de la primera cuota a la que va el pago (lo que se guarda en `cobranza.numero_cuota`).
-  int? get primeraCuota => partes.isEmpty ? null : partes.first.cuota.numero;
-
   @override
   List<Object?> get props => [partes, sobranteCentavos];
 }
@@ -140,8 +141,8 @@ final class EstadoDeLasCuotas extends Equatable {
   /// Las cuotas vivas por fecha, con lo pagado de cada una. Las que el cobro cubrió figuran cubiertas.
   final List<Cuota> cuotas;
 
-  /// Los `agenda.id` de las citas que están cubiertas y todavía figuran `PROGRAMADA`: hay que
-  /// pasarlas a `CUMPLIDA`.
+  /// Los `agenda.id` de las citas que están cubiertas y todavía figuran abiertas (`PROGRAMADA`, o
+  /// `NO_CUMPLIDA` si es un dato viejo): hay que pasarlas a `CUMPLIDA`.
   final List<String> aCerrar;
 
   @override
@@ -201,8 +202,13 @@ abstract final class RepartoDeCuotas {
   }
 
   /// Cambia el monto de la cuota [indice] a [nuevoMonto]: las cuotas anteriores no se tocan y las
-  /// siguientes se reparten en partes iguales lo que queda del [saldo] (30A-02B). Si es la última,
-  /// no hay a quién ajustar: queda como se puso (siempre que no supere el saldo).
+  /// siguientes se reparten en partes iguales lo que queda del [saldo] (30A-02B), con la diferencia
+  /// del redondeo en la última.
+  ///
+  /// **La última cuota no se escribe a mano** (decisión del 03/11, #608): siempre es lo que falta del
+  /// [saldo]. Un [nuevoMonto] distinto del que tiene la última (el último lugar de [montos]) no se
+  /// acepta: queda el problema [ProblemaDeCuota.ultimaCalculada] en ese lugar y los montos no
+  /// cambian. Para cambiarla se cambian las anteriores.
   ///
   /// [pagados] (opcional, un monto por cuota) es lo ya cobrado de cada una: una cuota no baja de ahí.
   static MontosReajustados reajustar({
@@ -212,6 +218,15 @@ abstract final class RepartoDeCuotas {
     required int saldo,
     List<int>? pagados,
   }) {
+    if (indice == montos.length - 1) {
+      return MontosReajustados(
+        montos: [...montos],
+        ajustadas: const {},
+        problemas: nuevoMonto == montos[indice]
+            ? const {}
+            : {indice: ProblemaDeCuota.ultimaCalculada},
+      );
+    }
     final nuevos = [...montos];
     nuevos[indice] = nuevoMonto;
     final problemas = <int, ProblemaDeCuota>{};
@@ -228,24 +243,20 @@ abstract final class RepartoDeCuotas {
       problemas[indice] = ProblemaDeCuota.superaElSaldo;
     } else if (nuevoMonto < minimo) {
       problemas[indice] = ProblemaDeCuota.menorQueLoPagado;
-    } else if (siguientes > 0 && queda < siguientes) {
+    } else if (queda < siguientes) {
       problemas[indice] = ProblemaDeCuota.noDejaParaLasSiguientes;
-    } else if (siguientes == 0 && antes + nuevoMonto > saldo) {
-      problemas[indice] = ProblemaDeCuota.superaElSaldo;
     }
 
-    if (siguientes > 0) {
-      if (problemas.isEmpty) {
-        final partes = partesIguales(queda, siguientes);
-        for (var j = 0; j < siguientes; j++) {
-          final lugar = indice + 1 + j;
-          if (nuevos[lugar] != partes[j]) ajustadas.add(lugar);
-          nuevos[lugar] = partes[j];
-        }
-      } else {
-        for (var lugar = indice + 1; lugar < nuevos.length; lugar++) {
-          nuevos[lugar] = 0;
-        }
+    if (problemas.isEmpty) {
+      final partes = partesIguales(queda, siguientes);
+      for (var j = 0; j < siguientes; j++) {
+        final lugar = indice + 1 + j;
+        if (nuevos[lugar] != partes[j]) ajustadas.add(lugar);
+        nuevos[lugar] = partes[j];
+      }
+    } else {
+      for (var lugar = indice + 1; lugar < nuevos.length; lugar++) {
+        nuevos[lugar] = 0;
       }
     }
     return MontosReajustados(montos: nuevos, ajustadas: ajustadas, problemas: problemas);
@@ -281,10 +292,30 @@ abstract final class RepartoDeCuotas {
     return suma <= saldo;
   }
 
+  /// Si la última cuota es lo que falta: los montos de [montos] suman justo [total]. La última no se
+  /// escribe a mano (decisión del 03/11, #608), así que un reparto donde sobra o falta plata en ella
+  /// no es válido. [total] es el saldo al armar el plan, o lo que queda por repartir entre las
+  /// cuotas abiertas al modificarlo.
+  static bool ultimaEsLoQueFalta(List<int> montos, int total) =>
+      montos.isNotEmpty && montos.fold<int>(0, (a, b) => a + b) == total;
+
+  /// La última cuota del plan: la abierta (no cubierta) de mayor número. `null` si no queda ninguna
+  /// abierta. Con una sola abierta, esa es la última.
+  static Cuota? ultimaAbierta(Iterable<Cuota> cuotas) {
+    Cuota? ultima;
+    for (final c in cuotas) {
+      if (c.estaCubierta) continue;
+      if (ultima == null || c.numero > ultima.numero) ultima = c;
+    }
+    return ultima;
+  }
+
   /// Arma las cuotas vivas de una venta a partir de sus citas con monto y sus cobros, y dice cuáles
   /// quedan cubiertas.
   ///
-  /// Solo cuentan las citas `PROGRAMADA` y `CUMPLIDA` (una cancelada o no cumplida deja de ser cuota).
+  /// Solo deja de ser cuota la cita `CANCELADA`. Una `NO_CUMPLIDA` (dato viejo, de cuando «No
+  /// contestó» cerraba la cita) cuenta como cuota abierta: «No contestó» sobre una cuota no la cierra
+  /// (decisión del 03/11, #608), sigue en la lista y pasada la fecha se ve «Vencida».
   /// Lo cobrado para el plan es lo que se cobró desde que se armó (los cobros anteriores bajaron el
   /// saldo que se repartió). Los cobros, en el orden en que llegaron, van primero a las cuotas que ya
   /// estaban cubiertas y después a las abiertas en orden de fecha. Así nada se guarda de más: lo
@@ -296,11 +327,11 @@ abstract final class RepartoDeCuotas {
   }) {
     final vivas = [
       for (final c in citas)
-        if (c.estado == EstadoAgenda.programada || c.estado == EstadoAgenda.cumplida) c,
+        if (c.estado != EstadoAgenda.cancelada) c,
     ]..sort(_porFecha);
     final abiertas = [
       for (final c in vivas)
-        if (c.estado == EstadoAgenda.programada) c,
+        if (c.estado != EstadoAgenda.cumplida) c,
     ];
 
     final base = abiertas.isNotEmpty ? abiertas : vivas;

@@ -32,14 +32,43 @@ abstract final class TextosBaja {
   // Canvas 09·02.
   static const bloqueadaTitulo = 'Todavía no se puede dar de baja';
   static const irALaCobranza = 'Ir a la cobranza';
-  static String bloqueoCobranza(CobranzaPendiente cobranza) =>
-      'Tiene una cobranza pendiente de ${FormatoBaja.cobranza(cobranza)}. '
-      'Registrá el cobro antes de darla de baja.';
+  static const noPudimosIrALaCobranza = 'No pudimos abrir el cobro. Probá de nuevo.';
 
-  // La HU (decisión de Cristian, 02/10): ventas o visitas de otro colportor.
-  static const bloqueoVentasOVisitasAjenas =
-      'No podés dar de baja esta casa porque tiene ventas o visitas de otro colportor. '
-      'Si ya no existe, avisale a tu coordinador.';
+  /// La cobranza que bloquea (canvas 09·02): la primera oración es la del canvas; la segunda dice la
+  /// verdad —cobrar no destraba la baja, una ubicación con ventas no se da de baja (decisión de
+  /// Cristian, 02/10)—, decisión del 04/11 (QA P1). Con varias, dice cuántas y muestra la más antigua.
+  static String bloqueoCobranza(
+    CobranzaPendiente cobranza, {
+    TipoUbicacion tipo = TipoUbicacion.casa,
+  }) {
+    final primera = cobranza.cantidad > 1
+        ? 'Tiene ${cobranza.cantidad} cobranzas pendientes. '
+              'La más antigua: ${FormatoBaja.cobranza(cobranza)}.'
+        : 'Tiene una cobranza pendiente de ${FormatoBaja.cobranza(cobranza)}.';
+    final una = switch (tipo) {
+      TipoUbicacion.casa => 'Una casa',
+      TipoUbicacion.edificio => 'Un edificio',
+      TipoUbicacion.negocio => 'Un negocio',
+    };
+    return '$primera $una con ventas no se puede dar de baja. '
+        'Si ya no existe, cobrá lo pendiente y avisale a tu coordinador.';
+  }
+
+  /// El bloqueo por ventas y/o visitas de otro colportor, partido en tres según el caso y con el
+  /// sujeto del tipo de ubicación (HU, decisión de Cristian del 02/10; texto del 04/11, QA P1).
+  static String bloqueoVentasOVisitasAjenas(BloqueoPorVentasOVisitasAjenas bloqueo) {
+    final esta = switch (bloqueo.tipo) {
+      TipoUbicacion.casa => 'esta casa',
+      TipoUbicacion.edificio => 'este edificio',
+      TipoUbicacion.negocio => 'este negocio',
+    };
+    final que = switch ((bloqueo.ventas, bloqueo.visitasDeOtros)) {
+      (true, true) => 'ventas y visitas de otro colportor',
+      (false, true) => 'visitas de otro colportor',
+      _ => 'ventas',
+    };
+    return 'No podés dar de baja $esta porque tiene $que. Si ya no existe, avisale a tu coordinador.';
+  }
 
   // Provisorios: ni la HU ni el canvas los traen.
   static const entendido = 'Entendido';
@@ -70,9 +99,12 @@ final class BajaRealizada extends SalidaHojaBaja {
 
 /// La baja estaba bloqueada por una cobranza y el colportor eligió «Ir a la cobranza».
 final class IrALaCobranzaElegido extends SalidaHojaBaja {
-  const IrALaCobranzaElegido(this.ubicacionId);
+  const IrALaCobranzaElegido(this.ubicacionId, {this.cobranza});
 
   final String ubicacionId;
+
+  /// La cobranza que bloqueaba la baja: a dónde hay que ir a cobrar.
+  final CobranzaPendiente? cobranza;
 }
 
 /// El texto del aviso rojo cuando no se pudo dar de baja: la falla inesperada dice qué pasó y qué
@@ -85,8 +117,9 @@ String mensajeFallaBaja(Failure falla) => switch (falla) {
 /// Abre la hoja de «Dar de baja» de [ubicacion] (vista 09, artboards 01 y 02). Devuelve cómo terminó,
 /// o `null` si el colportor cerró sin hacer nada.
 ///
-/// Con [alIrALaCobranza] la hoja bloqueada por una cobranza ofrece «Ir a la cobranza»; sin él, solo
-/// el aviso y «Entendido» (la pantalla de cobranzas todavía no existe).
+/// La hoja bloqueada por una cobranza ofrece «Ir a la cobranza» con [ofreceIrALaCobranza] o cuando
+/// `irALaCobranzaDesdeLaBajaProvider` tiene destino y la cobranza se sabe a dónde ir; si no, solo el
+/// aviso y «Entendido».
 Future<SalidaHojaBaja?> mostrarHojaBaja(
   BuildContext context, {
   required Ubicacion ubicacion,
@@ -112,7 +145,7 @@ enum _Fase { revisando, errorRevision, motivo, bloqueada }
 ///
 /// - **Revisando**: «Revisando la ubicación…»; si no se pudo leer, el aviso rojo con «Reintentar».
 /// - **09·01**: cuatro motivos (ninguno viene elegido), «Otro» con texto libre. «Dar de baja» se
-///   habilita recién con un motivo. Con visitas pendientes propias, un segundo aviso pide confirmar.
+///   habilita recién con un motivo. Con entrevistas agendadas, un segundo aviso pide confirmar.
 /// - **09·02**: cobranza pendiente, ventas o visitas de otro colportor: el aviso de la HU, sin escribir
 ///   nada.
 /// - Mientras la baja se escribe, «Dando de baja…» y nada se puede tocar ni cerrar; si falla, el aviso
@@ -207,7 +240,7 @@ class _HojaBajaUbicacionState extends ConsumerState<HojaBajaUbicacion> {
       _falla = null;
     });
     var confirma = false;
-    // Hay una sola segunda confirmación posible (visitas pendientes propias): se pide una vez.
+    // Hay una sola segunda confirmación posible (entrevistas agendadas): se pide una vez.
     for (var ronda = 0; ronda < 2; ronda++) {
       final (:falla, :resultado) = await _pedir(confirma: confirma);
       if (!mounted) return;
@@ -485,19 +518,30 @@ class _HojaBajaUbicacionState extends ConsumerState<HojaBajaUbicacion> {
   Widget _bloqueadaVista() {
     final bloqueo = _bloqueo;
     final texto = switch (bloqueo) {
-      BloqueoPorCobranza(:final cobranza) => TextosBaja.bloqueoCobranza(cobranza),
-      _ => TextosBaja.bloqueoVentasOVisitasAjenas,
+      BloqueoPorCobranza(:final cobranza, :final tipo) => TextosBaja.bloqueoCobranza(
+        cobranza,
+        tipo: tipo,
+      ),
+      final BloqueoPorVentasOVisitasAjenas ajeno => TextosBaja.bloqueoVentasOVisitasAjenas(ajeno),
+      null => '',
     };
     return AvisoAlta(color: ColoresAlta.azul, glyph: '!', texto: texto);
   }
 
   List<Widget> _accionesBloqueada() {
-    final aCobranza = _bloqueo is BloqueoPorCobranza && widget.ofreceIrALaCobranza;
+    final bloqueo = _bloqueo;
+    final cobranza = bloqueo is BloqueoPorCobranza ? bloqueo.cobranza : null;
+    // El botón solo existe si hay a dónde ir (HU-UBI-005): lo pide quien abrió la hoja, o el destino
+    // de la app y una venta que se sabe cuál es.
+    final hayDestino =
+        ref.watch(irALaCobranzaDesdeLaBajaProvider) != null && (cobranza?.tieneDestino ?? false);
+    final aCobranza = cobranza != null && (widget.ofreceIrALaCobranza || hayDestino);
     if (aCobranza) {
       return [
         FilledButton(
-          onPressed: () =>
-              Navigator.of(context).pop<SalidaHojaBaja>(IrALaCobranzaElegido(widget.ubicacion.id)),
+          onPressed: () => Navigator.of(
+            context,
+          ).pop<SalidaHojaBaja>(IrALaCobranzaElegido(widget.ubicacion.id, cobranza: cobranza)),
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
           child: const Text(TextosBaja.irALaCobranza, textAlign: TextAlign.center),
         ),

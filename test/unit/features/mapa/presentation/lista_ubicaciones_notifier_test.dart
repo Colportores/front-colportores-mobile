@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_r
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/lista_ubicaciones_notifier.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/ubicacion_colportor_provider.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +35,10 @@ final class _Banco {
 
   ListaUbicacionesState get estado => contenedor.read(proveedor);
   ListaUbicacionesNotifier get notificador => contenedor.read(proveedor.notifier);
+
+  /// El GPS del colportor (#651): el que pide el mapa; la lista y el mapa solo lo reflejan.
+  UbicacionColportorNotifier get gpsColportor =>
+      contenedor.read(ubicacionColportorProvider.notifier);
 
   List<String> get ids => [for (final i in estado.lista!.items) i.ubicacion.id];
 
@@ -524,7 +529,7 @@ void main() {
         ];
         final b = _banco(repo: RepoListaFalso(filas), gps: GpsFalso(Right(lecturaGps(8))));
         await _esperar();
-        await b.notificador.alAbrirPestana();
+        await b.gpsColportor.alAbrirPestana();
         await _esperar();
 
         b.notificador.ordenar(OrdenListaUbicaciones.cercania);
@@ -544,7 +549,7 @@ void main() {
     test('dado que se limpian los filtros, entonces el orden elegido se conserva', () async {
       final b = _banco(repo: RepoListaFalso(tres), gps: GpsFalso(Right(lecturaGps(8))));
       await _esperar();
-      await b.notificador.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
       b.notificador.ordenar(OrdenListaUbicaciones.cercania);
 
       b.notificador.limpiarTodo();
@@ -564,7 +569,7 @@ void main() {
         ];
         final b = _banco(repo: RepoListaFalso(filas), gps: GpsFalso(Right(lecturaGps(8))));
         await _esperar();
-        await b.notificador.alAbrirPestana();
+        await b.gpsColportor.alAbrirPestana();
         await _esperar();
 
         b.notificador.aplicar(
@@ -719,7 +724,7 @@ void main() {
       await _esperar();
       b.gps.bloqueo = Completer<void>();
 
-      final lectura = b.notificador.alAbrirPestana();
+      final lectura = b.gpsColportor.alAbrirPestana();
       await _esperar();
       expect(b.estado.gps, EstadoGpsLista.buscando);
 
@@ -736,12 +741,12 @@ void main() {
       final b = _banco(repo: RepoListaFalso(tres), gps: GpsFalso(Right(lecturaGps(8))));
       await _esperar();
 
-      await b.notificador.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
       await _esperar();
       expect(b.repo.suscripciones, 2);
 
       // Una lectura en el mismo punto (la pestaña se vuelve a abrir) no vuelve a pedirla.
-      await b.notificador.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
       await _esperar();
       expect(b.repo.suscripciones, 2);
       expect(b.gps.lecturas, 2);
@@ -755,9 +760,9 @@ void main() {
       );
       await _esperar();
 
-      await b.notificador.alAbrirPestana();
-      await b.notificador.alAbrirPestana();
-      await b.notificador.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
 
       expect(b.estado.gps, EstadoGpsLista.sinGps);
       expect(b.estado.motivoSinGps, MotivoSinGps.permisoDenegado);
@@ -771,8 +776,8 @@ void main() {
         gps: GpsFalso(const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.sinSenal))),
       );
 
-      await b.notificador.alAbrirPestana();
-      await b.notificador.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
 
       expect(b.gps.lecturas, 2);
       expect(b.estado.gps, EstadoGpsLista.sinGps);
@@ -785,14 +790,14 @@ void main() {
           const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.servicioApagado)),
         );
         final b = _banco(repo: RepoListaFalso(tres), gps: gps);
-        await b.notificador.alAbrirPestana();
+        await b.gpsColportor.alAbrirPestana();
         expect(b.estado.gps, EstadoGpsLista.sinGps);
 
         // Toca «Activar GPS»: lo manda a los ajustes y sigue sin GPS hasta que vuelve.
-        await b.notificador.activarGps();
+        await b.gpsColportor.activarGps();
         expect(b.estado.gps, EstadoGpsLista.sinGps);
         gps.respuesta = Right(lecturaGps(12));
-        await b.notificador.reintentarGpsSiHaceFalta();
+        await b.gpsColportor.reintentarGpsSiHaceFalta();
 
         expect(b.estado.gps, EstadoGpsLista.conLectura);
         expect(b.estado.motivoSinGps, isNull);
@@ -805,11 +810,11 @@ void main() {
         const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.permisoDenegado)),
       );
       final b = _banco(repo: RepoListaFalso(tres), gps: gps);
-      await b.notificador.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
       expect(gps.lecturas, 1);
 
-      await b.notificador.reintentarGpsSiHaceFalta();
-      await b.notificador.reintentarGpsSiHaceFalta();
+      await b.gpsColportor.reintentarGpsSiHaceFalta();
+      await b.gpsColportor.reintentarGpsSiHaceFalta();
 
       expect(gps.lecturas, 1);
       expect(gps.activaciones, isEmpty);
@@ -822,13 +827,13 @@ void main() {
         const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.servicioApagado)),
       );
       final b = _banco(repo: RepoListaFalso(tres), gps: gps);
-      await b.notificador.alAbrirPestana();
-      await b.notificador.activarGps();
+      await b.gpsColportor.alAbrirPestana();
+      await b.gpsColportor.activarGps();
       final lecturas = gps.lecturas;
 
-      await b.notificador.reintentarGpsSiHaceFalta();
+      await b.gpsColportor.reintentarGpsSiHaceFalta();
       expect(gps.lecturas, lecturas + 1);
-      await b.notificador.reintentarGpsSiHaceFalta();
+      await b.gpsColportor.reintentarGpsSiHaceFalta();
 
       expect(gps.lecturas, lecturas + 1);
       expect(b.estado.gps, EstadoGpsLista.sinGps);
@@ -836,9 +841,9 @@ void main() {
 
     test('dado que hay GPS, cuando se vuelve a la app, entonces no se pide de nuevo', () async {
       final b = _banco(repo: RepoListaFalso(tres), gps: GpsFalso(Right(lecturaGps(8))));
-      await b.notificador.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
 
-      await b.notificador.reintentarGpsSiHaceFalta();
+      await b.gpsColportor.reintentarGpsSiHaceFalta();
 
       expect(b.gps.lecturas, 1);
     });
@@ -848,10 +853,10 @@ void main() {
         const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.permisoDenegado)),
       );
       final b = _banco(repo: RepoListaFalso(tres), gps: gps);
-      await b.notificador.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
       gps.alActivar = () => gps.respuesta = Right(lecturaGps(5));
 
-      await b.notificador.activarGps();
+      await b.gpsColportor.activarGps();
 
       expect(gps.activaciones, [MotivoSinGps.permisoDenegado]);
       expect(b.estado.gps, EstadoGpsLista.conLectura);
@@ -861,10 +866,10 @@ void main() {
     test('dado que un refresco falla, entonces la última posición buena se conserva', () async {
       final gps = GpsFalso(Right(lecturaGps(8)));
       final b = _banco(repo: RepoListaFalso(tres), gps: gps);
-      await b.notificador.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
 
       gps.respuesta = const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.sinSenal));
-      await b.notificador.alAbrirPestana();
+      await b.gpsColportor.alAbrirPestana();
 
       expect(b.estado.gps, EstadoGpsLista.conLectura);
       expect(b.estado.lectura!.precisionMetros, 8);
@@ -878,10 +883,10 @@ void main() {
         final gps = GpsFalso()..porLectura = (n) => (lecturas[n] = Completer()).future;
         final b = _banco(repo: RepoListaFalso(tres), gps: gps);
 
-        final primera = b.notificador.alAbrirPestana();
+        final primera = b.gpsColportor.alAbrirPestana();
         await _esperar();
         // `alAbrirPestana` no pide otra mientras busca: la segunda sale de «Activar GPS».
-        final segunda = b.notificador.activarGps();
+        final segunda = b.gpsColportor.activarGps();
         await _esperar();
 
         const otroPunto = Coordenadas(lat: -34.9, lon: -56.15);

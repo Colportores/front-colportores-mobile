@@ -84,6 +84,21 @@ Future<void> sembrarVinculo(
       ),
     );
 
+/// Una jornada del colportor `col-1` (por defecto `jor-1`): las visitas con `jornada_id` la exigen en
+/// el teléfono (la FK de `visita.jornada_id`).
+Future<void> sembrarJornada(AppDatabase db, {String id = 'jor-1', DateTime? borrada}) => db
+    .into(db.jornadas)
+    .insert(
+      JornadasCompanion.insert(
+        id: id,
+        colportorId: 'col-1',
+        inicio: t0,
+        createdAt: t0,
+        updatedAt: t0,
+        deletedAt: Value(borrada),
+      ),
+    );
+
 /// Una casa con un espacio y una persona: `ub-1` → `esp-1` → `ep-1`.
 Future<void> sembrarCasa(AppDatabase db) async {
   await sembrarUbicacion(db);

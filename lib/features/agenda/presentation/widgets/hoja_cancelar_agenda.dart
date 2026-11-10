@@ -194,18 +194,24 @@ class _HojaCancelarAgendaState extends ConsumerState<HojaCancelarAgenda> {
         minimumSize: const Size.fromHeight(52),
       ),
       child: _enviando
-          ? const Row(
-              mainAxisSize: MainAxisSize.min,
-              spacing: 10,
-              children: [
-                ExcludeSemantics(
-                  child: SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          // Región viva: el lector anuncia «Cancelando…» cuando el botón cambia (QA #455).
+          ? Semantics(
+              liveRegion: true,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: 10,
+                children: [
+                  ExcludeSemantics(
+                    child: SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    ),
                   ),
-                ),
-                Flexible(child: Text(TextosCancelarAgenda.cancelando, textAlign: TextAlign.center)),
-              ],
+                  Flexible(
+                    child: Text(TextosCancelarAgenda.cancelando, textAlign: TextAlign.center),
+                  ),
+                ],
+              ),
             )
           : Text(etiqueta, textAlign: TextAlign.center),
     );

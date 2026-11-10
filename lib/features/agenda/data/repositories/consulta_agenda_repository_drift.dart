@@ -25,6 +25,10 @@ import '../../domain/repositories/consulta_agenda_repository.dart';
 /// (casa) dados de baja no se lee —queda guardada, no se borra ni se cancela, y vuelve sola si se
 /// reactiva—; con la **persona** de baja la cita se lee igual, sin nombre. Vale para las dos lecturas
 /// de acá, y por ende para la pestaña y para los conteos de los días.
+///
+/// **Alt. de baja** (decisión de Cristian, 03/11): una cobranza agendada en una dirección alternativa
+/// dada de baja **sigue** en la Agenda (con la persona y su casa activas) y la dirección sale marcada
+/// ([DireccionDeAgenda.deBaja]) para que la colportora la reagende.
 final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
   ConsultaAgendaRepositoryDrift(this._db);
 
@@ -227,6 +231,7 @@ final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
     tipo: UbicacionModel.tipoDesdeCodigo(fila.tipo),
     calle: fila.calle,
     numero: fila.numero,
+    deBaja: fila.deletedAt != null,
   );
 
   static Agenda _aAgenda(AgendaFila fila) => Agenda(

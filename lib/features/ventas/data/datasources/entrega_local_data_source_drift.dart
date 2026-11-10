@@ -80,6 +80,37 @@ final class EntregaLocalDataSourceDrift {
     return EntregaRegistrada(entregas: await _vivas(ventaId), colorDeLaCasa: color);
   });
 
+  /// Ver [EntregaRepository.registrarEntrega]. Lanza [EntregaSinVentaException] si la venta no está.
+  Future<EntregaRegistrada> registrarEntrega(String ventaId, List<Entrega> filas) =>
+      _db.transaction(() async {
+        final venta = await (_db.select(
+          _db.ventas,
+        )..where((v) => v.id.equals(ventaId))).getSingleOrNull();
+        if (venta == null || venta.deletedAt != null) throw const EntregaSinVentaException();
+
+        final existentes = await _vivas(ventaId);
+        if (existentes.isNotEmpty) {
+          // Un segundo toque o un reintento: no se escribe nada y la respuesta dice lo mismo que la
+          // primera.
+          return EntregaRegistrada(
+            entregas: existentes,
+            colorDeLaCasa: await _colorActual(venta.espacioPersonaId),
+            yaEstaba: true,
+          );
+        }
+
+        for (final fila in filas) {
+          await _db.into(_db.entregas).insert(_aFila(fila));
+          await _encolador.encolar('entrega', OperacionSync.insert, EntregaModel.toJson(fila));
+        }
+        final color = await _recalcular(
+          venta.espacioPersonaId,
+          ahora: filas.isEmpty ? venta.updatedAt : filas.first.auditoria.updatedAt,
+          colportorId: venta.colportorId,
+        );
+        return EntregaRegistrada(entregas: await _vivas(ventaId), colorDeLaCasa: color);
+      });
+
   /// Ver [EntregaRepository.deLaVenta].
   Future<List<Entrega>> deLaVenta(String ventaId) => _vivas(ventaId);
 

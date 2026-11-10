@@ -127,7 +127,12 @@ void main() {
 
         expect(textoDeCuota(tester, 0), '900');
         expect([textoDeCuota(tester, 1), textoDeCuota(tester, 2)], ['\$ 800', '\$ 800']);
-        expect(find.text('Se ajustó'), findsNWidgets(2));
+        expect(find.text('Se ajustó'), findsOneWidget);
+        expect(
+          find.textContaining('Se ajustó'),
+          findsNWidgets(2),
+          reason: 'la última lo dice con su aviso',
+        );
         expect(botonApagado(tester), isFalse);
 
         await tocarEnCuotas(tester, botonPrincipal);
@@ -135,15 +140,17 @@ void main() {
       },
     );
 
-    testWidgets('dada la última cuota cambiada, cuando se escribe, nada más se ajusta', (
+    testWidgets('dada la penúltima cuota cambiada, cuando se escribe, solo se ajusta la última', (
       tester,
     ) async {
       await montarCuotas(tester);
 
-      await escribirCuota(tester, 2, '700');
+      await escribirCuota(tester, 1, '700');
 
-      expect([textoDeCuota(tester, 0), textoDeCuota(tester, 1)], ['\$ 833', '\$ 833']);
+      expect(textoDeCuota(tester, 0), '\$ 833');
+      expect(textoDeCuota(tester, 2), '\$ 967');
       expect(find.text('Se ajustó'), findsNothing);
+      expect(find.textContaining('Se ajustó'), findsOneWidget);
       expect(botonApagado(tester), isFalse);
     });
 
@@ -153,7 +160,7 @@ void main() {
       await montarCuotas(tester);
 
       await escribirCuota(tester, 0, '1.000,50');
-      expect(find.text('Se ajustó'), findsNWidgets(2));
+      expect(find.textContaining('Se ajustó'), findsNWidgets(2));
       expect(botonApagado(tester), isFalse);
     });
   });
@@ -437,7 +444,7 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(find.text('12'), findsOneWidget);
 
-        await escribirCuota(tester, 11, '10');
+        await escribirCuota(tester, 10, '10');
         await tocarEnCuotas(tester, botonPrincipal);
         expect(tester.takeException(), isNull);
         expect(arnes.plan.ultimoPlan!.cuotas, hasLength(12));

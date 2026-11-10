@@ -10,7 +10,8 @@ import '../../helpers/venta_ui_falsos.dart';
 
 Future<({List<SeguimientoDeLaVenta> continuo, List<int> termino})> _montar(
   WidgetTester tester, {
-  bool conEntrega = true,
+  bool conEntregarAhora = true,
+  bool conEntregarOtroDia = true,
   bool conCobro = true,
   double escala = 1,
   Size tamano = const Size(390, 844),
@@ -32,7 +33,8 @@ Future<({List<SeguimientoDeLaVenta> continuo, List<int> termino})> _montar(
           items: const [],
         ),
         nombreDelCliente: 'María Fernández',
-        conEntrega: conEntrega,
+        conEntregarAhora: conEntregarAhora,
+        conEntregarOtroDia: conEntregarOtroDia,
         conCobro: conCobro,
         alContinuar: continuo.add,
         alTerminar: () => termino.add(1),
@@ -111,7 +113,12 @@ void main() {
   testWidgets('sin destinos todavía (entrega y cobro no existen): confirmación con un solo botón', (
     tester,
   ) async {
-    final s = await _montar(tester, conEntrega: false, conCobro: false);
+    final s = await _montar(
+      tester,
+      conEntregarAhora: false,
+      conEntregarOtroDia: false,
+      conCobro: false,
+    );
 
     expect(find.text('ENTREGA'), findsNothing);
     expect(find.text('COBRO'), findsNothing);
@@ -125,11 +132,37 @@ void main() {
   });
 
   testWidgets('con solo un grupo disponible se ofrece ese y «Continuar»', (tester) async {
-    await _montar(tester, conEntrega: false);
+    await _montar(tester, conEntregarAhora: false, conEntregarOtroDia: false);
 
     expect(find.text('ENTREGA'), findsNothing);
     expect(find.text('COBRO'), findsOneWidget);
     expect(find.text('Continuar'), findsOneWidget);
+  });
+
+  testWidgets(
+    'con solo «Entregar ahora» (#432; «otro día» es #435) el grupo ENTREGA tiene una opción',
+    (tester) async {
+      final s = await _montar(tester, conEntregarOtroDia: false);
+
+      expect(find.text('ENTREGA'), findsOneWidget);
+      expect(find.text('Entregar ahora'), findsOneWidget);
+      expect(find.text('Entregar otro día'), findsNothing);
+
+      await tocar(tester, find.text('Entregar ahora'));
+      await tocar(tester, find.text('Continuar'));
+
+      expect(s.continuo.single.entrega, MomentoDeEntrega.ahora);
+    },
+  );
+
+  testWidgets('sin «Entregar ahora» pero con «otro día», el grupo ENTREGA lo ofrece solo', (
+    tester,
+  ) async {
+    await _montar(tester, conEntregarAhora: false);
+
+    expect(find.text('ENTREGA'), findsOneWidget);
+    expect(find.text('Entregar ahora'), findsNothing);
+    expect(find.text('Entregar otro día'), findsOneWidget);
   });
 
   testWidgets('volver con el gesto no la cierra: la venta ya está guardada y hay que elegir', (

@@ -33,6 +33,11 @@ abstract final class TextoRecordatorio {
       if (parte != null && parte.trim().isNotEmpty) parte.trim(),
   ].join(' ');
 
+  /// La marca que lleva una dirección de cobranza (la alternativa de la agenda) dada de baja: la cita
+  /// sigue en la Agenda y su recordatorio suena, pero la dirección se ve marcada para que la
+  /// colportora la reagende (decisión de Cristian, 03/11, «Alt. de baja»).
+  static const direccionDadaDeBaja = '(dirección dada de baja)';
+
   /// El dato que viaja con la notificación para saber qué visita abrir al tocarla: solo el id.
   static String payloadDe(String agendaId) => '$_prefijo$agendaId';
 

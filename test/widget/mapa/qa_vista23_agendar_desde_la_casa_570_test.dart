@@ -30,7 +30,7 @@ import '../../helpers/persona_falsos.dart';
 
 final _agendar = find.byKey(ClavesHojaCasa.agendar);
 final _formulario = find.byType(AgendarVisitaPage);
-final _avisoEdificio = find.text(TextosRegistrarVisita.edificioSinDepto);
+final _avisoEdificio = find.text(TextosRegistrarVisita.edificioSinDeptoParaAgendar);
 final _guardar = find.byKey(ClavesAgendarVisita.botonAgendar);
 
 final class _Montaje {
@@ -135,7 +135,7 @@ void main() {
       },
     );
 
-    testWidgets('al guardar, la cita queda en la casa, vuelve a la hoja y avisa', (tester) async {
+    testWidgets('al guardar, la cita queda en la casa, la hoja se cierra y avisa', (tester) async {
       final m = await _montar(tester);
       await _tocarAgendar(tester);
 
@@ -148,9 +148,9 @@ void main() {
       expect(recibida.agenda.tipo, TipoAgenda.entrevista);
       expect(recibida.agenda.colportorId, 'col-1');
       expect(_formulario, findsNothing);
-      // Al volver, la hoja sigue abierta (no se cerró) y el aviso de éxito se ve.
-      expect(m.cierres, isEmpty);
-      expect(_agendar, findsOneWidget);
+      // Tras guardar (decisión de Cristian, 05/11) la hoja se cierra, el mapa queda libre y el aviso de
+      // éxito se ve.
+      expect(m.cierres, hasLength(1));
       expect(find.text('Agendada. La casa queda como «Entrevista agendada».'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });

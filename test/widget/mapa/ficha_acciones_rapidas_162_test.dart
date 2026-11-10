@@ -84,7 +84,7 @@ void main() {
       await montarFicha(tester, mundo(), tamano: const Size(390, 1600));
 
       for (final f in [agendar, entrega]) {
-        expect(tester.getSize(f).height, greaterThanOrEqualTo(40));
+        expect(tester.getSize(f).height, greaterThanOrEqualTo(48));
         final nodo = tester.getSemantics(f);
         expect(nodo.flagsCollection.isButton, isTrue);
       }
@@ -442,11 +442,17 @@ void main() {
         await montarFicha(tester, m, tamano: const Size(390, 1600));
         await tester.ensureVisible(entrega);
         await tester.pump();
+        final colorActivo = tester.widget<ActionChip>(agendar).labelStyle?.color;
 
         await tester.tap(entrega);
         await tester.pump();
 
         expect(tester.widget<ActionChip>(agendar).onPressed, isNull);
+        expect(
+          tester.widget<ActionChip>(agendar).labelStyle?.color,
+          isNot(colorActivo),
+          reason: 'apagada, no se ve igual de activa',
+        );
         expect(tester.widget<ActionChip>(entrega).onPressed, isNull);
         await tester.tap(agendar, warnIfMissed: false);
         await tester.pump();

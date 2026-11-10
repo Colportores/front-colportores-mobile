@@ -35,6 +35,15 @@ abstract final class ReglasDeVenta {
   /// El talonario sin los espacios de los bordes. Vacío = falta.
   static String talonario(String texto) => texto.trim();
 
+  /// Con qué se compara un talonario con otro (decisión de Cristian, 03/11, «Talonario =»): el número
+  /// es una combinación de letras y números y no distingue mayúsculas ni los espacios del principio y
+  /// del final. «t-100», «T-100 » y «T-100» son el mismo; «0100» y «100» siguen siendo distintos. Es
+  /// la misma comparación que hace el servidor (`lower(btrim(numero_talonario))`, backend 0155).
+  static String claveDeTalonario(String texto) => texto.trim().toLowerCase();
+
+  /// Si [a] y [b] son el mismo talonario (ver [claveDeTalonario]).
+  static bool mismoTalonario(String a, String b) => claveDeTalonario(a) == claveDeTalonario(b);
+
   /// El motivo listo para guardar: sin espacios ni saltos de línea en los bordes, `null` si queda en
   /// blanco y cortado en [largoMaximoMotivo] puntos de código. Un motivo largo no se rechaza, se corta;
   /// el que **falta** con el total cambiado sí (ver [faltaElMotivo]).

@@ -32,11 +32,12 @@ final class ConsultaDePreciosSinFuente implements ConsultaDePreciosRepository {
   }
 }
 
-/// Sin la réplica local de `ciudad`, `campania` y `campania_colportor` (adaptador real:
-/// front-colportores-mobile#274): no se sabe en qué ciudades de qué campañas puede consultar.
+/// Sin base local abierta (no hay sesión): no hay de dónde leer en qué ciudades de qué campañas puede
+/// consultar. Con la base abierta lo lee `FuenteDeCiudadesParaPreciosLocal` de las réplicas de `ciudad`,
+/// `campania`, `campania_ciudad`, `campania_colportor` y `zona` (#274, #421).
 ///
 /// Devuelve la falla de lectura y nunca «no tenés campañas»: afirmarlo la mandaría a reclamar una
-/// inscripción que quizá tiene. La app no sale a producción con esta clase.
+/// inscripción que quizá tiene.
 final class FuenteDeCiudadesParaPreciosSinFuente implements FuenteDeCiudadesParaPrecios {
   FuenteDeCiudadesParaPreciosSinFuente({AppLogger? logger}) : _log = logger ?? AppLogger.instance;
 
@@ -47,7 +48,7 @@ final class FuenteDeCiudadesParaPreciosSinFuente implements FuenteDeCiudadesPara
     _log.warn(
       LogModulo.stock,
       'PRECIOS_CIUDADES_SIN_FUENTE',
-      'no hay ciudades ni campañas en el teléfono (falta la réplica local de #274)',
+      'no hay ciudades ni campañas que leer (la base local no está abierta)',
     );
     return const Left(FailurePreciosNoDisponibles());
   }

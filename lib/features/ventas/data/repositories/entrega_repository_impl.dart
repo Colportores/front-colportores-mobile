@@ -55,6 +55,35 @@ final class EntregaRepositoryImpl implements EntregaRepository {
   }
 
   @override
+  Future<Either<Failure, EntregaRegistrada>> registrarEntrega(
+    String ventaId,
+    List<Entrega> filas,
+  ) async {
+    try {
+      return Right(await _local.registrarEntrega(ventaId, filas));
+    } on EntregaSinVentaException {
+      _log.info(LogModulo.db, 'ENTREGA_ALTA_RECHAZADA', 'venta ausente', {
+        'venta_id': ventaId,
+        'motivo': 'venta',
+      });
+      return const Left(FailureEntregaNoGuardada(causa: 'EntregaSinVentaException'));
+    } on Object catch (e, st) {
+      // Ni al log ni a la falla va la excepción tal cual: la de Drift trae la sentencia con sus
+      // parámetros. Solo su tipo (convenciones §7.5).
+      final tipo = e.runtimeType.toString();
+      _log.error(
+        LogModulo.db,
+        'ENTREGA_ALTA_FAIL',
+        'falló la entrega',
+        {'venta_id': ventaId, 'tipo': tipo},
+        null,
+        st,
+      );
+      return Left(FailureEntregaNoGuardada(causa: tipo));
+    }
+  }
+
+  @override
   Future<Either<Failure, List<Entrega>>> deLaVenta(String ventaId) async {
     try {
       return Right(await _local.deLaVenta(ventaId));

@@ -396,7 +396,7 @@ void main() {
         await escribirCuota(tester, 2, '1000');
 
         expect(textoDeCuotaNumero(tester, 3), '\$ 667');
-        expect(find.text('Se ajustó'), findsOneWidget);
+        expect(find.textContaining('Se ajustó'), findsOneWidget);
         expect(botonApagado(tester), isFalse);
 
         await tocarEnCuotas(tester, botonPrincipal);
@@ -521,7 +521,6 @@ void main() {
       );
       await escribirCuota(tester, 2, '1000');
       await escribirCuota(tester, 2, '833');
-      await escribirCuota(tester, 3, '834');
 
       await tocarEnCuotas(tester, volverDeCuotas);
 
@@ -585,7 +584,7 @@ void main() {
           cuotas: [for (var i = 1; i <= 12; i++) cuotaDe(i, dia: i, mes: 12, monto: 100000)],
         ),
       );
-      await escribirCuota(tester, 12, '500');
+      await escribirCuota(tester, 11, '500');
       expect(tester.takeException(), isNull);
       expect(botonApagado(tester), isFalse);
     });
@@ -604,5 +603,4 @@ void main() {
 }
 
 /// Lo que dice el campo de monto de la cuota número [n] (desde 1).
-String textoDeCuotaNumero(WidgetTester tester, int n) =>
-    tester.widget<TextField>(campoDeCuota(n)).controller!.text;
+String textoDeCuotaNumero(WidgetTester tester, int n) => textoDeCuota(tester, n);

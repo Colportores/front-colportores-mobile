@@ -3,7 +3,6 @@
 // miran (barrido de escalas, alcanzar la última fila, lo tipeado tras un error) y las capturas.
 //
 // Capturas: `--dart-define=QA_CAPTURAS=true` (van a `.dart_tool/qa_capturas/`, nunca al repo).
-// Los hallazgos con `skip` se ven fallar con `--dart-define=QA_HALLAZGOS=true`.
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -269,7 +268,7 @@ void main() {
     });
   });
 
-  group('Hallazgos de QA (el de «+ Agendar» sigue con skip: QA_HALLAZGOS=true)', () {
+  group('Hallazgos de QA', () {
     // QA #148 (arreglado): los cuatro chips de filtro quedaban uno debajo del otro, cada uno a todo
     // el ancho, en lugar de una sola fila como en 23B·01 a 23B·09 (el `Container(alignment)` se
     // estiraba al ancho del `Wrap`).
@@ -289,20 +288,18 @@ void main() {
       );
     }
 
-    // skip: QA #148 — en 23B·07 el botón «+ Agendar» no tiene relleno horizontal: el texto toca el
-    // borde del botón (captura 148_e07_412_1.0x.png).
-    probar(
-      'el botón «+ Agendar» del vacío (23B·07) deja aire entre el texto y el borde',
-      (tester) async {
-        await llegarA(tester, Estado148.e07, tamano: telefonoGrande);
+    // QA #148 (arreglado): en 23B·07 el botón «+ Agendar» no tenía relleno horizontal: el texto
+    // tocaba el borde del botón.
+    probar('el botón «+ Agendar» del vacío (23B·07) deja aire entre el texto y el borde', (
+      tester,
+    ) async {
+      await llegarA(tester, Estado148.e07, tamano: telefonoGrande);
 
-        final boton = tester.getRect(find.widgetWithText(OutlinedButton, '+ Agendar'));
-        final texto = tester.getRect(
-          find.descendant(of: find.byType(OutlinedButton), matching: find.text('+ Agendar')),
-        );
-        expect(boton.width - texto.width, greaterThanOrEqualTo(24));
-      },
-      skip: !verHallazgos,
-    );
+      final boton = tester.getRect(find.widgetWithText(OutlinedButton, '+ Agendar'));
+      final texto = tester.getRect(
+        find.descendant(of: find.byType(OutlinedButton), matching: find.text('+ Agendar')),
+      );
+      expect(boton.width - texto.width, greaterThanOrEqualTo(24));
+    });
   });
 }

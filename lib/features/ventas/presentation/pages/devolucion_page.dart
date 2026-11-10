@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
-import '../../../agenda/domain/entities/tipo_agenda.dart';
-import '../../../agenda/presentation/flujo_agendar_visita.dart';
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../../../mapa/domain/entities/persona_del_espacio.dart';
 import '../../../mapa/presentation/providers/personas_providers.dart';
@@ -22,20 +20,22 @@ import '../widgets/piezas_devolucion.dart';
 import '../widgets/piezas_venta.dart';
 
 /// «Devolución de una venta» (vista 31, HU-VEN-004, artboards 31-01 a 31-10): la colportora registra
-/// qué libros le devuelve el cliente, parcial o total, y qué hace con la plata si pagó de más. La venta
-/// original no se borra ni se anula: queda con la devolución anotada. Se abre desde la venta en la ficha
-/// de la persona, ya con la venta, la casa y la persona resueltas (contrato de navegación de la vista
-/// 39); no las vuelve a pedir.
+/// qué libros le devuelve el cliente, parcial o total. Lo devuelto se descuenta de la deuda hasta el
+/// saldo: **nunca queda plata a favor del cliente** (decisión de Cristian, 03/11, «Devol. saldo»), así
+/// que no hay qué hacer con una diferencia (31-02 y 31-03 del canvas ya no existen) y una venta saldada
+/// no se deja devolver. La venta original no se borra ni se anula: queda con la devolución anotada. Se
+/// abre desde la venta en la ficha de la persona, ya con la venta, la casa y la persona resueltas
+/// (contrato de navegación de la vista 39); no las vuelve a pedir.
 ///
 /// - **Elegir** (31-01 y 31-09): una fila por renglón de la venta con su «−  n  +». Sin nada elegido el
 ///   botón está apagado y dice por qué.
-/// - **Seguir** (31-02, 31-03, 31-06 y 31-07): muestra cómo queda la venta. Si el cliente pagó de más hay
-///   que decidir qué se hace con la diferencia: viene elegida «Lo retengo» (la salida que no devuelve
-///   plata, decisión de Cristian, 23/10, «Debo cliente») y «Se lo devuelvo ahora» y «Se lo devuelvo
-///   después» quedan a mano como opciones secundarias; si no, el saldo baja solo. Las filas siguen editables: vaciarlas vuelve a elegir.
+/// - **Seguir** (31-06 y 31-07): muestra cómo queda la venta: lo que se queda, lo que ya pagó y el saldo
+///   nuevo. Si lo devuelto vale más que lo que el cliente debía, lo dice: el saldo queda en cero y ese
+///   dinero no se devuelve. Las filas siguen editables: vaciarlas vuelve a elegir.
 /// - **Confirmar** (31-04): la hoja «¿Registrar la devolución?».
-/// - **Registrada** (31-05): lo que quedó hecho y, si el dinero quedó pendiente, «Agendar la devolución
-///   del dinero».
+/// - **Registrada** (31-05): lo que quedó hecho.
+/// - **Venta saldada**: el cliente pagó todo lo que se queda comprando; la pantalla lo dice en vez de
+///   dejar empezar la devolución.
 /// - **Error al guardar** (31-10): se conserva lo elegido y el botón pasa a «Reintentar». El id de la
 ///   devolución se genera una vez y se repite en los reintentos con los mismos datos: un doble toque o
 ///   un «Reintentar» no devuelven dos veces.
@@ -105,12 +105,8 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
   /// Cuántas unidades de cada renglón se devuelven: `venta_item.id` → unidades.
   Map<String, int> _elegidas = {};
 
-  /// Ya tocó «Seguir»: se ve cómo queda la venta (31-02 a 31-07).
+  /// Ya tocó «Seguir»: se ve cómo queda la venta (31-06 y 31-07).
   var _siguio = false;
-
-  /// Lo que la colportora tocó para la plata de más; `null` mientras no toque ninguna (rige la salida que
-  /// no devuelve plata: [_salida]).
-  QueHacerConLaDiferencia? _queHacer;
 
   /// Hay un guardado en curso: no admite otro toque, no deja salir y bloquea los campos.
   var _enviando = false;
@@ -199,33 +195,18 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
 
   void _cambiarCantidad(RenglonDeLaVenta renglon, int cantidad) {
     if (_enviando) return;
-    final venta = _venta;
-    // La plata de más que había que decidir, antes del cambio.
-    final pagoDeMasAntes = venta == null ? 0 : _cuenta(venta).pagoDeMasCentavos;
     setState(() {
       final n = cantidad.clamp(0, renglon.disponibles);
       _elegidas = {..._elegidas, if (n > 0) renglon.ventaItemId: n};
       if (n == 0) _elegidas.remove(renglon.ventaItemId);
-      // Si cambió el monto a decidir, la elección era para otro monto: vuelve a regir la salida que no
-      // devuelve plata y, si quiere devolver, lo elige de nuevo para el monto nuevo.
-      if (venta != null && _cuenta(venta).pagoDeMasCentavos != pagoDeMasAntes) _queHacer = null;
-      if (_elegidas.isEmpty) {
-        // Sin nada elegido se vuelve a la primera etapa; lo de la plata de más ya no corresponde.
-        _siguio = false;
-        _queHacer = null;
-      }
+      // Sin nada elegido se vuelve a la primera etapa.
+      if (_elegidas.isEmpty) _siguio = false;
       _falla = null;
       _invalida = null;
     });
   }
 
   bool _sePuedeSeguir() => !_enviando && _elegidas.values.any((n) => n > 0);
-
-  /// Qué se hace con la plata de más (31-02 y 31-03): lo que tocó o, mientras no toque nada, «Lo
-  /// retengo», la salida que no devuelve plata (decisión de Cristian, 23/10, «Debo cliente»: devolver
-  /// es una opción a mano pero secundaria). `null` si no hay plata de más que decidir.
-  QueHacerConLaDiferencia? _salida(CuentaDeLaDevolucion cuenta) =>
-      cuenta.hayQueElegir ? (_queHacer ?? QueHacerConLaDiferencia.retener) : null;
 
   bool _sePuedeRegistrar() => !_enviando && _siguio && _sePuedeSeguir();
 
@@ -237,32 +218,13 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
   // --- Registrar ---------------------------------------------------------------------------
 
   /// Qué se muestra en la hoja de confirmar (31-04). En V1 no hay stock ni beca (decisión de Cristian,
-  /// 23/10): solo lo que vuelve y cómo queda la plata.
+  /// 23/10) ni plata que devolver (03/11): solo lo que vuelve y cómo queda el saldo.
   List<DatoDeDevolucion> _datosDeLaHoja(VentaParaDevolver venta) {
     final cuenta = _cuenta(venta);
-    final salida = _salida(cuenta);
-    final destino = ReglasDeDevolucion.destinoDeLaDiferencia(cuenta.pagoDeMasCentavos, salida);
     return [
       DatoDeDevolucion(TextosDevolucion.devuelve, TextosDevolucion.loQueVuelve(venta, _elegidas)),
-      if (salida != null && destino != null)
-        switch (salida) {
-          QueHacerConLaDiferencia.devolverAhora => DatoDeDevolucion(
-            TextosDevolucion.leDevolves,
-            FormatoVenta.monto(cuenta.pagoDeMasCentavos),
-            fuerte: true,
-          ),
-          QueHacerConLaDiferencia.retener => DatoDeDevolucion(
-            TextosDevolucion.retenes,
-            FormatoVenta.monto(cuenta.pagoDeMasCentavos),
-            fuerte: true,
-          ),
-          QueHacerConLaDiferencia.devolverDespues => DatoDeDevolucion(
-            TextosDevolucion.deboAlCliente,
-            FormatoVenta.monto(cuenta.pagoDeMasCentavos),
-            fuerte: true,
-          ),
-        }
-      else
+      // Una venta de $ 0 no mueve plata: la hoja no dice ningún monto.
+      if (venta.montoTotalCentavos > 0)
         DatoDeDevolucion(
           TextosDevolucion.saldoNuevo,
           FormatoVenta.monto(cuenta.saldoNuevoCentavos),
@@ -296,11 +258,9 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
     });
     try {
       final elegidas = {..._elegidas};
-      final salida = _salida(_cuenta(venta));
       final motivo = _motivo.text;
       final datos = [
         for (final k in (elegidas.keys.toList()..sort())) '$k:${elegidas[k]}',
-        salida?.name ?? '',
         motivo,
       ].join('|');
       final previo = _intento;
@@ -318,7 +278,6 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
           ventaId: venta.ventaId,
           colportorId: widget.colportorId,
           unidadesPorRenglon: elegidas,
-          queHacer: salida,
           motivo: motivo,
         ),
       );
@@ -357,6 +316,10 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
         setState(() => _fueraDePlazo = true);
       case FailureDevolucionSinVenta():
         setState(() => _lectura = _Lectura.ausente);
+      case FailureDevolucionVentaSaldada():
+        // Otra cobranza saldó la venta mientras se armaba la devolución: se lee de nuevo y la pantalla
+        // pasa a decir que está saldada.
+        unawaited(_leerLaVenta(mostrarCarga: false));
       case FailureDevolucionInvalida():
         // Lo que quedaba por devolver cambió desde que se abrió: se lee de nuevo, las filas lo dicen y
         // el aviso de arriba explica qué hacer.
@@ -381,8 +344,7 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
 
   /// Hay algo elegido o escrito que se perdería al salir, antes de registrar.
   bool get _hayLoEscrito =>
-      _registrada == null &&
-      (_elegidas.isNotEmpty || _motivo.text.trim().isNotEmpty || _queHacer != null);
+      _registrada == null && (_elegidas.isNotEmpty || _motivo.text.trim().isNotEmpty);
 
   Future<void> _atras() async {
     if (_enviando || _preguntando || _cerrando) return;
@@ -399,23 +361,6 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
     _cerrar(registrada: _registrada != null);
   }
 
-  Future<void> _agendarElDinero() async {
-    if (_navegando || _cerrando) return;
-    _navegando = true;
-    try {
-      final agendada = await FlujoAgendarVisita.abrir(
-        context,
-        espacioId: widget.espacioId,
-        espacioPersonaId: _vinculoId(),
-        colportorId: widget.colportorId,
-        tipo: TipoAgenda.cobranza,
-      );
-      if (agendada && mounted) _cerrar(registrada: true);
-    } finally {
-      _navegando = false;
-    }
-  }
-
   // --- Dibujo ------------------------------------------------------------------------------
 
   PersonaDelEspacio? _personaDelEspacio() {
@@ -423,14 +368,6 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
     if (personaId == null) return null;
     final personas = ref.watch(personasDelEspacioProvider(widget.espacioId)).asData?.value;
     return personas?.where((p) => p.persona.id == personaId).firstOrNull;
-  }
-
-  /// El vínculo persona ↔ espacio del cliente, o `null` si no se sabe quién es.
-  String? _vinculoId() {
-    final personaId = widget.personaId;
-    if (personaId == null) return null;
-    final personas = ref.read(personasDelEspacioProvider(widget.espacioId)).asData?.value;
-    return personas?.where((p) => p.persona.id == personaId).firstOrNull?.vinculo.id;
   }
 
   @override
@@ -463,6 +400,8 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
             ),
           ],
         ),
+        _Lectura.lista when venta != null && venta.rechazaDevoluciones && !venta.estaTodoDevuelto =>
+          _saldada(venta),
         _Lectura.lista when venta != null && _fueraDePlazo => _fueraDelPlazo(venta),
         _Lectura.lista when venta != null && venta.estaTodoDevuelto => _yaDevuelta(venta),
         _Lectura.lista when venta != null => _formulario(venta),
@@ -539,6 +478,20 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
         key: Key('devolucion_fuera_de_plazo'),
         error: false,
         texto: TextosDevolucion.fueraDePlazo,
+      ),
+    ],
+    cta: _botonVolver(),
+  );
+
+  /// La venta está saldada: el cliente pagó todo lo que se queda comprando y no acepta devoluciones
+  /// (decisión de Cristian, 03/11). Se dice por qué, en vez de dejar empezar.
+  Widget _saldada(VentaParaDevolver venta) => _marco(
+    cabecera: _cabecera(venta, titulo: TextosDevolucion.tituloFueraDePlazo, soloVenta: true),
+    hijos: const [
+      AvisoDeVenta(
+        key: Key('devolucion_saldada'),
+        error: false,
+        texto: TextosDevolucion.ventaSaldada,
       ),
     ],
     cta: _botonVolver(),
@@ -624,45 +577,44 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
           ),
         ] else if (!cuenta.estaVacia) ...[
           const SizedBox(height: 4),
-          TarjetaDeDatos(
-            key: const Key('devolucion_cuentas'),
-            datos: [
-              DatoDeDevolucion(
-                TextosDevolucion.seQuedaCon,
-                FormatoVenta.monto(cuenta.seQuedaConCentavos),
-              ),
-              if (cuenta.hayQueElegir) ...[
+          if (venta.montoTotalCentavos == 0)
+            const Text(
+              TextosDevolucion.ventaDeCero,
+              key: Key('devolucion_venta_de_cero'),
+              style: TextStyle(fontSize: 14, height: 1.4, color: ColoresAgenda.tinta),
+            )
+          else
+            TarjetaDeDatos(
+              key: const Key('devolucion_cuentas'),
+              datos: [
                 DatoDeDevolucion(
-                  TextosDevolucion.yaPago,
-                  FormatoVenta.monto(cuenta.yaPagoCentavos),
+                  TextosDevolucion.seQuedaCon,
+                  FormatoVenta.monto(cuenta.seQuedaConCentavos),
                 ),
-                DatoDeDevolucion(
-                  TextosDevolucion.pagoDeMas,
-                  FormatoVenta.monto(cuenta.pagoDeMasCentavos),
-                  fuerte: true,
-                ),
-              ] else if (cuenta.saldoNuevoCentavos > 0) ...[
-                DatoDeDevolucion(
-                  TextosDevolucion.yaPago,
-                  FormatoVenta.monto(cuenta.yaPagoCentavos),
-                ),
+                if (cuenta.yaPagoCentavos > 0)
+                  DatoDeDevolucion(
+                    TextosDevolucion.yaPago,
+                    FormatoVenta.monto(cuenta.yaPagoCentavos),
+                  ),
                 DatoDeDevolucion(
                   TextosDevolucion.saldoNuevo,
                   FormatoVenta.monto(cuenta.saldoNuevoCentavos),
                   fuerte: true,
                 ),
               ],
-            ],
-          ),
-          if (cuenta.hayQueElegir) ...[
-            const SizedBox(height: 12),
-            OpcionesDeLaDiferencia(
-              rotulo: TextosDevolucion.queHaces(cuenta.pagoDeMasCentavos),
-              elegida: _salida(cuenta),
-              alElegir: _enviando ? null : (o) => setState(() => _queHacer = o),
+            ),
+          if (cuenta.haySinDevolver) ...[
+            const SizedBox(height: 8),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                TextosDevolucion.sinDevolver(cuenta.sinDevolverCentavos),
+                key: const Key('devolucion_sin_devolver'),
+                style: const TextStyle(fontSize: 12.5, height: 1.4, color: ColoresAgenda.gris),
+              ),
             ),
           ],
-          const SizedBox(height: 4),
+          const SizedBox(height: 12),
           CampoDeVenta(
             key: const Key('devolucion_motivo'),
             rotulo: TextosDevolucion.motivo,
@@ -684,61 +636,39 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
   /// 31-05: la devolución quedó registrada.
   Widget _exito(DevolucionRegistrada registrada) {
     final venta = _venta;
-    final debo = registrada.deboAlClienteCentavos;
     return _marco(
       cabecera: CabeceraVenta(
         eyebrow: venta == null ? 'DEVOLUCIÓN' : TextosDevolucion.eyebrow(venta.numeroTalonario),
         titulo: TextosDevolucion.tituloRegistrada,
       ),
       hijos: [
-        TarjetaDeDatos(
-          key: const Key('devolucion_resumen'),
-          datos: [
-            DatoDeDevolucion(
-              TextosDevolucion.totalDeLaVenta,
-              FormatoVenta.monto(registrada.totalCentavos),
-            ),
-            DatoDeDevolucion(TextosDevolucion.saldo, FormatoVenta.monto(registrada.saldoCentavos)),
-            if (debo > 0)
+        // Una devolución sin plata (venta de $ 0) no muestra montos: queda solo el aviso (decisión del
+        // orquestador, 06/11, por el mapa §2: coherencia con la pantalla de elegir y la hoja).
+        if (venta == null || venta.montoTotalCentavos > 0) ...[
+          TarjetaDeDatos(
+            key: const Key('devolucion_resumen'),
+            datos: [
               DatoDeDevolucion(
-                TextosDevolucion.deboAlCliente,
-                FormatoVenta.monto(debo),
-                fuerte: true,
-                alerta: true,
+                TextosDevolucion.totalDeLaVenta,
+                FormatoVenta.monto(registrada.totalCentavos),
               ),
-          ],
-        ),
-        const SizedBox(height: 12),
+              DatoDeDevolucion(
+                TextosDevolucion.saldo,
+                FormatoVenta.monto(registrada.saldoCentavos),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
         AvisoDeDevolucionHecha(
           texto: TextosDevolucion.registramos(_titulosDevueltos, todo: registrada.eraTotal),
         ),
       ],
-      cta: debo > 0
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                BotonDeVenta(
-                  key: const Key('devolucion_agendar'),
-                  texto: TextosDevolucion.agendarElDinero,
-                  alPresionar: () => unawaited(_agendarElDinero()),
-                ),
-                TextButton(
-                  key: const Key('devolucion_listo'),
-                  onPressed: () => _cerrar(registrada: true),
-                  style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-                  child: const Text(
-                    TextosDevolucion.listo,
-                    style: TextStyle(fontWeight: FontWeight.w600, color: ColoresAgenda.azul),
-                  ),
-                ),
-              ],
-            )
-          : BotonDeVenta(
-              key: const Key('devolucion_listo'),
-              texto: TextosDevolucion.listo,
-              alPresionar: () => _cerrar(registrada: true),
-            ),
+      cta: BotonDeVenta(
+        key: const Key('devolucion_listo'),
+        texto: TextosDevolucion.listo,
+        alPresionar: () => _cerrar(registrada: true),
+      ),
     );
   }
 }

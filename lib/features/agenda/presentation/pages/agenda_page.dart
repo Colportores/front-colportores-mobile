@@ -167,6 +167,7 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
     }
     final notificador = ref.read(filtrosAgendaProvider(widget.colportorId).notifier);
     final agendar = ref.watch(agendarDesdeLaAgendaProvider);
+    final agendarEnDia = ref.watch(agendarEnUnDiaDesdeLaAgendaProvider);
     final detalle = ref.watch(abrirDetalleDeAgendaProvider);
     final registrar = ref.watch(registrarVisitaDesdeLaCasaProvider);
 
@@ -223,6 +224,9 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
             alAgendar: agendar == null || !filtros.esPorDefecto
                 ? null
                 : () => unawaited(_sola(agendar)),
+            alAgendarEnDia: agendar == null || agendarEnDia == null || !filtros.esPorDefecto
+                ? null
+                : (dia) => unawaited(_sola(() => agendarEnDia(dia))),
             alAbrirDetalle: detalle == null
                 ? null
                 : (item) => unawaited(_sola(() => detalle(item.agenda.id))),
@@ -308,6 +312,7 @@ class _Dias extends StatelessWidget {
     required this.vista,
     required this.ahora,
     required this.alAgendar,
+    required this.alAgendarEnDia,
     required this.alAbrirDetalle,
     required this.alRegistrar,
     required this.registrando,
@@ -317,6 +322,9 @@ class _Dias extends StatelessWidget {
   final VistaAgenda vista;
   final DateTime ahora;
   final VoidCallback? alAgendar;
+
+  /// «+ Agendar» del rótulo de un día futuro: ese día va al formulario. `null`: se usa [alAgendar].
+  final ValueChanged<DateTime>? alAgendarEnDia;
   final ValueChanged<ItemAgenda>? alAbrirDetalle;
   final ValueChanged<ItemAgenda>? alRegistrar;
 
@@ -359,7 +367,11 @@ class _Dias extends StatelessWidget {
                   ? FormatoAgenda.rotuloDelDia(entrada)
                   : FormatoAgenda.rotuloConConteo(entrada),
               // «+ Agendar» queda en el primer día de la lista (hoy, o el que siga), no en las atrasadas.
-              alAgendar: identical(entrada, vista.dias.first) ? alAgendar : null,
+              alAgendar: !identical(entrada, vista.dias.first)
+                  ? null
+                  : alAgendarEnDia != null && alAgendar != null && entrada.diasDesdeHoy > 0
+                  ? () => alAgendarEnDia!(entrada.dia)
+                  : alAgendar,
             );
           }
           final item = switch (entrada) {

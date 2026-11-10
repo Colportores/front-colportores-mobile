@@ -174,7 +174,6 @@ void main() {
         final fila = (await cobros()).single;
         expect(fila.fecha, ahora.toUtc());
         expect(fila.createdBy, 'col-1');
-        expect(fila.numeroCuota, isNull);
       });
 
       test(
@@ -626,12 +625,12 @@ void main() {
         'monto',
         'medio',
         'fecha',
-        'numero_cuota',
         'tarjeta_tipo',
         'tarjeta_marca',
         'numero_aprobacion',
         'referencia_transferencia',
         'banco_origen',
+        'ticket_id',
         'created_at',
         'updated_at',
         'created_by',
@@ -642,11 +641,11 @@ void main() {
       for (final ajeno in ['per-1', 'ep-1', 'esp-1', 'T-v-1', 'producto']) {
         expect(texto, isNot(contains(ajeno)), reason: ajeno);
       }
-      // Lo que el servidor valida: entero > 0, medio del catálogo, fecha ISO con zona, cuota nula.
+      // Lo que el servidor valida: entero > 0, medio del catálogo, fecha ISO con zona, y ningún número de cuota (#608).
       expect(payload['monto'], isA<int>());
       expect(payload['medio'], 'EFECTIVO');
       expect(DateTime.parse(payload['fecha']! as String).isUtc, isTrue);
-      expect(payload['numero_cuota'], isNull);
+      expect(payload.containsKey('numero_cuota'), isFalse);
     });
 
     test('los rechazos y las fallas loguean ids y códigos, nunca el monto, el saldo ni el texto de '
