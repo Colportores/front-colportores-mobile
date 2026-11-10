@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/eleccion_de_entrevista.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona_de_la_entrevista.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/espacio_repository.dart';
@@ -33,7 +34,14 @@ final class ObservadorDeRutas extends NavigatorObserver {
 
 /// Lo que la pantalla de arranque recibió del paso.
 final class ResultadoConQuien {
-  PersonaDeLaEntrevista? elegida;
+  /// Lo que devolvió el paso: `null` = «Volver» o cerró sin elegir.
+  EleccionDeEntrevista? eleccion;
+
+  /// La persona con la que sigue la entrevista; `null` si no se eligió nada o quedó sin persona.
+  PersonaDeLaEntrevista? get elegida => eleccion?.persona;
+
+  /// La entrevista sigue sin persona («Todavía no sé con quién»).
+  bool get sinPersona => eleccion is EntrevistaSinPersona;
 
   /// Cuántas veces terminó el paso (con o sin persona).
   var cierres = 0;
@@ -131,7 +139,7 @@ Future<ResultadoConQuien> montarConQuien(
                     colportorId: 'col-1',
                   );
                   resultado
-                    ..elegida = e
+                    ..eleccion = e
                     ..cierres += 1;
                 },
                 child: const Text('abrir paso'),

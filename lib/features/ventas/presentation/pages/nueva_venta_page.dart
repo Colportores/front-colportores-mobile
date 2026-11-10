@@ -148,9 +148,9 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
         BaseDeColeccion(
           componente: ComponenteVendido(productoId: c.productoId, cantidad: c.cantidad),
           nombre: productos[c.productoId]?.nombre ?? 'Producto sin nombre',
-          glifo: switch (productos[c.productoId]?.tipo) {
-            TipoDeProducto.misionero => '✦',
-            TipoDeProducto.revista => '▤',
+          glifo: switch (productos[c.productoId]?.categoria) {
+            CategoriaDeProducto.misioneros => '✦',
+            CategoriaDeProducto.revistas => '▤',
             _ => '✝',
           },
         ),

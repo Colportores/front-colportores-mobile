@@ -81,6 +81,12 @@ abstract final class TextosEntrevista {
       'La casa de esta entrevista ya no está en tu teléfono, así que la entrevista se cerró sin '
       'guardar. Podés seguir.';
 
+  /// R·07 (sin inicio) con la casa ya fuera. No hay entrevista que cerrar: lo que no se
+  /// guardó es la visita. Dice qué pasó y qué hacer.
+  static const sinLugarSinInicio =
+      'La casa de esta entrevista ya no está en tu teléfono, así que no pudimos guardar la visita. '
+      'Cerrá esta hoja y volvé al mapa.';
+
   /// Propuesta: ya no hay entrevista (otro toque la terminó).
   static const yaNoHayEntrevista = 'Esta entrevista ya no está en curso.';
 
@@ -95,6 +101,15 @@ abstract final class TextosEntrevista {
   static String ventaNoGuardada(String persona) => persona.trim().isEmpty
       ? 'La venta no se guardó. La entrevista sigue en curso.'
       : 'La venta no se guardó. La entrevista con ${persona.trim()} sigue en curso.';
+
+  /// El botón del aviso «Ya tenés una entrevista en curso en …» de «¿Qué pasó?»: abre esa entrevista.
+  static const irALaEntrevista = 'Ir a la entrevista';
+
+  /// «Entrevista dada» con otra entrevista en curso en otra casa: no se empieza una segunda encima.
+  /// Propuesta (mapa §2: caso límite de UI).
+  static String yaHayUnaEnCurso(String direccion) => direccion.trim().isEmpty
+      ? 'Ya tenés una entrevista en curso en otra casa. Terminala antes de empezar otra.'
+      : 'Ya tenés una entrevista en curso en ${direccion.trim()}. Terminala antes de empezar otra.';
 
   /// Lo mismo cuando se vino de «Finalizar jornada»: la jornada no se cierra con una entrevista abierta.
   static String ventaNoGuardadaEnLaJornada(String persona) =>

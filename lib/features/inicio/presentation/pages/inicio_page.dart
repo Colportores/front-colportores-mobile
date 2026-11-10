@@ -17,11 +17,13 @@ import '../../../mapa/presentation/pages/mapa_ubicaciones_page.dart';
 import '../../../mapa/presentation/pages/modificar_ubicacion_page.dart'
     show UbicacionExistenteElegida;
 import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
+import '../../../mapa/presentation/providers/ubicacion_colportor_provider.dart';
 import '../../../mapa/presentation/widgets/hoja_ubicacion.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagadas.dart';
 import '../../../notificaciones/presentation/widgets/campana_notificaciones.dart';
 import '../../../respaldo/presentation/widgets/aviso_sin_respaldo.dart';
 import '../../../tiles/presentation/widgets/hoja_sugerencia_mapa.dart';
+import '../providers/navegacion_inicio_provider.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
 export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
@@ -37,6 +39,9 @@ export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
 /// del sistema desde las pestañas vuelve a "Hoy", y desde
 /// "Hoy" cierra la app (decisión de Cristian, 29/09). Las pestañas se mantienen vivas al cambiar (`IndexedStack`): no se pierde lo que el
 /// colportor estaba haciendo en "Hoy", como la hora de inicio elegida.
+///
+/// La pestaña a la vista no vive acá sino en `navegacionInicioProvider` (#649): cualquier pantalla o
+/// flujo le puede pedir «ir a la casa» (llevarla al mapa principal) sin conocer esta pantalla.
 class InicioPage extends ConsumerStatefulWidget {
   const InicioPage({super.key, required this.sesion});
 
@@ -47,15 +52,36 @@ class InicioPage extends ConsumerStatefulWidget {
 }
 
 class _InicioPageState extends ConsumerState<InicioPage> {
-  PestanaInicio _actual = PestanaInicio.hoy;
+  @override
+  void initState() {
+    super.initState();
+    // La pestaña vive en `navegacionInicioProvider` (#649) y ese provider dura toda la sesión: una
+    // pantalla principal nueva arranca en «Hoy», como siempre.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(navegacionInicioProvider.notifier).reiniciar();
+    });
+  }
 
-  void _ir(PestanaInicio pestana) => setState(() => _actual = pestana);
+  /// La pestaña a la vista la guarda el shell (`navegacionInicioProvider`), no esta pantalla: así las
+  /// otras pestañas y los flujos le piden «llevame a esta casa en el mapa» (`irALaCasa`).
+  void _ir(PestanaInicio pestana) => ref.read(navegacionInicioProvider.notifier).ir(pestana);
+
+  /// «Activar GPS» de la Lista (#651): el permiso solo se pide desde el Mapa, así que lleva al
+  /// colportor ahí y es el Mapa quien lo activa; nunca sale un diálogo sobre la Lista. Si todavía
+  /// nadie pidió el GPS, al abrirse el Mapa lo lee y pide el permiso solo; si ya falló, «Activar GPS»
+  /// lo manda al permiso o a los ajustes que correspondan.
+  void _activarGpsEnElMapa() {
+    final gps = ref.read(ubicacionColportorProvider.notifier);
+    final yaPedido = ref.read(ubicacionColportorProvider).gps != EstadoGpsLista.sinPedir;
+    _ir(PestanaInicio.mapa);
+    if (yaPedido) unawaited(gps.activarGps());
+  }
 
   /// Evita abrir dos veces la hoja de una ubicación con dos toques seguidos en una fila de la Lista.
   var _abriendoUbicacion = false;
 
-  /// «›» de una fila de la Lista (HU-UBI-007): la hoja de la ubicación con sus deptos (vista 11), la
-  /// misma que abre «Detalle» en la vista previa del mapa. Si desde la edición el aviso de duplicado
+  /// «›» de una fila de edificio o negocio de la Lista (HU-UBI-007): la hoja de la ubicación con sus
+  /// deptos (vista 11). Una casa abre la hoja de la casa (vista 39, C·01). Si desde la edición el aviso de duplicado
   /// manda a otra ubicación, se abre la hoja de esa otra. Lo demás que pase en la edición (cambios,
   /// baja) la Lista lo ve sola al releer.
   Future<void> _abrirUbicacion(String ubicacionId, double? distanciaMetros) async {
@@ -108,27 +134,28 @@ class _InicioPageState extends ConsumerState<InicioPage> {
 
   @override
   Widget build(BuildContext context) {
+    final actual = ref.watch(navegacionInicioProvider.select((n) => n.actual));
     // Con la vista previa del mapa abierta el atrás es de ella (la cierra, como su ✕): la pantalla
     // principal no vuelve a «Hoy». Flutter avisa a todos los `PopScope` de la ruta, así que no
     // alcanza con que el del mapa también atienda: esta pantalla tiene que saber, al construirse y
     // no al atender el atrás (el del mapa ya pudo haber cerrado la vista previa), que no le toca.
     final mapaConVistaPrevia =
-        _actual == PestanaInicio.mapa &&
+        actual == PestanaInicio.mapa &&
         ref.watch(
           mapaUbicacionesProvider(
             widget.sesion.usuarioId,
           ).select((estado) => estado.hayVistaPrevia),
         );
     return PopScope(
-      canPop: _actual == PestanaInicio.hoy,
+      canPop: actual == PestanaInicio.hoy,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && !mapaConVistaPrevia) _ir(PestanaInicio.hoy);
       },
-      child: _LectorTeclado(child: _scaffold(context)),
+      child: _LectorTeclado(child: _scaffold(context, actual)),
     );
   }
 
-  Widget _scaffold(BuildContext context) {
+  Widget _scaffold(BuildContext context, PestanaInicio actual) {
     final theme = Theme.of(context);
     final esquema = theme.colorScheme;
 
@@ -165,9 +192,9 @@ class _InicioPageState extends ConsumerState<InicioPage> {
               _AvisosDeZona(colportorId: widget.sesion.usuarioId),
               // Más de 7 días sin un respaldo exitoso (HU-SYNC-005): sin nada que avisar no ocupa
               // lugar. Solo en Hoy (decisión del 29/10); con el teclado abierto gana el campo.
-              if (_actual == PestanaInicio.hoy) const _AvisoSinRespaldo(),
+              if (actual == PestanaInicio.hoy) const _AvisoSinRespaldo(),
               // El aviso de las notificaciones apagadas (HU-NOT-001, 24A·03) es de Hoy.
-              if (_actual == PestanaInicio.hoy) const _AvisoNotificaciones(),
+              if (actual == PestanaInicio.hoy) const _AvisoNotificaciones(),
             ],
           ),
           // La sugerencia de bajar el mapa de la zona nueva (vista 35, 35-10, HU-SYNC-010): no dibuja
@@ -175,7 +202,7 @@ class _InicioPageState extends ConsumerState<InicioPage> {
           SugerenciaMapaZona(colportorId: widget.sesion.usuarioId),
           Expanded(
             child: IndexedStack(
-              index: _actual.index,
+              index: actual.index,
               children: [
                 JornadaPage(sesion: widget.sesion, onAbrirMapa: () => _ir(PestanaInicio.mapa)),
                 for (final pestana in PestanaInicio.values.skip(1))
@@ -185,12 +212,14 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                     PestanaInicio.mapa => MapaUbicacionesPage(
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
-                      activa: _actual == PestanaInicio.mapa,
+                      activa: actual == PestanaInicio.mapa,
                     ),
                     PestanaInicio.lista => ListaUbicacionesPage(
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
-                      activa: _actual == PestanaInicio.lista,
+                      activa: actual == PestanaInicio.lista,
+                      casaAbreSuHoja: true,
+                      alActivarGps: _activarGpsEnElMapa,
                       alAbrirUbicacion: (id, distancia) =>
                           unawaited(_abrirUbicacion(id, distancia)),
                     ),
@@ -198,14 +227,14 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                     PestanaInicio.agenda => AgendaPage(
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
-                      activa: _actual == PestanaInicio.agenda,
+                      activa: actual == PestanaInicio.agenda,
                     ),
                     // Mi Cuenta (HU-CTA-001, vista 33A): las cifras de la plata, con la diferencia contra
                     // la semana pasada.
                     PestanaInicio.cuenta => CuentaPage(
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
-                      activa: _actual == PestanaInicio.cuenta,
+                      activa: actual == PestanaInicio.cuenta,
                     ),
                     // Ventas todavía no tiene su pantalla (vista 27): por ahora solo lleva a «Precios».
                     PestanaInicio.ventas => PestanaProvisoria(
@@ -220,7 +249,7 @@ class _InicioPageState extends ConsumerState<InicioPage> {
           ),
         ],
       ),
-      bottomNavigationBar: BarraPestanasInicio(seleccionada: _actual, onSeleccionar: _ir),
+      bottomNavigationBar: BarraPestanasInicio(seleccionada: actual, onSeleccionar: _ir),
     );
   }
 }

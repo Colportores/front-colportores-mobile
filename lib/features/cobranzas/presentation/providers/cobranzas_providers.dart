@@ -5,6 +5,7 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../agenda/presentation/providers/recordatorios_providers.dart';
+import '../../../mapa/domain/services/cuotas_de_personas.dart';
 import '../../../mapa/domain/services/saldos_de_personas.dart';
 import '../../../mapa/presentation/providers/house_status_providers.dart';
 import '../../data/datasources/cobranza_local_data_source_drift.dart';
@@ -66,6 +67,19 @@ final class SaldosDePersonasLocal implements SaldosDePersonas {
   @override
   Future<Map<String, int>> saldosPendientes(Iterable<String> personaIds) =>
       _local.saldosPorPersona(personaIds);
+}
+
+/// El día de la cuota que toca de cada persona que debe (la línea «Debe $ 1.200 · cuota sáb 26/10» de
+/// la hoja de la casa): de las citas de cobranza de sus ventas, la vencida más vieja o, si no hay, la
+/// abierta más próxima. Local: sale de la agenda del teléfono, nunca del servidor.
+final class CuotasDePersonasLocal implements CuotasDePersonas {
+  const CuotasDePersonasLocal(this._local);
+
+  final CobranzaLocalDataSourceDrift _local;
+
+  @override
+  Future<Map<String, DateTime>> proximaCuotaDe(Iterable<String> personaIds) =>
+      _local.proximaCuotaPorPersona(personaIds);
 }
 
 // Saldo pendiente reactivo (HU-COB-005): lo que se debe por venta, por persona, por ubicación y en

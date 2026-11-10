@@ -6,19 +6,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../agenda/presentation/formato_agenda.dart' show TextosAgenda;
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart'
     show frenaPorCuentaRestringida;
+import '../../../inicio/presentation/providers/navegacion_inicio_provider.dart';
 import '../../domain/entities/contexto_de_la_casa.dart';
 import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
+import '../../domain/entities/persona.dart';
+import '../../domain/entities/ubicacion.dart' show TipoUbicacion;
 import '../../domain/services/cercania_de_la_casa.dart';
+import '../formato_espacios.dart' show TextosEspacios;
 import '../formato_hoja_casa.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
 import '../pages/alta_persona_page.dart';
+import '../pages/modificar_ubicacion_page.dart'
+    show UbicacionBajaRealizada, UbicacionExistenteElegida;
 import '../providers/hoja_casa_providers.dart';
-import '../textos_personas.dart' show TextosPersonas;
+import '../textos_personas.dart' show FormatoPersonas, TextosPersonas;
 import '../textos_registrar_visita.dart';
 import 'estados_hoja_casa.dart';
 import 'hoja_con_quien.dart' show mostrarHojaConQuienParaProgramar;
+import 'hoja_ubicacion.dart' show abridorEdicionUbicacionProvider;
 import 'pestanas_hoja_casa.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta;
 import 'piezas_hoja_casa.dart';
@@ -69,6 +76,11 @@ import 'visitas_agendadas_de_la_casa.dart';
 /// Una sola acción a la vez: «Registrar visita» y «$ Cobrar» comparten la guarda, así que un doble
 /// toque, o dos botones seguidos, abren una sola vez; si la acción falla la hoja avisa y los botones
 /// vuelven a poder tocarse.
+///
+/// **Tras guardar, vuelve al mapa** (decisión de Cristian, 05/11, «Tras guardar»): cuando una acción de
+/// la hoja se guarda —el resultado de la visita, el fin de la entrevista, una venta, un cobro, una
+/// agenda— la hoja se cierra y queda el mapa libre, con la casa a la vista y su color nuevo
+/// (`NavegacionInicioNotifier.volverAlMapa`). Para seguir con la misma casa, se la vuelve a tocar.
 class HojaCasa extends ConsumerStatefulWidget {
   const HojaCasa({
     super.key,
@@ -78,6 +90,7 @@ class HojaCasa extends ConsumerStatefulWidget {
     this.alReactivar,
     this.arriba = false,
     this.colportorId,
+    this.alAbrirOtra,
   });
 
   final ItemListaUbicacion item;
@@ -96,6 +109,11 @@ class HojaCasa extends ConsumerStatefulWidget {
   /// UUID del colportor con la sesión iniciada (`created_by` de las altas). Sin él no se ofrece
   /// «+ Agregar persona».
   final String? colportorId;
+
+  /// «Abrir la existente» del aviso de duplicado de «Editar casa» (decisión del 05/11, #652): el
+  /// anfitrión (el mapa o la Lista) reemplaza esta hoja por la de esa otra ubicación (él sabe cómo
+  /// cerrar la suya antes de abrir la otra). Sin él, la hoja solo se cierra.
+  final ValueChanged<String>? alAbrirOtra;
 
   @override
   ConsumerState<HojaCasa> createState() => _HojaCasaState();
@@ -137,6 +155,13 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
         if (_falla != null) _mostrarLaFalla();
       }
     }
+  }
+
+  /// La acción se guardó: el mapa queda libre y la hoja se cierra (ver el comentario de la clase). Es
+  /// el shell quien lleva la pestaña Mapa a la vista, también si esta hoja es la modal de la Lista.
+  void _volverAlMapa() {
+    ref.read(navegacionInicioProvider.notifier).volverAlMapa(widget.item.ubicacion.id);
+    widget.alCerrar();
   }
 
   /// La hoja se desplaza: si el aviso de la falla quedó fuera de la vista, se lo trae.
@@ -219,6 +244,8 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
                 direccion: FormatoUbicaciones.direccion(ubicacion),
                 subtitulo: subtitulo,
                 alCerrar: widget.alCerrar,
+                tipo: ubicacion.tipo,
+                alEditar: _editarCasa(),
               ),
               const SizedBox(height: 10),
               cuerpo,
@@ -227,6 +254,38 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
         ),
       ),
     );
+  }
+
+  /// Lo que hace «Editar casa», o `null` si no se ofrece: sin saber quién es el colportor, o con la
+  /// casa de baja (esa se reactiva, no se edita). Abre la vista 07 con la ubicación de la casa y, al
+  /// guardar o cancelar, **vuelve a esta hoja**, que sigue abierta (si se dio de baja, o si se eligió
+  /// «Abrir la existente», se cierra y en ese caso [alAbrirOtra] abre la otra): la casa se lee de la lista viva y
+  /// muestra la dirección nueva sin cerrar la hoja ni mover el mapa. Comparte la guarda de las demás
+  /// acciones (un doble toque abre una sola edición). Con la cuenta restringida no se abre otra edición.
+  VoidCallback? _editarCasa() {
+    final colportorId = widget.colportorId;
+    if (colportorId == null || widget.item.esBaja) return null;
+    final abrir = ref.watch(abridorEdicionUbicacionProvider);
+    return () => _correr(() async {
+      if (frenaPorCuentaRestringida(context, ref)) return;
+      final salida = await abrir(
+        context,
+        colportorId: colportorId,
+        ubicacionId: widget.item.ubicacion.id,
+      );
+      // Se dio de baja desde la 07 (09·01): la casa ya no está activa, así que la hoja no vuelve con
+      // sus acciones (Registrar visita, Editar casa); se cierra, como el resto de la salida del mapa.
+      if (salida is UbicacionBajaRealizada && mounted) widget.alCerrar();
+      // «Abrir la existente»: la edición no se guardó y se abre esa otra casa, como en la vista 10.
+      if (salida is UbicacionExistenteElegida && mounted) {
+        final abrirOtra = widget.alAbrirOtra;
+        if (abrirOtra == null) {
+          widget.alCerrar();
+        } else {
+          abrirOtra(salida.ubicacionId);
+        }
+      }
+    }, TextosEspacios.noPudimosAbrirEdicion);
   }
 
   /// Lo que hace «Registrar visita», o `null` si no se ofrece: sin destino enganchado, o con la casa
@@ -240,8 +299,9 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
         espacioId: contexto.espacioId,
         agendaId: null,
       ));
-      // Se guardó o siguió a otro flujo: la hoja de la casa se va y el mapa muestra el color nuevo.
-      if (resuelta == true && mounted) widget.alCerrar();
+      // Se guardó o siguió a otro flujo: la hoja de la casa se va y el mapa queda libre, con el color
+      // nuevo.
+      if (resuelta == true && mounted) _volverAlMapa();
     }, TextosHojaCasa.noPudimosAbrirVisita);
   }
 
@@ -260,7 +320,9 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
       if (espacioId == null) {
         ScaffoldMessenger.maybeOf(context)
           ?..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text(TextosRegistrarVisita.edificioSinDepto)));
+          ..showSnackBar(
+            const SnackBar(content: Text(TextosRegistrarVisita.edificioSinDeptoParaAgendar)),
+          );
         return;
       }
       final eleccion = await mostrarHojaConQuienParaProgramar(
@@ -269,7 +331,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
         colportorId: colportorId,
       );
       if (eleccion == null || !mounted) return;
-      await destino((
+      final agendada = await destino((
         ubicacionId: widget.item.ubicacion.id,
         espacioId: espacioId,
         espacioPersonaId: eleccion.espacioPersonaId,
@@ -278,18 +340,28 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
           CitaSinPersona() => null,
         },
       ));
+      // Agendada: el mapa queda libre con la casa en su color nuevo (si se canceló, la hoja sigue).
+      if (agendada == true && mounted) _volverAlMapa();
     }, TextosAgenda.noPudimosAbrir);
   }
 
   /// Lo que hace tocar a la persona [personaId] (abrir su ficha, 32B), o `null` si no se ofrece: sin
   /// destino enganchado la fila no se toca. Se puede abrir con la casa dada de baja (es solo ver).
-  VoidCallback? Function(String personaId) _abrirFicha(ContextoDeLaCasa contexto) {
+  /// La ficha recibe el nombre de pila que la fila ya tiene ([nombre] vacío = sin nombre).
+  VoidCallback? Function(Persona persona) _abrirFicha(ContextoDeLaCasa contexto) {
     final destino = ref.watch(fichaDePersonaDesdeLaCasaProvider);
     final espacioId = contexto.espacioId;
-    return (personaId) {
+    return (persona) {
       if (destino == null || espacioId == null) return null;
+      final pila = persona.nombre.trim();
+      final completo = FormatoPersonas.nombreCompleto(persona);
       return () => _correr(
-        () => destino((personaId: personaId, espacioId: espacioId)),
+        () => destino((
+          personaId: persona.id,
+          espacioId: espacioId,
+          nombre: pila.isEmpty ? null : pila,
+          nombreCompleto: completo.isEmpty ? null : completo,
+        )),
         TextosPestanasHojaCasa.noPudimosAbrirFicha,
       );
     };
@@ -319,25 +391,38 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
     final destino = ref.watch(cobrarDesdeLaCasaProvider);
     return (personaId) {
       if (destino == null || widget.item.esBaja) return null;
-      return () => _correr(
-        () => destino((
+      return () => _correr(() async {
+        final cobrado = await destino((
           ubicacionId: widget.item.ubicacion.id,
           espacioId: contexto.espacioId,
           personaId: personaId,
-        )),
-        TextosHojaCasa.noPudimosAbrirCobro,
-      );
+        ));
+        // Cobrado: el mapa queda libre con la casa en su color nuevo (si no se cobró, la hoja sigue).
+        if (cobrado == true && mounted) _volverAlMapa();
+      }, TextosHojaCasa.noPudimosAbrirCobro);
     };
   }
 }
 
 /// El título (la dirección), la ✕ y la línea de abajo.
 class _Cabecera extends StatelessWidget {
-  const _Cabecera({required this.direccion, required this.subtitulo, required this.alCerrar});
+  const _Cabecera({
+    required this.direccion,
+    required this.subtitulo,
+    required this.alCerrar,
+    required this.alEditar,
+    required this.tipo,
+  });
 
   final String direccion;
+
+  /// El tipo de la ubicación: el rótulo de «Editar …» lo sigue (casa, edificio o negocio).
+  final TipoUbicacion tipo;
   final String subtitulo;
   final VoidCallback alCerrar;
+
+  /// El botón «Editar …» junto a la dirección; `null` = no se ofrece.
+  final VoidCallback? alEditar;
 
   @override
   Widget build(BuildContext context) {
@@ -349,21 +434,56 @@ class _Cabecera extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
+              // Con el botón la fila mide lo mismo que la ✕ (48 dp) y la dirección queda centrada en
+              // ella (lo mismo que 12 dp de aire arriba), así que el botón no le suma alto; sin él, el
+              // aire de siempre.
               child: Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Semantics(
-                  header: true,
-                  child: Text(
-                    direccion,
-                    key: ClavesHojaCasa.titulo,
-                    style: const TextStyle(
-                      fontFamily: 'SourceSerif4',
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                      height: 1.2,
-                      color: ColoresLista.tinta,
+                padding: EdgeInsets.only(top: alEditar == null ? 12 : 0),
+                // «Editar casa» (decisión de Cristian, 04/11; con el lápiz y el rótulo del tipo,
+                // decisión del 05/11, #652) va junto a la dirección y, si no entra a su lado (texto
+                // grande, calle larga), pasa abajo: ni la dirección ni el botón se recortan.
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 4,
+                  children: [
+                    Semantics(
+                      header: true,
+                      child: Text(
+                        direccion,
+                        key: ClavesHojaCasa.titulo,
+                        style: const TextStyle(
+                          fontFamily: 'SourceSerif4',
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          height: 1.2,
+                          color: ColoresLista.tinta,
+                        ),
+                      ),
                     ),
-                  ),
+                    if (alEditar != null)
+                      Semantics(
+                        button: true,
+                        label: TextosHojaCasa.editarDe(tipo, direccion),
+                        onTap: alEditar,
+                        excludeSemantics: true,
+                        child: TextButton.icon(
+                          key: ClavesHojaCasa.editar,
+                          onPressed: alEditar,
+                          icon: const Icon(Icons.edit_outlined, size: 16),
+                          label: Text(TextosHojaCasa.editar(tipo)),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                            foregroundColor: ColoresAlta.azul,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            // El texto del tema (con su tipografía): un `TextStyle` suelto caería en
+                            // la de sistema, más ancha.
+                            textStyle: Theme.of(
+                              context,
+                            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -449,6 +569,8 @@ class _Resumen extends StatelessWidget {
           FilaPersonaDeLaCasa(
             persona: persona.persona,
             saldoCentavos: contexto.saldoDe(persona.persona.id),
+            cuota: contexto.cuotaQueTocaDe(persona.persona.id),
+            ahora: ahora,
             alCobrar: alCobrar(persona.persona.id),
             ocupada: ocupado,
           ),
@@ -504,7 +626,7 @@ class _Arriba extends ConsumerWidget {
   final VoidCallback? alRegistrarVisita;
   final VoidCallback? alAgendar;
   final VoidCallback? Function(String personaId) alCobrar;
-  final VoidCallback? Function(String personaId) alAbrirFicha;
+  final VoidCallback? Function(Persona persona) alAbrirFicha;
   final VoidCallback? alAgregarPersona;
   final ValueChanged<PestanaHojaCasa> alElegirPestana;
 
@@ -557,17 +679,19 @@ class _Arriba extends ConsumerWidget {
                 (
                   persona: p,
                   saldoCentavos: contexto.saldoDe(p.persona.id),
+                  cuota: contexto.cuotaQueTocaDe(p.persona.id),
                   detalle: switch (contexto.ultimaEntrevistaDe[p.persona.id]) {
                     final fecha? => TextosPestanasHojaCasa.entrevistaDada(fecha),
                     null => null,
                   },
                   alCobrar: alCobrar(p.persona.id),
-                  alAbrir: alAbrirFicha(p.persona.id),
+                  alAbrir: alAbrirFicha(p.persona),
                 ),
             ],
             alAgregar: alAgregarPersona,
             ocupada: ocupado,
             guardada: guardada,
+            ahora: ahora,
           ),
           PestanaHojaCasa.historial => historial!(context, paraLaPestana),
           PestanaHojaCasa.notas => notas!(context, paraLaPestana),

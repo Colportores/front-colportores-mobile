@@ -29,6 +29,23 @@ const ventaSinPersona = FailureValidacion(
       'venta. La entrevista sigue en curso: cerrala con «No, guardar y volver al mapa».',
 );
 
+/// Lo mismo para «Vender» de «¿Qué pasó?» (vista 39): no hay entrevista en curso que cerrar, así que
+/// el aviso no habla de ella.
+const ventaDeLaCasaSinLugar = FailureValidacion(
+  campos: {'espacio': 'La casa ya no está en tu teléfono.'},
+  mensaje:
+      'La casa ya no está en tu teléfono, así que no se puede registrar la venta. '
+      'Elegí otra opción.',
+);
+
+/// La persona de «Vender» ya no está en el teléfono (se dio de baja desde que se abrió «¿Qué pasó?»).
+const ventaDeLaCasaSinPersona = FailureValidacion(
+  campos: {'persona': 'La persona ya no está en tu teléfono.'},
+  mensaje:
+      'Esa persona ya no está en tu teléfono, así que no se puede registrar la venta. '
+      'Elegí otra opción.',
+);
+
 /// Lo que la venta de una entrevista necesita, ya resuelto: dónde y con quién cuelga hoy y la visita
 /// `VENTA` que se guarda junto con ella (vista 39, R·06 → vista 27).
 final class VentaDeLaEntrevista extends Equatable {
@@ -108,12 +125,13 @@ final class CerrarEntrevistaConVentaUseCase {
     if (invalida != null) return Left(invalida);
 
     final espacioId = params.espacioId.trim();
-    final espacioPersonaId = params.espacioPersonaId.trim();
-    final campos = <String, String>{
-      if (espacioId.isEmpty) 'espacio': 'Falta la casa de la entrevista',
-      if (espacioPersonaId.isEmpty) 'persona': 'Elegí con quién fue la entrevista para seguir.',
-    };
-    if (campos.isNotEmpty) return Left(FailureValidacion(campos: campos));
+    final espacioPersonaId = params.espacioPersonaId?.trim();
+    if (espacioId.isEmpty) {
+      return const Left(FailureValidacion(campos: {'espacio': 'Falta la casa de la entrevista'}));
+    }
+    // La venta se ata a una persona: una entrevista sin persona la pide (el alta corta) antes de llegar
+    // acá. Si llega sin ella, no hay a quién registrarle la venta.
+    if (espacioPersonaId == null || espacioPersonaId.isEmpty) return const Left(ventaSinPersona);
 
     final DestinoDeEntrevista? destino;
     try {

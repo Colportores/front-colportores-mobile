@@ -67,17 +67,15 @@ final class RenglonDeLaVenta extends Equatable {
 /// cosas distintas. Todo en centavos.
 ///
 /// - **se queda con** = total de la venta − lo que valen las unidades devueltas;
-/// - **ya pagó** = lo cobrado − lo que ya se le reembolsó en el momento;
-/// - **saldo** = lo que se queda − lo que ya pagó, sin bajar de cero;
-/// - **debo al cliente** = lo que ya pagó − lo que se queda − lo que la colportora retuvo, sin bajar
-///   de cero.
+/// - **ya pagó** = lo cobrado;
+/// - **saldo** = lo que se queda − lo que ya pagó, sin bajar de cero: lo que se descuenta por una
+///   devolución llega hasta el saldo y **nunca queda plata a favor del cliente** (decisión de Cristian,
+///   03/11, «Devol. saldo»: no hay reembolso, ni «Lo retengo», ni «Debo al cliente»).
 final class CuentaDeLaVenta extends Equatable {
   const CuentaDeLaVenta({
     required this.montoTotalCentavos,
     required this.cobradoCentavos,
     this.devueltoCentavos = 0,
-    this.reembolsadoCentavos = 0,
-    this.retenidoCentavos = 0,
   });
 
   /// Lo que costó la venta al hacerla; no cambia con las devoluciones.
@@ -89,33 +87,26 @@ final class CuentaDeLaVenta extends Equatable {
   /// Lo que valen las unidades que ya volvieron.
   final int devueltoCentavos;
 
-  /// Lo que ya se le devolvió en el momento.
-  final int reembolsadoCentavos;
-
-  /// Lo que la colportora retuvo.
-  final int retenidoCentavos;
-
   /// Lo que el cliente se queda comprando: nunca negativo.
   int get seQuedaConCentavos => math.max(0, montoTotalCentavos - devueltoCentavos);
 
-  /// Lo que el cliente pagó y no se le devolvió.
-  int get yaPagoCentavos => math.max(0, cobradoCentavos - reembolsadoCentavos);
+  /// Lo que el cliente pagó.
+  int get yaPagoCentavos => math.max(0, cobradoCentavos);
 
   /// Lo que todavía debe el cliente de lo que se queda.
   int get saldoCentavos => math.max(0, seQuedaConCentavos - yaPagoCentavos);
 
-  /// Lo que la colportora le debe al cliente (compromiso de reembolso futuro).
-  int get deboAlClienteCentavos =>
-      math.max(0, yaPagoCentavos - seQuedaConCentavos - retenidoCentavos);
+  /// Pagó todo lo que se queda comprando (también una venta de $ 0).
+  bool get estaSaldada => saldoCentavos == 0;
+
+  /// La venta ya no acepta devoluciones: costó algo y el cliente la pagó entera (decisión de Cristian,
+  /// 03/11; el servidor la rechaza con `23514`). Una venta de $ 0 (un regalo) **sí** las acepta, aunque
+  /// esté «saldada»: la devolución solo anota los libros y los repone en el stock, sin montos
+  /// (decisión de Cristian, 04/11, «Sí, solo vuelve el libro»; backend-supabase 0166).
+  bool get rechazaDevoluciones => estaSaldada && montoTotalCentavos > 0;
 
   @override
-  List<Object?> get props => [
-    montoTotalCentavos,
-    cobradoCentavos,
-    devueltoCentavos,
-    reembolsadoCentavos,
-    retenidoCentavos,
-  ];
+  List<Object?> get props => [montoTotalCentavos, cobradoCentavos, devueltoCentavos];
 }
 
 /// Una venta tal como la ve la pantalla de devolución (vista 31): lo vendido, lo pagado y lo que ya
@@ -128,8 +119,6 @@ final class VentaParaDevolver extends Equatable {
     required this.fecha,
     required this.montoTotalCentavos,
     required this.cobradoCentavos,
-    this.reembolsadoCentavos = 0,
-    this.retenidoCentavos = 0,
     required this.renglones,
   });
 
@@ -147,12 +136,6 @@ final class VentaParaDevolver extends Equatable {
   /// Lo que el cliente pagó en total (los cobros vivos).
   final int cobradoCentavos;
 
-  /// Lo que ya se le devolvió en el momento en devoluciones anteriores.
-  final int reembolsadoCentavos;
-
-  /// Lo que la colportora retuvo en devoluciones anteriores.
-  final int retenidoCentavos;
-
   final List<RenglonDeLaVenta> renglones;
 
   /// Lo que valen las unidades que ya volvieron.
@@ -165,21 +148,23 @@ final class VentaParaDevolver extends Equatable {
     montoTotalCentavos: montoTotalCentavos,
     cobradoCentavos: cobradoCentavos,
     devueltoCentavos: devueltoCentavos,
-    reembolsadoCentavos: reembolsadoCentavos,
-    retenidoCentavos: retenidoCentavos,
   );
 
   /// Lo que el cliente se queda comprando: nunca negativo.
   int get seQuedaConCentavos => cuenta.seQuedaConCentavos;
 
-  /// Lo que el cliente pagó y no se le devolvió.
+  /// Lo que el cliente pagó.
   int get yaPagoCentavos => cuenta.yaPagoCentavos;
 
   /// Lo que todavía debe el cliente de lo que se queda.
   int get saldoCentavos => cuenta.saldoCentavos;
 
-  /// Lo que la colportora le debe al cliente (compromiso de reembolso futuro).
-  int get deboAlClienteCentavos => cuenta.deboAlClienteCentavos;
+  /// El cliente pagó todo lo que se queda comprando.
+  bool get estaSaldada => cuenta.estaSaldada;
+
+  /// La venta costó algo y está pagada entera: no acepta devoluciones. Una de $ 0 sí (ver
+  /// [CuentaDeLaVenta.rechazaDevoluciones]).
+  bool get rechazaDevoluciones => cuenta.rechazaDevoluciones;
 
   /// Ya volvió todo lo vendido: no queda nada para devolver.
   bool get estaTodoDevuelto => renglones.isNotEmpty && renglones.every((r) => r.disponibles == 0);
@@ -194,21 +179,19 @@ final class VentaParaDevolver extends Equatable {
     fecha,
     montoTotalCentavos,
     cobradoCentavos,
-    reembolsadoCentavos,
-    retenidoCentavos,
     renglones,
   ];
 }
 
-/// Cómo queda la venta si se registra una devolución con lo elegido (31-02, 31-06, 31-07). Todo en
-/// centavos; lo calcula `ReglasDeDevolucion.cuenta`.
+/// Cómo queda la venta si se registra una devolución con lo elegido (31-02, 31-04, 31-05 y 31-06). Todo
+/// en centavos; lo calcula `ReglasDeDevolucion.cuenta`.
 final class CuentaDeLaDevolucion extends Equatable {
   const CuentaDeLaDevolucion({
     required this.unidades,
     required this.valorCentavos,
     required this.seQuedaConCentavos,
     required this.yaPagoCentavos,
-    required this.pagoDeMasCentavos,
+    required this.sinDevolverCentavos,
     required this.saldoNuevoCentavos,
     required this.esTotal,
   });
@@ -222,11 +205,13 @@ final class CuentaDeLaDevolucion extends Equatable {
   /// Lo que el cliente se queda comprando después de esta devolución.
   final int seQuedaConCentavos;
 
-  /// Lo que ya pagó y no se le devolvió.
+  /// Lo que ya pagó.
   final int yaPagoCentavos;
 
-  /// Lo que pagó de más y todavía no tiene destino: sobre esto la colportora elige.
-  final int pagoDeMasCentavos;
+  /// Lo que el cliente ya pagó y pasa de lo que se queda: no se le devuelve ni queda a su favor,
+  /// porque lo descontado llega hasta el saldo y nunca queda plata a favor del cliente (decisión de
+  /// Cristian, 03/11, «Devol. saldo»). 0 si lo devuelto cabe en el saldo.
+  final int sinDevolverCentavos;
 
   /// Lo que le queda por pagar de lo que se queda.
   final int saldoNuevoCentavos;
@@ -234,8 +219,9 @@ final class CuentaDeLaDevolucion extends Equatable {
   /// Con esta devolución vuelve todo lo que quedaba por devolver (31-07).
   final bool esTotal;
 
-  /// Hay plata de más: la elección de qué hacer con ella es obligatoria.
-  bool get hayQueElegir => pagoDeMasCentavos > 0;
+  /// Lo devuelto vale más que lo que el cliente debía: la venta queda saldada y la diferencia no se
+  /// devuelve ni queda a su favor.
+  bool get haySinDevolver => sinDevolverCentavos > 0;
 
   /// No se eligió nada.
   bool get estaVacia => unidades == 0;
@@ -246,7 +232,7 @@ final class CuentaDeLaDevolucion extends Equatable {
     valorCentavos,
     seQuedaConCentavos,
     yaPagoCentavos,
-    pagoDeMasCentavos,
+    sinDevolverCentavos,
     saldoNuevoCentavos,
     esTotal,
   ];

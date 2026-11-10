@@ -105,7 +105,11 @@ final class AgendaRepositoryImpl implements AgendaRepository {
         ...contexto,
         'motivo': e.motivo.name,
       });
-      return Left(FailureValidacion(campos: {e.motivo.campo: e.motivo.mensaje}));
+      // El `mensaje` también va: es el que muestran las pantallas que no leen `campos` (la hoja de
+      // «Terminó la entrevista», el mapa), y sin él dirían «Revisá los datos ingresados».
+      return Left(
+        FailureValidacion(campos: {e.motivo.campo: e.motivo.mensaje}, mensaje: e.motivo.mensaje),
+      );
     } on Object catch (e, st) {
       // Ni al log ni a la falla va la excepción tal cual: la de Drift trae la sentencia con sus
       // parámetros. Solo su tipo (convenciones §7.5).

@@ -25,6 +25,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/personas
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../widget/mapa/hoja_con_quien_arnes.dart' show ObservadorDeRutas;
@@ -42,6 +43,8 @@ Agenda agendaDelDetalle({
   TipoAgenda tipo = TipoAgenda.entrevista,
   DateTime? cuando,
   String? slot = 'early_afternoon',
+  String? ventaId,
+  int? montoPrevistoCentavos,
 }) => Agenda(
   id: id,
   espacioId: 'esp-1',
@@ -51,6 +54,8 @@ Agenda agendaDelDetalle({
   slotCodigo: slot,
   estado: estado,
   colportorId: 'col-1',
+  ventaId: ventaId,
+  montoPrevistoCentavos: montoPrevistoCentavos,
   auditoria: Auditoria(
     createdAt: DateTime.utc(2026, 10, 23),
     updatedAt: DateTime.utc(2026, 10, 23),
@@ -231,6 +236,7 @@ Future<ArnesDetalle> montarDetalle(
   double escala = 1,
   Size tamano = const Size(390, 844),
   bool abrir = true,
+  List<Override> extras = const [],
 }) async {
   final arnes = ArnesDetalle(
     repo: repo ?? AgendaRepositorioDetalle(detalle ?? DetalleDeAgenda(agenda: agendaDelDetalle())),
@@ -255,6 +261,7 @@ Future<ArnesDetalle> montarDetalle(
         espacioRepositoryProvider.overrideWithValue(
           EspacioRepositorioParaPersonas(lugar, falla: fallaDeCasa),
         ),
+        ...extras,
         if (conRegistrar)
           registrarVisitaDesdeLaCasaProvider.overrideWithValue((c) {
             arnes.registros.add(c);

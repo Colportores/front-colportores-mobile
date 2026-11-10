@@ -27,6 +27,11 @@ abstract interface class PlataformaGps {
   /// tiempo: el adaptador lo traduce.
   Future<LecturaGps> leer({required Duration limite});
 
+  /// Las lecturas del GPS mientras la colportora se mueve (#670): una por cada cambio de posición, con
+  /// el rumbo si se sabe. Un error del plugin sale por el stream y lo traduce el adaptador. No pide
+  /// el permiso.
+  Stream<LecturaGps> seguir();
+
   Future<void> abrirAjustesUbicacion();
 
   Future<void> abrirAjustesApp();

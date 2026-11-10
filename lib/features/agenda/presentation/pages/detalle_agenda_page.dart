@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../cobranzas/presentation/pages/cuotas_de_la_venta_page.dart';
+import '../../../cobranzas/presentation/textos_cuotas.dart' show TextosCuotas;
 import '../../../mapa/domain/entities/persona_del_espacio.dart';
 import '../../../mapa/domain/repositories/espacio_repository.dart';
 import '../../../mapa/presentation/providers/hoja_casa_providers.dart'
@@ -19,6 +21,7 @@ import '../formato_agenda.dart' show TextosAgenda;
 import '../formato_detalle_agenda.dart';
 import '../providers/agenda_providers.dart';
 import '../providers/detalle_agenda_providers.dart';
+import '../textos_agendar_visita.dart';
 import '../textos_detalle_agenda.dart';
 import '../widgets/enlace_cancelar_agenda.dart';
 import 'modificar_agenda_page.dart';
@@ -32,6 +35,8 @@ import 'modificar_agenda_page.dart';
 ///   («Guardado. El recordatorio pasó a las 10:00.») queda en pantalla.
 /// - **Cumplida o no cumplida** (23C·06): el aviso «Esta visita ya tiene resultado…» y ninguna salida.
 /// - **Cancelada**: el mismo criterio con su propio aviso (el canvas no la dibuja).
+/// - **Cobranza de una cuota** (HU-COB-004, #580): «Ver las cuotas» abre las cuotas de esa venta
+///   (30A-06), en cualquier estado de la agenda.
 /// - Cargando, error al leer («Reintentar») y agenda que ya no está en el teléfono.
 ///
 /// Todo se lee del teléfono: sin conexión funciona igual.
@@ -44,16 +49,29 @@ class DetalleAgendaPage extends ConsumerStatefulWidget {
   /// UUID del usuario con la sesión iniciada.
   final String colportorId;
 
-  /// Abre el detalle encima de la pantalla actual.
+  /// Abre el detalle encima de la pantalla actual. Si ya es la pantalla de arriba (tocar el aviso de
+  /// la agenda que se está mirando), no apila otro igual: habría que volver dos veces.
   static Future<void> abrir(
     BuildContext context, {
     required String agendaId,
     required String colportorId,
-  }) => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      builder: (_) => DetalleAgendaPage(agendaId: agendaId, colportorId: colportorId),
-    ),
-  );
+  }) {
+    final navegador = Navigator.of(context);
+    final nombre = 'detalle_agenda/$agendaId';
+    var yaEstaArriba = false;
+    // El predicado devuelve `true` en la primera ruta: mira la de arriba y no saca ninguna.
+    navegador.popUntil((ruta) {
+      yaEstaArriba = ruta.settings.name == nombre;
+      return true;
+    });
+    if (yaEstaArriba) return Future<void>.value();
+    return navegador.push<void>(
+      MaterialPageRoute(
+        settings: RouteSettings(name: nombre),
+        builder: (_) => DetalleAgendaPage(agendaId: agendaId, colportorId: colportorId),
+      ),
+    );
+  }
 
   @override
   ConsumerState<DetalleAgendaPage> createState() => _DetalleAgendaPageState();
@@ -84,6 +102,27 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
     } finally {
       _abriendo = false;
     }
+  }
+
+  Future<void> _verLasCuotas(DetalleDeAgenda detalle) async {
+    final agenda = detalle.agenda;
+    final ventaId = agenda.ventaId;
+    if (ventaId == null || _abriendo) return;
+    _abriendo = true;
+    ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
+    try {
+      await CuotasDeLaVentaPage.abrir(
+        context,
+        ventaId: ventaId,
+        colportorId: widget.colportorId,
+        espacioId: agenda.espacioId,
+        espacioPersonaId: agenda.espacioPersonaId,
+      );
+    } finally {
+      _abriendo = false;
+    }
+    // Armar o modificar el plan puede mover la cita (fecha, monto): se vuelve a leer de la base.
+    if (mounted) ref.invalidate(detalleDeAgendaProvider(widget.agendaId));
   }
 
   Future<void> _registrar(DetalleDeAgenda detalle, String ubicacionId) async {
@@ -151,6 +190,7 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
                     : _Cuerpo(
                         detalle: d,
                         alModificar: () => unawaited(_modificar(d)),
+                        alVerLasCuotas: () => unawaited(_verLasCuotas(d)),
                         alRegistrar: (ubicacionId) => unawaited(_registrar(d, ubicacionId)),
                         alCancelar: _alCancelar,
                         alVolverSinCancelar: _alVolverSinCancelar,
@@ -172,6 +212,7 @@ abstract final class ClavesDetalleAgenda {
   static const aviso = Key('detalle_agenda_aviso');
   static const reintentar = Key('detalle_agenda_reintentar');
   static const registrar = Key('detalle_agenda_registrar');
+  static const avisoCasa = Key('detalle_agenda_aviso_casa');
   static const modificar = Key('detalle_agenda_modificar');
   static const avisoCerrada = Key('detalle_agenda_aviso_cerrada');
   static const estado = Key('detalle_agenda_estado');
@@ -179,6 +220,7 @@ abstract final class ClavesDetalleAgenda {
   static const franja = Key('detalle_agenda_franja');
   static const recordatorio = Key('detalle_agenda_recordatorio');
   static const nota = Key('detalle_agenda_nota');
+  static const verLasCuotas = Key('detalle_agenda_ver_cuotas');
 }
 
 class _Cargando extends StatelessWidget {
@@ -238,6 +280,7 @@ class _Cuerpo extends ConsumerWidget {
   const _Cuerpo({
     required this.detalle,
     required this.alModificar,
+    required this.alVerLasCuotas,
     required this.alRegistrar,
     required this.alCancelar,
     required this.alVolverSinCancelar,
@@ -245,6 +288,7 @@ class _Cuerpo extends ConsumerWidget {
 
   final DetalleDeAgenda detalle;
   final VoidCallback alModificar;
+  final VoidCallback alVerLasCuotas;
   final ValueChanged<String> alRegistrar;
   final ValueChanged<ResultadoCancelarAgenda> alCancelar;
   final VoidCallback alVolverSinCancelar;
@@ -254,7 +298,8 @@ class _Cuerpo extends ConsumerWidget {
     final theme = Theme.of(context);
     final agenda = detalle.agenda;
     final gris = theme.extension<ColoresColportaje>()?.gris ?? ColoresAlta.gris;
-    final contexto = ref.watch(contextoEspacioProvider(agenda.espacioId)).asData?.value;
+    final casa = ref.watch(contextoEspacioProvider(agenda.espacioId));
+    final contexto = casa.asData?.value;
     final personas = agenda.espacioPersonaId == null
         ? null
         : ref.watch(personasDelEspacioProvider(agenda.espacioId)).asData?.value;
@@ -342,8 +387,47 @@ class _Cuerpo extends ConsumerWidget {
             valor: _nota(detalle.nota),
             ultima: true,
           ),
+          if (agenda.esCuota)
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton(
+                key: ClavesDetalleAgenda.verLasCuotas,
+                onPressed: alVerLasCuotas,
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                child: const Text(
+                  TextosCuotas.verLasCuotas,
+                  style: TextStyle(fontWeight: FontWeight.w600, color: ColoresAlta.azul),
+                ),
+              ),
+            ),
           if (programada) ...[
             const SizedBox(height: 24),
+            // Sin la casa «Registrar resultado» queda apagado: se dice por qué y, si se puede, se
+            // ofrece volver a leerla (QA #409).
+            if (registrar != null && (casa.hasError || (casa.hasValue && contexto == null))) ...[
+              KeyedSubtree(
+                key: ClavesDetalleAgenda.avisoCasa,
+                child: AvisoAlta(
+                  color: ColoresAlta.rojo,
+                  glyph: '!',
+                  texto: casa.hasError
+                      ? TextosDetalleAgenda.noPudimosLeerLaCasa
+                      : TextosAgendarVisita.casaNoEstaMas,
+                  acciones: casa.hasError
+                      ? Align(
+                          alignment: Alignment.centerLeft,
+                          child: EnlaceAlta(
+                            key: ClavesDetalleAgenda.reintentar,
+                            texto: TextosDetalleAgenda.reintentar,
+                            alPresionar: () =>
+                                ref.invalidate(contextoEspacioProvider(agenda.espacioId)),
+                          ),
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             if (registrar != null)
               FilledButton(
                 key: ClavesDetalleAgenda.registrar,

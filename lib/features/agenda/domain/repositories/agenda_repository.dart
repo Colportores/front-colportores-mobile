@@ -48,7 +48,8 @@ abstract interface class AgendaRepository {
   /// visita**: se guarda como espontánea, la agenda no se toca y `VisitaGuardada.agendaIgnorada` dice
   /// por qué, para avisar sin perder lo registrado. Un resultado que no cumple la agenda
   /// (`TipoResultadoVisita.cumpleLaAgenda`: `NO_CONTESTO`) la pasa a `NO_CUMPLIDA` y
-  /// `VisitaGuardada.agendaNoCumplida` lo dice.
+  /// `VisitaGuardada.agendaNoCumplida` lo dice; si la agenda es una cuota del plan, la visita se
+  /// guarda y la cuota queda como estaba (decisión del 03/11, #608).
   Future<Either<Failure, VisitaGuardada>> registrarVisita(
     Visita visita, {
     String? agendaId,

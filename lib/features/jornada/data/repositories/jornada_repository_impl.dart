@@ -13,8 +13,9 @@ import '../models/jornada_model.dart';
 /// - Devuelve entidades de dominio (`toEntity()`), no modelos.
 /// - Loguea en `[DB]` (convenciones §7.3) solo UUIDs y códigos: `jornada` no tiene PII.
 ///
-/// El sync lo encola el data source, en la misma transacción que la escritura
-/// (`JornadaLocalDataSourceDrift`, contrato-sync-engine §3).
+/// El sync lo encola el data source, tanto el alta ([crear]) como el cierre ([finalizar]), en la
+/// misma transacción que la escritura (`JornadaLocalDataSourceDrift`, contrato-sync-engine §3):
+/// una jornada guardada siempre tiene su job en la cola, y si el job no entra no se guarda nada.
 final class JornadaRepositoryImpl implements JornadaRepository {
   JornadaRepositoryImpl(this._local, {AppLogger? logger}) : _log = logger ?? AppLogger.instance;
 
@@ -90,9 +91,6 @@ final class JornadaRepositoryImpl implements JornadaRepository {
     }
   }
 
-  /// TODO(#74): encolar el sync del cierre (`engine.stage(Tables.jornada, Op.update, …)` en la
-  /// misma transacción que la escritura, contrato-sync-engine.md §3), igual que el alta en
-  /// [crear]; depende del mismo PR #40.
   @override
   Future<Either<Failure, Jornada>> finalizar(Jornada jornada) async {
     final modelo = JornadaModel.fromEntity(jornada);

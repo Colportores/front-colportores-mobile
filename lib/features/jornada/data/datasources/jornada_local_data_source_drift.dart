@@ -19,7 +19,7 @@ part 'jornada_local_data_source_drift.g.dart';
 @DriftAccessor(tables: [Jornadas])
 final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     with _$JornadaLocalDataSourceDriftMixin
-    implements JornadaLocalDataSource {
+    implements JornadaLocalDataSource, JornadasAbiertasDataSource {
   /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10).
   JornadaLocalDataSourceDrift(super.attachedDatabase, {required this._encolador});
 
@@ -88,6 +88,18 @@ final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     return fila == null ? null : _aModelo(fila);
   }
 
+  @override
+  Future<List<JornadaModel>> abiertas(String colportorId) async {
+    final filas =
+        await (select(jornadas)
+              ..where(
+                (j) => j.colportorId.equals(colportorId) & j.fin.isNull() & j.deletedAt.isNull(),
+              )
+              ..orderBy([(j) => OrderingTerm.asc(j.inicio)]))
+            .get();
+    return [for (final fila in filas) _aModelo(fila)];
+  }
+
   /// La jornada sin `fin` y sin soft delete del colportor. `limit(1)`: la regla de una sola activa
   /// la sostiene [insertar], pero una recuperación de dispositivo (`engine.recover()`,
   /// contrato-sync-engine §7) podría dejar una segunda abierta —`jornada` no baja por pull: es
@@ -103,7 +115,6 @@ final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     inicio: jornada.inicio,
     fin: Value(jornada.fin),
     acompananteId: Value(jornada.acompananteId),
-    tipoAcompanamiento: Value(jornada.tipoAcompanamiento),
     totalVisitas: Value(jornada.totalVisitas),
     totalVentas: Value(jornada.totalVentas),
     createdAt: jornada.auditoria.createdAt,
@@ -119,7 +130,6 @@ final class JornadaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     inicio: fila.inicio,
     fin: fila.fin,
     acompananteId: fila.acompananteId,
-    tipoAcompanamiento: fila.tipoAcompanamiento,
     totalVisitas: fila.totalVisitas,
     totalVentas: fila.totalVentas,
     auditoria: Auditoria(

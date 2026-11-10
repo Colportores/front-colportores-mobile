@@ -95,7 +95,7 @@ Future<void> _montar(
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: overridesLista(repo: repo),
+      overrides: overridesLista(repo: repo, gpsAbierto: true),
       child: MaterialApp(
         theme: temaClaro(),
         builder: (context, child) => RepaintBoundary(

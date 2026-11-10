@@ -283,7 +283,7 @@ void main() {
       tester,
     ) async {
       final arnes = await montarCuotas(tester, tamano: const Size(360, 640), escala: 2);
-      await traerCuotaAlAlcance(tester, campoDeCuota(2));
+      await traerCuotaAlAlcance(tester, campoDeCuota(1));
       arnes.plan.fallaAlCrear = const FailurePlanNoGuardado();
       await tester.tap(botonPrincipal);
       await asentarAgendar(tester);
@@ -325,7 +325,7 @@ void main() {
         escala: 2,
       );
       await escribirCuota(tester, 2, '1200');
-      await traerCuotaAlAlcance(tester, campoDeCuota(3));
+      await traerCuotaAlAlcance(tester, campoDeCuota(2));
       arnes.plan.fallaAlModificar = const FailureCuotasNoGuardadas();
       await tester.tap(botonPrincipal);
       await asentarAgendar(tester);
@@ -393,7 +393,7 @@ void main() {
   );
 
   testWidgets(
-    'modificar con 8 cuotas abiertas en 360×640: escribir en la 1.ª, bajar y escribir en la última no cruza los campos',
+    'modificar con 8 cuotas abiertas en 360×640: escribir en la 1.ª, bajar y escribir en la penúltima no cruza los campos (la última se calcula)',
     (tester) async {
       final plan = PlanDeCuotasEnMemoria(
         montoCentavos: 800000,
@@ -406,11 +406,11 @@ void main() {
         tamano: const Size(360, 640),
       );
       await escribirCuota(tester, 1, '1500');
-      await traerCuotaAlAlcance(tester, campoDeCuota(8));
-      await tester.enterText(campoDeCuota(8), '777');
+      await traerCuotaAlAlcance(tester, campoDeCuota(7));
+      await tester.enterText(campoDeCuota(7), '777');
       await asentarAgendar(tester, 3);
       expect(tester.takeException(), isNull);
-      expect(textoDeCuota(tester, 8), '777');
+      expect(textoDeCuota(tester, 7), '777');
       await tester.drag(find.byType(Scrollable).first, const Offset(0, 5000));
       await asentarAgendar(tester, 3);
       expect(textoDeCuota(tester, 1), '1500');
@@ -440,7 +440,7 @@ void main() {
           tamano: const Size(360, 640),
           escala: escala,
         );
-        expect(await recortados(tester, [0, 1, 2]), isEmpty);
+        expect(await recortados(tester, [0, 1]), isEmpty);
       });
 
       testWidgets('«Modificar cuotas» con montos de \$ 1.000 a 360×640 ×$escala', (tester) async {
@@ -451,7 +451,7 @@ void main() {
           tamano: const Size(360, 640),
           escala: escala,
         );
-        expect(await recortados(tester, [2, 3]), isEmpty);
+        expect(await recortados(tester, [2]), isEmpty);
       });
     }
   });

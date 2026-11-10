@@ -205,6 +205,9 @@ class _EleccionDeCobertura extends ConsumerWidget {
     final plan = notificador.planDeAchicar();
     final ocupa = paquete?.tamanoBytes ?? 0;
     final sinLugar = paquete != null && libres != null && !yaBajado && ocupa > libres;
+    // El departamento y Uruguay los elige ella: si no entran, la app le dice cuánto falta.
+    final lasEligeElla =
+        vigente == NivelCobertura.departamento || vigente == NivelCobertura.uruguay;
     final hayMasChico = [
       for (final n in NivelCobertura.values)
         if (estado.seOfrece(n) && n.index < (vigente?.index ?? 0)) n,
@@ -212,13 +215,23 @@ class _EleccionDeCobertura extends ConsumerWidget {
 
     final avisos = <Widget>[
       if (estado.falloLugar case final falla?)
-        _Banner(
-          clave: const Key('mapas_offline_sin_lugar'),
-          tipo: _TipoBanner.error,
-          texto: falla.mensaje,
-          accion: TextosMapasOffline.reintentar,
-          alAccionar: () => unawaited(notificador.cargar()),
-        ),
+        // Si es una falla de lectura se puede reintentar. Si no se sabe cuál ciudad bajar porque
+        // todavía no hay zona que decida, reintentar no cambia nada: la pantalla se vuelve a leer
+        // sola cuando la zona llega por el sync, así que no hay botón.
+        if (falla is FailureLugarDeTrabajoNoDisponible)
+          _Banner(
+            clave: const Key('mapas_offline_sin_lugar'),
+            tipo: _TipoBanner.error,
+            texto: falla.mensaje,
+            accion: TextosMapasOffline.reintentar,
+            alAccionar: () => unawaited(notificador.cargar()),
+          )
+        else
+          _Banner(
+            clave: const Key('mapas_offline_sin_ciudad_elegible'),
+            tipo: _TipoBanner.info,
+            texto: falla.mensaje,
+          ),
       if (estado.sinCatalogo)
         _Banner(
           clave: const Key('mapas_offline_sin_catalogo'),
@@ -248,6 +261,7 @@ class _EleccionDeCobertura extends ConsumerWidget {
             TextosMapasOffline.peso(ocupa),
             TextosMapasOffline.pesoLibre(libres),
             haySalida: hayMasChico,
+            falta: lasEligeElla ? TextosMapasOffline.peso(ocupa - libres) : null,
           ),
         ),
       if (estado.falla case final falla? when !sinLugar) _FallaDeAccion(falla: falla),
@@ -270,6 +284,9 @@ class _EleccionDeCobertura extends ConsumerWidget {
       children: [
         Expanded(
           child: ListView(
+            // Al aparecer (o cambiar) el aviso de «no hay lugar» la lista vuelve arriba: con el texto
+            // grande la opción elegida queda abajo y el aviso, arriba, fuera de la vista.
+            key: ValueKey(sinLugar ? vigente : null),
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
             children: [
               for (final aviso in avisos) ...[aviso, const SizedBox(height: 10)],
@@ -364,8 +381,9 @@ class _EleccionDeCobertura extends ConsumerWidget {
       }
       return switch (nivel) {
         NivelCobertura.zona => TextosMapasOffline.zonaSinPaquete,
-        NivelCobertura.ciudad => TextosMapasOffline.sinPaquete,
-        NivelCobertura.departamento || NivelCobertura.uruguay => TextosMapasOffline.llegaConPro,
+        NivelCobertura.ciudad ||
+        NivelCobertura.departamento ||
+        NivelCobertura.uruguay => TextosMapasOffline.sinPaquete,
       };
     }
     final nombre = TextosMapasOffline.nombreDe(paquete, nombreZona: estado.lugar?.zonaNombre);

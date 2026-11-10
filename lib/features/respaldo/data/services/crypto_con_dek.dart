@@ -27,6 +27,11 @@ final class CryptoConDek extends CompressingCrypto {
   @override
   Future<String> keyId() => _conLaClave((cripto) => cripto.keyId());
 
+  /// Firma de las anotaciones de cada archivo del respaldo (HU-SYNC-009): HMAC con una llave
+  /// derivada de la DEK, que se lee y se destruye en cada firma como en el resto.
+  @override
+  Future<String> sign(String mensaje) => _conLaClave((cripto) => cripto.sign(mensaje));
+
   Future<T> _conLaClave<T>(Future<T> Function(AesGcmCrypto cripto) operacion) async {
     final dek = await _leerDek();
     if (dek == null) {

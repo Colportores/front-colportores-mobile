@@ -5,13 +5,16 @@ import 'productos_devueltos_converter.dart';
 
 /// Tabla `devolucion` de la DB local cifrada (esquema-datos.md §Operaciones de campo, ADR-002).
 ///
-/// Es la misma tabla que `public.devolucion` del cloud (`backend-supabase`, migraciones 0108, 0136 y
-/// 0142), con las diferencias de motor de [Ventas]: fechas en epoch ms UTC, sin claves foráneas y sin
-/// defaults de servidor. `colportor_id` lo fija el servidor desde el JWT y el push lo descarta: la app
-/// no lo escribe y no está acá (el dueño es el de la venta).
+/// Es la misma tabla que `public.devolucion` del cloud (`backend-supabase`, migraciones 0108, 0136,
+/// 0142 y 0157), con las diferencias de motor de [Ventas]: fechas en epoch ms UTC, sin claves
+/// foráneas y sin defaults de servidor. `colportor_id` lo fija el servidor desde el JWT y el push lo
+/// descarta: la app no lo escribe y no está acá (el dueño es el de la venta).
 ///
-/// La venta original **no se toca**: la devolución se anota aparte y el saldo se recalcula con ella. Una
-/// venta puede tener varias devoluciones. El dinero va en **centavos** (`int`), nunca `double`.
+/// La venta original **no se toca**: la devolución se anota aparte y el saldo se recalcula con ella.
+/// Una venta puede tener varias devoluciones. **No guarda dinero** (migración 0157, decisión de
+/// Cristian, 03/11, «Devol. saldo»): lo devuelto se descuenta de la deuda hasta el saldo y nunca
+/// queda plata a favor del cliente; las columnas `dinero_retenido` y `monto_reembolsado` se sacaron
+/// en el esquema 26.
 ///
 /// **Sin dato del cliente** (ADR-004): cuelga de la venta por un id opaco. La única prosa que sube es el
 /// [motivo], por decisión explícita de Cristian (27/10, «Motivo devol.»).
@@ -29,14 +32,6 @@ class Devoluciones extends Table {
   /// `[{producto_id, cantidad, venta_item_id}]`: los libros que vuelven, cada uno con el renglón de la
   /// venta del que salió. Al menos un elemento; sin precios (salen del renglón).
   TextColumn get productosDevueltos => text().map(const ProductosDevueltosConverter())();
-
-  /// Lo que la colportora se queda cuando el cliente pagó de más y elige «Lo retengo», en centavos;
-  /// 0 si no retiene nada.
-  IntColumn get dineroRetenido => integer().withDefault(const Constant(0))();
-
-  /// Lo que se le devolvió al cliente en el momento («Se lo devuelvo ahora»), en centavos; `null` si
-  /// no devolvió plata. «En mano» lo resta.
-  IntColumn get montoReembolsado => integer().nullable()();
 
   /// Por qué se devuelve: de 1 a 500 caracteres, sin espacios en los bordes; `null` si no lo dijo.
   TextColumn get motivo => text().nullable()();
@@ -61,8 +56,6 @@ class Devoluciones extends Table {
 
   @override
   List<String> get customConstraints => const [
-    'CHECK (dinero_retenido >= 0)',
-    'CHECK (monto_reembolsado IS NULL OR monto_reembolsado >= 0)',
     'CHECK (motivo IS NULL OR length(motivo) BETWEEN 1 AND 500)',
   ];
 }

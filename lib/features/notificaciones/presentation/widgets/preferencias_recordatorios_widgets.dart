@@ -152,10 +152,11 @@ class _TarjetaAnticipacionState extends State<TarjetaAnticipacion> {
                   ? () => _ajustar(-TarjetaAnticipacion.pasoAccesible)
                   : null,
               child: ExcludeSemantics(
-                // El tramo sin recorrer en el gris del borde del canvas (#E3E7EE): el de Material
-                // (blanco) no se distingue de la tarjeta (1,05:1).
+                // El tramo sin recorrer en el `gris` de la paleta (#5B6B82, ~5,2:1 sobre la tarjeta):
+                // el `borde` (#E3E7EE) da 1,16:1 y no llega a 3:1 (WCAG 1.4.11); el de Material
+                // (blanco) ni se ve (1,05:1). Mismo grosor de 4 px; el tramo recorrido sigue en su color.
                 child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(inactiveTrackColor: colores.borde),
+                  data: SliderTheme.of(context).copyWith(inactiveTrackColor: colores.gris),
                   child: Slider(
                     key: const Key('pref_anticipacion_slider'),
                     value: _visible.toDouble(),
