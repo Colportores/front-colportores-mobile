@@ -149,6 +149,25 @@ final class EstadoDeLasCuotas extends Equatable {
   List<Object?> get props => [cuotas, aCerrar];
 }
 
+/// Qué cuotas del plan cubrió un cobro (vista 39, C·03: «Cuota 1 de 2»). Se calcula con los cobros de
+/// la venta hasta ese, en orden: el cobro no guarda la cuota (decisión del 03/11, #608).
+final class CuotasDeUnCobro extends Equatable {
+  /// Lleva al menos una cuota: [completas] o [aMedias].
+  const CuotasDeUnCobro({required this.deTotal, this.completas = const [], this.aMedias});
+
+  /// Cuántas cuotas tiene el plan (el «de m»).
+  final int deTotal;
+
+  /// Los números de las cuotas que este cobro dejó cubiertas, en el orden en que las cubrió.
+  final List<int> completas;
+
+  /// El número de la cuota que este cobro tocó sin cubrir (a lo sumo una: la última), o `null`.
+  final int? aMedias;
+
+  @override
+  List<Object?> get props => [deTotal, completas, aMedias];
+}
+
 /// Las reglas puras del plan de cuotas (HU-COB-004; decisiones de Cristian del 23/10, «Plan cuotas» y
 /// «Reparto»): cuántas, cada cuánto, cuánto vale cada una, qué pasa si se cambia una y a qué cuota va
 /// cada pago. Sin pantalla ni base.
@@ -376,6 +395,73 @@ abstract final class RepartoDeCuotas {
       }
     }
     return EstadoDeLasCuotas(cuotas: cuotas, aCerrar: aCerrar);
+  }
+
+  /// Qué cuotas cubrió cada uno de [cobros] (C·03), en el mismo orden que [cobros]: `null` si la venta
+  /// no tiene plan, si el cobro es de antes del plan o si fue más allá de la última cuota.
+  ///
+  /// Sigue el mismo reparto que [estadoDe] (y que la vista 30 A): los cobros, en el orden en que
+  /// llegaron, van primero a las cuotas que ya estaban cubiertas y después a las abiertas por fecha,
+  /// cada una hasta su monto. Un cobro que completa una cuota empezada por otro la «cubre».
+  static List<CuotasDeUnCobro?> cuotasDeCadaCobro({
+    required Iterable<CitaDeCuota> citas,
+    required List<CobroDelPlan> cobros,
+  }) {
+    final salida = List<CuotasDeUnCobro?>.filled(cobros.length, null);
+    final vivas = [
+      for (final c in citas)
+        if (c.estado != EstadoAgenda.cancelada) c,
+    ]..sort(_porFecha);
+    if (vivas.isEmpty) return salida;
+    final abiertas = [
+      for (final c in vivas)
+        if (c.estado != EstadoAgenda.cumplida) c,
+    ];
+    final base = abiertas.isNotEmpty ? abiertas : vivas;
+    final desde = base.map((c) => c.creadaEn).reduce((a, b) => a.isBefore(b) ? a : b);
+
+    // El orden en que los cobros llenan las cuotas: (número de la cuota, monto). Una cuota sin monto no
+    // espera nada: no la cubre ningún cobro.
+    final orden = <(int, int)>[
+      for (var i = 0; i < vivas.length; i++)
+        if (vivas[i].estado == EstadoAgenda.cumplida && !vivas[i].creadaEn.isBefore(desde))
+          (i + 1, vivas[i].montoCentavos),
+      for (var i = 0; i < vivas.length; i++)
+        if (vivas[i].estado != EstadoAgenda.cumplida) (i + 1, vivas[i].montoCentavos),
+    ]..removeWhere((c) => c.$2 <= 0);
+
+    final indices =
+        [
+          for (var i = 0; i < cobros.length; i++)
+            if (!cobros[i].creadoEn.isBefore(desde)) i,
+        ]..sort((a, b) {
+          final porLlegada = cobros[a].creadoEn.compareTo(cobros[b].creadoEn);
+          return porLlegada != 0 ? porLlegada : a.compareTo(b);
+        });
+
+    var lugar = 0;
+    var falta = orden.isEmpty ? 0 : orden.first.$2;
+    for (final i in indices) {
+      var resta = cobros[i].montoCentavos;
+      final completas = <int>[];
+      int? aMedias;
+      while (resta > 0 && lugar < orden.length) {
+        final toma = resta < falta ? resta : falta;
+        resta -= toma;
+        falta -= toma;
+        if (falta <= 0) {
+          completas.add(orden[lugar].$1);
+          lugar++;
+          falta = lugar < orden.length ? orden[lugar].$2 : 0;
+        } else {
+          aMedias = orden[lugar].$1;
+        }
+      }
+      if (completas.isNotEmpty || aMedias != null) {
+        salida[i] = CuotasDeUnCobro(deTotal: vivas.length, completas: completas, aMedias: aMedias);
+      }
+    }
+    return salida;
   }
 
   /// Saca de [cola] hasta [necesita] centavos, del cobro más viejo al más nuevo.

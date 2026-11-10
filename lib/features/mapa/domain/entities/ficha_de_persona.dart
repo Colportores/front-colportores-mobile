@@ -10,13 +10,27 @@ import 'ubicacion.dart';
 
 /// Un renglón de un movimiento: un producto o una colección y cuántos («Nuestros Hijos × 1»).
 class LineaDeFicha extends Equatable {
-  const LineaDeFicha({required this.nombre, required this.cantidad});
+  const LineaDeFicha({required this.nombre, required this.cantidad, this.libros});
 
   final String nombre;
   final int cantidad;
 
+  /// Si el renglón es un combo (colección), los libros que trae **una** unidad (`venta_item.componentes`)
+  /// con su nombre y cuántos; `null` si es un producto suelto. Un libro que el catálogo ya no trae
+  /// lleva el nombre vacío: no se inventa.
+  final List<LineaDeFicha>? libros;
+
+  bool get esCombo => libros != null;
+
+  /// Cuántos libros son en total: un combo cuenta su cantidad por los libros de cada unidad (la misma
+  /// regla que cobranzas, decisión del 10/11, rev 1120). Un combo sin componentes cuenta una por unidad.
+  int get cuantosLibros {
+    final deUnaUnidad = libros?.fold<int>(0, (n, l) => n + l.cantidad) ?? 0;
+    return libros == null || deUnaUnidad == 0 ? cantidad : cantidad * deUnaUnidad;
+  }
+
   @override
-  List<Object?> get props => [nombre, cantidad];
+  List<Object?> get props => [nombre, cantidad, libros];
 }
 
 /// Una cosa que le pasó a la persona (vista 32B, «HISTORIAL»): una visita, una venta, una entrega o un
