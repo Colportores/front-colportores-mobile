@@ -11,6 +11,7 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenada
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_notifier.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/ubicacion_colportor_provider.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -266,8 +267,9 @@ void main() {
     );
 
     group('dos lecturas del GPS en vuelo', () {
-      // Permiso denegado; después «Activar GPS» y el reintento al volver de los ajustes arrancan una
-      // lectura cada uno, a la vez (la 2 y la 3). La que vale es la última que se pidió: la 3.
+      // Permiso denegado; después «Activar GPS» y «Mi ubicación» de otra vista arrancan una lectura
+      // cada uno, a la vez (la 2 y la 3). La que vale es la última que se pidió: la 3. (El regreso a
+      // la app con «Activar GPS» en curso ya no lee: es el del diálogo del permiso, #679.)
       const segundoPunto = Coordenadas(lat: -34.88741, lon: -56.13024);
       final lecturas = <int, Completer<Either<Failure, LecturaGps>>>{};
       late _Banco b;
@@ -282,7 +284,7 @@ void main() {
         gps.porLectura = (n) =>
             lecturas.putIfAbsent(n, () => Completer<Either<Failure, LecturaGps>>()).future;
         unawaited(b.notificador.activarGps());
-        unawaited(b.notificador.reintentarGpsSiHaceFalta());
+        unawaited(b.contenedor.read(ubicacionColportorProvider.notifier).refrescar());
         await _esperar();
         expect(gps.lecturas, 3, reason: 'quedaron dos lecturas en vuelo');
       }
