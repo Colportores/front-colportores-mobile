@@ -7,7 +7,7 @@ import '../formato_mapa_ubicaciones.dart';
 import '../mapa_base/marcador_estado.dart' show MarcadorEstado, VarianteMarcador;
 import '../mapa_base/modelo_mapa_base.dart' show ColoresMapa;
 import '../providers/lista_ubicaciones_state.dart' show EstadoGpsLista;
-import 'piezas_alta.dart' show ColoresAlta;
+import 'piezas_alta.dart' show ColoresAlta, PinAlta;
 import 'piezas_lista_ubicaciones.dart';
 
 /// Las claves con que los tests (y el QA) encuentran lo que dibuja el mapa de ubicaciones.
@@ -166,6 +166,78 @@ class BotonNuevaUbicacion extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// El pin para sumar una casa, abajo a la derecha (vista 39, M·01; vista 41, 41A): un botón redondo
+/// blanco con la gota del pin. Se arrastra al lugar del mapa ([alSoltar] recibe dónde quedó la punta,
+/// en coordenadas globales) o se toca para dejarlo en la ubicación de la colportora ([alTocar]).
+class BotonPinCasaNueva extends StatelessWidget {
+  const BotonPinCasaNueva({super.key, required this.alTocar, required this.alSoltar});
+
+  final VoidCallback alTocar;
+  final ValueChanged<Offset> alSoltar;
+
+  /// El lado del botón (canvas: 60 dp).
+  static const lado = 60.0;
+
+  /// Mientras se arrastra, la punta del pin va esta distancia por encima del dedo: el dedo no la tapa.
+  static const sobreElDedo = 24.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final boton = Material(
+      color: Colors.white,
+      elevation: 6,
+      shape: const CircleBorder(side: BorderSide(color: ColoresAlta.grisBorde)),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: alTocar,
+        child: const SizedBox(
+          width: lado,
+          height: lado,
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: ExcludeSemantics(child: SizedBox(width: 26, height: 32, child: _PinChico())),
+            ),
+          ),
+        ),
+      ),
+    );
+    return Semantics(
+      button: true,
+      label: TextosMapaUbicaciones.pinCasaNueva,
+      hint: TextosMapaUbicaciones.pinCasaNuevaPista,
+      onTap: alTocar,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: TextosMapaUbicaciones.pinCasaNueva,
+        excludeFromSemantics: true,
+        child: Draggable<Object>(
+          data: const Object(),
+          dragAnchorStrategy: pointerDragAnchorStrategy,
+          feedback: Transform.translate(
+            // La punta de la gota (abajo al medio) queda [sobreElDedo] por encima del dedo.
+            offset: const Offset(-18, -44 - sobreElDedo),
+            child: const PinAlta(),
+          ),
+          childWhenDragging: Opacity(opacity: 0.4, child: boton),
+          onDragEnd: (detalles) => alSoltar(detalles.offset - const Offset(0, sobreElDedo)),
+          child: boton,
+        ),
+      ),
+    );
+  }
+}
+
+/// La gota del pin, chica, para el botón.
+class _PinChico extends StatelessWidget {
+  const _PinChico();
+
+  @override
+  Widget build(BuildContext context) {
+    return const FittedBox(child: PinAlta(etiqueta: TextosMapaUbicaciones.pinCasaNueva));
   }
 }
 

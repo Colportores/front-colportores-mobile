@@ -688,29 +688,27 @@ void main() {
   });
 
   group('decisión del 10/11 sobre los textos (P2 del implementador)', () {
-    testWidgets(
-      'sin cámara y alquiler sin campaña dicen lo que decidió el agente de decisiones',
-      (tester) async {
-        await montar443(tester, ArnesDeDeposito(sinCamara: true));
-        expect(
-          _texto('Este teléfono no tiene cámara: elegí la foto del ticket de la galería.'),
-          findsOneWidget,
-        );
+    // Un montaje por test: dos `montar443` en el mismo test dejan abierta la primera ruta.
+    testWidgets('sin cámara dice lo que decidió el agente de decisiones', (tester) async {
+      await montar443(tester, ArnesDeDeposito(sinCamara: true));
+      expect(
+        _texto('Este teléfono no tiene cámara: elegí la foto del ticket de la galería.'),
+        findsOneWidget,
+      );
+    });
 
-        await montar443(tester, ArnesDeDeposito(campania: null));
-        await escribirMonto(tester, '700');
-        await tester.tap(find.byKey(const Key('deposito_concepto_1')));
-        await tester.pumpAndSettle();
-        expect(
-          _texto(
-            'No estás inscripto en una campaña en curso, y el alquiler se paga a tu campaña. '
-            'Si es de una campaña que ya terminó, avisale a tu coordinador.',
-          ),
-          findsOneWidget,
-        );
-      },
-      // skip: QA #443 — textos de la decisión del 10/11 (P2) sin aplicar; no frena el merge.
-      skip: !verHallazgos443,
-    );
+    testWidgets('alquiler sin campaña dice lo que decidió el agente de decisiones', (tester) async {
+      await montar443(tester, ArnesDeDeposito(campania: null));
+      await escribirMonto(tester, '700');
+      await tester.tap(find.byKey(const Key('deposito_concepto_1')));
+      await tester.pumpAndSettle();
+      expect(
+        _texto(
+          'No estás inscripto en una campaña en curso, y el alquiler se paga a tu campaña. '
+          'Si es de una campaña que ya terminó, avisale a tu coordinador.',
+        ),
+        findsOneWidget,
+      );
+    });
   });
 }

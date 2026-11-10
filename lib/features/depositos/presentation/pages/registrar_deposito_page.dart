@@ -23,6 +23,7 @@ import '../../domain/entities/deposito.dart';
 import '../../domain/usecases/registrar_deposito_con_ticket_use_case.dart';
 import '../providers/depositos_providers.dart';
 import '../textos_deposito.dart';
+import '../widgets/aviso_tickets_sin_subir.dart';
 import '../widgets/piezas_deposito.dart';
 
 /// «Registrar depósito» (vista 33 D, HU-CTA-004, #443): el colportor carga cuánto depositó, para qué
@@ -494,6 +495,8 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
           ),
           const SizedBox(height: 9),
         ],
+        // 38A-08: un ticket de un depósito anterior no pudo subir su foto.
+        const AvisoDeTicketsSinSubir(margen: EdgeInsets.only(bottom: 9)),
         const SizedBox(height: 4),
         CampoDeVenta(
           key: const Key('deposito_monto'),

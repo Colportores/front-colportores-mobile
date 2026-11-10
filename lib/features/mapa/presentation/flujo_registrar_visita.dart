@@ -33,6 +33,9 @@ import 'widgets/hoja_que_paso.dart';
 /// - **No contestó** y **Rechazo** guardan de un toque: la visita (con la agenda de la casa, si tiene
 ///   una programada: «No contestó» la deja `NO_CUMPLIDA`), la casa se repinta y se vuelve al mapa con
 ///   el aviso «Guardado. Grecia 3307 quedó como «No contestó».» y su «Deshacer».
+/// - **Cobranza** sigue al cobro (C·08 → vista 28). Si no se cobra y la colportora toca «Cancelar»,
+///   el flujo del cobro le pregunta «¿María no te pagó?»; con «Sí, anotar la visita» queda la visita
+///   «Cobranza» sin cobro ([anotarCobranzaSinCobro]) y la cita sigue `PROGRAMADA`.
 /// - **Programar entrevista**, **Entrevista dada** y **Cobranza** siguen a «¿Con quién?» y a los
 ///   flujos de sus propias HU: aparecen cuando esos destinos están enganchados
 ///   ([programarEntrevistaDesdeLaCasaProvider], [entrevistaDadaDesdeLaCasaProvider],
@@ -292,20 +295,21 @@ abstract final class FlujoRegistrarVisita {
           espacioId: espacioId,
           personaId: cobro.personaId,
         ));
+        // «Cancelar» y «Sí, anotar la visita» (03/11): el flujo del cobro ya guardó la visita «Cobranza»
+        // sin cobro, con `anotarCobranzaSinCobro`; acá no se guarda otra vez.
+        if (hecho is CobranzaAnotadaSinCobro) return const OpcionResuelta();
         if (hecho != true) return const OpcionCancelada();
         cobroHecho = true;
       }
       // El cobro se hizo: la visita queda en el historial como «Cobranza» (decisión «Visita cobro»,
       // 23/10), sin agenda. Si no se puede guardar, el cobro ya está hecho y la hoja lo dice.
-      final r = await registrar(
-        RegistrarResultadoVisitaParams(
-          ids: idsDe(OpcionQuePaso.cobranza),
-          espacioId: espacioId,
-          espacioPersonaId: cobro.espacioPersonaId,
-          colportorId: colportor,
-          resultado: TipoResultadoVisita.cobranza,
-          jornadaId: await _jornadaAbierta(contenedor, colportor),
-        ),
+      final r = await _guardarVisitaDeCobranza(
+        contenedor,
+        registrar,
+        ids: idsDe(OpcionQuePaso.cobranza),
+        espacioId: espacioId,
+        espacioPersonaId: cobro.espacioPersonaId,
+        colportorId: colportor,
       );
       return r.fold(
         (_) => const OpcionFallida(TextosRegistrarVisita.noPudimosGuardar),
@@ -353,6 +357,56 @@ abstract final class FlujoRegistrarVisita {
     }
     return resuelta;
   }
+
+  /// Guarda la visita «Cobranza» **sin cobro** (decisión de Cristian, 03/11, «Sin cobro»): la colportora
+  /// tocó «Cancelar» en «$ Cobrar», contestó «Sí, anotar la visita» a «¿María no te pagó?» y queda la
+  /// pasada en el historial. Va **sin agenda**, como la «Cobranza» con cobro: la cita de cobranza no se
+  /// toca y sigue `PROGRAMADA` (regla común de la vista 39, S37).
+  ///
+  /// Es lo que usa el flujo del cobro (`FlujoCobrarDesdeLaCasa`), así que cubre los dos caminos —«$ Cobrar»
+  /// de la hoja de la casa y «Cobranza» de «¿Qué pasó?»— con un solo lugar que escribe la visita. [ids]
+  /// se genera una vez por pregunta y se repite en el reintento: una falla seguida de otro «Sí» no
+  /// guarda dos visitas. Devuelve `true` si quedó guardada; nunca lanza.
+  static Future<bool> anotarCobranzaSinCobro(
+    ProviderContainer contenedor, {
+    required IdsResultadoVisita ids,
+    required String espacioId,
+    String? espacioPersonaId,
+    required String colportorId,
+  }) async {
+    try {
+      final r = await _guardarVisitaDeCobranza(
+        contenedor,
+        contenedor.read(registrarResultadoVisitaUseCaseProvider),
+        ids: ids,
+        espacioId: espacioId,
+        espacioPersonaId: espacioPersonaId,
+        colportorId: colportorId,
+      );
+      return r.isRight();
+    } on Object {
+      return false;
+    }
+  }
+
+  /// La visita «Cobranza» (con o sin cobro) sin agenda y con la jornada abierta de hoy, si la hay.
+  static Future<Either<Failure, ResultadoVisitaRegistrado>> _guardarVisitaDeCobranza(
+    ProviderContainer contenedor,
+    RegistrarResultadoVisitaUseCase registrar, {
+    required IdsResultadoVisita ids,
+    required String espacioId,
+    required String? espacioPersonaId,
+    required String colportorId,
+  }) async => registrar(
+    RegistrarResultadoVisitaParams(
+      ids: ids,
+      espacioId: espacioId,
+      espacioPersonaId: espacioPersonaId,
+      colportorId: colportorId,
+      resultado: TipoResultadoVisita.cobranza,
+      jornadaId: await _jornadaAbierta(contenedor, colportorId),
+    ),
+  );
 
   /// La jornada abierta de [colportorId] **en el momento de guardar** (no al abrir la hoja: la
   /// colportora pudo iniciarla o cerrarla mientras tanto), o `null` si no tiene ninguna.

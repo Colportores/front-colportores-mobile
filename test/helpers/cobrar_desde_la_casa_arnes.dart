@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/agenda/domain/repositories/agenda_repository.dart';
 import 'package:colportores_mobile/features/agenda/presentation/providers/agenda_providers.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/entities/venta_con_saldo.dart';
@@ -13,6 +14,8 @@ import 'package:colportores_mobile/features/cobranzas/domain/repositories/cobran
 import 'package:colportores_mobile/features/cobranzas/presentation/flujo_cobrar_desde_la_casa.dart';
 import 'package:colportores_mobile/features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'package:colportores_mobile/features/cobranzas/presentation/widgets/hoja_que_venta.dart';
+import 'package:colportores_mobile/features/jornada/data/datasources/fakes/jornada_local_data_source_en_memoria.dart';
+import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
@@ -189,8 +192,8 @@ final class ArnesCobrarDesdeLaCasa {
   /// Los ids de cobro que se generaron, en orden.
   final idsGenerados = <String>[];
 
-  /// Cada vez que el flujo terminó: lo que devolvió.
-  final resultados = <bool>[];
+  /// Cada vez que el flujo terminó: lo que devolvió (`true`, `false` o `CobranzaAnotadaSinCobro`).
+  final resultados = <Object>[];
 
   /// Lo que lanzó el flujo, si lanzó.
   final lanzados = <Object>[];
@@ -207,7 +210,10 @@ Future<ArnesCobrarDesdeLaCasa> montarCobrarDesdeLaCasa(
   double escala = 1,
   Size tamano = const Size(390, 844),
   bool abrir = true,
+  AgendaRepository? agenda,
+  bool lector = false,
 }) async {
+  var visitas = 0;
   final arnes = ArnesCobrarDesdeLaCasa(
     repo: repo,
     telefono: Telefono(),
@@ -228,7 +234,11 @@ Future<ArnesCobrarDesdeLaCasa> montarCobrarDesdeLaCasa(
           return id;
         }),
         relojCobroProvider.overrideWithValue(() => hoyDelCobro),
-        agendaRepositoryProvider.overrideWithValue(AgendaRepositorioQueAgenda()),
+        agendaRepositoryProvider.overrideWithValue(agenda ?? AgendaRepositorioQueAgenda()),
+        // La visita «Cobranza» sin cobro (decisión del 03/11): ids y hora fijos, sin jornada abierta.
+        generadorIdVisitaProvider.overrideWithValue(() => 'visita-${++visitas}'),
+        relojVisitaProvider.overrideWithValue(() => hoyDelCobro),
+        jornadaLocalDataSourceProvider.overrideWithValue(JornadaLocalDataSourceEnMemoria()),
         ...arnes.telefono.overrides,
         personaRepositoryProvider.overrideWithValue(personasRepo),
         espacioRepositoryProvider.overrideWithValue(EspacioRepositorioParaPersonas(casaMataojo())),
@@ -237,7 +247,9 @@ Future<ArnesCobrarDesdeLaCasa> montarCobrarDesdeLaCasa(
         theme: temaClaro(),
         navigatorObservers: [arnes.rutas],
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(escala), accessibleNavigation: lector),
           child: child!,
         ),
         home: Builder(

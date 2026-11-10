@@ -52,6 +52,9 @@ final class MontajeMapaUbicaciones {
   /// Si la pestaña está a la vista: cambiarlo es cambiar de pestaña y volver.
   final ValueNotifier<bool> activa;
 
+  /// Si la pestaña está montada: `false` la desmonta (el resto de la app y sus providers siguen).
+  final montada = ValueNotifier(true);
+
   /// El punto de cada alta que se abrió (`null` si fue desde «Nueva», no desde el mapa).
   final altas = <Coordenadas?>[];
 
@@ -147,13 +150,18 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
           ),
           home: Scaffold(
             body: ValueListenableBuilder<bool>(
-              valueListenable: montaje.activa,
-              builder: (context, estaActiva, _) => MapaUbicacionesPage(
-                key: const Key('pestana_mapa'),
-                colportorId: 'col-1',
-                activa: estaActiva,
-                alAbrirAlta: altaReal ? null : montaje.abrirAlta,
-              ),
+              valueListenable: montaje.montada,
+              builder: (context, estaMontada, _) => !estaMontada
+                  ? const SizedBox.expand(key: Key('sin_pestana_mapa'))
+                  : ValueListenableBuilder<bool>(
+                      valueListenable: montaje.activa,
+                      builder: (context, estaActiva, _) => MapaUbicacionesPage(
+                        key: const Key('pestana_mapa'),
+                        colportorId: 'col-1',
+                        activa: estaActiva,
+                        alAbrirAlta: altaReal ? null : montaje.abrirAlta,
+                      ),
+                    ),
             ),
           ),
         ),
