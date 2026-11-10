@@ -133,10 +133,18 @@ void main() {
             data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
             child: child!,
           ),
-          home: const Scaffold(
-            body: SingleChildScrollView(
-              padding: EdgeInsets.all(16),
-              child: PestanaHistorialDeLaCasa(espacioId: 'esp-1', direccion: 'Grecia 3310'),
+          // Como en la app (`app.dart` mira la sesión desde el arranque): la sesión ya está leída
+          // cuando se toca «Ver la venta».
+          home: Consumer(
+            builder: (context, ref, child) {
+              ref.watch(sesionProvider);
+              return child!;
+            },
+            child: const Scaffold(
+              body: SingleChildScrollView(
+                padding: EdgeInsets.all(16),
+                child: PestanaHistorialDeLaCasa(espacioId: 'esp-1', direccion: 'Grecia 3310'),
+              ),
             ),
           ),
         ),
@@ -144,6 +152,8 @@ void main() {
     );
     // La sesión se resuelve en un futuro: que esté antes del primer toque.
     await asentar(tester);
+    final contenedor = ProviderScope.containerOf(tester.element(find.byType(Scaffold).first));
+    expect(contenedor.read(sesionProvider).hasValue, isTrue);
   }
 
   Finder fila(String id) => find.byKey(ClavesHistorialDeLaCasa.fila(id));
