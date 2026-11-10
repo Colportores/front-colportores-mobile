@@ -201,7 +201,10 @@ void main() {
       expect(laPantalla(tester).espacioPersonaId, 'ep-ana');
 
       await tester.tap(volverDeCuotas);
-      await asentar(tester);
+      // La ruta se anima al salir: fotogramas de a poco, como en las pruebas de cuotas (#580).
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 60));
+      }
       expect(paginaLista, findsNothing);
       expect(fila('ven-1'), findsOneWidget);
       expect(fila('ven-2'), findsOneWidget);
