@@ -25,6 +25,7 @@ import '../mapa_base/marcador_estado.dart' show VarianteMarcador;
 import '../mapa_base/modelo_mapa_base.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import '../providers/mapa_base_providers.dart';
+import '../providers/mapa_principal_provider.dart';
 import '../providers/mapa_ubicaciones_notifier.dart';
 import '../providers/mapa_ubicaciones_providers.dart';
 import '../providers/pantallas_sobre_el_mapa.dart';
@@ -90,6 +91,10 @@ enum _Encuadre { ninguno, todas, gps }
 class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     with WidgetsBindingObserver {
   ControladorMapaBase? _mapa;
+
+  /// El dueño del mapa principal (#655): las capas de encima mueven la cámara por él. Se guarda al
+  /// montar (en `dispose` no se lee `ref`).
+  late final MapaPrincipalNotifier _mapaPrincipal;
   Size _tamano = Size.zero;
   var _altura = AlturaHoja.minimizada;
   var _encuadre = _Encuadre.ninguno;
@@ -148,6 +153,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   void initState() {
     super.initState();
     _gpsAlDescartar = ref.read(ubicacionColportorProvider.notifier);
+    _mapaPrincipal = ref.read(mapaPrincipalProvider.notifier);
     _pantallas = ref.read(pantallasSobreElMapaProvider)..cambios.addListener(_alCambiarLaPila);
     WidgetsBinding.instance.addObserver(this);
     final estadoApp = WidgetsBinding.instance.lifecycleState;
@@ -186,6 +192,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pantallas.cambios.removeListener(_alCambiarLaPila);
+    final mapa = _mapa;
+    if (mapa != null) _mapaPrincipal.soltar(mapa);
     // El mapa deja de estar a la vista: el seguimiento no sigue gastando batería sin pantalla. Fuera
     // del desmontaje (un provider no se toca mientras se arma o se desarma el árbol).
     final gps = _gpsAlDescartar;
@@ -234,6 +242,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   void _alCrearseElMapa(ControladorMapaBase mapa) {
     _mapa = mapa;
+    _mapaPrincipal.registrar(mapa);
     // Si el shell ya pidió algo, se atiende al terminar el cuadro: acá se está construyendo y no se
     // puede tocar ningún provider. La cámara la mueve la intención si le toca (`_atenderIntencion`);
     // si no la mueve, el encuadre de la primera vez sigue como siempre.
