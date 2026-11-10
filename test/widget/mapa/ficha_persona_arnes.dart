@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/agenda/presentation/providers/agenda_providers.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/contexto_notas_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ficha_de_persona.dart';
@@ -24,8 +25,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/agendar_visita_arnes.dart' show AgendaRepositorioQueAgenda;
 import '../../helpers/ficha_persona_falsos.dart';
 import '../../helpers/nota_persona_falsos.dart';
+import '../../helpers/notificaciones_arnes.dart' show Telefono;
 import '../../helpers/persona_falsos.dart';
 import 'baja_persona_arnes.dart' show CuentasFalsas;
 
@@ -121,9 +124,23 @@ final class MundoFicha {
   /// Lo que devuelve el destino de la devolución, si queda esperando.
   Completer<void>? compuertaDevolucion;
 
+  /// Lo que recibió «Registrar entrega» (HU-VEN-005) cada vez que se tocó.
+  final entregas = <ContextoDeEntregaDeLaFicha>[];
+
+  /// Lo que devuelve el destino de «Registrar entrega», si queda esperando.
+  Completer<void>? compuertaEntrega;
+
+  /// Si no es `null`, el próximo «Registrar entrega» lanza esto en vez de abrirse.
+  Object? lanzarAlRegistrarEntrega;
+
+  /// La agenda y el teléfono con los que se abre «Agendar visita» desde «+ Agendar cobranza».
+  final agendas = AgendaRepositorioQueAgenda();
+  final telefono = Telefono();
+
   var conEdicion = false;
   var conRegistrarVisita = false;
   var conDevolucion = false;
+  var conRegistrarEntrega = false;
 }
 
 typedef ContextoDeVisitaFicha = ({String ubicacionId, String? espacioId, String? agendaId});
@@ -185,6 +202,21 @@ Future<void> montarFicha(
             await mundo.compuertaDevolucion?.future;
             return true;
           }),
+        if (mundo.conRegistrarEntrega)
+          registrarEntregaDesdeLaFichaProvider.overrideWithValue((c) async {
+            mundo.entregas.add(c);
+            await mundo.compuertaEntrega?.future;
+            final error = mundo.lanzarAlRegistrarEntrega;
+            if (error != null) {
+              mundo.lanzarAlRegistrarEntrega = null;
+              throw error;
+            }
+            return true;
+          }),
+        agendaRepositoryProvider.overrideWithValue(mundo.agendas),
+        generadorIdVisitaProvider.overrideWithValue(() => 'cobranza-${++contador}'),
+        relojVisitaProvider.overrideWithValue(() => ahoraFicha),
+        ...mundo.telefono.overrides,
         if (mundo.conRegistrarVisita)
           registrarVisitaDesdeLaCasaProvider.overrideWithValue((c) {
             mundo.visitas.add(c);
