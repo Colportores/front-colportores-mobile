@@ -1015,6 +1015,81 @@ void main() {
       expect(cola().where((c) => c == 'visita_misionero:insert'), hasLength(1));
     });
 
+    test(
+      'reintento con los mismos ids y otras cantidades (la visita ya estaba): queda lo que se ve',
+      () async {
+        await local.registrarVisita(
+          visitaDe('vis-1'),
+          misioneros: [dejado('vm-1', 'p-camino', cantidad: 2), dejado('vm-2', 'p-paz')],
+        );
+        encolador.encolados.clear();
+
+        // Ana cambió las cantidades después de que fallara lo de después de guardar la visita: la paz
+        // sigue igual, el camino pasa a 3 y suma la familia. Los ids del reintento son nuevos.
+        final r = await local.registrarVisita(
+          visitaDe('vis-1'),
+          misioneros: [
+            dejado('vm-3', 'p-camino', cantidad: 3),
+            dejado('vm-4', 'p-paz'),
+            dejado('vm-5', 'p-familia'),
+          ],
+        );
+
+        expect(r.yaEstaba, isTrue);
+        final vivos = [
+          for (final f in await dejados())
+            if (f.deletedAt == null) (f.id, f.productoId, f.cantidad),
+        ];
+        expect(
+          vivos,
+          unorderedEquals([
+            ('vm-2', 'p-paz', 1),
+            ('vm-3', 'p-camino', 3),
+            ('vm-5', 'p-familia', 1),
+          ]),
+        );
+        // La baja del camino viejo sube antes que el renglón nuevo (índice único del servidor); la
+        // paz no se toca.
+        expect(cola(), [
+          'visita_misionero:delete',
+          'visita_misionero:insert',
+          'visita_misionero:insert',
+        ]);
+        expect(encolador.encolados.first.payload['id'], 'vm-1');
+        expect(cola().where((c) => c.startsWith('visita:')), isEmpty);
+      },
+    );
+
+    test('reintento con «No dejé nada» después de guardar misioneros: se dan de baja', () async {
+      await local.registrarVisita(
+        visitaDe('vis-1'),
+        misioneros: [dejado('vm-1', 'p-camino', cantidad: 2)],
+      );
+      encolador.encolados.clear();
+
+      await local.registrarVisita(visitaDe('vis-1'));
+
+      expect((await dejados()).single.deletedAt, isNotNull);
+      expect(cola(), ['visita_misionero:delete']);
+    });
+
+    test('reintento sobre una visita deshecha: no se toca lo que dejó', () async {
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', creada: t1),
+        misioneros: [dejado('vm-1', 'p-camino')],
+      );
+      await local.deshacerVisita('vis-1', agendaCreadaId: r.agendaCreadaId, ahora: t2);
+      encolador.encolados.clear();
+
+      await local.registrarVisita(
+        visitaDe('vis-1', creada: t1),
+        misioneros: [dejado('vm-9', 'p-paz')],
+      );
+
+      expect(encolador.encolados, isEmpty);
+      expect((await dejados()).where((f) => f.deletedAt == null), isEmpty);
+    });
+
     test('al deshacer la visita, lo que dejó se da de baja y sube la baja', () async {
       final r = await local.registrarVisita(
         visitaDe('vis-1', creada: t1),

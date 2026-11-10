@@ -109,9 +109,9 @@ Future<SalidaTerminoEntrevista?> mostrarHojaTerminoEntrevista(
 /// - Un solo guardado a la vez: con «Guardando…» ningún botón responde y la hoja no se arrastra. Si
 ///   falla, el aviso dice qué hacer y los botones vuelven a estar habilitados.
 /// - «Lo que dejaste» (#608; decisiones de Cristian, 03/11 «Talonario mis» y 04/11 «Misio. entrev»):
-///   con [misioneros] en el catálogo, «No, guardar y volver al mapa» pasa a un segundo paso para
-///   anotar los misioneros que dejó sin venta, con el selector de 27A·08 y sin montos. **Diseño
-///   provisorio**: el artboard llega con la vista 42 de Claude Design.
+///   con [misioneros] en el catálogo, «No hubo venta» pasa a un segundo paso para anotar los
+///   misioneros que dejó sin venta, con el selector de 27A·08 y sin montos. Sigue el artboard 42B·08
+///   con las decisiones del 10/11: una sola salida «No», pie «Guardar» + «No dejé nada» y sin stock.
 class HojaTerminoEntrevista extends StatefulWidget {
   const HojaTerminoEntrevista({
     super.key,
@@ -143,6 +143,10 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
   DateTime? _salida;
   bool _guardando = false;
   String? _error;
+
+  /// El aviso de error y los botones que siguen: al fallar se llevan a la vista juntos (con la letra
+  /// grande el aviso empuja el botón fuera de la pantalla, QA #432).
+  final _reintento = GlobalKey();
 
   /// En el paso «Lo que dejaste».
   bool _enLoQueDejaste = false;
@@ -268,6 +272,16 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
         FailureValidacion(:final mensaje) => mensaje,
         _ => TextosEntrevista.noPudimosGuardar,
       };
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final bloque = _reintento.currentContext;
+      if (!mounted || bloque == null) return;
+      unawaited(
+        Scrollable.ensureVisible(
+          bloque,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        ),
+      );
     });
   }
 
@@ -403,19 +417,27 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
             child: const Text(TextosEntrevista.registrarVenta),
           ),
           const SizedBox(height: 10),
-          if (_error != null) ...[
-            AvisoAlta(
-              key: ClavesEntrevista.avisoError,
-              color: ColoresAlta.rojo,
-              glyph: '!',
-              texto: _error!,
-            ),
-            const SizedBox(height: 10),
-          ],
-          OutlinedButton(
-            key: ClavesEntrevista.guardarYVolver,
-            onPressed: _completa && !_guardando ? _noHuboVenta : null,
-            child: Text(_guardando ? TextosEntrevista.guardando : TextosEntrevista.guardarYVolver),
+          Column(
+            key: _reintento,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_error != null) ...[
+                AvisoAlta(
+                  key: ClavesEntrevista.avisoError,
+                  color: ColoresAlta.rojo,
+                  glyph: '!',
+                  texto: _error!,
+                ),
+                const SizedBox(height: 10),
+              ],
+              OutlinedButton(
+                key: ClavesEntrevista.guardarYVolver,
+                onPressed: _completa && !_guardando ? _noHuboVenta : null,
+                child: Text(
+                  _guardando ? TextosEntrevista.guardando : TextosEntrevista.guardarYVolver,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -483,29 +505,35 @@ class _HojaTerminoEntrevistaState extends State<HojaTerminoEntrevista> {
             ),
           ),
           const SizedBox(height: 14),
-          if (_error != null) ...[
-            AvisoAlta(
-              key: ClavesEntrevista.avisoError,
-              color: ColoresAlta.rojo,
-              glyph: '!',
-              texto: _error!,
-            ),
-            const SizedBox(height: 10),
-          ],
-          FilledButton(
-            key: ClavesEntrevista.guardarLoQueDejaste,
-            onPressed: _guardando || total == 0
-                ? null
-                : () => unawaited(_guardar(conMisioneros: true)),
-            child: Text(
-              _guardando ? TextosEntrevista.guardando : TextosEntrevista.guardarLoQueDejaste,
-            ),
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton(
-            key: ClavesEntrevista.noDejeNada,
-            onPressed: _guardando ? null : () => unawaited(_guardar()),
-            child: const Text(TextosEntrevista.noDejeNada),
+          Column(
+            key: _reintento,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_error != null) ...[
+                AvisoAlta(
+                  key: ClavesEntrevista.avisoError,
+                  color: ColoresAlta.rojo,
+                  glyph: '!',
+                  texto: _error!,
+                ),
+                const SizedBox(height: 10),
+              ],
+              FilledButton(
+                key: ClavesEntrevista.guardarLoQueDejaste,
+                onPressed: _guardando || total == 0
+                    ? null
+                    : () => unawaited(_guardar(conMisioneros: true)),
+                child: Text(
+                  _guardando ? TextosEntrevista.guardando : TextosEntrevista.guardarLoQueDejaste,
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton(
+                key: ClavesEntrevista.noDejeNada,
+                onPressed: _guardando ? null : () => unawaited(_guardar()),
+                child: const Text(TextosEntrevista.noDejeNada),
+              ),
+            ],
           ),
         ],
       ),

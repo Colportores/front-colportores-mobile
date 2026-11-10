@@ -252,11 +252,23 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
     NotaDeCampo? nota,
     List<MisioneroDejado> misioneros = const [],
   }) => _db.transaction(() async {
+    // Un renglón por producto y de esta visita (el servidor no admite dos vivos): se valida antes de
+    // escribir nada.
+    final yaDejados = <String>{};
+    for (final m in misioneros) {
+      if (m.visitaId != visita.id || m.cantidad < 1 || !yaDejados.add(m.productoId)) {
+        throw ArgumentError.value(m.productoId, 'misioneros', 'renglón de misioneros inválido');
+      }
+    }
     final existente = await _visitaPorId(visita.id);
     if (existente != null) {
-      // Un segundo toque o un reintento con los mismos ids: no se escribe nada, pero la respuesta
-      // dice lo mismo que la primera (qué agenda cumplió o creó la visita), así «Deshacer» funciona
-      // con cualquiera de las dos.
+      // Un segundo toque o un reintento con los mismos ids: la visita no se vuelve a escribir, pero la
+      // respuesta dice lo mismo que la primera (qué agenda cumplió o creó la visita), así «Deshacer»
+      // funciona con cualquiera de las dos. Lo que dejó sí sigue a lo que se ve: si la visita se
+      // guardó y falló lo de después, el reintento puede llegar con otras cantidades.
+      if (existente.deletedAt == null) {
+        await _misionerosComoSeVen(visita.id, misioneros, instanteMs(visita.auditoria.updatedAt));
+      }
       final vinculadas = await (_db.select(
         _db.agendas,
       )..where((a) => a.visitaId.equals(visita.id) & a.deletedAt.isNull())).get();
@@ -279,14 +291,6 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
       );
     }
 
-    // Un renglón por producto y de esta visita (el servidor no admite dos vivos): se valida antes de
-    // escribir nada.
-    final yaDejados = <String>{};
-    for (final m in misioneros) {
-      if (m.visitaId != visita.id || m.cantidad < 1 || !yaDejados.add(m.productoId)) {
-        throw ArgumentError.value(m.productoId, 'misioneros', 'renglón de misioneros inválido');
-      }
-    }
     await _exigirEspacioYVinculo(visita.espacioId, visita.espacioPersonaId);
     await _exigirJornada(visita.jornadaId);
     final (:agenda, :ignorada) = agendaId == null
@@ -474,6 +478,52 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
 
   Future<AgendaFila?> _agendaPorId(String id) =>
       (_db.select(_db.agendas)..where((a) => a.id.equals(id))).getSingleOrNull();
+
+  /// Deja vivos en `visita_misionero` exactamente los [pedidos] de la visita: lo que no cambió no se
+  /// toca ni se vuelve a encolar; un producto que ya no está o cambió de cantidad se da de baja (antes
+  /// que el renglón nuevo, por el índice único del servidor) y lo nuevo se inserta.
+  Future<void> _misionerosComoSeVen(
+    String visitaId,
+    List<MisioneroDejado> pedidos,
+    DateTime instante,
+  ) async {
+    final vivos =
+        await (_db.select(_db.visitaMisioneros)
+              ..where((m) => m.visitaId.equals(visitaId) & m.deletedAt.isNull())
+              ..orderBy([(m) => OrderingTerm.asc(m.id)]))
+            .get();
+    final porProducto = {for (final m in pedidos) m.productoId: m};
+    for (final v in vivos) {
+      if (porProducto[v.productoId]?.cantidad == v.cantidad) {
+        porProducto.remove(v.productoId);
+        continue;
+      }
+      await (_db.update(_db.visitaMisioneros)..where((f) => f.id.equals(v.id))).write(
+        VisitaMisionerosCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
+      );
+      final dadoDeBaja = await (_db.select(
+        _db.visitaMisioneros,
+      )..where((f) => f.id.equals(v.id))).getSingle();
+      await _encolador.encolar(
+        'visita_misionero',
+        OperacionSync.delete,
+        MisioneroDejadoModel.toJson(_aMisionero(dadoDeBaja)),
+      );
+    }
+    for (final m in porProducto.values) {
+      // Un renglón con el id de uno que ya existe (el mismo reintento dos veces) no se duplica.
+      final yaEsta = await (_db.select(
+        _db.visitaMisioneros,
+      )..where((f) => f.id.equals(m.id))).getSingleOrNull();
+      if (yaEsta != null) continue;
+      await _db.into(_db.visitaMisioneros).insert(_aFilaMisionero(m));
+      await _encolador.encolar(
+        'visita_misionero',
+        OperacionSync.insert,
+        MisioneroDejadoModel.toJson(m),
+      );
+    }
+  }
 
   Future<VisitaFila?> _visitaPorId(String id) =>
       (_db.select(_db.visitas)..where((v) => v.id.equals(id))).getSingleOrNull();

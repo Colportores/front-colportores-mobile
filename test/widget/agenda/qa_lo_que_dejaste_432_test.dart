@@ -201,35 +201,33 @@ void main() {
       h.dispose();
     });
 
-    // skip: QA #432 — a 360×640 ×2 el aviso rojo (226 dp) aparece entre la lista y «Guardar»: queda
-    // cortado (bottom 736 > 640) y el botón de reintento, fuera de la pantalla.
-    testWidgets(
-      'tras fallar, el aviso y el botón de reintento quedan a la vista (360×640 ×2)',
-      (tester) async {
-        alGuardar = (m) async => const FailureInesperado();
-        await montar(tester, tamano: telefonoChico, escala: 2, misioneros: _largos);
-        await alPaso2(tester);
-        await unoMas(tester, _largos[1]);
-        await tester.ensureVisible(find.byKey(ClavesEntrevista.guardarLoQueDejaste));
-        await tester.tap(find.byKey(ClavesEntrevista.guardarLoQueDejaste));
-        await tester.pumpAndSettle();
+    // QA #432: a 360×640 ×2 el aviso rojo (226 dp) empujaba «Guardar» fuera de la pantalla; al fallar
+    // la hoja lleva el aviso y el botón a la vista.
+    testWidgets('tras fallar, el aviso y el botón de reintento quedan a la vista (360×640 ×2)', (
+      tester,
+    ) async {
+      alGuardar = (m) async => const FailureInesperado();
+      await montar(tester, tamano: telefonoChico, escala: 2, misioneros: _largos);
+      await alPaso2(tester);
+      await unoMas(tester, _largos[1]);
+      await tester.ensureVisible(find.byKey(ClavesEntrevista.guardarLoQueDejaste));
+      await tester.tap(find.byKey(ClavesEntrevista.guardarLoQueDejaste));
+      await tester.pumpAndSettle();
 
-        final pantalla = Offset.zero & telefonoChico;
-        final aviso = tester.getRect(find.byKey(ClavesEntrevista.avisoError));
-        final boton = tester.getRect(find.byKey(ClavesEntrevista.guardarLoQueDejaste));
-        expect(
-          pantalla.contains(aviso.topLeft) && pantalla.contains(aviso.bottomRight),
-          isTrue,
-          reason: 'aviso $aviso',
-        );
-        expect(
-          pantalla.contains(boton.topLeft) && pantalla.contains(boton.bottomRight),
-          isTrue,
-          reason: 'botón $boton',
-        );
-      },
-      skip: !verHallazgos,
-    );
+      final pantalla = Offset.zero & telefonoChico;
+      final aviso = tester.getRect(find.byKey(ClavesEntrevista.avisoError));
+      final boton = tester.getRect(find.byKey(ClavesEntrevista.guardarLoQueDejaste));
+      expect(
+        pantalla.contains(aviso.topLeft) && pantalla.contains(aviso.bottomRight),
+        isTrue,
+        reason: 'aviso $aviso',
+      );
+      expect(
+        pantalla.contains(boton.topLeft) && pantalla.contains(boton.bottomRight),
+        isTrue,
+        reason: 'botón $boton',
+      );
+    });
   });
 
   group('casos límite', () {
