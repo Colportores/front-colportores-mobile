@@ -17,6 +17,7 @@ abstract final class ClavesDeptosDeLaCasa {
   static const agregar = Key('hoja_casa_deptos_agregar');
   static const tarjetaAgregar = Key('hoja_casa_deptos_tarjeta_agregar');
   static const seguir = Key('hoja_casa_deptos_seguir');
+  static const volverDeN04 = Key('hoja_casa_deptos_volver_n04');
   static const vacio = Key('hoja_casa_deptos_vacio');
   static const error = Key('hoja_casa_deptos_error');
   static const reintentar = Key('hoja_casa_deptos_reintentar');
@@ -65,6 +66,7 @@ class DeptosDeLaCasa extends StatelessWidget {
     required this.alElegir,
     this.alAgregar,
     this.alSeguir,
+    this.alVolver,
   });
 
   /// Los deptos activos, en el orden de la lista (por piso y por número).
@@ -80,6 +82,11 @@ class DeptosDeLaCasa extends StatelessWidget {
 
   /// «Seguir» de N·04.
   final VoidCallback? alSeguir;
+
+  /// «Volver» de N·04: el edificio ya quedó guardado (vista 41, «Registrar»), así que cierra la hoja
+  /// y vuelve al mapa como la ✕, sin deshacer el alta (decisión §2 del 11/11, P1 de
+  /// `452-impl-261111-1400`).
+  final VoidCallback? alVolver;
 
   @override
   Widget build(BuildContext context) {
@@ -143,6 +150,21 @@ class DeptosDeLaCasa extends StatelessWidget {
               ),
             ),
             child: const Text(TextosDeptosDeLaCasa.seguir, textAlign: TextAlign.center),
+          ),
+        if (agregando && alVolver != null)
+          TextButton(
+            key: ClavesDeptosDeLaCasa.volverDeN04,
+            onPressed: ocupado ? null : alVolver,
+            style: TextButton.styleFrom(
+              foregroundColor: ColoresAlta.azul,
+              minimumSize: const Size.fromHeight(48),
+              textStyle: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            child: const Text(TextosDeptosDeLaCasa.volver, textAlign: TextAlign.center),
           ),
       ],
     );

@@ -466,6 +466,8 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
             alSeguir: paso == PasoDeptos.agregando
                 ? () => _cambiarDePaso(() => _eligiendo = true)
                 : null,
+            // «Volver» de N·04 cierra la hoja como la ✕ (P1 de `452-impl-261111-1400`).
+            alVolver: paso == PasoDeptos.agregando ? widget.alCerrar : null,
           ),
         ],
       ),

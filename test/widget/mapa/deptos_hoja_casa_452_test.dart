@@ -462,6 +462,39 @@ void main() {
       },
     );
 
+    testWidgets(
+      '«Volver» de N·04 cierra la hoja como la ✕, sin deshacer el alta (P1, decisión §2 del '
+      '11/11)',
+      (tester) async {
+        final m = await _montar(tester, recien: true, espacios: [_d1A]);
+
+        expect(find.byKey(ClavesDeptosDeLaCasa.volverDeN04), findsOneWidget);
+        expect(
+          tester.getSize(find.byKey(ClavesDeptosDeLaCasa.volverDeN04)).height,
+          greaterThanOrEqualTo(48),
+        );
+        await tester.ensureVisible(find.byKey(ClavesDeptosDeLaCasa.volverDeN04));
+        await tester.pump();
+        await tester.tap(find.byKey(ClavesDeptosDeLaCasa.volverDeN04));
+        await _asentar(tester);
+
+        expect(m.cierres, 1);
+        expect(m.repo.llamadas, isEmpty, reason: 'no se borra ni se toca nada');
+      },
+    );
+
+    testWidgets('«Volver» no está en N·06', (tester) async {
+      await _montar(tester, recien: true, espacios: [_d1A]);
+      await tester.tap(find.byKey(ClavesDeptosDeLaCasa.seguir));
+      await _asentar(tester);
+      expect(find.byKey(ClavesDeptosDeLaCasa.volverDeN04), findsNothing);
+    });
+
+    testWidgets('un edificio que ya estaba (C·09) no lleva «Volver»', (tester) async {
+      await _montar(tester);
+      expect(find.byKey(ClavesDeptosDeLaCasa.volverDeN04), findsNothing);
+    });
+
     testWidgets('el atrás en N·06 vuelve a N·04, sin cerrar la hoja', (tester) async {
       final m = await _montar(tester, recien: true, espacios: [_d1A]);
       await tester.tap(find.byKey(ClavesDeptosDeLaCasa.seguir));

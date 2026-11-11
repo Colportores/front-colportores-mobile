@@ -141,6 +141,7 @@ abstract final class TextosDeptosDeLaCasa {
   static const numeroYPiso = 'Número y piso';
   static const sumaLosDeptos = 'Sumá los deptos que vas a visitar. El resto, cuando llegues.';
   static const seguir = 'Seguir';
+  static const volver = 'Volver';
   static const recienRegistrado = 'recién registrado';
   static const personas = 'PERSONAS';
   static const agregarPersona = '+ Agregar';
