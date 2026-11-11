@@ -137,9 +137,9 @@ void main() {
     });
 
     test('dado un valor que no es #RRGGBB (nulo, vacío, corto, con espacios, emoji), entonces se '
-        'usa el azul de siempre y no revienta', () {
+        'usa el gris sin color del token (#695) y no revienta', () {
       final porDefecto = ColoresZona.borde(null);
-      expect(porDefecto.toARGB32(), 0xFF13407A);
+      expect(porDefecto.toARGB32(), ContrasteMapa.bordeDeZona(0xFF8A94A6));
       for (final raro in [
         '',
         '#fff',

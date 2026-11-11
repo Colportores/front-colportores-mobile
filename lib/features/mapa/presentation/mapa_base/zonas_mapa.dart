@@ -54,10 +54,10 @@ final class ZonaMapa extends Equatable {
 /// El color de las zonas sobre el mapa. La regla y los números son los de lib-mapa (#673):
 /// [TokensMapa.zonaSinColor], [TokensMapa.contrasteBordes] y [ContrasteMapa.bordeDeZona].
 abstract final class ColoresZona {
-  /// Si el coordinador no eligió color: el valor del móvil del token, el azul primario de la app.
-  /// El panel usa otro gris hasta la decisión de UX de front-coordinadores-web#148
-  /// ([ValorPendiente.pendiente]); cuando se decida, llega como valor único con un tag nuevo.
-  static final porDefecto = Color(TokensMapa.zonaSinColor.movil);
+  /// Si el coordinador no eligió color: el gris «sin color» del token, el mismo del panel (decisión
+  /// de Cristian del 11/11, «Zona s/color», lib-mapa#12, #695). Como no alcanza 3:1 sobre el mapa,
+  /// [borde] lo oscurece igual que a cualquier color claro.
+  static const porDefecto = Color(TokensMapa.zonaSinColor);
 
   /// Lo peor que puede quedar detrás de un borde: el fondo liso (`ColoresMapa.fondo`, un test
   /// comprueba que sea el mismo) y el verde de los parques del estilo. El borde tiene que verse con

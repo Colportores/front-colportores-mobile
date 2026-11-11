@@ -122,6 +122,10 @@ void main() {
       for (final z in _dibujadas(m.mapa)) {
         expect(ColoresZona.contraste(z.color), greaterThanOrEqualTo(3), reason: z.id);
       }
+      // #695: la que el backend guardó sin color sale gris (el token de lib-mapa), no azul.
+      final sin = _dibujadas(m.mapa).singleWhere((z) => z.id == 'sin');
+      expect(sin.color, ColoresZona.borde(null));
+      expect(sin.color.toARGB32(), isNot(0xFF13407A));
     });
   });
 
