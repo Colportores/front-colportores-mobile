@@ -40,6 +40,15 @@ final class EntregaSinCasaException implements Exception {
   String toString() => 'EntregaSinCasaException';
 }
 
+/// La venta ya tiene una cita de entrega de lo de antes y se quería agendar otra para lo que se le
+/// sumó (42B·09D): una venta tiene una sola cita de entrega viva. No se guarda nada.
+final class EntregaYaAgendadaException implements Exception {
+  const EntregaYaAgendadaException();
+
+  @override
+  String toString() => 'EntregaYaAgendadaException';
+}
+
 /// La venta no tiene nada pendiente de entregar (ya se entregó todo, o no tiene filas de entrega).
 final class EntregaSinPendientesException implements Exception {
   const EntregaSinPendientesException({this.sinFilas = false});
@@ -159,32 +168,46 @@ final class EntregaLocalDataSourceDrift {
   });
 
   /// Ver [EntregaRepository.registrarEntrega]. Lanza [EntregaSinVentaException] si la venta no está.
-  Future<EntregaRegistrada> registrarEntrega(String ventaId, List<Entrega> filas) =>
-      _db.transaction(() async {
-        final venta = await _ventaViva(ventaId);
+  Future<EntregaRegistrada> registrarEntrega(
+    String ventaId,
+    List<Entrega> filas, {
+    DateTime? soloDesde,
+  }) => _db.transaction(() async {
+    final venta = await _ventaViva(ventaId);
 
-        final existentes = await _vivas(ventaId);
-        if (existentes.isNotEmpty) {
-          // Un segundo toque o un reintento: no se escribe nada y la respuesta dice lo mismo que la
-          // primera.
-          return EntregaRegistrada(
-            entregas: existentes,
-            colorDeLaCasa: await _colorActual(venta.espacioPersonaId),
-            yaEstaba: true,
-          );
-        }
+    final existentes = _desde(await _vivas(ventaId), soloDesde);
+    if (existentes.isNotEmpty) {
+      // Un segundo toque o un reintento: no se escribe nada y la respuesta dice lo mismo que la
+      // primera.
+      return EntregaRegistrada(
+        entregas: existentes,
+        colorDeLaCasa: await _colorActual(venta.espacioPersonaId),
+        yaEstaba: true,
+      );
+    }
 
-        for (final fila in filas) {
-          await _db.into(_db.entregas).insert(_aFila(fila));
-          await _encolador.encolar('entrega', OperacionSync.insert, EntregaModel.toJson(fila));
-        }
-        final color = await _recalcular(
-          venta.espacioPersonaId,
-          ahora: filas.isEmpty ? venta.updatedAt : filas.first.auditoria.updatedAt,
-          colportorId: venta.colportorId,
-        );
-        return EntregaRegistrada(entregas: await _vivas(ventaId), colorDeLaCasa: color);
-      });
+    for (final fila in filas) {
+      await _db.into(_db.entregas).insert(_aFila(fila));
+      await _encolador.encolar('entrega', OperacionSync.insert, EntregaModel.toJson(fila));
+    }
+    final color = await _recalcular(
+      venta.espacioPersonaId,
+      ahora: filas.isEmpty ? venta.updatedAt : filas.first.auditoria.updatedAt,
+      colportorId: venta.colportorId,
+    );
+    return EntregaRegistrada(
+      entregas: _desde(await _vivas(ventaId), soloDesde),
+      colorDeLaCasa: color,
+    );
+  });
+
+  /// [filas] creadas desde [desde] (lo que se sumó a una venta abierta); todas sin [desde].
+  static List<Entrega> _desde(List<Entrega> filas, DateTime? desde) => desde == null
+      ? filas
+      : [
+          for (final f in filas)
+            if (!f.auditoria.createdAt.isBefore(desde)) f,
+        ];
 
   /// Ver [EntregaRepository.deLaVenta].
   Future<List<Entrega>> deLaVenta(String ventaId) => _vivas(ventaId);
@@ -197,6 +220,7 @@ final class EntregaLocalDataSourceDrift {
     required DateTime ahora,
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
+    DateTime? soloDesde,
   }) => _db.transaction(() async {
     final venta = await _ventaViva(ventaId);
     final espacioId = await _espacioDe(venta.espacioPersonaId);
@@ -204,7 +228,15 @@ final class EntregaLocalDataSourceDrift {
     final cuando = instanteMs(fechaPrevista);
 
     var cambio = false;
-    final previas = await _vivas(ventaId);
+    final previas = _desde(await _vivas(ventaId), soloDesde);
+    if (soloDesde != null) {
+      // Lo que se sumó a una venta que ya tiene una cita de entrega de lo de antes: esa cita no se
+      // mueve ni se agenda otra (una sola cita de entrega viva por venta).
+      final otra = await _citaViva(ventaId);
+      if (otra != null && !previas.any((e) => e.id == otra.entregaId)) {
+        throw const EntregaYaAgendadaException();
+      }
+    }
     if (previas.isEmpty) {
       // Sin filas y sin productos que dejar: no hay entrega que agendar.
       if (filasNuevas.isEmpty) throw const EntregaSinPendientesException(sinFilas: true);
@@ -222,7 +254,7 @@ final class EntregaLocalDataSourceDrift {
         cambio = true;
       }
     }
-    final filas = await _vivas(ventaId);
+    final filas = _desde(await _vivas(ventaId), soloDesde);
     // La cita apunta a una fila de la entrega: la primera de las pendientes.
     final ancla = filas.firstWhere((e) => e.pendiente);
 

@@ -31,9 +31,15 @@ abstract interface class EntregaRepository {
   ///
   /// - Si la venta ya tiene filas de entrega, no escribe nada y devuelve las que había
   ///   ([EntregaRegistrada.yaEstaba]): un doble toque o un reintento no entrega dos veces.
+  /// - Con [soloDesde] (el libro que se sumó a una venta abierta, 42B·09D) solo cuentan las filas
+  ///   creadas desde ese instante: lo de antes de la venta no se toca ni frena la entrega de lo nuevo.
   /// - Una venta que no está en el teléfono, o cualquier otra falla, es [FailureEntregaNoGuardada]:
   ///   no se guarda nada.
-  Future<Either<Failure, EntregaRegistrada>> registrarEntrega(String ventaId, List<Entrega> filas);
+  Future<Either<Failure, EntregaRegistrada>> registrarEntrega(
+    String ventaId,
+    List<Entrega> filas, {
+    DateTime? soloDesde,
+  });
 
   /// Las filas vivas de la venta [ventaId] (vacío si todavía no se entregó nada). Solo lee. Si no se
   /// puede leer es [FailureEntregaNoDisponible]: no es lo mismo que «nada entregado».
@@ -49,12 +55,16 @@ abstract interface class EntregaRepository {
   ///   otra ([idDeLaCita] solo se usa al crearla). Repetir la misma fecha no escribe nada
   ///   ([EntregaDiferida.yaEstaba]).
   /// - Una venta sin nada pendiente, que no está en el teléfono o cuya casa no está, no guarda nada.
+  /// - Con [soloDesde] (el libro que se sumó a una venta abierta, 42B·09D) solo cuentan las filas
+  ///   creadas desde ese instante: lo pendiente de antes conserva su fecha. Si la venta ya tiene una
+  ///   cita de entrega de lo de antes, no se agenda otra y es un `FailureValidacion`.
   Future<Either<Failure, EntregaDiferida>> diferir(
     String ventaId, {
     required DateTime fechaPrevista,
     required DateTime ahora,
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
+    DateTime? soloDesde,
   });
 
   /// Marca como entregado, con la fecha real [ahora], lo pendiente de la venta [ventaId] (HU-VEN-003,

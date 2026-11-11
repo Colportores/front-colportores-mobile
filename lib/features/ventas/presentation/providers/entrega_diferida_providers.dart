@@ -94,14 +94,18 @@ final class ArgumentosOtroDia extends Equatable {
     required this.ventaId,
     required this.colportorId,
     this.productos = const [],
+    this.soloDesde,
   });
 
   final String ventaId;
   final String colportorId;
   final List<ComponenteVendido> productos;
 
+  /// Solo lo que se sumó a una venta abierta desde este instante (42B·09D); `null` = toda la venta.
+  final DateTime? soloDesde;
+
   @override
-  List<Object?> get props => [ventaId, colportorId, productos];
+  List<Object?> get props => [ventaId, colportorId, productos, soloDesde];
 }
 
 final class OtroDiaState extends Equatable {
@@ -167,6 +171,7 @@ class OtroDiaNotifier extends Notifier<OtroDiaState> {
               colportorId: args.colportorId,
               fechaPrevista: fecha,
               productos: args.productos,
+              soloDesde: args.soloDesde,
             ),
           );
     } on Object {

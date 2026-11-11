@@ -658,7 +658,15 @@ class TarjetaDeLibro extends StatelessWidget {
   }
 }
 
-/// Una fila de «EN LA VENTA»: la colección o el producto, su precio y la acción de quitarla.
+/// El fondo de lo ya vendido (42B·09C, `#F3F4F1`).
+const _fondoYaVendido = Color(0xFFF3F4F1);
+
+/// La pastilla «Nuevo» (42B·09C): verde sobre verde claro (`#1F6E3A` sobre `#DDE8D3`, más de 5:1).
+const _fondoNuevo = Color(0xFFDDE8D3);
+const _tintaNuevo = Color(0xFF1F6E3A);
+
+/// Una fila de «EN LA VENTA»: la colección o el producto, su precio y la acción de quitarla. Al sumar
+/// a una venta abierta (42B·09C), lo nuevo lleva [etiqueta] y lo ya vendido va con [yaVendido].
 class TarjetaDeRenglon extends StatelessWidget {
   const TarjetaDeRenglon({
     super.key,
@@ -669,6 +677,8 @@ class TarjetaDeRenglon extends StatelessWidget {
     this.alPresionar,
     this.alQuitar,
     this.glifo = '▣',
+    this.etiqueta,
+    this.yaVendido = false,
   });
 
   final String? rotulo;
@@ -678,6 +688,13 @@ class TarjetaDeRenglon extends StatelessWidget {
   final String glifo;
   final VoidCallback? alPresionar;
   final VoidCallback? alQuitar;
+
+  /// La pastilla junto al nombre («Nuevo» en lo que se suma a una venta abierta, 42B·09C); `null` =
+  /// ninguna.
+  final String? etiqueta;
+
+  /// Lo que la venta ya tenía (42B·09C, «YA VENDIDO»): fondo gris, sin «Quitar» y sin toque.
+  final bool yaVendido;
 
   @override
   Widget build(BuildContext context) {
@@ -692,11 +709,12 @@ class TarjetaDeRenglon extends StatelessWidget {
         fontWeight: FontWeight.w600,
       ),
     );
+    final nuevo = etiqueta != null;
     final fila = Container(
       constraints: const BoxConstraints(minHeight: 56),
-      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      padding: EdgeInsets.fromLTRB(12, 8, yaVendido ? 12 : 4, 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: yaVendido ? _fondoYaVendido : Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: _borde),
       ),
@@ -707,14 +725,18 @@ class TarjetaDeRenglon extends StatelessWidget {
             height: 34,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: ColoresAgenda.navy,
+              color: yaVendido
+                  ? ColoresAgenda.gris
+                  : nuevo
+                  ? _fondoNuevo
+                  : ColoresAgenda.navy,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               glifo,
               textScaler: TextScaler.noScaling,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: nuevo && !yaVendido ? _tintaNuevo : Colors.white,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
@@ -726,7 +748,32 @@ class TarjetaDeRenglon extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (rotulo != null) Text(rotulo!, style: _estiloRotulo()),
-                Text(titulo, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                Wrap(
+                  spacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      titulo,
+                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
+                    ),
+                    if (etiqueta != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: _fondoNuevo,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          etiqueta!,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: _tintaNuevo,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
                 if (detalle != null)
                   Text(detalle!, style: const TextStyle(fontSize: 12, color: ColoresAgenda.gris)),
                 if (apilado) precioEnFila,
@@ -734,18 +781,19 @@ class TarjetaDeRenglon extends StatelessWidget {
             ),
           ),
           if (!apilado) Padding(padding: const EdgeInsets.only(left: 8), child: precioEnFila),
-          IconButton(
-            tooltip: TextosVenta.quitar,
-            onPressed: alQuitar,
-            icon: const Icon(Icons.close, size: 20, color: ColoresAgenda.gris),
-          ),
+          if (!yaVendido)
+            IconButton(
+              tooltip: TextosVenta.quitar,
+              onPressed: alQuitar,
+              icon: const Icon(Icons.close, size: 20, color: ColoresAgenda.gris),
+            ),
         ],
       ),
     );
     return Semantics(
       container: true,
       button: alPresionar != null,
-      label: [?rotulo, titulo, ?detalle, precio].join('. '),
+      label: [?rotulo, titulo, ?etiqueta, ?detalle, precio].join('. '),
       onTap: alPresionar,
       excludeSemantics: false,
       child: alPresionar == null

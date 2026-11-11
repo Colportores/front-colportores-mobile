@@ -64,15 +64,7 @@ final class RegistrarVentaUseCase implements UseCase<VentaGuardada, RegistrarVen
     final calculado = ReglasDeVenta.totalCalculado(v.lineas);
     final cobradoAMano = ReglasDeVenta.soloMisioneros(v.lineas) ? null : v.totalCobradoCentavos;
 
-    final errorDeLasLineas = v.lineas.isEmpty
-        ? 'Agregá al menos un producto a la venta'
-        : v.lineas.any(_cantidadInvalida)
-        ? 'Revisá las cantidades de la venta'
-        : v.lineas.any(_precioInvalido)
-        ? 'Un precio de la venta no es válido'
-        : v.lineas.any(_comboSinComponentes)
-        ? 'Un combo no tiene sus productos'
-        : null;
+    final errorDeLasLineas = problemaDeLasLineas(v.lineas);
     final errorDelTotal = calculado > maximoCentavos
         ? 'El total de la venta es demasiado grande'
         : cobradoAMano != null && (cobradoAMano < 0 || cobradoAMano > maximoCentavos)
@@ -153,6 +145,18 @@ final class RegistrarVentaUseCase implements UseCase<VentaGuardada, RegistrarVen
       antesDeGuardar: params.antesDeGuardar,
     );
   }
+
+  /// Lo que está mal en [lineas] (ninguna, una cantidad, un precio o un combo sin sus productos), o
+  /// `null` si están bien. Lo usa también «Venta crece» (`SumarALaVentaUseCase`).
+  static String? problemaDeLasLineas(List<LineaDeVenta> lineas) => lineas.isEmpty
+      ? 'Agregá al menos un producto a la venta'
+      : lineas.any(_cantidadInvalida)
+      ? 'Revisá las cantidades de la venta'
+      : lineas.any(_precioInvalido)
+      ? 'Un precio de la venta no es válido'
+      : lineas.any(_comboSinComponentes)
+      ? 'Un combo no tiene sus productos'
+      : null;
 
   static bool _cantidadInvalida(LineaDeVenta l) =>
       l.cantidad < 1 ||
