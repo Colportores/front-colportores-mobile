@@ -34,16 +34,17 @@ final _deptos = [
 
 String _titulo(WidgetTester tester) => tester.widget<Text>(find.byKey(ClavesHojaCasa.titulo)).data!;
 
-Future<MontajeMapaUbicaciones> _montar(WidgetTester tester) => montarMapaUbicaciones(
-  tester,
-  repo: RepoListaFalso([_edificio]),
-  otrosOverrides: [
-    espaciosDeUbicacionProvider.overrideWith((ref, ubicacionId) async => _deptos),
-    resumenDeLosDeptosProvider.overrideWith(
-      (ref, clave) => Stream.value({'d-1a': ResumenDelDepto(), 'd-3b': ResumenDelDepto()}),
-    ),
-  ],
-);
+Future<MontajeMapaUbicaciones> _montar(WidgetTester tester, {RepoListaFalso? repo}) =>
+    montarMapaUbicaciones(
+      tester,
+      repo: repo ?? RepoListaFalso([_edificio]),
+      otrosOverrides: [
+        espaciosDeUbicacionProvider.overrideWith((ref, ubicacionId) async => _deptos),
+        resumenDeLosDeptosProvider.overrideWith(
+          (ref, clave) => Stream.value({'d-1a': ResumenDelDepto(), 'd-3b': ResumenDelDepto()}),
+        ),
+      ],
+    );
 
 void main() {
   testWidgets('tocar el edificio abre sus deptos (C·09); un depto lo abre como una casa (C·10); el '
@@ -91,6 +92,24 @@ void main() {
 
     expect(_titulo(tester), 'Grecia 3313');
     expect(find.byKey(ClavesDeptosDeLaCasa.seguir), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('la lista con el edificio nuevo llega después de elegirlo: igual arranca en N·04 '
+      '(revisión de #705)', (tester) async {
+    final otra = filaLista('ca-1', calle: 'Rivera', numero: '100', metrosAlNorte: 80);
+    final repo = RepoListaFalso([otra]);
+    final m = await _montar(tester, repo: repo);
+    m.salidaAlta = UbicacionCreada(_edificio.ubicacion);
+
+    await tester.tap(botonNueva);
+    await asentarLista(tester);
+    // La base todavía no avisó del alta: la lista que tiene el mapa no trae el edificio.
+    repo.emitir([otra, _edificio]);
+    await asentarLista(tester);
+
+    expect(_titulo(tester), 'Edificio en Grecia 3313');
+    expect(find.byKey(ClavesDeptosDeLaCasa.seguir), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

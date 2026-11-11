@@ -921,8 +921,9 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     });
     ref.listen(ubicacionColportorProvider, _alCambiarElGps);
     ref.listen(_proveedor, (anterior, nuevo) {
-      // La hoja de la recién registrada se cerró o se eligió otra: la próxima vez es una más.
-      if (_recienRegistrada != null && nuevo.seleccionada?.ubicacion.id != _recienRegistrada) {
+      // La hoja de la recién registrada se cerró o se eligió otra: la próxima vez es una más. Se mira el
+      // id elegido y no la ubicación: la lista con la nueva puede llegar después de elegirla (Drift).
+      if (_recienRegistrada != null && nuevo.seleccionadaId != _recienRegistrada) {
         _recienRegistrada = null;
       }
       // Sin ubicaciones o sin poder leerlas, la hoja sube sola para decir qué hacer: minimizada solo
