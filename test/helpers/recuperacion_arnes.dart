@@ -322,3 +322,30 @@ Future<void> abrirAsistente(
   await tester.pump();
   await tester.pump();
 }
+
+// «Recuperar mi respaldo» de Configuración (vista 16, 16G, #691).
+final filaRecuperarRespaldo = find.byKey(const Key('configuracion_recuperar_respaldo'));
+final hojaRecuperarRespaldo = find.byKey(const Key('configuracion_hoja_recuperar'));
+final hojaRecuperarEmpezar = find.byKey(const Key('configuracion_hoja_recuperar_empezar'));
+final hojaRecuperarAhoraNo = find.byKey(const Key('configuracion_hoja_recuperar_ahora_no'));
+
+/// Conecta el Drive de la persona con la sesión de la app abierta (16G·01): así la fila «Recuperar
+/// mi respaldo» pasa por la hoja «Recuperar tu respaldo» (16G·02) y no por la conexión con Google
+/// (16G·03). El Drive queda conectado también después del reinicio de la raíz (es el almacén).
+Future<void> conectarDriveDeLaApp(WidgetTester tester) async {
+  final contenedor = ProviderScope.containerOf(tester.element(find.byType(MaterialApp).first));
+  final resultado = await contenedor.read(estadoRespaldoDriveProvider.notifier).conectar();
+  expect(resultado, isA<DriveQuedoConectado>());
+  await tester.pump();
+}
+
+/// Toca «Recuperar mi respaldo» y, en la hoja de 16G·02, «Empezar».
+Future<void> recuperarDesdeConfiguracion(WidgetTester tester) async {
+  await tester.ensureVisible(filaRecuperarRespaldo);
+  await tester.tap(filaRecuperarRespaldo);
+  await _cuadros(tester);
+  expect(hojaRecuperarRespaldo, findsOneWidget, reason: '16G·02 antes de reiniciar');
+  await tester.ensureVisible(hojaRecuperarEmpezar);
+  await tester.tap(hojaRecuperarEmpezar);
+  await _cuadros(tester);
+}
