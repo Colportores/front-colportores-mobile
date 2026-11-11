@@ -139,6 +139,16 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   /// modo se sabe que no hay que enderezar el mapa girado (se queda donde ella lo dejó).
   var _libreDeUnGesto = false;
 
+  /// El nombre del modo se ve junto al botón de ubicación 2 s después de cada cambio (41E·03); el
+  /// reloj lo apaga. Dos cambios seguidos reinician la cuenta: queda a la vista el último.
+  var _rotuloVisible = false;
+  Timer? _relojRotulo;
+
+  /// En «Seguir y girar» ya llegó un rumbo y el mapa está girado hacia él: recién entonces el cono
+  /// de orientación dice la verdad (41E·03C). Con el teléfono quieto desde que se entró al modo el
+  /// mapa no gira (el rumbo sale del GPS al caminar, HU-UBI-003) y el cono no se dibuja.
+  var _conRumbo = false;
+
   /// Un solo alta y una sola leyenda a la vez: un segundo toque no abre otra encima.
   var _abriendoAlta = false;
   var _abriendoReferencias = false;
@@ -211,6 +221,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     final mapa = _mapa;
     if (mapa != null) _mapaPrincipal.soltar(mapa);
     _camaraViva.dispose();
+    _relojRotulo?.cancel();
     // El mapa deja de estar a la vista: el seguimiento no sigue gastando batería sin pantalla. Fuera
     // del desmontaje (un provider no se toca mientras se arma o se desarma el árbol).
     final gps = _gpsAlDescartar;
@@ -449,7 +460,58 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       }
     }
     if (cambioElModo) _libreDeUnGesto = false;
+    _seguirElRumbo(nuevo, cambioElModo: cambioElModo);
+    if (cambioElModo) _mostrarRotulo();
     if (nuevo.cortes != anterior.cortes) _avisarCorteDelSeguimiento(nuevo);
+  }
+
+  /// Lleva la cuenta de si el mapa ya giró hacia un rumbo en «Seguir y girar» (el cono). Con el alta
+  /// abierta la cámara no se mueve sola, así que un rumbo que llega entonces no cuenta.
+  void _seguirElRumbo(UbicacionColportorState gps, {required bool cambioElModo}) {
+    final conRumbo =
+        gps.modo.gira &&
+        ((!cambioElModo && _conRumbo) ||
+            (_altaEnCurso == null && gps.lectura?.rumboGrados != null));
+    if (conRumbo != _conRumbo && mounted) setState(() => _conRumbo = conRumbo);
+  }
+
+  /// Muestra el nombre del modo junto al botón 2 s (41E·03), con cualquier cambio: el botón, la
+  /// brújula, el dedo sobre el mapa o un corte del seguimiento.
+  void _mostrarRotulo() {
+    if (!mounted) return;
+    _relojRotulo?.cancel();
+    _relojRotulo = Timer(MedidasBotonUbicacion.duracionRotulo, () {
+      if (mounted) setState(() => _rotuloVisible = false);
+    });
+    setState(() => _rotuloVisible = true);
+  }
+
+  /// La brújula (41E·03C) vuelve el mapa al norte. En «Seguir y girar» eso es «Seguir mi ubicación»
+  /// (sigue a la colportora con el norte arriba, como la brújula de Maps); con el mapa libre que
+  /// quedó girado, solo endereza la cámara.
+  void _alTocarBrujula() {
+    final gps = ref.read(ubicacionColportorProvider);
+    final mapa = _mapa;
+    if (gps.modo.gira) {
+      _gps.cambiarModo(ModoSeguimiento.seguir);
+      unawaited(
+        SemanticsService.sendAnnouncement(
+          View.of(context),
+          ModoSeguimiento.seguir.texto,
+          Directionality.of(context),
+        ),
+      );
+      // Sin una lectura el seguimiento no mueve la cámara: el norte se pone acá.
+      if (gps.lectura != null) return;
+    }
+    if (mapa != null) unawaited(mapa.moverCamara(mapa.camara.conRumbo(0)));
+  }
+
+  /// El mapa está girado: el norte no queda arriba.
+  static bool _girado(CamaraMapa? camara) {
+    if (camara == null) return false;
+    final rumbo = camara.rumbo % 360;
+    return rumbo > .5 && rumbo < 359.5;
   }
 
   /// El seguimiento se cortó solo: se dice qué pasó y qué hacer (con «Activar GPS» a mano si el
@@ -954,6 +1016,10 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                 ),
               ),
             ),
+            if (modo.gira && _conRumbo && lectura != null && !enAlta)
+              Positioned.fill(
+                child: _ConoSobreElMapa(camara: _camaraViva, punto: lectura.coordenadas),
+              ),
             if (enAlta)
               Positioned.fill(
                 child: _PinDelAlta(
@@ -984,13 +1050,33 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                             // «Referencias» y el aviso comparten el borde de arriba: con el aviso a
                             // la vista (la tarjeta o la píldora) el chip se corre, el canvas no los
                             // dibuja juntos.
+                            // La brújula (41E·03C) va debajo de «Referencias» y, como el chip, se
+                            // corre mientras el aviso ocupa el borde de arriba.
                             if (!avisoVisible)
                               Positioned(
                                 top: 8,
                                 right: 14,
-                                child: ChipReferencias(
-                                  key: ClavesMapaUbicaciones.referencias,
-                                  alPresionar: () => unawaited(_abrirReferencias()),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    ChipReferencias(
+                                      key: ClavesMapaUbicaciones.referencias,
+                                      alPresionar: () => unawaited(_abrirReferencias()),
+                                    ),
+                                    ValueListenableBuilder<CamaraMapa?>(
+                                      valueListenable: _camaraViva,
+                                      builder: (context, camara, _) => modo.gira || _girado(camara)
+                                          ? Padding(
+                                              padding: const EdgeInsets.only(top: 10),
+                                              child: BrujulaMapa(
+                                                key: ClavesMapaUbicaciones.brujula,
+                                                alPresionar: _alTocarBrujula,
+                                              ),
+                                            )
+                                          : const SizedBox.shrink(),
+                                    ),
+                                  ],
                                 ),
                               ),
                             Positioned.fill(
@@ -1024,13 +1110,30 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                           crossAxisAlignment: CrossAxisAlignment.end,
                           spacing: 10,
                           children: [
-                            BotonMiUbicacion(
-                              key: ClavesMapaUbicaciones.miUbicacion,
-                              gps: estado.gps,
-                              modo: modo,
-                              // Sin una lectura no hay a dónde ir: no está disponible (HU-UBI-003,
-                              // «Edge: sin GPS»).
-                              alPresionar: lectura == null ? null : _alTocarMiUbicacion,
+                            // El nombre del modo, 2 s a la izquierda del botón (41E·03).
+                            Padding(
+                              padding: const EdgeInsets.only(left: 14),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                spacing: MedidasBotonUbicacion.separacionRotulo,
+                                children: [
+                                  if (_rotuloVisible)
+                                    Flexible(
+                                      child: RotuloModoSeguimiento(
+                                        key: ClavesMapaUbicaciones.rotuloModo,
+                                        modo: modo,
+                                      ),
+                                    ),
+                                  BotonMiUbicacion(
+                                    key: ClavesMapaUbicaciones.miUbicacion,
+                                    gps: estado.gps,
+                                    modo: modo,
+                                    // Sin una lectura no hay a dónde ir: no está disponible
+                                    // (HU-UBI-003, «Edge: sin GPS»).
+                                    alPresionar: lectura == null ? null : _alTocarMiUbicacion,
+                                  ),
+                                ],
+                              ),
                             ),
                             BotonPinCasaNueva(
                               key: ClavesMapaUbicaciones.nueva,
@@ -1063,6 +1166,37 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
           ],
         );
       },
+    );
+  }
+}
+
+/// El cono de orientación (41E·03C) sobre el punto del GPS: sigue a la cámara de ahora, también
+/// mientras se mueve.
+class _ConoSobreElMapa extends StatelessWidget {
+  const _ConoSobreElMapa({required this.camara, required this.punto});
+
+  final ValueListenable<CamaraMapa?> camara;
+  final Coordenadas punto;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, caja) => ValueListenableBuilder<CamaraMapa?>(
+        valueListenable: camara,
+        builder: (context, camara, _) {
+          final tamano = caja.biggest;
+          if (camara == null || tamano.isEmpty) return const SizedBox.shrink();
+          final (:x, :y) = ProyeccionMercator.aPantalla(
+            punto,
+            camara,
+            ancho: tamano.width,
+            alto: tamano.height,
+          );
+          return Stack(
+            children: [ConoOrientacion(key: ClavesMapaUbicaciones.cono, centro: Offset(x, y))],
+          );
+        },
+      ),
     );
   }
 }

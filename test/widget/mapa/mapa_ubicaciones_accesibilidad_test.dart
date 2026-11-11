@@ -314,14 +314,14 @@ void main() {
     );
 
     testWidgets(
-      '«Mi ubicación» con GPS dice el modo del seguimiento («Mapa libre»), sin motivo ni pista, y se '
+      '«Mi ubicación» con GPS dice el modo del seguimiento («Ubicación: Mapa libre»), sin motivo ni pista, y se '
       'puede tocar',
       (tester) async {
         final semantica = tester.ensureSemantics();
         await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
 
         final nodo = tester.getSemantics(botonMiUbicacion).getSemanticsData();
-        expect(nodo.label, 'Mapa libre');
+        expect(nodo.label, 'Ubicación: Mapa libre');
         expect(nodo.hint, isEmpty);
         expect(nodo.hasAction(SemanticsAction.tap), isTrue);
         expect(_lecturasDe(tester, 'No disponible'), 0);
@@ -372,7 +372,7 @@ void main() {
         await asentarLista(tester);
 
         final nodo = tester.getSemantics(botonMiUbicacion).getSemanticsData();
-        expect(nodo.label, 'Mapa libre');
+        expect(nodo.label, 'Ubicación: Mapa libre');
         expect(nodo.hint, isEmpty);
         expect(nodo.hasAction(SemanticsAction.tap), isTrue);
         expect(_lecturasDe(tester, 'No disponible'), 0);
