@@ -661,9 +661,6 @@ void main() {
         (const Size(340, 640), 2.0),
         (const Size(360, 640), 2.0),
       ]) {
-        // QA #390: a 320×568 con el teclado arriba la «✕» de la hoja no recibe el toque (el hit test cae
-        // en la superficie de la hoja): hay que bajar el teclado antes. De la hoja de #345, no del aviso.
-        final frenado = conTeclado && tamano.width == 320;
         testWidgets(
           '${tamano.width.round()}×${tamano.height.round()} · ${veces(escala)} · '
           '${conTeclado ? 'con el teclado arriba' : 'con el teclado cerrado'}: «✕» con lo escrito abre '
@@ -725,8 +722,6 @@ void main() {
             expect(find.text('abrir'), findsOneWidget, reason: 'volvió a la pantalla de abajo');
             expect(repo.escrituras, isEmpty, reason: 'descartar no guarda');
           },
-          // skip: QA #390 — con el teclado arriba a 320×568 la «✕» de la hoja no recibe el toque.
-          skip: frenado,
         );
       }
     }

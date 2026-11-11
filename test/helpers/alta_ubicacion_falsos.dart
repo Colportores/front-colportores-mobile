@@ -4,6 +4,7 @@ import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.dart';
@@ -15,6 +16,7 @@ import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplic
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/proveedor_gps.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/seguidor_gps.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
@@ -25,6 +27,7 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 
 import 'mapa_base_falso.dart';
+import 'ubicacion_colportor_falsos.dart';
 import 'ubicacion_sin_modificar.dart';
 import 'zonas_falsas.dart';
 
@@ -38,7 +41,7 @@ LecturaGps lecturaGps(double precision, {Coordenadas punto = puntoItalia}) =>
     LecturaGps(coordenadas: punto, precisionMetros: precision);
 
 /// El GPS del teléfono, que el test controla: qué devuelve, cuánto tarda y qué se activó.
-final class GpsFalso implements ProveedorGps, ActivadorGps {
+final class GpsFalso implements ProveedorGps, SeguidorGps, ActivadorGps {
   GpsFalso([Either<Failure, LecturaGps>? respuesta])
     : respuesta = respuesta ?? Right(lecturaGps(6));
 
@@ -69,6 +72,34 @@ final class GpsFalso implements ProveedorGps, ActivadorGps {
     if (espera != null) await espera.future;
     return respuesta;
   }
+
+  // ---- seguimiento (#670): el stream que abre el GPS único mientras el mapa sigue ----
+
+  late final StreamController<Either<Failure, LecturaGps>> _seguimiento =
+      StreamController<Either<Failure, LecturaGps>>.broadcast(
+        onListen: () => seguimientosAbiertos++,
+        onCancel: () => seguimientosCerrados++,
+      );
+
+  /// Cuántas veces se abrió y se cerró el stream del seguimiento.
+  var seguimientosAbiertos = 0;
+  var seguimientosCerrados = 0;
+
+  /// El seguimiento está abierto ahora.
+  bool get siguiendo => seguimientosAbiertos > seguimientosCerrados;
+
+  @override
+  Stream<Either<Failure, LecturaGps>> seguir() => _seguimiento.stream;
+
+  /// El teléfono se movió: llega una lectura por el stream del seguimiento.
+  void moverse(LecturaGps lectura) => _seguimiento.add(Right(lectura));
+
+  /// El seguimiento falla (el GPS se apagó, se retiró el permiso…).
+  void fallarElSeguimiento(MotivoSinGps motivo) =>
+      _seguimiento.add(Left(FailureGpsNoDisponible(motivo: motivo)));
+
+  /// El sistema cierra el stream sin avisar.
+  Future<void> cerrarElSeguimiento() => _seguimiento.close();
 
   @override
   Future<void> activar(MotivoSinGps motivo) async {
@@ -161,6 +192,22 @@ final class CiudadesFalsas implements CiudadesParaAlta {
   }
 }
 
+/// Unas ciudades que no se pueden leer (la base local ilegible, o el catálogo sin bajar): contesta
+/// la falla de lectura, nunca «la campaña no tiene ciudades».
+final class CiudadesQueNoSePuedenLeer implements CiudadesParaAlta {
+  const CiudadesQueNoSePuedenLeer();
+
+  @override
+  Future<Either<Failure, PropuestaCiudad>> proponer({
+    required String colportorId,
+    Coordenadas? punto,
+  }) async => const Left(FailureCiudadesNoDisponibles());
+
+  @override
+  Future<Either<Failure, List<CiudadCatalogo>>> deMiCampania(String colportorId) async =>
+      const Left(FailureCiudadesNoDisponibles());
+}
+
 /// El repositorio de ubicaciones, con el resultado de `registrar` a gusto del test.
 final class RepoAltaFalso with UbicacionRepositorySinModificar implements UbicacionRepository {
   /// Qué devuelve `registrar`. Por defecto, el alta hecha.
@@ -174,6 +221,7 @@ final class RepoAltaFalso with UbicacionRepositorySinModificar implements Ubicac
           Espacio? espacio,
           OrigenCoordenadas origen,
           CriterioDuplicadoUbicacion? duplicados,
+          String? justificacion,
         })
       >[];
 
@@ -185,8 +233,15 @@ final class RepoAltaFalso with UbicacionRepositorySinModificar implements Ubicac
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) async {
-    llamadas.add((ubicacion: ubicacion, espacio: espacio, origen: origen, duplicados: duplicados));
+    llamadas.add((
+      ubicacion: ubicacion,
+      espacio: espacio,
+      origen: origen,
+      duplicados: duplicados,
+      justificacion: justificacion,
+    ));
     final espera = bloqueo;
     if (espera != null) await espera.future;
     final f = comportamiento;
@@ -219,6 +274,8 @@ CandidataDuplicado candidata(
   TipoUbicacion tipo = TipoUbicacion.casa,
   String ciudadId = 'ciu-mvd',
   DateTime? actualizada,
+  EstadoCasa? estado,
+  int? espacios,
 }) {
   final cuando = actualizada ?? DateTime.utc(2026, 9, 29, 12);
   return CandidataDuplicado(
@@ -235,13 +292,16 @@ CandidataDuplicado candidata(
     motivo: motivo,
     distanciaMetros: metros,
     admiteConservarAmbos: admiteConservarAmbos,
+    estado: estado,
+    cantidadEspacios: espacios,
   );
 }
 
 /// Overrides de Riverpod para probar el alta sin plugins, red ni base de datos.
 ///
-/// [puertoCiudades] reemplaza a [ciudades] con otro puerto (por ejemplo `CiudadesParaAltaSinFuente`,
-/// el de producción hoy): un provider no se puede sobrescribir dos veces en el mismo contenedor.
+/// [puertoCiudades] reemplaza a [ciudades] con otro puerto (por ejemplo `CiudadesQueNoSePuedenLeer`): un provider no se puede sobrescribir dos veces en el mismo contenedor.
+/// [generadorId] reemplaza los ids secuenciales (`id-1`…) por otro generador, por ejemplo el UUID v7
+/// de producción.
 List<Override> overridesAlta({
   GpsFalso? gps,
   GeocodificadorFalso? geocodificador,
@@ -255,18 +315,24 @@ List<Override> overridesAlta({
   FuenteMapa? fuente,
   SituacionMapa? situacion,
   bool situacionReal = false,
+  String Function()? generadorId,
+  bool gpsAbierto = true,
 }) {
   final gpsFalso = gps ?? GpsFalso();
   var secuencia = 0;
   return [
     proveedorGpsProvider.overrideWithValue(gpsFalso),
+    seguidorGpsProvider.overrideWithValue(gpsFalso),
+    // El alta no pide el permiso (#651): lee el GPS del colportor, que ya abrió el mapa. Con
+    // [gpsAbierto] `false` el mapa todavía no se abrió (nadie lo lee hasta que el test lo pida).
+    if (gpsAbierto) ubicacionColportorYaAbierta(),
     activadorGpsProvider.overrideWithValue(gpsFalso),
     geocodificadorInversoProvider.overrideWithValue(geocodificador ?? GeocodificadorFalso()),
     ciudadesParaAltaProvider.overrideWithValue(puertoCiudades ?? ciudades ?? CiudadesFalsas()),
     ubicacionRepositoryProvider.overrideWithValue(repo ?? RepoAltaFalso()),
     ubicadorZonaProvider.overrideWithValue(ubicadorSinZonas()),
     esperaPuntoAltaProvider.overrideWithValue(espera),
-    generadorIdUbicacionProvider.overrideWithValue(() => 'id-${++secuencia}'),
+    generadorIdUbicacionProvider.overrideWithValue(generadorId ?? () => 'id-${++secuencia}'),
     relojAltaUbicacionProvider.overrideWithValue(() => ahora ?? DateTime.utc(2026, 10, 2, 14, 35)),
     marcadoresCercanosProvider.overrideWith((ref, consulta) => Stream.value(marcadores)),
     // MapLibre no se dibuja en `flutter test`: el mapa es la vista falsa.

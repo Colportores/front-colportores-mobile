@@ -164,6 +164,101 @@ void main() {
     },
   );
 
+  group('dado un «Te asignaron la zona…» que la persona no cerró', () {
+    test('cuando le quitan la zona y llega el pull, el aviso pasa a «Ya no tenés zona» y no se va '
+        'sin decir nada', () async {
+      fuente.publicar([_centro]);
+      final c = await abrir();
+      expect(avisos(c), [_asignadaCentro]);
+
+      fuente.publicar([_inscripcion()]);
+      await pumpEventQueue();
+
+      expect(avisos(c), [_quitada]);
+      expect(await avisadas.leer(), isEmpty, reason: 'recién se anota cuando la persona lo cierra');
+    });
+
+    test('cuando llega otro pull igual, «Ya no tenés zona» se queda', () async {
+      fuente.publicar([_centro]);
+      final c = await abrir();
+      fuente.publicar([_inscripcion()]);
+      await pumpEventQueue();
+
+      fuente.publicar([_inscripcion()]);
+      await pumpEventQueue();
+
+      expect(avisos(c), [_quitada]);
+    });
+
+    test(
+      'cuando cierra «Ya no tenés zona», desaparece y no vuelve con el pull siguiente',
+      () async {
+        fuente.publicar([_centro]);
+        final c = await abrir();
+        fuente.publicar([_inscripcion()]);
+        await pumpEventQueue();
+
+        await notifier(c).cerrar(_quitada);
+        fuente.publicar([_inscripcion()]);
+        await pumpEventQueue();
+
+        expect(avisos(c), isEmpty);
+        expect(await avisadas.leer(), {'insc-1': null});
+      },
+    );
+
+    test(
+      'cuando le quitan la zona y se la vuelven a dar, el aviso vuelve a ser «Te asignaron»',
+      () async {
+        fuente.publicar([_centro]);
+        final c = await abrir();
+        fuente.publicar([_inscripcion()]);
+        await pumpEventQueue();
+
+        fuente.publicar([_norte]);
+        await pumpEventQueue();
+
+        expect(avisos(c), [_asignadaNorte]);
+      },
+    );
+
+    test(
+      'cuando había cerrado antes un «Ya no tenés zona» de esa inscripción, el nuevo igual se ve',
+      () async {
+        fuente.publicar([_centro]);
+        final c = await abrir();
+        await notifier(c).cerrar(_asignadaCentro);
+        fuente.publicar([_inscripcion()]);
+        await pumpEventQueue();
+        await notifier(c).cerrar(_quitada);
+
+        fuente.publicar([_centro]);
+        await pumpEventQueue();
+        expect(avisos(c), [_asignadaCentro]);
+        fuente.publicar([_inscripcion()]);
+        await pumpEventQueue();
+        expect(avisos(c), [_quitada], reason: 'no hereda el cierre del anterior');
+
+        fuente.publicar([_inscripcion()]);
+        await pumpEventQueue();
+        expect(avisos(c), [_quitada], reason: 'ni se pierde con el pull siguiente');
+      },
+    );
+
+    test(
+      'cuando lo sacan de la campaña mientras lo lee, el aviso se va sin «Ya no tenés zona»',
+      () async {
+        fuente.publicar([_centro]);
+        final c = await abrir();
+
+        fuente.publicar([_inscripcion(dadaDeBaja: true)]);
+        await pumpEventQueue();
+
+        expect(avisos(c), isEmpty);
+      },
+    );
+  });
+
   test(
     'dado que la inscripción llega dada de baja, no hay aviso y queda anotada sin zona',
     () async {

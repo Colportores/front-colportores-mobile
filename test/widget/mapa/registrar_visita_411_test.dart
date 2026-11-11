@@ -39,6 +39,9 @@ Future<void> _correr(WidgetTester tester, Duration d) async {
   }
 }
 
+/// Las cinco opciones del canvas C·06: «Vender» (decisión de Cristian, 04/11, #648) es de otra HU.
+final _delCanvas = OpcionQuePaso.values.where((o) => o != OpcionQuePaso.vender).toList();
+
 void main() {
   group('C·06 · ¿Qué pasó?: lo que se ve', () {
     testWidgets(
@@ -176,6 +179,23 @@ void main() {
         await elegir(tester, OpcionQuePaso.noContesto);
 
         expect(a.repo.recibidas.single.agendaId, 'age-1');
+        expect(find.text(_guardadoNoContesto), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado dos entrevistas programadas en la casa y la segunda tocada en la agenda, cuando se toca '
+      '«No contestó», la visita cierra esa y no la más antigua',
+      (tester) async {
+        final repo = AgendaRepositorioFalso()
+          ..programada = agendaDe('age-1')
+          ..agendaNoCumplida = true
+          ..agendaAfectadaId = 'age-2';
+        final a = await montarQuePaso(tester, repo: repo, agendaId: 'age-2');
+
+        await elegir(tester, OpcionQuePaso.noContesto);
+
+        expect(a.repo.recibidas.single.agendaId, 'age-2');
         expect(find.text(_guardadoNoContesto), findsOneWidget);
       },
     );
@@ -503,7 +523,7 @@ void main() {
         );
 
         expect(tester.takeException(), isNull);
-        for (final o in OpcionQuePaso.values) {
+        for (final o in _delCanvas) {
           await tester.ensureVisible(renglon(o));
           await tester.pump();
           expect(renglon(o), findsOneWidget);
@@ -688,7 +708,7 @@ void main() {
         await tester.tap(find.widgetWithText(FilledButton, 'Empezar entrevista'));
         await asentar(tester);
 
-        expect(a.enganches.entrevistas.single.persona.espacioPersonaId, 'ep-ana');
+        expect(a.enganches.entrevistas.single.persona?.espacioPersonaId, 'ep-ana');
         expect(a.resultados, [true]);
       },
     );

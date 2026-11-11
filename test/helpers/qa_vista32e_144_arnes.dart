@@ -25,9 +25,6 @@ import 'nota_persona_falsos.dart';
 /// `--dart-define=QA_CAPTURAS=true` saca una captura PNG de cada estado.
 const sacarCapturas144 = bool.fromEnvironment('QA_CAPTURAS');
 
-/// `--dart-define=QA_HALLAZGOS=true` corre también los tests de hallazgos (los que llevan `skip`).
-const verHallazgos144 = bool.fromEnvironment('QA_HALLAZGOS');
-
 /// La raíz de la captura: envuelve la app entera (la hoja, el diálogo y el aviso viven dentro).
 final raizCaptura144 = GlobalKey();
 
@@ -236,6 +233,10 @@ final Map<String, Armar144> estados144 = {
     await montarPantalla144(t, c, repo: repo, pantalla: Pantalla144.formulario);
     await _escribir(t, 'Prefiere que la llamen antes de pasar.');
     await t.tap(find.text('Guardar nota'));
+    await asentar(t);
+    // El aviso de privacidad lleva «No volver a mostrar»: al enfocar el campo la lista se desplaza y el
+    // enlace queda recortado por el borde; la guía de tamaño de toque lo mide recortado. Se vuelve arriba.
+    await t.drag(find.byType(SingleChildScrollView), const Offset(0, 800));
     await asentar(t);
   },
   'editar_nota': (t, c) => montarPantalla144(

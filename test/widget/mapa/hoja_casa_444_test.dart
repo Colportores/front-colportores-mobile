@@ -112,6 +112,70 @@ bool _habilitado(WidgetTester tester, Finder boton) =>
 String _texto(WidgetTester tester, Finder finder) => tester.widget<Text>(finder).data!;
 
 void main() {
+  group('el nombre de la casa con el marcador ⇢ (decisión del 10/11, P1 de #687)', () {
+    String subtitulo(WidgetTester tester) => tester.widget<Text>(_subtitulo).data!;
+
+    testWidgets('sin saldo y solo la entrega pendiente, dice «Entrega pendiente»', (tester) async {
+      await _montar(
+        tester,
+        item: itemDeLaHoja(estado: EstadoCasa.entregaYPago),
+        lectura: (_) => Stream.value(
+          ContextoDeLaCasa(
+            espacioId: 'esp-1',
+            personas: [pedroGomez],
+            saldosCentavos: const {'p-pedro': 0},
+          ),
+        ),
+      );
+      await _drenar(tester);
+
+      expect(subtitulo(tester), contains('Entrega pendiente'));
+      expect(subtitulo(tester), isNot(contains('Entrega y pago')));
+    });
+
+    testWidgets('con saldo sigue «Entrega y pago»', (tester) async {
+      await _montar(
+        tester,
+        item: itemDeLaHoja(estado: EstadoCasa.entregaYPago),
+        lectura: (_) => Stream.value(
+          ContextoDeLaCasa(
+            espacioId: 'esp-1',
+            personas: [pedroGomez],
+            saldosCentavos: const {'p-pedro': 50000},
+          ),
+        ),
+      );
+      await _drenar(tester);
+
+      expect(subtitulo(tester), contains('Entrega y pago'));
+      expect(subtitulo(tester), isNot(contains('Entrega pendiente')));
+    });
+
+    testWidgets('en un edificio (sin espacio leído) no se sabe: sigue «Entrega y pago»', (
+      tester,
+    ) async {
+      await _montar(
+        tester,
+        item: itemDeLaHoja(tipo: TipoUbicacion.edificio, estado: EstadoCasa.entregaYPago),
+        lectura: (_) => Stream.value(const ContextoDeLaCasa()),
+      );
+      await _drenar(tester);
+
+      expect(subtitulo(tester), contains('Entrega y pago'));
+    });
+
+    testWidgets('otro estado sin saldo no cambia de nombre', (tester) async {
+      await _montar(
+        tester,
+        item: itemDeLaHoja(estado: EstadoCasa.entrevistaHecha),
+        lectura: (_) => Stream.value(ContextoDeLaCasa(espacioId: 'esp-1', personas: [pedroGomez])),
+      );
+      await _drenar(tester);
+
+      expect(subtitulo(tester), contains('Entrevista hecha'));
+    });
+  });
+
   group('C·01 · Tocar una casa: resumen', () {
     testWidgets('dado el canvas, muestra la dirección, el subtítulo, la persona que debe, la nota '
         'y «Registrar visita»', (tester) async {
@@ -175,7 +239,7 @@ void main() {
       await tester.tap(_registrar);
       await tester.pump();
 
-      expect(m.visitas, [(ubicacionId: 'u-1', espacioId: 'esp-1')]);
+      expect(m.visitas, [(ubicacionId: 'u-1', espacioId: 'esp-1', agendaId: null)]);
     });
 
     testWidgets('«\$ Cobrar» lleva la ubicación, el espacio y la persona que debe', (tester) async {
@@ -279,7 +343,7 @@ void main() {
       await tester.tap(_registrar);
       await tester.pump();
       // En un edificio el contexto es el depto: sin uno elegido, el espacio llega vacío.
-      expect(m.visitas, [(ubicacionId: 'u-1', espacioId: null)]);
+      expect(m.visitas, [(ubicacionId: 'u-1', espacioId: null, agendaId: null)]);
     });
 
     testWidgets(

@@ -15,9 +15,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/notificaciones_arnes.dart';
 import '../helpers/qa_vista24_153_arnes.dart';
 
-/// `--dart-define=QA_HALLAZGOS=true` corre los tests de hallazgos que siguen sin arreglar.
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 String _t(Size tam, double escala) => '${tam.width.toInt()}×${tam.height.toInt()} ×$escala';
 
 /// Los botones y avisos que cada estado debe tener a la vista, para el chequeo de alcance.
@@ -90,10 +87,13 @@ void main() {
       await cerrar(tester);
     });
 
-    testWidgets('24A·03: "Notificaciones desactivadas. Activá en Configuración." (HU) con las '
-        'acciones del canvas', (tester) async {
+    testWidgets('24A·03: "Las notificaciones están apagadas. Podés activarlas en configuración." '
+        '(canvas) con sus acciones', (tester) async {
       await llegarA(tester, Estado24.a03);
-      expect(find.text('Notificaciones desactivadas. Activá en Configuración.'), findsOneWidget);
+      expect(
+        find.text('Las notificaciones están apagadas. Podés activarlas en configuración.'),
+        findsOneWidget,
+      );
       expect(find.text('Ir a configuración'), findsOneWidget);
       expect(find.byTooltip('Cerrar aviso'), findsOneWidget);
       await cerrar(tester);
@@ -167,7 +167,7 @@ void main() {
         ..estado = EstadoSistemaNotificaciones.activadas;
       await tester.tap(find.byKey(const Key('notificaciones_reintentar')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('notificaciones_activadas')), findsOneWidget);
+      expect(find.byKey(const Key('pref_recordatorios_interruptor')), findsOneWidget);
       await cerrar(tester);
     });
 
@@ -176,7 +176,7 @@ void main() {
       await llegarA(tester, Estado24.a06AjustesNoAbren);
       expect(
         (tester.widget(find.byKey(const Key('notificaciones_ajustes_no_abren'))) as Text).data,
-        contains('Buscá'),
+        allOf(contains('buscá esta app'), isNot(contains('Colportaje'))),
       );
       final boton = find.byKey(const Key('notificaciones_abrir_ajustes'));
       expect(tester.widget<TextButton>(boton).onPressed, isNotNull);
@@ -334,9 +334,9 @@ void main() {
   });
 
   group('hallazgos', () {
-    // skip: QA #153 — la fila «Notificaciones» de Configuración parte la palabra («Notificacione» /
+    // QA #153, menor 1: la fila «Notificaciones» de Configuración partía la palabra («Notificacione» /
     // «s») a 360 dp con el texto al 200 %: «Notificaciones» mide 210,8 dp y el título tiene 208 dp
-    // (leading + chevron comen el ancho). La pantalla vecina «Borrar datos locales» corta por palabras.
+    // (leading + chevron comen el ancho). Arreglado: el título se achica (FittedBox).
     testWidgets(
       'H1 · la fila «Notificaciones» de Configuración no parte la palabra a 360 dp ×2,0',
       (tester) async {
@@ -348,9 +348,20 @@ void main() {
         await tester.pump();
 
         expect(palabrasPartidas(tester), isEmpty);
+        // La palabra entera se ve entre el ícono y la flecha, sin pisar ninguna.
+        final titulo = tester.getRect(
+          find.descendant(of: fila, matching: find.text('Notificaciones')),
+        );
+        final icono = tester.getRect(
+          find.descendant(of: fila, matching: find.byIcon(Icons.notifications_none_outlined)),
+        );
+        final flecha = tester.getRect(
+          find.descendant(of: fila, matching: find.byIcon(Icons.chevron_right)),
+        );
+        expect(titulo.left, greaterThanOrEqualTo(icono.right));
+        expect(titulo.right, lessThanOrEqualTo(flecha.left));
         await cerrar(tester);
       },
-      skip: !_hallazgos,
     );
   });
 }

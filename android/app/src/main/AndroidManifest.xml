@@ -16,8 +16,13 @@
 
     <!-- Recordatorios de las visitas (HU-NOT-002): al reiniciar el teléfono Android borra las
          alarmas, y con este permiso el plugin vuelve a programar los avisos que seguían pendientes.
-         No se pide la alarma exacta (SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM): ver el PR. -->
+         Los avisos a la hora justa usan «Alarmas y recordatorios» (SCHEDULE_EXACT_ALARM, no
+         USE_EXACT_ALARM: ese es solo para alarmas y calendarios, y la tienda lo audita). En Android
+         12 y 13 viene prendido; desde el 14 la persona lo prende en los ajustes, y la vista 24 se lo
+         dice y la lleva (decisión de Cristian del 27/10, «Aviso exacto»). Sin el permiso, el aviso
+         se programa inexacto. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <!-- Auto Backup deshabilitado a propósito. Dos motivos, ninguno negociable:
          1. flutter_secure_storage (README 10.3.1, "Disabling Auto Backup") lo exige: el plugin
@@ -32,16 +37,21 @@
          transferencia dispositivo-a-dispositivo en API 31+, donde allowBackup no alcanza en
          todos los fabricantes. -->
     <application
-        android:label="colportores_mobile"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules">
         <!-- Solo vertical (decisión de Cristian del 07/10, #301): la misma regla que Info.plist y
              que SystemChrome.setPreferredOrientations en main.dart. Android 16 la ignora en
-             pantallas de 600 dp o más (tablets); los teléfonos la respetan. -->
+             pantallas de 600 dp o más (tablets); los teléfonos la respetan.
+             Atrás del sistema a la antigua (#679): con el atrás predictivo, que Android 16 prende
+             solo, el sistema decide si cerrar la app según lo último que avisó Flutter, y con un
+             campo enfocado en «Nueva ubicación» el atrás sacaba de la app en vez de volver al
+             mapa. Así cada atrás llega a Flutter y lo resuelve la pila de pantallas (PopScope). -->
         <activity
             android:name=".MainActivity"
+            android:enableOnBackInvokedCallback="false"
             android:exported="true"
             android:launchMode="singleTop"
             android:screenOrientation="portrait"
@@ -91,6 +101,12 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+        <!-- Push remotas (HU-NOT-003, #614): con la app cerrada o en segundo plano, FCM dibuja el
+             título fijo del servidor en este canal («Avisos de tu campaña»), que la app crea al
+             arrancar (CanalAvisosCampania). El servidor (push-fcm) no manda canal. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="avisos_campania" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -161,7 +161,7 @@ class InMemoryJobStore implements JobStorePort {
       for (final id in _porFila[(entity, pk)] ?? const <String>[]) {
         final q = _jobs[id];
         if (q == null ||
-            q.job.op == Op.insert ||
+            !q.job.op.esperaVersion ||
             q.state == JobState.done ||
             q.state == JobState.invalid) {
           continue;
@@ -361,5 +361,41 @@ class InMemoryLocalStore implements LocalStorePort {
         filas[i] = {...fila, 'sync_version': version};
       }
     }
+  }
+}
+
+/// `sync_meta` en memoria (HU-SYNC-007). Un test que simula reiniciar el
+/// celular arma otro motor con **el mismo** [InMemorySyncMeta], como lo haría la
+/// DB en disco.
+class InMemorySyncMeta implements SyncMetaPort {
+  SyncMeta _meta = const SyncMeta();
+
+  /// Cuántas veces se escribió.
+  int writes = 0;
+
+  /// Si es `true`, [write] lanza: la DB local falló.
+  bool failOnWrite = false;
+
+  @override
+  Future<SyncMeta> read() async => _meta;
+
+  @override
+  Future<void> write({
+    DateTime? lastPullAt,
+    DateTime? lastBackupAt,
+    DateTime? lastPushAt,
+    SyncNetwork? lastPushNetwork,
+  }) async {
+    if (failOnWrite) throw StateError('la DB local falló al anotar sync_meta');
+    writes++;
+    final previo = _meta;
+    final pushNuevo = lastPushAt != null &&
+        (previo.lastPushAt == null || !lastPushAt.isBefore(previo.lastPushAt!));
+    _meta = SyncMeta(
+      lastPullAt: lastPullAt ?? previo.lastPullAt,
+      lastBackupAt: lastBackupAt ?? previo.lastBackupAt,
+      lastPushAt: pushNuevo ? lastPushAt : previo.lastPushAt,
+      lastPushNetwork: pushNuevo ? lastPushNetwork : previo.lastPushNetwork,
+    );
   }
 }

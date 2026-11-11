@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/nota_persona.dart';
+import '../../domain/services/retencion_notas_borradas.dart';
 import '../providers/notas_persona_providers.dart';
 import '../providers/personas_providers.dart';
 import '../textos_notas.dart';
@@ -17,8 +18,10 @@ import '../widgets/piezas_notas.dart';
 /// - Restaurar devuelve la nota a la lista con su fecha y su texto; el aviso «Nota restaurada.» lo
 ///   confirma. Si falla, el aviso dice qué pasó y ofrece «Reintentar».
 /// - Cada nota tiene su propia guarda: un doble toque sobre «Restaurar» no lo repite.
-/// - Las notas borradas **se guardan** (no hay limpieza con el tiempo): la PREGUNTA del canvas —si se
-///   limpian después de un tiempo— espera la decisión de Cristian.
+/// - Las notas borradas **se quedan 90 días** (decisión de Cristian, 27/10, como el centro de
+///   notificaciones): cada una dice cuándo se va («Se borra el 25/01») y después se pierde para siempre.
+///   Una que ya pasó de los 90 días no se muestra, aunque la limpieza de al abrir la app todavía no la
+///   haya borrado.
 /// - En solo lectura (la persona o su espacio dados de baja) se ven, pero no hay «Restaurar».
 class NotasBorradasPage extends ConsumerStatefulWidget {
   const NotasBorradasPage({super.key, required this.personaId, required this.colportorId});
@@ -99,6 +102,7 @@ class _NotasBorradasPageState extends ConsumerState<NotasBorradasPage> {
 
     final encabezado = EncabezadoNotas(
       titulo: datos == null ? TextosNotas.tituloGenerico : TextosNotas.titulo(datos.nombre),
+      colportorId: widget.colportorId,
     );
     final Widget cuerpo;
     if (contexto.hasError || notas.hasError) {
@@ -124,7 +128,7 @@ class _NotasBorradasPageState extends ConsumerState<NotasBorradasPage> {
     } else {
       final borradas = [
         for (final n in notas.requireValue)
-          if (n.estaBorrada) n,
+          if (RetencionNotasBorradas.estaEnBorradas(n, ahora)) n,
       ];
       cuerpo = ListView(
         padding: const EdgeInsets.only(bottom: 16),
@@ -153,6 +157,7 @@ class _NotasBorradasPageState extends ConsumerState<NotasBorradasPage> {
                 key: ValueKey('borrada_${nota.id}'),
                 nota: nota,
                 ahora: ahora,
+                conPlazo: true,
                 alRestaurar: soloLectura ? null : () => _restaurar(nota),
               ),
           ],

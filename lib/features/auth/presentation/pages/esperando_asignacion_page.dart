@@ -13,6 +13,7 @@ import '../providers/asignacion_campania_providers.dart';
 import '../providers/estado_cuenta_providers.dart';
 import '../providers/sesion_notifier.dart';
 import '../widgets/aviso_modulo_bloqueado.dart';
+import '../widgets/terminar_jornada_de_la_cuenta.dart';
 
 /// Textos de la pantalla de espera (HU-AUTH-008, vista 18). Los literales de la HU van tal cual;
 /// el resto es propuesta del diseño.
@@ -107,6 +108,12 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
     with CierraSusAvisos<EsperandoAsignacionPage> {
   bool _consultando = false;
   _Resultado? _resultado;
+
+  /// «Terminar jornada» (#472) cambia de lugar en el árbol según el resultado de la revisión (18-A04
+  /// la lleva al final, el resto antes de los botones) y entre pendiente y suspendida: la clave
+  /// global la mueve sin perder la hora de fin que la persona eligió ni un cierre en vuelo (sin ella,
+  /// cada «Reintentar» la remontaba con el estado en cero).
+  final _terminarJornada = GlobalKey(debugLabel: 'espera_terminar_jornada');
 
   /// El resultado a mostrar: el de la última revisión pedida o, si todavía no se pidió ninguna y
   /// no se conoce el estado, la razón por la que no se conoce.
@@ -225,8 +232,13 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
               child: ConstrainedBox(
                 constraints: BoxConstraints(minHeight: math.max(0, constraints.maxHeight - 40)),
                 child: suspendida
-                    ? _Suspendida(alto: constraints.maxHeight, onConfiguracion: _abrirConfiguracion)
+                    ? _Suspendida(
+                        alto: constraints.maxHeight,
+                        onConfiguracion: _abrirConfiguracion,
+                        terminarJornada: TerminarJornadaDeLaCuenta(key: _terminarJornada),
+                      )
                     : _Pendiente(
+                        terminarJornada: TerminarJornadaDeLaCuenta(key: _terminarJornada),
                         estado: widget.estado,
                         consultando: _consultando,
                         resultado: _consultando ? null : _resultadoVisible,
@@ -252,6 +264,7 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
 /// 18-A01 a 18-A05: la cuenta pendiente (o sin estado conocido) con su revisión.
 class _Pendiente extends StatelessWidget {
   const _Pendiente({
+    required this.terminarJornada,
     required this.estado,
     required this.consultando,
     required this.resultado,
@@ -260,6 +273,9 @@ class _Pendiente extends StatelessWidget {
     required this.detalleError,
     required this.onActualizar,
   });
+
+  /// «Terminar jornada» (#472), con la clave global de la pantalla.
+  final Widget terminarJornada;
 
   /// `null`: no se conoce el estado (nunca se pudo consultar).
   final EstadoCuenta? estado;
@@ -282,6 +298,7 @@ class _Pendiente extends StatelessWidget {
     final completo = conocido && !consultando && resultado == null;
     // Sin estado conocido y sin red: un aviso de sin conexión explícito, no el error genérico.
     final sinConexionSinEstado = !conocido && !consultando && resultado == _Resultado.sinConexion;
+    final sinConexion = !consultando && resultado == _Resultado.sinConexion;
 
     final cuerpo = <Widget>[
       if (conocido)
@@ -382,10 +399,15 @@ class _Pendiente extends StatelessWidget {
             if (completo) const Padding(padding: EdgeInsets.only(top: 10), child: _LineaDeTiempo()),
           ],
         ),
+        // Solo con una jornada abierta (#472); si no, no ocupa lugar. En 18-A04 (sin conexión) va
+        // debajo del bloque del canvas (título, aviso y «Reintentar»), no entre el título y el aviso
+        // (decisión del 29/10, QA P1).
+        if (!sinConexion) terminarJornada,
         Padding(
           padding: const EdgeInsets.only(top: 24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 10, children: pie),
         ),
+        if (sinConexion) terminarJornada,
       ],
     );
   }
@@ -393,10 +415,17 @@ class _Pendiente extends StatelessWidget {
 
 /// 18-A06: la cuenta suspendida. Solo Configuración, sin «Actualizar».
 class _Suspendida extends StatelessWidget {
-  const _Suspendida({required this.alto, required this.onConfiguracion});
+  const _Suspendida({
+    required this.alto,
+    required this.onConfiguracion,
+    required this.terminarJornada,
+  });
 
   final double alto;
   final VoidCallback onConfiguracion;
+
+  /// «Terminar jornada» (#472), con la clave global de la pantalla.
+  final Widget terminarJornada;
 
   @override
   Widget build(BuildContext context) {
@@ -447,6 +476,8 @@ class _Suspendida extends StatelessWidget {
             ),
           ),
         ),
+        // Solo con una jornada abierta (#472); si no, no ocupa lugar.
+        terminarJornada,
         const SizedBox(height: 24),
         OutlinedButton(
           key: const Key('espera_ir_a_configuracion'),

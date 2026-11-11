@@ -189,6 +189,10 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
               // (status, sin PII) lo hace el repositorio (issue #90).
               _errorGeneral = BannerErrorConAccion.servicioNoDisponible;
               _errorEsReintentable = true;
+            case FailureServidor():
+              // Un código del servidor sin traducción (`signup_disabled`, `validation_failed`…) no
+              // llega a la pantalla: dice qué pasa y qué hacer (#542). El 429 conserva su texto.
+              _errorGeneral = mensajeDeServidor(failure, noPudimos: 'No pudimos crear tu cuenta.');
             case Failure(:final mensaje):
               _errorGeneral = mensaje;
           }
@@ -645,8 +649,9 @@ class _CampoRegistroState extends State<_CampoRegistro> {
             errorText: widget.errorText,
             counterText: '',
             // Con el texto grande el aviso del campo no se corta con puntos suspensivos (WCAG 1.4.4):
-            // 6 es lo que miden los avisos del email a 320 dp de ancho y texto al 300 %.
-            errorMaxLines: 6,
+            // el del email incompleto (#700) mide 7 renglones a 320 dp de ancho y texto al 300 %; 8
+            // deja uno de margen.
+            errorMaxLines: 8,
             helperText: widget.textoAyudaInferior,
             helperStyle: TextStyle(color: colores.gris, fontSize: 11),
             helperMaxLines: 2,

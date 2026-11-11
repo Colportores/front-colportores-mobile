@@ -18,6 +18,9 @@ final class AgendaModel extends Agenda {
     super.estado,
     required super.colportorId,
     super.visitaId,
+    super.ventaId,
+    super.montoPrevistoCentavos,
+    super.entregaId,
     required super.auditoria,
   });
 
@@ -33,6 +36,9 @@ final class AgendaModel extends Agenda {
     estado: agenda.estado,
     colportorId: agenda.colportorId,
     visitaId: agenda.visitaId,
+    ventaId: agenda.ventaId,
+    montoPrevistoCentavos: agenda.montoPrevistoCentavos,
+    entregaId: agenda.entregaId,
     auditoria: agenda.auditoria,
   );
 
@@ -48,6 +54,9 @@ final class AgendaModel extends Agenda {
     'estado': estado.codigo,
     'colportor_id': colportorId,
     'visita_id': visitaId,
+    'venta_id': ventaId,
+    'monto_previsto': montoPrevistoCentavos,
+    'entrega_id': entregaId,
     ...auditoriaAJson(auditoria),
   };
 }

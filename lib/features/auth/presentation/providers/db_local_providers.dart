@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/dispositivo/dispositivo_providers.dart';
 import '../../../../core/secure_storage/secure_storage_providers.dart';
+import '../../../../core/sync/sync_providers.dart';
 import '../../data/repositories/db_local_repository_impl.dart';
 import '../../domain/repositories/db_local_repository.dart';
 import '../../domain/repositories/vigencia_sesion.dart';
@@ -24,6 +27,9 @@ DbLocalRepository dbLocalRepository(Ref ref) => DbLocalRepositoryImpl(
   seguridad: ref.watch(seguridadDispositivoProvider),
   helper: ref.watch(databaseHelperProvider),
   dbLocal: ref.watch(dbLocalProvider.notifier),
+  // Al rehacerse el envoltorio por contraseña, el de Drive se rehace también. Se lee al llamarlo (y
+  // no se mira): el envoltorio de Drive depende de la sesión y de Drive, que dependen de esta DB.
+  alEnvolver: () => unawaited(ref.read(envoltorioEnDriveProvider).sincronizar()),
 );
 
 /// `keepAlive` porque el testigo usa `ref` después de construirse: si el provider se descartara

@@ -195,12 +195,15 @@ final class AuthRemoteDataSourceSupabase
   Future<void> revocarSesion(String accessToken) =>
       _traduciendo(() => _auth.admin.signOut(accessToken, scope: SignOutScope.local));
 
+  // El mismo destino que el correo del registro (`/verificado`): con la base sola, el enlace del
+  // correo reenviado verificaba la cuenta en el servidor pero la app no lo reconocía como una
+  // verificación y quedaba en «El enlace expiró» (#679).
   @override
   Future<void> reenviarVerificacion(String email) => _traduciendo(
     () => _auth.resend(
       email: email,
       type: OtpType.signup,
-      emailRedirectTo: ConfigSupabase.redirectBase,
+      emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
     ),
   );
 
@@ -292,6 +295,11 @@ final class AuthRemoteDataSourceSupabase
   @override
   Future<void> cerrarTodasLasSesiones() =>
       _traduciendo(() => _auth.signOut(scope: SignOutScope.global));
+
+  // Scope others: las sesiones de los demás teléfonos, sin la de este (#542, reintento tras un login).
+  @override
+  Future<void> cerrarLasOtrasSesiones() =>
+      _traduciendo(() => _auth.signOut(scope: SignOutScope.others));
 
   @override
   Future<void> abandonarRecuperacion() => _traduciendo(() => _auth.signOut());
@@ -422,16 +430,15 @@ final class AuthRemoteDataSourceSupabase
     }
 
     // `signup_disabled`, `validation_failed`, `bad_json` u otro código sin caso propio: no hay
-    // texto lindo para inventar, pero tampoco se puede mandar `e.message` de Supabase tal cual a
-    // la UI — no está garantizado que no lleve datos del usuario (convención §7.5, "ningún
-    // Failure lleva PII"). Se muestra solo el código, que sí es seguro.
+    // texto lindo para inventar, y tampoco se puede mandar `e.message` de Supabase tal cual a la UI
+    // — no está garantizado que no lleve datos del usuario (convención §7.5, "ningún Failure lleva
+    // PII"). La excepción sale **sin texto** y el código queda solo en el log: cada pantalla compone
+    // su «No pudimos … Probá de nuevo en unos minutos.» (`mensajeDeServidor`, decisión del 29/10 en
+    // #542), y la colportora nunca ve un código técnico.
     _log.warn(LogModulo.auth, 'AUTH_ERROR', 'error de Supabase Auth sin traducción', {
       'status': status,
       'code': e.code,
     });
-    return ServidorException(
-      status: status,
-      mensaje: 'No se pudo completar la operación (${e.code ?? 'desconocido'}).',
-    );
+    return ServidorException(status: status);
   }
 }

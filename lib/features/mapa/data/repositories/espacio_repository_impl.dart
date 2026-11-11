@@ -33,9 +33,15 @@ final class EspacioRepositoryImpl implements EspacioRepository {
   Future<Either<Failure, Espacio>> modificar(
     String id, {
     required String numeroDepto,
+    String? piso,
     required DateTime ahora,
   }) => _ejecutar('ESPACIO_MODIFICACION', {'espacio_id': id}, () async {
-    final modelo = await _local.actualizarNumeroDepto(id, numeroDepto: numeroDepto, ahora: ahora);
+    final modelo = await _local.actualizarEspacio(
+      id,
+      numeroDepto: numeroDepto,
+      piso: piso,
+      ahora: ahora,
+    );
     return modelo.toEntity();
   });
 

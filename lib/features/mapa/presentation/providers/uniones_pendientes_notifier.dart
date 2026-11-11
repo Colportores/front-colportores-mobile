@@ -40,6 +40,11 @@ final class UnionPendiente extends Equatable {
 
   @override
   List<Object?> get props => [clavePar, conservarId, duplicadaId, direccion, esperaElCierre];
+
+  /// [props] lleva la dirección y los ids de las ubicaciones: `EquatableConfig.stringify` arranca en
+  /// `true` en debug, así que sin esto `toString()` los volcaría (convenciones §7.5, sin PII en logs).
+  @override
+  bool? get stringify => false;
 }
 
 /// Una unión que se intentó hacer y no se pudo, con el motivo.
@@ -55,6 +60,10 @@ final class FallaUnion extends Equatable {
 
   @override
   List<Object?> get props => [union, falla];
+
+  /// Lleva la unión (dirección e ids): ver [UnionPendiente.stringify].
+  @override
+  bool? get stringify => false;
 }
 
 /// Lo que la pantalla de «Posibles duplicados» tiene que saber de las uniones en marcha.
@@ -106,6 +115,10 @@ final class UnionesPendientesState extends Equatable {
 
   @override
   List<Object?> get props => [pendiente, ocultas, duplicadasEnCurso, fallas];
+
+  /// Lleva ids de ubicaciones y uniones con dirección: ver [UnionPendiente.stringify].
+  @override
+  bool? get stringify => false;
 }
 
 /// Las uniones que fallaron cuando la pantalla de «Posibles duplicados» ya no estaba (la colportora
@@ -196,6 +209,10 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
   /// que una unión pedida después reemplazó: si uno de estos vuelve a fallar, no deja su falla.
   final _reintentosEnVuelo = <UnionPendiente>{};
   final _reintentosReemplazados = <UnionPendiente>{};
+
+  /// Las uniones que se escribieron bien mientras la pantalla seguía abierta, por par: su par queda
+  /// oculto hasta que el servidor la rechace y vuelva ([soltarRechazadas]).
+  final _hechas = <String, UnionPendiente>{};
 
   @override
   UnionesPendientesState build() {
@@ -323,6 +340,22 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
     );
   }
 
+  /// El servidor rechazó la unión de estos pares y el teléfono la deshizo: vuelven a la lista con su
+  /// aviso (HU-UBI-006, «Unión rech.», #679). Solo se sueltan los pares de una unión que ya se escribió
+  /// con la pantalla abierta: uno que espera sus 8 s o se está uniendo sigue oculto aunque traiga el
+  /// aviso de un rechazo anterior. Con el par vuelve también su «B» para los demás pares.
+  void soltarRechazadas(Set<String> clavesPar) {
+    if (!ref.mounted) return;
+    final vuelven = [for (final clave in clavesPar) ?_hechas.remove(clave)];
+    if (vuelven.isEmpty) return;
+    state = UnionesPendientesState(
+      pendiente: state.pendiente,
+      ocultas: {...state.ocultas}..removeAll(vuelven.map((u) => u.clavePar)),
+      duplicadasEnCurso: {...state.duplicadasEnCurso}..removeAll(vuelven.map((u) => u.duplicadaId)),
+      fallas: state.fallas,
+    );
+  }
+
   /// Cierra el aviso de las fallas sin reintentar.
   void descartarFalla() {
     if (state.fallas.isEmpty) return;
@@ -372,7 +405,10 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
     }
     _reintentosEnVuelo.remove(union);
     final reemplazada = _reintentosReemplazados.remove(union);
-    if (falla == null) return;
+    if (falla == null) {
+      _hechas[union.clavePar] = union;
+      return;
+    }
     final fallaDeLaUnion = FallaUnion(union: union, falla: falla);
     if (!ref.mounted) {
       if (reemplazada) return;

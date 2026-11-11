@@ -3,7 +3,6 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
-import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
@@ -17,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart';
+import '../../helpers/ubicacion_colportor_falsos.dart';
 import 'lista_ubicaciones_arnes.dart';
 
 const _nbsp = '\u00A0';
@@ -375,7 +375,11 @@ void main() {
     testWidgets('dado «Mostrar bajas» activo, entonces la baja se ve con su etiqueta y sin flecha, '
         'no abre la ubicación (se reactiva); el contador suma las bajas', (tester) async {
       final abiertas = <String>[];
-      await montarLista(tester, repo: RepoListaFalso(conBaja), alAbrir: abiertas.add);
+      await montarLista(
+        tester,
+        repo: RepoListaFalso(conBaja),
+        alAbrir: (id, _) => abiertas.add(id),
+      );
       expect(find.text('Gral. Flores 1500'), findsNothing);
       expect(find.text('3 de 3'), findsOneWidget);
 
@@ -656,30 +660,27 @@ void main() {
       },
     );
 
-    testWidgets(
-      'dado el puerto de ciudades de hoy, sin adaptador, entonces la hoja avisa en vez de '
-      'inventar ciudades',
-      (tester) async {
-        await montarLista(
-          tester,
-          repo: RepoListaFalso(_muestra()),
-          ciudades: CiudadesParaAltaSinFuente(),
-        );
-        await abrirHojaFiltros(tester);
-        expect(find.text('Todas'), findsOneWidget);
+    testWidgets('dadas unas ciudades que no se pueden leer, entonces la hoja avisa en vez de '
+        'inventar ciudades', (tester) async {
+      await montarLista(
+        tester,
+        repo: RepoListaFalso(_muestra()),
+        ciudades: const CiudadesQueNoSePuedenLeer(),
+      );
+      await abrirHojaFiltros(tester);
+      expect(find.text('Todas'), findsOneWidget);
 
-        await tester.tap(find.text('Todas'));
-        await asentarLista(tester);
+      await tester.tap(find.text('Todas'));
+      await asentarLista(tester);
 
-        expect(
-          find.text('No pudimos leer las ciudades de tu campaña. Probá de nuevo.'),
-          findsOneWidget,
-        );
-        expect(find.text(TextosListaUbicaciones.reintentar), findsOneWidget);
-        expect(find.text('Montevideo'), findsNothing);
-        expect(tester.takeException(), isNull);
-      },
-    );
+      expect(
+        find.text('No pudimos leer las ciudades de tu campaña. Probá de nuevo.'),
+        findsOneWidget,
+      );
+      expect(find.text(TextosListaUbicaciones.reintentar), findsOneWidget);
+      expect(find.text('Montevideo'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('dado que no hay ciudades en la campaña, entonces la hoja de ciudades lo dice', (
       tester,
@@ -940,7 +941,7 @@ void main() {
     });
 
     testWidgets(
-      'dado que la pestaña no está a la vista, entonces no pide el GPS hasta que se abre',
+      'dado que el mapa todavía no pidió el GPS, entonces la Lista no lo pide al abrirse (#651)',
       (tester) async {
         final gps = GpsFalso(Right(lecturaGps(7)));
         final activa = ValueNotifier(false);
@@ -950,21 +951,73 @@ void main() {
           repo: RepoListaFalso(_muestra()),
           gps: gps,
           activaCambiante: activa,
+          gpsAbierto: false,
         );
         expect(gps.lecturas, 0);
-        expect(find.textContaining('GPS'), findsNothing);
         expect(find.text('Rivadavia 100'), findsOneWidget);
 
         activa.value = true;
         await asentarLista(tester);
 
-        expect(gps.lecturas, 1);
+        expect(gps.lecturas, 0, reason: 'solo el mapa pide el GPS y el permiso');
+        expect(gps.activaciones, isEmpty);
+        expect(find.text('Rivadavia 100'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'dado que el mapa todavía no pidió el GPS, entonces la Lista ofrece «Sin GPS · Activar GPS» '
+      'y tocarlo la lleva al mapa, sin diálogo sobre la Lista',
+      (tester) async {
+        final gps = GpsFalso(Right(lecturaGps(7)));
+        var alMapa = 0;
+        await montarLista(
+          tester,
+          repo: RepoListaFalso(_muestra()),
+          gps: gps,
+          gpsAbierto: false,
+          alActivarGps: () => alMapa++,
+        );
+        expect(find.text('◎ Sin GPS · Activar GPS'), findsOneWidget);
+
+        await tester.tap(find.text('◎ Sin GPS · Activar GPS'));
+        await asentarLista(tester);
+
+        expect(alMapa, 1);
+        expect(gps.lecturas, 0, reason: 'la Lista no lee el GPS: eso lo hace el mapa');
+        expect(gps.activaciones, isEmpty, reason: 'ni abre el permiso sobre la Lista');
+      },
+    );
+
+    testWidgets(
+      'dado que la Lista no tiene mapa al lado (selector de «+ Agendar»), entonces el chip solo '
+      'informa',
+      (tester) async {
+        final gps = GpsFalso(Right(lecturaGps(7)));
+        await montarLista(tester, repo: RepoListaFalso(_muestra()), gps: gps, gpsAbierto: false);
+
+        expect(find.text('◎ Sin GPS · Activar GPS'), findsOneWidget);
+        await tester.tap(find.text('◎ Sin GPS · Activar GPS'));
+        await asentarLista(tester);
+
+        expect(gps.lecturas, 0);
+        expect(gps.activaciones, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'dado que el mapa ya leyó el GPS, entonces la Lista muestra esa lectura sin pedirla',
+      (tester) async {
+        final gps = GpsFalso(Right(lecturaGps(7)));
+        await montarLista(tester, repo: RepoListaFalso(_muestra()), gps: gps);
+
+        expect(gps.lecturas, 1, reason: 'la leyó el GPS del colportor (el mapa), una sola vez');
         expect(find.text('◎ GPS ±7${_nbsp}m'), findsOneWidget);
       },
     );
 
-    testWidgets('dado que vuelve a la pestaña, entonces refresca el GPS; sin permiso no vuelve a '
-        'pedirlo en cada apertura', (tester) async {
+    testWidgets('dado que cambia de pestaña y vuelve, entonces no relee el GPS; sin permiso no '
+        'vuelve a pedirlo en cada apertura', (tester) async {
       final gps = gpsFallido();
       final activa = ValueNotifier(true);
       addTearDown(activa.dispose);
@@ -987,13 +1040,25 @@ void main() {
     testWidgets('dado que sin permiso no hay GPS, entonces la lista funciona, dice «Sin GPS» y '
         'tocarlo pide el permiso', (tester) async {
       final gps = gpsFallido();
-      await montarLista(tester, repo: RepoListaFalso(_muestra()), gps: gps);
+      var alMapa = 0;
+      await montarLista(
+        tester,
+        repo: RepoListaFalso(_muestra()),
+        gps: gps,
+        alActivarGps: () => alMapa++,
+      );
 
       expect(find.text('◎ Sin GPS'), findsOneWidget);
       expect(find.text('Rivadavia 100'), findsOneWidget);
 
+      // Tocar el chip lleva al mapa; ahí se activa el GPS (lo que hace el mapa al abrirse).
       gps.alActivar = () => gps.respuesta = Right(lecturaGps(5));
       await tester.tap(find.text('◎ Sin GPS'));
+      await asentarLista(tester);
+      expect(alMapa, 1);
+      expect(gps.activaciones, isEmpty, reason: 'no hay diálogo sobre la Lista');
+
+      await activarGpsDelColportor(tester);
       await asentarLista(tester);
 
       expect(gps.activaciones, [MotivoSinGps.permisoDenegado]);
@@ -1008,8 +1073,9 @@ void main() {
         await montarLista(tester, repo: RepoListaFalso(_muestra()), gps: gps);
         expect(find.text('◎ Sin GPS'), findsOneWidget);
 
-        // Toca «Sin GPS»: lo manda a los ajustes (el fake no cambia nada) y sigue sin GPS.
-        await tester.tap(find.text('◎ Sin GPS'));
+        // Toca «Sin GPS»: en el mapa se lo manda a los ajustes (el fake no cambia nada) y sigue
+        // sin GPS.
+        await activarGpsDelColportor(tester);
         await asentarLista(tester);
         expect(gps.activaciones, hasLength(1));
         expect(find.text('◎ Sin GPS'), findsOneWidget);
@@ -1097,13 +1163,64 @@ void main() {
       'dado un destino, cuando toca una fila, entonces avisa cuál; una sola vez por toque',
       (tester) async {
         final abiertas = <String>[];
-        await montarLista(tester, repo: RepoListaFalso(_muestra()), alAbrir: abiertas.add);
+        await montarLista(
+          tester,
+          repo: RepoListaFalso(_muestra()),
+          alAbrir: (id, _) => abiertas.add(id),
+        );
 
         await tester.tap(find.text('Colonia 2020'));
         await tester.pump();
 
         expect(abiertas, ['neg-1']);
         expect(find.text('›'), findsNWidgets(3));
+      },
+    );
+
+    testWidgets(
+      'con «la casa abre su hoja», una casa abre la hoja de la casa y el destino queda para lo que '
+      'tiene deptos',
+      (tester) async {
+        final abiertas = <String>[];
+        await montarLista(
+          tester,
+          repo: RepoListaFalso([
+            filaLista('casa-1', calle: 'Rivadavia', numero: '100'),
+            filaLista('edif-1', tipo: TipoUbicacion.edificio, calle: 'Mataojo', numero: '2044'),
+          ]),
+          alAbrir: (id, _) => abiertas.add(id),
+          casaAbreSuHoja: true,
+        );
+
+        await tester.tap(find.text('Mataojo 2044'));
+        await tester.pump();
+        expect(abiertas, ['edif-1']);
+
+        await tester.tap(find.text('Rivadavia 100'));
+        await asentarLista(tester);
+        expect(abiertas, ['edif-1'], reason: 'la casa no pasa por el destino');
+        expect(find.byType(HojaCasa), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'entrega también la distancia que muestra la fila (el rótulo de la hoja la repite)',
+      (tester) async {
+        final abiertas = <(String, double?)>[];
+        await montarLista(
+          tester,
+          repo: RepoListaFalso([
+            filaLista('casa-1', calle: 'Rivadavia', numero: '100', metrosAlNorte: 40),
+          ]),
+          alAbrir: (id, distancia) => abiertas.add((id, distancia)),
+        );
+
+        await tester.tap(find.text('Rivadavia 100'));
+        await tester.pump();
+
+        expect(abiertas, hasLength(1));
+        expect(abiertas.single.$1, 'casa-1');
+        expect(abiertas.single.$2, closeTo(40, 1));
       },
     );
 

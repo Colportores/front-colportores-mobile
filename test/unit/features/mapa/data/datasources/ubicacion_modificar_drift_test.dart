@@ -152,12 +152,11 @@ void main() {
   }
 
   /// El `update` que el sync tiene que subir para [id] cuando se le quitó el número.
-  Map<String, Object?> payloadEspacioSinNumero(String id, {String? piso, String? descripcion}) => {
+  Map<String, Object?> payloadEspacioSinNumero(String id, {String? piso}) => {
     'id': id,
     'ubicacion_id': 'ub-1',
     'numero_depto': null,
     'piso': piso,
-    'descripcion': descripcion,
     'created_at': t0.toIso8601String(),
     'updated_at': t1.toIso8601String(),
     'created_by': 'col-1',
@@ -479,7 +478,7 @@ void main() {
       await esperar(cuentas, 2);
       expect(cuentas.last, (cantidad: 2, numeroDeptoUnico: null));
 
-      // Un cambio que no mueve ni la cuenta ni el número (la descripción del espacio): sin emisión.
+      // Un cambio que no mueve ni la cuenta ni el número (la `descripcion` heredada): sin emisión.
       await (db.update(db.espacios)..where((e) => e.id.equals('e2'))).write(
         const EspaciosCompanion(descripcion: Value('al fondo')),
       );
@@ -512,6 +511,9 @@ void main() {
       final e = await espacio('e1');
       expect(e.numeroDepto, isNull);
       expect((e.piso, e.descripcion), ('3', 'al fondo'), reason: 'lo demás queda igual');
+      // Y la `descripcion` heredada no sale nunca (HU-UBI-007, «Nota por depto»; backend 0104).
+      final subido = encolador.encolados.last.payload;
+      expect(subido.containsKey('descripcion'), isFalse);
       expect(e.updatedAt, t1);
       expect((e.createdAt, e.createdBy, e.syncVersion, e.deletedAt), (t0, 'col-1', 7, null));
       expect(cambiosEncolados(), [
@@ -520,11 +522,7 @@ void main() {
           OperacionSync.update,
           {...ubicacion(tipo: TipoUbicacion.casa).toJson(), 'updated_at': t1.toIso8601String()},
         ],
-        [
-          'espacio',
-          OperacionSync.update,
-          payloadEspacioSinNumero('e1', piso: '3', descripcion: 'al fondo'),
-        ],
+        ['espacio', OperacionSync.update, payloadEspacioSinNumero('e1', piso: '3')],
       ]);
     });
 
@@ -613,7 +611,6 @@ void main() {
             'ubicacion_id': 'ub-1',
             'numero_depto': null,
             'piso': null,
-            'descripcion': null,
             'created_at': t1.toIso8601String(),
             'updated_at': t1.toIso8601String(),
             'created_by': 'col-1',

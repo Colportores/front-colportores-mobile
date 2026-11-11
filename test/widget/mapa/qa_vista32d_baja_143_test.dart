@@ -155,8 +155,14 @@ void main() {
 
       expect(e.repo.bajasRecibidas, isEmpty, reason: 'la primera confirmación no escribe');
       expect(find.text('¿Seguro?'), findsOneWidget);
+      // María debe y además espera 1 entrega: van las dos frases, la deuda primero (#509 P2).
       expect(
-        find.text(_m('La deuda de \$ 1.200 sigue en tu cuenta aunque María esté de baja.')),
+        find.text(
+          _m(
+            'La deuda de \$ 1.200 sigue en tu cuenta aunque María esté de baja. '
+            'La entrega pendiente no se cancela: queda registrada aunque María esté de baja.',
+          ),
+        ),
         findsOneWidget,
       );
       expect(find.text('Sí, dar de baja'), findsOneWidget);
@@ -353,10 +359,8 @@ void main() {
           final renglones = cajas.map((c) => c.top.round()).toSet().length;
           expect(renglones, 1, reason: '«$rotulo» se parte en $renglones renglones');
         }
-        // skip: QA #143 — rótulo y valor son dos `Flexible` iguales: con el valor ancho, «Comprado» queda
-        // en la mitad del cuadro y se parte («Comprad» / «o»); a 412×915 no pasa.
+        // QA #143 — el rótulo ya no compite con el valor por el ancho: «Comprado» no se parte.
       },
-      skip: true,
     );
 
     for (final estado in EstadoHoja.values) {
@@ -514,9 +518,7 @@ void main() {
       await montarBajaConNombre(tester, 'Maximiliano Alejandro 🙂', 'Fernández de la Peña');
 
       sinTextoCortado(tester);
-      // skip: QA #143 — la fila de la baja corta con «…» un nombre de 45 caracteres a 200 % (maxLines 3,
-      // igual que la fila de un cliente activo, #140): no se lee quién es sin el lector.
-    }, skip: true);
+    });
 
     testWidgets('Mostrar bajas se anuncia como interruptor con su estado y mide al menos 48 dp', (
       tester,

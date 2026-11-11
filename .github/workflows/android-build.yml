@@ -1,0 +1,338 @@
+name: Build Android (reutilizable)
+
+# Compila la app Android con las variables del GitHub Environment que recibe y sube el APK/AAB como artefacto.
+# No publica nada: lo llaman staging.yml (APK, variables de dev) y production.yml (AAB, variables de producción),
+# que deciden dónde se publica. El CI de develop (ci.yml) no compila: solo format · analyze · test · coverage.
+#
+# Todo lo configurable sale de variables o secretos de GitHub Actions, por environment (staging | production); la tabla
+# completa, con ejemplos, está en docs/ci-variables.md. Ningún paso corre con secretos en un PR ni en un fork: los
+# workflows de despliegue solo disparan por push a `staging`/`production` o a mano, y el evento pull_request no tiene jobs.
+#
+# Variables del environment (Settings → Environments → <entorno> → Variables; no son secretas):
+#   SUPABASE_URL, SUPABASE_ANON_KEY   Solo staging. La anon key es pública por diseño (la autoridad es la RLS). Un environment
+#                                     las pisa sobre las del repo (que hoy apuntan al proyecto dev). Si no hay ninguna, se
+#                                     avisa y la app se compila sin conexión a Supabase.
+#   PRODUCTION_SUPABASE_URL,          Solo producción (exigir-entorno). Nombres propios a propósito: las variables de nivel
+#   PRODUCTION_SUPABASE_ANON_KEY      repositorio SUPABASE_URL / SUPABASE_ANON_KEY son las del proyecto dev, y `vars.*` mezcla
+#                                     environment y repo; producción no las lee nunca. Obligatorias, fallan claro.
+#   APP_ENV                           obligatoria con exigir-entorno (producción): tiene que ser igual al nombre del
+#                                     environment. Es la marca de que el environment está configurado y no se están
+#                                     usando por descuido las variables de dev del repo.
+#   COLPORTORES_APP_ID_SUFFIX         opcional: sufijo del applicationId (".staging"); «ninguno» fuerza vacío. Si falta,
+#                                     vale el default que pasa el workflow que llama (staging: ".staging").
+#   COLPORTORES_APP_NAME              opcional: nombre en el lanzador; «ninguno» fuerza el de siempre. Default de staging:
+#                                     «Colportores (staging)».
+#   SUPABASE_REF_DEV                  opcional: ref EXTRA que producción no puede usar (se suma al de la demo, que siempre se rechaza).
+#   (con exigir-entorno el applicationId es el de siempre: no se aplica COLPORTORES_APP_ID_SUFFIX ni COLPORTORES_APP_NAME)
+#   GOOGLE_SERVER_CLIENT_ID, SOPORTE_WHATSAPP, SOPORTE_WHATSAPP_VISIBLE, LOG_LEVEL   opcionales (si faltan, el default del código).
+# Secretos del environment (opcionales en staging, obligatorios con exigir-firma):
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+# Sin keystore el release se firma con la clave de debug del runner (cambia en cada corrida: para actualizar hay que
+# desinstalar). Ningún paso imprime valores: los mensajes dicen qué falta, nunca el contenido.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "GitHub Environment del que salen variables y secretos (staging | production)"
+        type: string
+        required: true
+      modo:
+        description: "debug | release"
+        type: string
+        default: release
+      formato:
+        description: "apk | appbundle"
+        type: string
+        default: apk
+      sufijo-id:
+        description: "Sufijo del applicationId (\".staging\"); vacío = el de producción"
+        type: string
+        default: ""
+      nombre-app:
+        description: "Nombre visible en el lanzador; vacío = el de siempre"
+        type: string
+        default: ""
+      aplicar-identidad:
+        description: "Usa COLPORTORES_APP_ID_SUFFIX / COLPORTORES_APP_NAME del environment (o sufijo-id / nombre-app si faltan); false = applicationId y nombre de siempre"
+        type: boolean
+        default: true
+      artefacto:
+        description: "Nombre del artefacto de Actions"
+        type: string
+        required: true
+      exigir-entorno:
+        description: "Falla si APP_ENV no es igual al environment o si la URL es la del proyecto dev"
+        type: boolean
+        default: false
+      exigir-firma:
+        description: "Falla si faltan los secretos de la keystore"
+        type: boolean
+        default: false
+      retencion-dias:
+        type: number
+        default: 7
+    outputs:
+      archivo:
+        description: "Nombre del archivo dentro del artefacto"
+        value: ${{ jobs.build.outputs.archivo }}
+      version:
+        description: "versionName+versionCode compilado"
+        value: ${{ jobs.build.outputs.version }}
+      firma:
+        description: "keystore (la del environment) | debug (clave de debug del runner)"
+        value: ${{ jobs.build.outputs.firma }}
+
+permissions:
+  contents: read
+
+env:
+  # Misma versión que ci.yml y dockerfile.dev. Subirlas juntas.
+  FLUTTER_VERSION: "3.44.0"
+  # Proyecto Supabase de desarrollo/demo (público: ya figura en el README del panel). Producción no puede apuntar acá.
+  # Se cambia con la variable SUPABASE_REF_DEV; este es solo el valor por defecto.
+  SUPABASE_REF_DEV_DEFECTO: ohdsavwpasfpapbyutrv
+
+jobs:
+  build:
+    name: build ${{ inputs.formato }} (${{ inputs.environment }}, ${{ inputs.modo }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+    outputs:
+      archivo: ${{ steps.salida.outputs.archivo }}
+      version: ${{ steps.version.outputs.version }}
+      firma: ${{ steps.validar.outputs.firma }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validar entradas, variables y secretos
+        id: validar
+        env:
+          ENTORNO: ${{ inputs.environment }}
+          MODO: ${{ inputs.modo }}
+          FORMATO: ${{ inputs.formato }}
+          EXIGIR_ENTORNO: ${{ inputs.exigir-entorno }}
+          EXIGIR_FIRMA: ${{ inputs.exigir-firma }}
+          APP_ENV: ${{ vars.APP_ENV }}
+          # Dos juegos de nombres: producción nunca lee SUPABASE_URL / SUPABASE_ANON_KEY (pueden venir del repo, con valores de dev).
+          STAGING_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          STAGING_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
+          PRODUCTION_SUPABASE_ANON_KEY: ${{ vars.PRODUCTION_SUPABASE_ANON_KEY }}
+          SUPABASE_REF_EXTRA: ${{ vars.SUPABASE_REF_DEV }}
+          SUPABASE_REF_DEFECTO: ${{ env.SUPABASE_REF_DEV_DEFECTO }}
+          HAY_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          HAY_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          HAY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          HAY_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
+        run: |
+          fallas=0
+          falla() { echo "::error title=Build ${ENTORNO}::$1"; fallas=$((fallas + 1)); }
+          case "$MODO" in debug|release) ;; *) falla "modo «${MODO}» inválido: debug o release." ;; esac
+          case "$FORMATO" in apk|appbundle) ;; *) falla "formato «${FORMATO}» inválido: apk o appbundle." ;; esac
+          if [ "$FORMATO" = appbundle ] && [ "$MODO" != release ]; then falla "el AAB se compila solo en release."; fi
+          # Producción exige la conexión y la lee de PRODUCTION_*; staging sigue sin ella (la app abre sin Supabase) y avisa qué cargar.
+          if [ "$EXIGIR_ENTORNO" = true ]; then
+            URL_NOMBRE=PRODUCTION_SUPABASE_URL; KEY_NOMBRE=PRODUCTION_SUPABASE_ANON_KEY
+            SUPABASE_URL="$PRODUCTION_SUPABASE_URL"; SUPABASE_ANON_KEY="$PRODUCTION_SUPABASE_ANON_KEY"
+          else
+            URL_NOMBRE=SUPABASE_URL; KEY_NOMBRE=SUPABASE_ANON_KEY
+            SUPABASE_URL="$STAGING_SUPABASE_URL"; SUPABASE_ANON_KEY="$STAGING_SUPABASE_ANON_KEY"
+          fi
+          for par in "${URL_NOMBRE}:${SUPABASE_URL}" "${KEY_NOMBRE}:${SUPABASE_ANON_KEY}"; do
+            nombre="${par%%:*}"
+            if [ -z "${par#*:}" ]; then
+              mensaje="falta la variable ${nombre} en el environment «${ENTORNO}»: se carga en Settings → Environments → ${ENTORNO} → Variables, o con: gh variable set ${nombre} --env ${ENTORNO}"
+              if [ "$EXIGIR_ENTORNO" = true ]; then falla "$mensaje."; else echo "::warning title=Build ${ENTORNO}::${mensaje}. Se compila sin conexión a Supabase."; fi
+            fi
+          done
+          case "$SUPABASE_URL" in ""|https://*|http://localhost*|http://127.0.0.1*) ;; *) falla "${URL_NOMBRE} tiene que empezar con https://." ;; esac
+          if [ "$EXIGIR_ENTORNO" = true ]; then
+            [ "$APP_ENV" = "$ENTORNO" ] || falla "la variable APP_ENV del environment «${ENTORNO}» tiene que valer «${ENTORNO}»: sin ella se compilaría con las variables de dev del repo (gh variable set APP_ENV --env ${ENTORNO} --body ${ENTORNO})."
+            case "$SUPABASE_URL" in *"$SUPABASE_REF_DEFECTO"*) falla "${URL_NOMBRE} apunta al proyecto de desarrollo: «${ENTORNO}» necesita su propio proyecto Supabase." ;; esac
+            if [ -n "$SUPABASE_REF_EXTRA" ]; then
+              case "$SUPABASE_URL" in *"$SUPABASE_REF_EXTRA"*) falla "${URL_NOMBRE} apunta a un proyecto prohibido (SUPABASE_REF_DEV): «${ENTORNO}» necesita su propio proyecto Supabase." ;; esac
+            fi
+            # Por si alguien copia la variable del repo (dev) al environment con otro nombre.
+            [ "$SUPABASE_ANON_KEY" != "$STAGING_SUPABASE_ANON_KEY" ] || [ -z "$STAGING_SUPABASE_ANON_KEY" ] \
+              || falla "${KEY_NOMBRE} es igual a la SUPABASE_ANON_KEY de nivel repositorio (proyecto dev): «${ENTORNO}» necesita la clave de su propio proyecto."
+          fi
+          firma=debug
+          if [ "$HAY_KEYSTORE" = true ]; then
+            firma=keystore
+            [ "$HAY_STORE_PASS" = true ] && [ "$HAY_ALIAS" = true ] && [ "$HAY_KEY_PASS" = true ] \
+              || falla "está ANDROID_KEYSTORE_BASE64 pero faltan ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS o ANDROID_KEY_PASSWORD."
+          elif [ "$EXIGIR_FIRMA" = true ]; then
+            falla "faltan los secretos de firma (ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD) en el environment «${ENTORNO}»: se cargan en Settings → Environments → ${ENTORNO} → Secrets (gh secret set NOMBRE --env ${ENTORNO}). La keystore va en base64: base64 -w0 subida.jks."
+          elif [ "$MODO" = release ]; then
+            echo "::warning title=Build ${ENTORNO}::sin keystore en el environment: el release sale firmado con la clave de debug del runner (para actualizarlo hay que desinstalar la versión anterior)."
+          fi
+          echo "firma=${firma}" >> "$GITHUB_OUTPUT"
+          [ "$fallas" -eq 0 ] || exit 1
+
+      # Identidad de la app: la variable del environment manda; si falta vale el default del workflow que llama.
+      - name: Identidad de la app (applicationId y nombre)
+        id: identidad
+        env:
+          ENTORNO: ${{ inputs.environment }}
+          APLICAR: ${{ inputs.aplicar-identidad }}
+          SUFIJO: ${{ vars.COLPORTORES_APP_ID_SUFFIX || inputs.sufijo-id }}
+          NOMBRE: ${{ vars.COLPORTORES_APP_NAME || inputs.nombre-app }}
+        run: |
+          [ "$APLICAR" = true ] || { SUFIJO=""; NOMBRE=""; }
+          [ "$SUFIJO" != ninguno ] || SUFIJO=""
+          [ "$NOMBRE" != ninguno ] || NOMBRE=""
+          NOMBRE=$(printf '%s' "$NOMBRE" | tr -d '\r\n')
+          if [ -n "$SUFIJO" ] && ! printf '%s' "$SUFIJO" | grep -Eq '^(\.[A-Za-z][A-Za-z0-9_]*)+$'; then
+            echo "::error title=Build ${ENTORNO}::la variable COLPORTORES_APP_ID_SUFFIX del environment «${ENTORNO}» tiene que empezar con un punto y seguir con letras, números o guion bajo (ejemplo: .staging); «ninguno» lo deja vacío."
+            exit 1
+          fi
+          { echo "sufijo=${SUFIJO}"; echo "nombre=${NOMBRE}"; } >> "$GITHUB_OUTPUT"
+          echo "applicationId: com.colportores.colportores_mobile${SUFIJO} · nombre: ${NOMBRE:-(el de siempre)}"
+
+      # Push remotas (HU-NOT-003, #614): si google-services.json no tiene el applicationId que se compila,
+      # app/build.gradle.kts no aplica el plugin de Google Services y la app sale sin push. Producción
+      # (exigir-entorno) no puede salir así; staging avisa y sigue (decisión del 11/11, P2 de #614).
+      - name: Firebase (la app en google-services.json)
+        env:
+          ENTORNO: ${{ inputs.environment }}
+          EXIGIR_ENTORNO: ${{ inputs.exigir-entorno }}
+          APP_ID: com.colportores.colportores_mobile${{ steps.identidad.outputs.sufijo }}
+        run: |
+          if python3 - "$APP_ID" android/app/google-services.json <<'PY'
+          import json, sys
+          app, ruta = sys.argv[1], sys.argv[2]
+          try:
+              with open(ruta, encoding="utf-8") as f:
+                  clientes = json.load(f).get("client") or []
+          except (OSError, ValueError, AttributeError):
+              sys.exit(1)
+          ids = {
+              ((c.get("client_info") or {}).get("android_client_info") or {}).get("package_name")
+              for c in clientes
+              if isinstance(c, dict)
+          }
+          sys.exit(0 if app in ids else 1)
+          PY
+          then
+            echo "Firebase: google-services.json tiene la app ${APP_ID}."
+          else
+            mensaje="android/app/google-services.json no tiene la app ${APP_ID}: la app saldría sin push remotas. Hay que registrarla en el proyecto de Firebase y sumar su cliente a ese archivo."
+            if [ "$EXIGIR_ENTORNO" = true ]; then
+              echo "::error title=Build ${ENTORNO}::${mensaje}"
+              exit 1
+            fi
+            echo "::warning title=Build ${ENTORNO}::${mensaje}"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # `maplibre_gl` (el mapa, #286) compila su parte de Android con Java 21.
+          java-version: "21"
+          cache: gradle
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: dart run build_runner build
+
+      - name: Versión (pubspec + número de corrida)
+        id: version
+        run: |
+          nombre=$(sed -n 's/^version:[[:space:]]*\([^+[:space:]]*\).*/\1/p' pubspec.yaml)
+          numero="${{ github.run_number }}"
+          {
+            echo "nombre=${nombre}"
+            echo "numero=${numero}"
+            echo "version=${nombre}+${numero}"
+          } >> "$GITHUB_OUTPUT"
+
+      # Las variables van a un archivo temporal (no a la línea de comandos, que queda en el log) y solo las que tienen
+      # valor: un --dart-define vacío pisaría el default del código (p. ej. el WhatsApp de soporte).
+      - name: Archivo de dart-defines
+        env:
+          EXIGIR_ENTORNO: ${{ inputs.exigir-entorno }}
+          STAGING_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          STAGING_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
+          PRODUCTION_SUPABASE_ANON_KEY: ${{ vars.PRODUCTION_SUPABASE_ANON_KEY }}
+          GOOGLE_SERVER_CLIENT_ID: ${{ vars.GOOGLE_SERVER_CLIENT_ID }}
+          SOPORTE_WHATSAPP: ${{ vars.SOPORTE_WHATSAPP }}
+          SOPORTE_WHATSAPP_VISIBLE: ${{ vars.SOPORTE_WHATSAPP_VISIBLE }}
+          LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+          APP_VERSION: ${{ steps.version.outputs.version }}-${{ inputs.environment }}
+        run: |
+          python3 - "$RUNNER_TEMP/dart-defines.json" <<'PY'
+          import json, os, sys
+          claves = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "GOOGLE_SERVER_CLIENT_ID", "SOPORTE_WHATSAPP",
+                    "SOPORTE_WHATSAPP_VISIBLE", "LOG_LEVEL", "APP_VERSION"]
+          # Producción solo lee PRODUCTION_*; staging, las SUPABASE_* (environment o repo).
+          prefijo = "PRODUCTION_" if os.environ.get("EXIGIR_ENTORNO") == "true" else "STAGING_"
+          for k in ("SUPABASE_URL", "SUPABASE_ANON_KEY"):
+              os.environ[k] = os.environ.get(prefijo + k, "")
+          defines = {k: os.environ[k] for k in claves if os.environ.get(k, "").strip()}
+          with open(sys.argv[1], "w", encoding="utf-8") as f:
+              json.dump(defines, f)
+          print("dart-defines:", ", ".join(sorted(defines)))  # solo los nombres
+          PY
+
+      - name: Keystore desde los secretos
+        id: keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/firma.jks"
+            echo "ruta=$RUNNER_TEMP/firma.jks" >> "$GITHUB_OUTPUT"
+            echo "Firma con la keystore del environment."
+          else
+            echo "ruta=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: flutter build ${{ inputs.formato }} --${{ inputs.modo }}
+        env:
+          COLPORTORES_APP_ID_SUFFIX: ${{ steps.identidad.outputs.sufijo }}
+          COLPORTORES_APP_NAME: ${{ steps.identidad.outputs.nombre }}
+          ANDROID_KEYSTORE_PATH: ${{ steps.keystore.outputs.ruta }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: >-
+          flutter build ${{ inputs.formato }} --${{ inputs.modo }}
+          --dart-define-from-file="$RUNNER_TEMP/dart-defines.json"
+          --build-number=${{ steps.version.outputs.numero }}
+
+      - name: Borrar keystore y dart-defines del runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firma.jks" "$RUNNER_TEMP/dart-defines.json"
+
+      - name: Ubicar el archivo compilado
+        id: salida
+        env:
+          MODO: ${{ inputs.modo }}
+          FORMATO: ${{ inputs.formato }}
+        run: |
+          if [ "$FORMATO" = appbundle ]; then
+            ruta="build/app/outputs/bundle/${MODO}/app-${MODO}.aab"
+          else
+            ruta="build/app/outputs/flutter-apk/app-${MODO}.apk"
+          fi
+          [ -f "$ruta" ] || { echo "::error::no se encontró ${ruta}"; exit 1; }
+          { echo "ruta=${ruta}"; echo "archivo=$(basename "$ruta")"; } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artefacto }}
+          path: ${{ steps.salida.outputs.ruta }}
+          retention-days: ${{ inputs.retencion-dias }}
+          if-no-files-found: error

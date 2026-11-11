@@ -324,6 +324,52 @@ void main() {
     });
   });
 
+  group('CustodiaClaveDb — envoltorio que viaja con el backup (HU-SYNC-006)', () {
+    test('sin envoltorio en el equipo, no hay texto que subir', () async {
+      expect(await custodia.leerEnvoltorioCodificado(), isNull);
+    });
+
+    test(
+      'el texto que se sube es el del archivo y otro equipo lo abre con la contraseña',
+      () async {
+        final dek = custodia.generarDek();
+        await custodia.envolverConPassword(dek, 'secreto123');
+
+        final texto = await custodia.leerEnvoltorioCodificado();
+        final recuperada = await custodia.abrirEnvoltorio(
+          EnvoltorioDek.decodificar(texto!),
+          'secreto123',
+        );
+
+        expect(texto, EnvoltorioDek.decodificar(await contenidoDelEnvoltorio()).codificar());
+        expect(texto, isNot(contains(base64Encode(dek.bytes))), reason: 'nunca la DEK en claro');
+        expect(recuperada.bytes, dek.bytes);
+      },
+    );
+
+    test('un archivo roto no se sube: lanza EnvoltorioCorruptoException', () async {
+      await File(
+        p.join(dir.path, ArchivoEnvoltorioDek.nombreArchivoPorDefecto),
+      ).writeAsString('esto no es un envoltorio');
+
+      await expectLater(
+        custodia.leerEnvoltorioCodificado(),
+        throwsA(isA<EnvoltorioCorruptoException>()),
+      );
+    });
+
+    test('con otra contraseña, el envoltorio de Drive no abre', () async {
+      await custodia.envolverConPassword(custodia.generarDek(), 'secreto123');
+      final envoltorio = EnvoltorioDek.decodificar((await custodia.leerEnvoltorioCodificado())!);
+
+      await expectLater(
+        custodia.abrirEnvoltorio(envoltorio, 'otra'),
+        throwsA(isA<EnvoltorioNoAbreException>()),
+      );
+      expect(proveedor.entregadas.every((c) => c.destruida), isTrue);
+    });
+  });
+
   group('CustodiaClaveDb — marca de inicialización', () {
     test('dado un dispositivo nuevo, no está inicializado', () async {
       expect(await custodia.dbInicializada(), isFalse);
@@ -456,6 +502,32 @@ void main() {
       expect(almacen.contenido[ClaveSegura.zonasAvisadas], '{"insc-1":"zona-1","insc-2":null}');
     });
 
+    test(
+      'conserva las preferencias de los recordatorios (HU-NOT-004) al recuperar los datos',
+      () async {
+        final dek = custodia.generarDek();
+        await almacen.escribir(ClaveSegura.recordatoriosActivados, '0');
+        await almacen.escribir(ClaveSegura.anticipacionRecordatorios, '90');
+
+        await custodia.reconstruirAlmacen(dek);
+
+        expect(almacen.contenido[ClaveSegura.recordatoriosActivados], '0');
+        expect(almacen.contenido[ClaveSegura.anticipacionRecordatorios], '90');
+      },
+    );
+
+    test(
+      'conserva hasta dónde se revisaron los recordatorios (HU-NOT-005) al recuperar los datos',
+      () async {
+        final dek = custodia.generarDek();
+        await almacen.escribir(ClaveSegura.ultimaConciliacionRecordatorios, '1790000000000');
+
+        await custodia.reconstruirAlmacen(dek);
+
+        expect(almacen.contenido[ClaveSegura.ultimaConciliacionRecordatorios], '1790000000000');
+      },
+    );
+
     test('conserva lo contestado sobre las notificaciones (HU-NOT-001): recuperar los datos no '
         'vuelve a pedir el permiso ni a mostrar el aviso cerrado', () async {
       final dek = custodia.generarDek();
@@ -467,6 +539,18 @@ void main() {
       expect(almacen.contenido[ClaveSegura.permisoNotificaciones], 'ahora_no');
       expect(almacen.contenido[ClaveSegura.avisoNotificacionesCerrado], '1');
     });
+    test(
+      'conserva quién escondió el aviso de privacidad (#445): recuperar los datos no lo vuelve a '
+      'mostrar',
+      () async {
+        final dek = custodia.generarDek();
+        await almacen.escribir(ClaveSegura.avisoPrivacidadOculto, '["u-1"]');
+
+        await custodia.reconstruirAlmacen(dek);
+
+        expect(almacen.contenido[ClaveSegura.avisoPrivacidadOculto], '["u-1"]');
+      },
+    );
 
     for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
       test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
@@ -666,6 +750,38 @@ void main() {
       expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
     });
 
+    test('borra también las preferencias de los recordatorios (HU-NOT-004)', () async {
+      await almacen.escribir(ClaveSegura.recordatoriosActivados, '0');
+      await almacen.escribir(ClaveSegura.anticipacionRecordatorios, '60');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.recordatoriosActivados), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.anticipacionRecordatorios), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también hasta dónde se revisaron los recordatorios (HU-NOT-005)', () async {
+      await almacen.escribir(ClaveSegura.ultimaConciliacionRecordatorios, '1790000000000');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.ultimaConciliacionRecordatorios), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca las preferencias de los recordatorios', () async {
+      await almacen.escribir(ClaveSegura.recordatoriosActivados, '0');
+      await almacen.escribir(ClaveSegura.anticipacionRecordatorios, '60');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.recordatoriosActivados], '0');
+      expect(almacen.contenido[ClaveSegura.anticipacionRecordatorios], '60');
+    });
+
     test('«Empezar de nuevo» (olvidar) no toca lo contestado sobre las notificaciones', () async {
       await almacen.escribir(ClaveSegura.permisoNotificaciones, 'sistema');
       await almacen.escribir(ClaveSegura.avisoNotificacionesCerrado, '1');
@@ -675,6 +791,18 @@ void main() {
       expect(almacen.contenido[ClaveSegura.permisoNotificaciones], 'sistema');
       expect(almacen.contenido[ClaveSegura.avisoNotificacionesCerrado], '1');
     });
+    test(
+      'borra también quién escondió el aviso de privacidad (#445): es de la persona que se va',
+      () async {
+        await almacen.escribir(ClaveSegura.avisoPrivacidadOculto, '["u-1"]');
+        await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+        await custodia.olvidarDatosDelUsuario();
+
+        expect(almacen.contenido.containsKey(ClaveSegura.avisoPrivacidadOculto), isFalse);
+        expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+      },
+    );
 
     test('«Empezar de nuevo» (olvidar) no toca las zonas ya avisadas', () async {
       await almacen.escribir(ClaveSegura.zonasAvisadas, '{"insc-1":"zona-1"}');
@@ -793,6 +921,20 @@ void main() {
         ...CustodiaClaveDb.seBorranAlBorrarDatos,
         ...CustodiaClaveDb.quedanFueraDelBorradoDeDatos,
       ], unorderedEquals(ClaveSegura.values));
+    });
+
+    test('la cuenta de Drive del respaldo (HU-SYNC-004) sobrevive a reconstruir el almacén y se '
+        'va con el borrado de datos', () {
+      expect(CustodiaClaveDb.seConservanAlReconstruir, contains(ClaveSegura.respaldoDrive));
+      expect(CustodiaClaveDb.seBorranAlBorrarDatos, contains(ClaveSegura.respaldoDrive));
+      expect(CustodiaClaveDb.seBorranAlOlvidar, isNot(contains(ClaveSegura.respaldoDrive)));
+    });
+
+    test('la marca de que el asistente de recuperación se resolvió (HU-SYNC-006) sobrevive a '
+        'reconstruir el almacén y se va con el borrado de datos', () {
+      expect(CustodiaClaveDb.seConservanAlReconstruir, contains(ClaveSegura.recuperacionResuelta));
+      expect(CustodiaClaveDb.seBorranAlBorrarDatos, contains(ClaveSegura.recuperacionResuelta));
+      expect(CustodiaClaveDb.seBorranAlOlvidar, isNot(contains(ClaveSegura.recuperacionResuelta)));
     });
   });
 

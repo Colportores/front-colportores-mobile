@@ -1,11 +1,8 @@
-// La fuente de las inscripciones con zona (HU-CAM-006, #251): mientras no llegue el pull no hay de
-// dónde sacarlas ([InscripcionesConZonaSinFuente]); la versión en memoria simula los pulls.
+// La fuente de las inscripciones con zona (HU-CAM-006, #251): la versión en memoria simula los pulls
+// (la de las réplicas locales se prueba en `inscripciones_con_zona_local_test.dart`).
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/inscripciones_con_zona_en_memoria.dart';
-import 'package:colportores_mobile/features/auth/data/datasources/inscripciones_con_zona_data_source.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/inscripcion_con_zona.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import '../../../../../helpers/logger_mudo.dart';
 
 const _centro = InscripcionConZona(
   id: 'insc-1',
@@ -16,16 +13,6 @@ const _centro = InscripcionConZona(
 );
 
 void main() {
-  group('InscripcionesConZonaSinFuente', () {
-    test('emite una sola vez la lista vacía (no hay avisos) y se cierra', () async {
-      final fuente = InscripcionesConZonaSinFuente(logger: loggerMudo());
-
-      final emisiones = await fuente.observar('u-1').toList();
-
-      expect(emisiones, [isEmpty]);
-    });
-  });
-
   group('InscripcionesConZonaEnMemoria', () {
     test('al suscribirse emite lo que hay; después, cada pull', () async {
       final fuente = InscripcionesConZonaEnMemoria();

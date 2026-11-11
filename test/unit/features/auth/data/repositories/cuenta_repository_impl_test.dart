@@ -453,8 +453,4 @@ void main() {
       expect(repo.ultimaConsultaExitosa('ana'), isNull);
     });
   });
-
-  test('sin fuente (Supabase sin el endpoint del BFF), sigue como hasta ahora: activa', () async {
-    expect(await EstadoCuentaSinFuente(logger: loggerMudo()).consultar(), EstadoCuenta.activa);
-  });
 }
