@@ -1054,7 +1054,9 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                             // dibuja juntos.
                             // La brújula (41E·03C) va debajo de «Referencias» y, como el chip, se
                             // corre mientras el aviso ocupa el borde de arriba (#294; confirmado
-                            // para la brújula el 11/11 en #697).
+                            // para la brújula el 11/11 en la revisión y en el QA de #697: la tarjeta
+                            // ocupa todo el ancho y el botón de ubicación pone el norte arriba,
+                            // https://github.com/Colportores/front-colportores-mobile/pull/697#issuecomment-6796317926).
                             if (!avisoVisible)
                               Positioned(
                                 top: 8,
