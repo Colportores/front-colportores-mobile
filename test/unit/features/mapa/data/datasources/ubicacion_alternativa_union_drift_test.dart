@@ -1,9 +1,9 @@
 // La ubicación alternativa de cobranza (HU-UBI-013) cuando sus ubicaciones se unen como duplicadas
 // (HU-UBI-006) contra las tablas reales: la alternativa que era B pasa a ser A, y nadie se queda con
-// una alternativa «dada de baja» que en realidad es la que se conservó.
+// una alternativa «dada de baja» que en realidad es la que se conservó. El reapuntado es el de la
+// unión (`_reapuntarAlternativas`): no encola nada por fila, lo aplica el servidor al correr el trabajo.
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
-import 'package:colportores_mobile/core/sync/encolador_sync.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart';
@@ -88,35 +88,28 @@ void main() {
   });
 
   test(
-    'dada una persona que vive en A y cobraba en B, cuando se unen, queda sin alternativa (ahora '
-    'serían la misma ubicación) y el update con null se encola',
+    'dada una persona que vive en A y cobraba en B, cuando se unen, la alternativa pasa a ser A y no '
+    'se encola nada: la unión no quita la alternativa que queda siendo su propia ubicación '
+    '(pendiente de decisión, ver el PR)',
     () async {
       await vincular('per-1', 'a1', alternativa: 'ub-b');
 
       await unir();
 
-      expect(await alternativaDe('per-1'), isNull);
-      final cambios = encolador.encolados.where((c) => c.entidad == 'espacio_persona').toList();
-      expect(cambios, hasLength(1));
-      expect(cambios.single.operacion, OperacionSync.update);
-      expect(cambios.single.payload['persona_id'], 'per-1');
-      expect(cambios.single.payload['ubicacion_cobranza_alt_id'], isNull);
-      expect(cambios.single.payload['updated_at'], union.toIso8601String());
+      expect(await alternativaDe('per-1'), 'ub-a');
+      expect(encolador.encolados.where((c) => c.entidad == 'espacio_persona'), isEmpty);
     },
   );
 
-  test(
-    'dada una persona que vive en B y cobraba en A, cuando se unen, su depto pasa a A y queda sin '
-    'alternativa',
-    () async {
-      await vincular('per-1', 'b1', alternativa: 'ub-a');
+  test('dada una persona que vive en B y cobraba en A, cuando se unen, su depto pasa a A y la '
+      'alternativa sigue siendo A, sin tocar ni encolar nada', () async {
+    await vincular('per-1', 'b1', alternativa: 'ub-a');
 
-      await unir();
+    await unir();
 
-      expect(await alternativaDe('per-1'), isNull);
-      expect(encolador.encolados.where((c) => c.entidad == 'espacio_persona'), hasLength(1));
-    },
-  );
+    expect(await alternativaDe('per-1'), 'ub-a');
+    expect(encolador.encolados.where((c) => c.entidad == 'espacio_persona'), isEmpty);
+  });
 
   test(
     'dadas otras alternativas y personas sin alternativa, cuando se unen A y B, ninguna se toca',
@@ -144,17 +137,17 @@ void main() {
     await unir();
 
     expect(await alternativaDe('per-1'), 'ub-a');
-    expect(await alternativaDe('per-2'), isNull);
+    expect(await alternativaDe('per-2'), 'ub-a');
     expect(encolador.encolados, isEmpty);
   });
 
   test(
-    'dado que el motor rechaza lo encolado, cuando se une, la transacción se revierte entera: la '
+    'dado que el motor rechaza el trabajo de la unión, cuando se une, la transacción se revierte entera: la '
     'alternativa sigue siendo B y B sigue viva',
     () async {
       await vincular('per-1', 'a1', alternativa: 'ub-b');
       await vincular('per-2', 'c1', alternativa: 'ub-b');
-      encolador.fallarCon = StateError('sin cola');
+      marcador.fallarCon = StateError('sin cola');
 
       await expectLater(unir(), throwsStateError);
 
