@@ -124,7 +124,9 @@ abstract final class FormatoAgendados {
 
   /// El renglón chico (canvas): «Cobranza · 2.ª cuota · $U 1.450», «Cobranza atrasada · $U 980»,
   /// «Entrevista», «Entrega y pago». Lo que no se sabe (el plan todavía no se leyó, o la visita no es
-  /// de una venta) no se dice: queda el tipo solo.
+  /// de una venta) no se dice: queda el tipo solo. Una cobranza agendada sin venta dice «Cobranza»
+  /// (o «Cobranza atrasada»), sin monto: no se afirma uno que la cita no tiene (decisión del
+  /// orquestador del 11/11, por el mapa de decisiones, regla R4; P1 del PR #704).
   static String detalle(ItemAgenda item, CobroDeAgendado? cobro, {required bool atrasada}) {
     switch (item.agenda.tipo) {
       case TipoAgenda.cobranza:

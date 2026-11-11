@@ -116,10 +116,13 @@ void main() {
       );
     });
 
-    test('sin plan leído, o sin venta, la cobranza dice solo «Cobranza» (no inventa un monto)', () {
-      expect(FormatoAgendados.detalle(cobranza, null, atrasada: false), 'Cobranza');
-      expect(FormatoAgendados.detalle(cobranza, null, atrasada: true), 'Cobranza atrasada');
-    });
+    test(
+      'sin plan leído, o sin venta, la cobranza dice solo «Cobranza» (no inventa un monto; decisión del 11/11, P1 de #704)',
+      () {
+        expect(FormatoAgendados.detalle(cobranza, null, atrasada: false), 'Cobranza');
+        expect(FormatoAgendados.detalle(cobranza, null, atrasada: true), 'Cobranza atrasada');
+      },
+    );
 
     test('una cuota ya cubierta en el plan no muestra «\$U 0»', () {
       expect(
