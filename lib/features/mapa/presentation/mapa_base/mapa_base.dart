@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:colportores_mapa/colportores_mapa.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -47,7 +48,7 @@ class MapaBase extends ConsumerStatefulWidget {
     this.camaraInicial,
     this.ajuste,
     this.zoomMinimo = 3,
-    this.zoomMaximo = 19,
+    this.zoomMaximo = TokensMapa.zoomMaximo,
     this.interaccion = const InteraccionMapa(),
     this.zoomSobreCentro = false,
     this.fondo = ColoresMapa.fondo,
@@ -588,7 +589,8 @@ class _Dedo {
 class _AtribucionOsm extends StatelessWidget {
   const _AtribucionOsm({required this.reservaInferior, required this.reserva});
 
-  static const texto = '© OpenStreetMap';
+  /// El texto corto del token de lib-mapa (`TokensMapa.atribucionCorto`).
+  static const texto = TokensMapa.atribucionCorto;
 
   /// Lo que tapa el borde de abajo (la hoja de la vista 06).
   final double reservaInferior;

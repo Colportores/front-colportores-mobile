@@ -9,8 +9,8 @@ import 'marcador_estado.dart';
 import 'modelo_mapa_base.dart';
 import 'zonas_mapa.dart';
 
-/// Arma el estilo MapLibre que dibuja `MapaBase`: el de backend (`estilo/colportores.json`, con la
-/// paleta del canvas) apuntando al PMTiles que corresponda y a los glyphs y sprites de la app, más
+/// Arma el estilo MapLibre que dibuja `MapaBase`: el de lib-mapa (`estilo/colportores.json` del
+/// paquete `colportores_mapa`, con la paleta del canvas y los números de puerta de OSM) apuntando al PMTiles que corresponda y a los glyphs y sprites de la app, más
 /// las capas propias de la app (puntos, grupos, radio de precisión y área de «cerca tuyo»).
 ///
 /// Es todo JSON puro: se prueba sin la vista nativa.
@@ -74,6 +74,14 @@ abstract final class ConstructorEstiloMapa {
   static const radioEtiquetaLarga = 19.0;
   static const radioEtiquetaMuyLarga = 22.0;
 
+  /// Las capas de íconos propias que **ocupan su lugar** en el mapa (`icon-ignore-placement: false`):
+  /// la insignia M·01, la etiqueta de «cerca tuyo», el cuadrado M·02 y su aro. Se dibujan siempre
+  /// (`icon-allow-overlap`), y como MapLibre ubica primero los símbolos de las capas de arriba, el
+  /// número de puerta de OSM del estilo (`address_label`, desde `TokensMapa.zoomNumerosDePuerta`) y
+  /// los nombres de calles se esconden donde las pisan (decisión P4 de lib-mapa, opción A: gana el
+  /// cuadrado M·02, #673).
+  static const capasQueOcupanLugar = [capaEstado, capaCercano, capaCuadradoAro, capaCuadrado];
+
   /// Las capas que responden al toque de un punto o un grupo.
   static const capasTocables = [
     capaGrupos,
@@ -110,7 +118,7 @@ abstract final class ConstructorEstiloMapa {
   /// El estilo final como texto, para `MapLibreMap.styleString`.
   ///
   /// [directorioRecursos] es donde `PreparadorRecursosMapa` dejó los glyphs y sprites; [estiloBase]
-  /// es el JSON de backend tal como se empaqueta.
+  /// es el JSON de lib-mapa tal como viaja en el paquete `colportores_mapa` (#673).
   static String construir({
     required String estiloBase,
     required String directorioRecursos,
@@ -559,7 +567,7 @@ abstract final class ConstructorEstiloMapa {
         'layout': {
           'icon-image': ['get', 'imagen'],
           'icon-allow-overlap': true,
-          'icon-ignore-placement': true,
+          'icon-ignore-placement': false,
         },
       },
       // El respaldo: mientras la insignia no está registrada (o si no se pudo), la casa no queda sin
@@ -686,7 +694,7 @@ abstract final class ConstructorEstiloMapa {
           'icon-image': ['get', 'imagen'],
           'icon-anchor': 'bottom',
           'icon-allow-overlap': true,
-          'icon-ignore-placement': true,
+          'icon-ignore-placement': false,
         },
       },
       // El respaldo: mientras la imagen de un número no está registrada (o si no se pudo), el punto
@@ -775,7 +783,7 @@ abstract final class ConstructorEstiloMapa {
         'layout': {
           'icon-image': MarcadorEstado.nombreAro,
           'icon-allow-overlap': true,
-          'icon-ignore-placement': true,
+          'icon-ignore-placement': false,
         },
       },
       {
@@ -786,7 +794,7 @@ abstract final class ConstructorEstiloMapa {
         'layout': {
           'icon-image': ['get', 'imagen'],
           'icon-allow-overlap': true,
-          'icon-ignore-placement': true,
+          'icon-ignore-placement': false,
         },
       },
       {

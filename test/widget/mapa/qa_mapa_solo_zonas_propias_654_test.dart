@@ -3,7 +3,6 @@
 // y los casos límite. La vista nativa es la falsa del arnés (`config.zonas`) y el estilo se construye
 // con el constructor real, así que lo que se mira es lo que el mapa recibe y lo que oye el lector.
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
@@ -14,6 +13,7 @@ import 'package:colportores_mobile/features/mapa/presentation/mapa_base/zonas_ma
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/assets_de_lib_mapa.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart';
 import '../../helpers/zonas_del_mapa_falsos.dart';
 import 'mapa_ubicaciones_arnes.dart';
@@ -171,7 +171,7 @@ void main() {
 
   group('QA #654 · estilo real con una ajena que llegara hasta el constructor', () {
     late String estiloBase;
-    setUpAll(() => estiloBase = File('assets/mapa/estilo/colportores.json').readAsStringSync());
+    setUpAll(() => estiloBase = estiloDeLibMapa());
 
     ZonaMapa zona(String id, {required bool propia}) => zonaMapa(id, propia: propia);
 

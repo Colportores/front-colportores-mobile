@@ -3,6 +3,7 @@
 // como ella en lo que `MapaBase` espera (gestos, `moverCamara`, toques).
 import 'dart:async';
 
+import 'package:colportores_mapa/colportores_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
@@ -1169,6 +1170,8 @@ void main() {
       await _asentar(tester);
 
       expect(find.text('© OpenStreetMap'), findsOneWidget);
+      // El texto es el token de lib-mapa (#673), el mismo del panel.
+      expect(find.text(TokensMapa.atribucionCorto), findsOneWidget);
     });
 
     testWidgets('también con los tiles del servidor', (tester) async {

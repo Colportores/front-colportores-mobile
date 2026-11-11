@@ -1,7 +1,6 @@
 // Las zonas en el estilo del mapa (#511): van por debajo de las casas, no reciben toques, la propia se
 // resalta y todo lo que depende del color tiene otra señal.
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
@@ -11,6 +10,8 @@ import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_m
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/zonas_mapa.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../../helpers/assets_de_lib_mapa.dart';
 
 const _montevideo = Coordenadas(lat: -34.88761, lon: -56.13024);
 const _recursos = '/data/user/0/uy.colportores/files/mapa/basemaps-5.7.2-1';
@@ -64,7 +65,7 @@ ConfigVistaMapa _config({
 void main() {
   late String estiloBase;
 
-  setUpAll(() => estiloBase = File('assets/mapa/estilo/colportores.json').readAsStringSync());
+  setUpAll(() => estiloBase = estiloDeLibMapa());
 
   Map<String, dynamic> construir(ConfigVistaMapa config) =>
       jsonDecode(
@@ -247,7 +248,7 @@ void main() {
       expect(rotulo['source'], ConstructorEstiloMapa.fuenteZonasRotulos);
       expect(layout['text-field'], ['get', 'rotulo']);
       for (final fuente in layout['text-font'] as List<dynamic>) {
-        expect(Directory('assets/mapa/glyphs/$fuente').existsSync(), isTrue);
+        expect(carpetaDeLibMapa('glyphs/$fuente').existsSync(), isTrue);
       }
     });
 
