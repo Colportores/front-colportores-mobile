@@ -78,12 +78,12 @@ abstract final class TextosModificar {
   static const abrirDeNuevo = 'Abrir de nuevo';
 
   /// S17, decisión de Cristian del 07/10: «El departamento 3B queda como el espacio de la casa,
-  /// sin número.» (o «del negocio»). Solo informa; la pone el cambio de tipo a Casa o Negocio con
-  /// un único depto que tiene número.
-  static String deptoSinNumero(String numeroDepto, TipoUbicacion tipoNuevo) {
-    final lugar = tipoNuevo == TipoUbicacion.negocio ? 'del negocio' : 'de la casa';
-    return 'El departamento $numeroDepto queda como el espacio $lugar, sin número.';
-  }
+  /// sin número.» Solo informa; la pone el cambio de tipo a Casa con un único depto que tiene número.
+  ///
+  /// Solo al pasar de Edificio a Casa: un negocio es como un edificio y el depto conserva su número
+  /// (P1 de `452-rev-261111-1650`, por «Negocio mapa» del 09/11).
+  static String deptoSinNumero(String numeroDepto) =>
+      'El departamento $numeroDepto queda como el espacio de la casa, sin número.';
 
   /// «2 espacios», «1 espacio», «Sin espacios».
   static String espacios(int n) => switch (n) {
@@ -345,7 +345,7 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
                     key: _claveAvisoTipo,
                     color: ColoresAlta.gris,
                     glyph: 'i',
-                    texto: TextosModificar.deptoSinNumero(deptoSinNumero, estado.tipo!),
+                    texto: TextosModificar.deptoSinNumero(deptoSinNumero),
                   ),
                 ],
                 const SizedBox(height: 14),
