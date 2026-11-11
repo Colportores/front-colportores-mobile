@@ -20,6 +20,13 @@ abstract final class TextosMapaUbicaciones {
   static const seguimientoSeguir = 'Seguir mi ubicación';
   static const seguimientoSeguirYGirar = 'Seguir y girar con el teléfono';
 
+  // Vista 41, 41E·03, 03B y 03C (#692): el nombre accesible del botón («Ubicación: Mapa libre»), la
+  // brújula que aparece arriba con el mapa girado y el cono que sale del punto del GPS.
+  static const ubicacion = 'Ubicación';
+  static const brujula = 'Brújula: volver al norte';
+  static const brujulaNorte = 'N';
+  static const conoOrientacion = 'Hacia dónde apunta el teléfono';
+
   /// El aviso cuando se corta el seguimiento solo (propuesta: pendiente «mapa §2: texto/aviso»).
   static const seguimientoCortado =
       'Dejamos de seguir tu ubicación: el GPS se apagó o dejó de responder. '

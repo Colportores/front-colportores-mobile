@@ -14,6 +14,7 @@ import 'package:colportores_mobile/features/mapa/presentation/formato_mapa_ubica
 import 'package:colportores_mobile/features/mapa/presentation/providers/pantallas_sobre_el_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/ubicacion_colportor_provider.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_mapa_ubicaciones.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsAction;
 import 'package:flutter_test/flutter_test.dart';
@@ -35,8 +36,11 @@ ModoSeguimiento _modo(WidgetTester tester) =>
 String _etiqueta(WidgetTester tester) =>
     tester.getSemantics(botonMiUbicacion).getSemanticsData().label;
 
-Finder _icono(IconData icono) =>
-    find.descendant(of: botonMiUbicacion, matching: find.byIcon(icono));
+/// El símbolo del canvas 41E (◎, ◉ o ▲) que dibuja el botón.
+Finder _simbolo(ModoSeguimiento modo) => find.descendant(
+  of: botonMiUbicacion,
+  matching: find.byWidgetPredicate((w) => w is SimboloModoSeguimiento && w.modo == modo),
+);
 
 /// A cuántos dp del centro de la cámara cae [punto], gire como gire el mapa.
 double _pixelesAlPunto(FabricaMapaFalsa mapa, Coordenadas punto) {
@@ -60,25 +64,25 @@ Future<void> _moverse(WidgetTester tester, GpsFalso gps, LecturaGps lectura) asy
 
 void main() {
   group('el botón de ubicación y sus tres modos', () {
-    testWidgets('arranca en «Mapa libre» y cada toque pasa al modo siguiente, con su ícono y su '
+    testWidgets('arranca en «Mapa libre» y cada toque pasa al modo siguiente, con su símbolo y su '
         'etiqueta', (tester) async {
       final semantica = tester.ensureSemantics();
       await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
 
-      expect(_etiqueta(tester), 'Mapa libre');
-      expect(_icono(Icons.location_searching), findsOneWidget);
+      expect(_etiqueta(tester), 'Ubicación: Mapa libre');
+      expect(_simbolo(ModoSeguimiento.libre), findsOneWidget);
 
       await _tocarBoton(tester);
-      expect(_etiqueta(tester), 'Seguir mi ubicación');
-      expect(_icono(Icons.my_location), findsOneWidget);
+      expect(_etiqueta(tester), 'Ubicación: Seguir mi ubicación');
+      expect(_simbolo(ModoSeguimiento.seguir), findsOneWidget);
 
       await _tocarBoton(tester);
-      expect(_etiqueta(tester), 'Seguir y girar con el teléfono');
-      expect(_icono(Icons.navigation), findsOneWidget);
+      expect(_etiqueta(tester), 'Ubicación: Seguir y girar con el teléfono');
+      expect(_simbolo(ModoSeguimiento.seguirYGirar), findsOneWidget);
 
       await _tocarBoton(tester);
-      expect(_etiqueta(tester), 'Mapa libre');
-      expect(_icono(Icons.location_searching), findsOneWidget);
+      expect(_etiqueta(tester), 'Ubicación: Mapa libre');
+      expect(_simbolo(ModoSeguimiento.libre), findsOneWidget);
       semantica.dispose();
     });
 
@@ -265,7 +269,7 @@ void main() {
 
       expect(_modo(tester), ModoSeguimiento.libre);
       expect(m.gps.siguiendo, isFalse);
-      expect(_etiqueta(tester), 'Mapa libre');
+      expect(_etiqueta(tester), 'Ubicación: Mapa libre');
       semantica.dispose();
     });
 

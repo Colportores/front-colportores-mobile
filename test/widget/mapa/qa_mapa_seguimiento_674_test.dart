@@ -98,7 +98,11 @@ void main() {
         'modo', (tester) async {
       final semantica = tester.ensureSemantics();
       await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
-      const nombres = ['Mapa libre', 'Seguir mi ubicación', 'Seguir y girar con el teléfono'];
+      const nombres = [
+        'Ubicación: Mapa libre',
+        'Ubicación: Seguir mi ubicación',
+        'Ubicación: Seguir y girar con el teléfono',
+      ];
 
       for (final nombre in nombres) {
         expect(
