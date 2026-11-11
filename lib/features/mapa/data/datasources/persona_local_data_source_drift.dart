@@ -227,6 +227,10 @@ final class PersonaLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     ),
   );
 
+  /// La entidad de una fila de `espacio_persona`: la usa la unión rechazada que se deshace para
+  /// reenviar un vínculo que vuelve a B (#696).
+  static EspacioPersona vinculoDesdeFila(EspacioPersonaFila fila) => _aVinculo(fila);
+
   static EspacioPersona _aVinculo(EspacioPersonaFila fila) => EspacioPersona(
     id: fila.id,
     espacioId: fila.espacioId,

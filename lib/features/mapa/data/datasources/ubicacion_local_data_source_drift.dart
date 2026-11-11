@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
@@ -10,6 +11,7 @@ import '../../../../core/sync/encolador_sync.dart';
 import '../../../../datos/sync_queue_table.dart' show EstadoJob;
 import '../../../agenda/data/datasources/agenda_local_data_source_drift.dart';
 import '../../../agenda/data/models/agenda_model.dart';
+import '../../../agenda/data/models/visita_model.dart';
 import '../../../agenda/domain/entities/estado_agenda.dart';
 import '../../../agenda/domain/entities/tipo_agenda.dart';
 import '../../domain/entities/color_house_status.dart';
@@ -26,6 +28,7 @@ import '../../domain/services/encolador_marcar_duplicado.dart';
 import '../../domain/services/house_status_updater.dart';
 import '../../domain/value_objects/area_mapa.dart';
 import '../models/espacio_model.dart';
+import '../models/espacio_persona_model.dart';
 import '../models/movimientos_de_union.dart';
 import '../models/ubicacion_model.dart';
 import '../services/fuentes_sin_adaptador_ubicaciones.dart' show EncoladorMarcarDuplicadoSinMotor;
@@ -35,6 +38,7 @@ import 'espacio_local_data_source.dart';
 import 'espacios_table.dart';
 import 'house_status_table.dart';
 import 'notas_table.dart' show TipoObjetivoNota;
+import 'persona_local_data_source_drift.dart' show PersonaLocalDataSourceDrift;
 import 'ubicacion_local_data_source.dart';
 import 'ubicaciones_table.dart';
 import 'uniones_locales_table.dart';
@@ -42,6 +46,10 @@ import 'uniones_locales_table.dart';
 part 'ubicacion_local_data_source_drift.g.dart';
 
 typedef _Motivo = MotivoRechazoEspacio;
+
+/// Una fila que la unión deshecha devolvió a B: su entidad del cloud, su `id` y, si hay, la columna
+/// que la unión le había cambiado ([campo]) con el valor que la ponía del lado de A ([ladoA]).
+typedef _FilaRevertida = ({String entidad, String id, String? campo, String? ladoA});
 
 /// [UbicacionLocalDataSource] sobre las tablas `ubicacion` ([Ubicaciones]) y `espacio`
 /// ([Espacios]) de la DB cifrada.
@@ -594,7 +602,9 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   /// borrar nada**, con lo que guardó al unir (`MovimientosDeUnion`):
   ///
   /// - los espacios que pasaron enteros vuelven a B;
-  /// - los únicos fundidos se reactivan y vuelve a ellos lo que colgaba (vínculos, visitas, agendas);
+  /// - los únicos fundidos se reactivan y vuelve a ellos lo que colgaba (vínculos, visitas, agendas),
+  ///   y también la visita o la entrevista que se le hizo después de unir a una persona que vuelve
+  ///   («Visita unión», decisión de Cristian, 11/11, #696);
   /// - las alternativas (`agenda.ubicacion_alt_id`, `espacio_persona.ubicacion_cobranza_alt_id`) y las
   ///   notas del lugar vuelven a nombrar a B;
   /// - B se reactiva si la unión la había dado de baja, y su marca `duplicado_de_<A>` deja de contar
@@ -604,9 +614,10 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   /// - se recalcula el color de las dos (`house_status`).
   ///
   /// Cada fila vuelve solo si sigue donde la dejó la unión: lo que se movió después (por ejemplo, otra
-  /// unión de A con una C) se queda donde está y se cuenta en `sinVolver`. Nada de lo que se revierte
-  /// se encola salvo el tipo de A: el servidor rechazó el trabajo, así que nunca aplicó la unión y
-  /// tiene todo como estaba. El trabajo sigue `INVALID` (HU-UBI-006: «queda `invalid` y no se
+  /// unión de A con una C) se queda donde está y se cuenta en `sinVolver`. De lo que se revierte se
+  /// encola el tipo de A y solo las filas que se editaron después de unir («Edic. unión», #696; ver
+  /// [_reenviarLoEditado]): el servidor rechazó el trabajo, así que nunca aplicó la unión y tiene lo
+  /// demás como estaba. El trabajo sigue `INVALID` (HU-UBI-006: «queda `invalid` y no se
   /// reintenta»); la unión queda `DESHECHA` con su código, que es lo que pone el aviso del par en
   /// «Posibles duplicados». Llamarla de nuevo no hace nada de más.
   Future<List<UnionDeshecha>> deshacerUnionesRechazadas({required DateTime ahora}) async {
@@ -637,62 +648,119 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     final m = MovimientosDeUnion.decodificar(union.movimientos);
     var esperadas = 0;
     var vueltas = 0;
+    // Lo que vuelve a B y sube (las notas del lugar son solo locales): para reenviar lo que se editó
+    // después de la unión (#696).
+    final revertidas = <_FilaRevertida>[];
+    void anotar(String entidad, List<String> ids, {String? campo, String? ladoA}) =>
+        revertidas
+          ..addAll([for (final id in ids) (entidad: entidad, id: id, campo: campo, ladoA: ladoA)]);
 
     if (m.espaciosPasados.isNotEmpty) {
       esperadas += m.espaciosPasados.length;
-      vueltas +=
-          await (update(espacios)
-                ..where((e) => e.id.isIn(m.espaciosPasados) & e.ubicacionId.equals(a)))
-              .write(EspaciosCompanion(ubicacionId: Value(b), updatedAt: Value(instante)));
+      final volvieron = await _volver(
+        espacios,
+        espacios.id,
+        espacios.id.isIn(m.espaciosPasados) & espacios.ubicacionId.equals(a),
+        EspaciosCompanion(ubicacionId: Value(b), updatedAt: Value(instante)),
+      );
+      vueltas += volvieron.length;
+      anotar('espacio', volvieron, campo: 'ubicacion_id', ladoA: a);
     }
     for (final f in m.espaciosFundidos) {
       esperadas++;
-      vueltas +=
-          await (update(espacios)..where((e) => e.id.equals(f.espacioId) & e.deletedAt.isNotNull()))
-              .write(EspaciosCompanion(deletedAt: const Value(null), updatedAt: Value(instante)));
-      if (f.vinculos.isNotEmpty) {
-        esperadas += f.vinculos.length;
-        vueltas +=
-            await (db.update(
+      final reactivado = await _volver(
+        espacios,
+        espacios.id,
+        espacios.id.equals(f.espacioId) & espacios.deletedAt.isNotNull(),
+        EspaciosCompanion(deletedAt: const Value(null), updatedAt: Value(instante)),
+      );
+      vueltas += reactivado.length;
+      anotar('espacio', reactivado);
+      final vinculos = f.vinculos.isEmpty
+          ? const <String>[]
+          : await _volver(
               db.espacioPersonas,
-            )..where((x) => x.id.isIn(f.vinculos) & x.espacioId.equals(f.unicoDeA))).write(
+              db.espacioPersonas.id,
+              db.espacioPersonas.id.isIn(f.vinculos) &
+                  db.espacioPersonas.espacioId.equals(f.unicoDeA),
               EspacioPersonasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)),
             );
-      }
+      esperadas += f.vinculos.length;
+      vueltas += vinculos.length;
+      anotar('espacio_persona', vinculos, campo: 'espacio_id', ladoA: f.unicoDeA);
       if (f.visitas.isNotEmpty) {
         esperadas += f.visitas.length;
-        vueltas +=
-            await (db.update(db.visitas)
-                  ..where((x) => x.id.isIn(f.visitas) & x.espacioId.equals(f.unicoDeA)))
-                .write(VisitasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)));
+        final visitas = await _volver(
+          db.visitas,
+          db.visitas.id,
+          db.visitas.id.isIn(f.visitas) & db.visitas.espacioId.equals(f.unicoDeA),
+          VisitasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)),
+        );
+        vueltas += visitas.length;
+        anotar('visita', visitas, campo: 'espacio_id', ladoA: f.unicoDeA);
       }
       if (f.agendas.isNotEmpty) {
         esperadas += f.agendas.length;
-        vueltas +=
-            await (db.update(db.agendas)
-                  ..where((x) => x.id.isIn(f.agendas) & x.espacioId.equals(f.unicoDeA)))
-                .write(AgendasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)));
+        final agendas = await _volver(
+          db.agendas,
+          db.agendas.id,
+          db.agendas.id.isIn(f.agendas) & db.agendas.espacioId.equals(f.unicoDeA),
+          AgendasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)),
+        );
+        vueltas += agendas.length;
+        anotar('agenda', agendas, campo: 'espacio_id', ladoA: f.unicoDeA);
+      }
+      // «Visita unión» (decisión de Cristian, 11/11, #696): la visita o la entrevista que se le hizo
+      // después de unir a una persona que vuelve a B se va con ella, como sus ventas. Son las que
+      // siguen en el único de A con un vínculo que acaba de volver (las de antes de la unión ya
+      // volvieron arriba). No se cuentan en `sinVolver`: se encuentran acá, así que siempre vuelven.
+      if (vinculos.isNotEmpty) {
+        anotar(
+          'visita',
+          await _volver(
+            db.visitas,
+            db.visitas.id,
+            db.visitas.espacioId.equals(f.unicoDeA) & db.visitas.espacioPersonaId.isIn(vinculos),
+            VisitasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)),
+          ),
+          campo: 'espacio_id',
+          ladoA: f.unicoDeA,
+        );
+        anotar(
+          'agenda',
+          await _volver(
+            db.agendas,
+            db.agendas.id,
+            db.agendas.espacioId.equals(f.unicoDeA) & db.agendas.espacioPersonaId.isIn(vinculos),
+            AgendasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)),
+          ),
+          campo: 'espacio_id',
+          ladoA: f.unicoDeA,
+        );
       }
     }
     if (m.agendasAlternativas.isNotEmpty) {
       esperadas += m.agendasAlternativas.length;
-      vueltas +=
-          await (db.update(db.agendas)
-                ..where((x) => x.id.isIn(m.agendasAlternativas) & x.ubicacionAltId.equals(a)))
-              .write(AgendasCompanion(ubicacionAltId: Value(b), updatedAt: Value(instante)));
+      final agendas = await _volver(
+        db.agendas,
+        db.agendas.id,
+        db.agendas.id.isIn(m.agendasAlternativas) & db.agendas.ubicacionAltId.equals(a),
+        AgendasCompanion(ubicacionAltId: Value(b), updatedAt: Value(instante)),
+      );
+      vueltas += agendas.length;
+      anotar('agenda', agendas, campo: 'ubicacion_alt_id', ladoA: a);
     }
     if (m.vinculosAlternativos.isNotEmpty) {
       esperadas += m.vinculosAlternativos.length;
-      vueltas +=
-          await (db.update(db.espacioPersonas)..where(
-                (x) => x.id.isIn(m.vinculosAlternativos) & x.ubicacionCobranzaAltId.equals(a),
-              ))
-              .write(
-                EspacioPersonasCompanion(
-                  ubicacionCobranzaAltId: Value(b),
-                  updatedAt: Value(instante),
-                ),
-              );
+      final vinculos = await _volver(
+        db.espacioPersonas,
+        db.espacioPersonas.id,
+        db.espacioPersonas.id.isIn(m.vinculosAlternativos) &
+            db.espacioPersonas.ubicacionCobranzaAltId.equals(a),
+        EspacioPersonasCompanion(ubicacionCobranzaAltId: Value(b), updatedAt: Value(instante)),
+      );
+      vueltas += vinculos.length;
+      anotar('espacio_persona', vinculos, campo: 'ubicacion_cobranza_alt_id', ladoA: a);
     }
     if (m.notasDelLugar.isNotEmpty) {
       esperadas += m.notasDelLugar.length;
@@ -758,6 +826,8 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       }
     }
 
+    await _reenviarLoEditado(revertidas, unidaEn: union.unidaEn);
+
     final colportorId = filaA?.createdBy ?? filaB?.createdBy ?? '';
     // Las dos con lo que les quedó, con la prioridad de siempre (R-UB08). Sobre una de baja no hace
     // nada.
@@ -781,6 +851,108 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       conservadaVolvioACasa: aACasa,
       sinVolver: esperadas - vueltas,
     );
+  }
+
+  /// Escribe [cambios] en las filas de [tabla] que cumplen [donde] y devuelve sus `id` ([columnaId]),
+  /// en orden: lo que de verdad volvió, para contarlo y para saber qué reenviar.
+  Future<List<String>> _volver<T extends Table, D>(
+    TableInfo<T, D> tabla,
+    GeneratedColumn<String> columnaId,
+    Expression<bool> donde,
+    Insertable<D> cambios,
+  ) async {
+    final ids = await _ids(tabla, columnaId, donde);
+    if (ids.isNotEmpty) {
+      await (attachedDatabase.update(tabla)..where((_) => columnaId.isIn(ids))).write(cambios);
+    }
+    return ids;
+  }
+
+  /// En qué orden se reenvían las filas que volvieron: primero lo que las otras nombran.
+  static const _ordenDeReenvio = ['espacio', 'espacio_persona', 'visita', 'agenda'];
+
+  /// «Edic. unión» (decisión de Cristian, 11/11, #696): de las filas que la unión deshecha devolvió a B
+  /// ([revertidas]), encola un `update`, con la fila como quedó (ya en B), de cada una que tuvo un
+  /// trabajo encolado después de la unión. Ese trabajo subió (o va a subir) la fila del lado de A, y
+  /// el servidor, que rechazó la unión, la tiene ahí: sin el reenvío, el servidor y el teléfono no
+  /// coinciden. Las que nadie tocó no se reenvían: el servidor las tiene en B.
+  ///
+  /// «Después de la unión» es un trabajo de la fila con `created_at` posterior a [unidaEn], o uno cuyo
+  /// payload la nombra del lado de A (el `campo` de la fila revertida con el valor de A): una escritura
+  /// posterior a la unión que el motor fundió en un trabajo de antes todavía sin mandar conserva el
+  /// `created_at` viejo, pero lleva el lado de A, que antes de unir la fila no podía tener. Un trabajo
+  /// `INVALID` no cuenta: nunca llegó al servidor. El trabajo «marcar como duplicado» tampoco.
+  Future<void> _reenviarLoEditado(
+    List<_FilaRevertida> revertidas, {
+    required DateTime unidaEn,
+  }) async {
+    if (revertidas.isEmpty) return;
+    final cola = attachedDatabase.syncQueue;
+    for (final entidad in _ordenDeReenvio) {
+      final deEsta = [
+        for (final r in revertidas)
+          if (r.entidad == entidad) r,
+      ];
+      if (deEsta.isEmpty) continue;
+      final ids = {for (final r in deEsta) r.id};
+      final trabajos =
+          await (select(cola)..where(
+                (q) =>
+                    q.entity.equals(entidad) &
+                    q.rowPk.isIn(ids) &
+                    q.op.equals(_opMarcarComoDuplicado).not() &
+                    q.state.equals(EstadoJob.invalid).not(),
+              ))
+              .get();
+      final tocadas = <String>{};
+      for (final t in trabajos) {
+        if (t.createdAt.isAfter(unidaEn) || _nombraElLadoA(t, deEsta)) tocadas.add(t.rowPk!);
+      }
+      for (final id in ids) {
+        if (tocadas.contains(id)) await _reencolar(entidad, id);
+      }
+    }
+  }
+
+  /// Si el payload de [trabajo] pone alguna de [revertidas] (de su fila) del lado de A.
+  static bool _nombraElLadoA(SyncQueueFila trabajo, List<_FilaRevertida> revertidas) {
+    Map<String, Object?>? payload;
+    for (final r in revertidas) {
+      if (r.id != trabajo.rowPk || r.campo == null) continue;
+      payload ??= _payloadDe(trabajo);
+      if (payload[r.campo] == r.ladoA) return true;
+    }
+    return false;
+  }
+
+  static Map<String, Object?> _payloadDe(SyncQueueFila trabajo) {
+    final valor = jsonDecode(trabajo.payload);
+    return valor is Map ? valor.cast<String, Object?>() : const {};
+  }
+
+  /// Encola el `update` de la fila [id] de [entidad] con la fila entera, como está ahora.
+  Future<void> _reencolar(String entidad, String id) async {
+    final db = attachedDatabase;
+    final Map<String, Object?> payload = switch (entidad) {
+      'espacio' => _aModeloEspacio((await _espacioPorId(id))!).toJson(),
+      'espacio_persona' => EspacioPersonaModel.fromEntity(
+        PersonaLocalDataSourceDrift.vinculoDesdeFila(
+          await (db.select(db.espacioPersonas)..where((x) => x.id.equals(id))).getSingle(),
+        ),
+      ).toJson(),
+      'visita' => VisitaModel.fromEntity(
+        AgendaLocalDataSourceDrift.visitaDesdeFila(
+          await (db.select(db.visitas)..where((x) => x.id.equals(id))).getSingle(),
+        ),
+      ).toJson(),
+      'agenda' => AgendaModel.fromEntity(
+        AgendaLocalDataSourceDrift.desdeFila(
+          await (db.select(db.agendas)..where((x) => x.id.equals(id))).getSingle(),
+        ),
+      ).toJson(),
+      _ => throw ArgumentError.value(entidad, 'entidad'),
+    };
+    await _encolador.encolar(entidad, OperacionSync.update, payload);
   }
 
   /// Las notas del lugar de [deB] (`nota` con `target_type = UBICACION`) pasan al lugar [a], también
