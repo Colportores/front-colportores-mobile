@@ -488,7 +488,9 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   /// La brújula (41E·03C) vuelve el mapa al norte. En «Seguir y girar» eso es «Seguir mi ubicación»
   /// (sigue a la colportora con el norte arriba, como la brújula de Maps); con el mapa libre que
-  /// quedó girado, solo endereza la cámara.
+  /// quedó girado, solo endereza la cámara. Decisión del orquestador (11/11), por el mapa de
+  /// decisiones, convención de Material y Maps donde el canvas calla:
+  /// https://github.com/Colportores/front-colportores-mobile/pull/697#issuecomment-6795758817
   void _alTocarBrujula() {
     final gps = ref.read(ubicacionColportorProvider);
     final mapa = _mapa;
@@ -1051,7 +1053,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                             // la vista (la tarjeta o la píldora) el chip se corre, el canvas no los
                             // dibuja juntos.
                             // La brújula (41E·03C) va debajo de «Referencias» y, como el chip, se
-                            // corre mientras el aviso ocupa el borde de arriba.
+                            // corre mientras el aviso ocupa el borde de arriba (#294; confirmado
+                            // para la brújula el 11/11 en #697).
                             if (!avisoVisible)
                               Positioned(
                                 top: 8,
