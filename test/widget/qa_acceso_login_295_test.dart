@@ -28,8 +28,11 @@ const _correo = Key('login_email');
 const _clave = Key('login_password');
 const _errorGeneral = Key('login_error_general');
 
+/// Lo que dice el campo del email cuando está incompleto o mal armado (#700).
+const _emailIncompleto = 'El email no es válido. Revisá que esté completo, como nombre@correo.com.';
+
 /// Lo que dice el campo de la contraseña cuando no llega al mínimo de la cuenta (#700).
-const _claveCorta = 'Completá tu contraseña: tiene al menos 8 caracteres.';
+const _claveCorta = 'Revisá la contraseña: tiene que tener al menos 8 caracteres.';
 
 const _reingreso = DatosReingreso(
   motivo: MotivoExpiracion.inactividad,
@@ -280,7 +283,7 @@ void main() {
         await _tocarEntrar(tester);
         await tester.pumpAndSettle();
 
-        expect(find.text('El email no es válido'), findsOneWidget);
+        expect(find.text(_emailIncompleto), findsOneWidget);
         expect(remoto.llamadasIniciarSesion, 0);
       });
     }
@@ -297,7 +300,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text(avisoCaracterNoPermitido), findsOneWidget);
-        expect(find.text('El email no es válido'), findsNothing);
+        expect(find.text(_emailIncompleto), findsNothing);
         expect(remoto.llamadasIniciarSesion, 0);
       });
     }
@@ -321,12 +324,12 @@ void main() {
 
       await tester.enterText(find.byKey(_correo), 'ana@');
       await tester.pumpAndSettle();
-      expect(find.text('El email no es válido'), findsNothing, reason: 'escribiendo no avisa');
+      expect(find.text(_emailIncompleto), findsNothing, reason: 'escribiendo no avisa');
 
       await tester.enterText(find.byKey(_clave), claveAna);
       await tester.pumpAndSettle();
 
-      expect(find.text('El email no es válido'), findsOneWidget);
+      expect(find.text(_emailIncompleto), findsOneWidget);
       expect(remoto.llamadasIniciarSesion, 0);
     });
 
@@ -366,12 +369,12 @@ void main() {
       await tester.enterText(find.byKey(_correo), 'ana');
       await tester.pumpAndSettle();
       expect(find.text('Ingresá tu email'), findsNothing);
-      expect(find.text('El email no es válido'), findsOneWidget);
+      expect(find.text(_emailIncompleto), findsOneWidget);
 
       await tester.enterText(find.byKey(_correo), correoAna);
       await tester.pumpAndSettle();
 
-      expect(find.text('El email no es válido'), findsNothing);
+      expect(find.text(_emailIncompleto), findsNothing);
       expect(find.text('Ingresá tu contraseña'), findsOneWidget);
       expect(remoto.llamadasIniciarSesion, 0);
     });

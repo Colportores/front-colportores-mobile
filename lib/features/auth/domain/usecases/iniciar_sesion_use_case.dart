@@ -43,7 +43,8 @@ final class IniciarSesionUseCase implements UseCase<Sesion, IniciarSesionParams>
   final AuthRepository _repository;
 
   /// Lo que dice el campo cuando el email está incompleto o mal armado.
-  static const String _emailIncompleto = 'El email no es válido';
+  static const String _emailIncompleto =
+      'El email no es válido. Revisá que esté completo, como nombre@correo.com.';
 
   /// Lo que dice el campo «CORREO» para [email] tal como se escribió (se normaliza acá), o `null`
   /// si pasa. Los textos son los de HU-AUTH-003.
@@ -64,7 +65,8 @@ final class IniciarSesionUseCase implements UseCase<Sesion, IniciarSesionParams>
   static String? avisoDeLaPassword(String password) {
     if (password.isEmpty) return 'Ingresá tu contraseña';
     if (password.length < PoliticaPassword.largoMinimo) {
-      return 'Completá tu contraseña: tiene al menos ${PoliticaPassword.largoMinimo} caracteres.';
+      return 'Revisá la contraseña: tiene que tener al menos ${PoliticaPassword.largoMinimo} '
+          'caracteres.';
     }
     return null;
   }

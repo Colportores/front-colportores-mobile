@@ -110,6 +110,9 @@ Future<void> _enviarRegistro(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Lo que dice el campo del email cuando está incompleto o mal armado (#700).
+const _emailIncompleto = 'El email no es válido. Revisá que esté completo, como nombre@correo.com.';
+
 bool _dentroDeLaPantalla(WidgetTester tester, Finder f, double alto) {
   final r = tester.getRect(f);
   return r.top >= 0 && r.bottom <= alto;
@@ -345,8 +348,8 @@ void main() {
 
       await _enviarRegistro(tester);
 
-      expect(find.text('El email no es válido'), findsOneWidget);
-      expect(_dentroDeLaPantalla(tester, find.text('El email no es válido'), 640), isTrue);
+      expect(find.text(_emailIncompleto), findsOneWidget);
+      expect(_dentroDeLaPantalla(tester, find.text(_emailIncompleto), 640), isTrue);
       expect(_tieneFoco(tester, _correo), isTrue);
     });
 
