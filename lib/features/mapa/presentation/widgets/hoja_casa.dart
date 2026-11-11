@@ -23,6 +23,7 @@ import '../pages/modificar_ubicacion_page.dart'
 import '../providers/hoja_casa_providers.dart';
 import '../textos_personas.dart' show FormatoPersonas, TextosPersonas;
 import '../textos_registrar_visita.dart';
+import 'bajas_de_personas.dart';
 import 'estados_hoja_casa.dart';
 import 'hoja_con_quien.dart' show mostrarHojaConQuienParaProgramar;
 import 'hoja_ubicacion.dart' show abridorEdicionUbicacionProvider;
@@ -52,7 +53,11 @@ import 'visitas_agendadas_de_la_casa.dart';
 /// «Registrar visita» arriba, las pestañas Personas, Historial y Notas, y el contenido de la elegida.
 /// Personas lista a todas las personas del lugar con «+ Agregar persona» (abre el alta corta, 32A, con
 /// el espacio puesto) y, si [fichaDePersonaDesdeLaCasaProvider] tiene destino, tocar una abre su
-/// ficha (32B); al volver la hoja sigue donde estaba. Historial y Notas llegan con sus issues (#446 y
+/// ficha (32B); al volver la hoja sigue donde estaba. Si el lugar tiene personas dadas de baja, debajo
+/// va «Mostrar bajas» (32D·04, HU-UBI-011): las bajas en gris con la fecha y el saldo si se conoce y
+/// «Reactivar» (32D·05), con las mismas piezas que la ficha del depto (`bajas_de_personas.dart`); el
+/// aviso de la reactivación va dentro de la hoja. Con la casa de baja se ven y no se reactivan
+/// (#679). Historial y Notas llegan con sus issues (#446 y
 /// #447) por [pestanaHistorialDeLaCasaProvider] y [pestanaNotasDeLaCasaProvider]: mientras no estén,
 /// la pestaña no se ofrece. En un edificio sin depto elegido no hay espacio ni personas: se ve el
 /// resumen.
@@ -119,7 +124,7 @@ class HojaCasa extends ConsumerStatefulWidget {
   ConsumerState<HojaCasa> createState() => _HojaCasaState();
 }
 
-class _HojaCasaState extends ConsumerState<HojaCasa> {
+class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspacio {
   /// Hay una acción abierta. Es un campo y no solo estado de la UI: la guarda tiene que cortar el
   /// segundo toque aunque llegue antes de que se vuelva a dibujar.
   bool _enCurso = false;
@@ -155,6 +160,23 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
         if (_falla != null) _mostrarLaFalla();
       }
     }
+  }
+
+  /// «Reactivamos a María.» (32D·05): dentro de la hoja, como «Guardamos a Jorge…» (un `SnackBar`
+  /// quedaría tapado por la hoja modal de la Lista).
+  @override
+  void avisarReactivada(String texto) => setState(() {
+    _falla = null;
+    _guardada = texto;
+  });
+
+  @override
+  void avisarFallaAlReactivar(String texto) {
+    setState(() {
+      _guardada = null;
+      _falla = texto;
+    });
+    _mostrarLaFalla();
   }
 
   /// La acción se guardó: el mapa queda libre y la hoja se cierra (ver el comentario de la clase). Es
@@ -199,6 +221,17 @@ class _HojaCasaState extends ConsumerState<HojaCasa> {
               alCobrar: _cobrar(datos),
               alAbrirFicha: _abrirFicha(datos),
               alAgregarPersona: _agregarPersona(datos),
+              bajas: [
+                for (final pieza in piezasDeBajas(
+                  espacioId: datos.espacioId!,
+                  // Con la casa de baja las bajas se ven y no se reactivan.
+                  puedeReactivar: !item.esBaja,
+                  ahora: widget.ahora,
+                  // La hoja ya trae su aire a los costados.
+                  margen: 0,
+                ))
+                  pieza(),
+              ],
               alElegirPestana: (pestana) => setState(() {
                 _pestana = pestana;
                 _guardada = null;
@@ -611,6 +644,7 @@ class _Arriba extends ConsumerWidget {
     required this.alCobrar,
     required this.alAbrirFicha,
     required this.alAgregarPersona,
+    required this.bajas,
     required this.alElegirPestana,
   });
 
@@ -629,6 +663,9 @@ class _Arriba extends ConsumerWidget {
   final VoidCallback? Function(String personaId) alCobrar;
   final VoidCallback? Function(Persona persona) alAbrirFicha;
   final VoidCallback? alAgregarPersona;
+
+  /// «Mostrar bajas» y las bajas de la pestaña Personas (32D·04).
+  final List<Widget> bajas;
   final ValueChanged<PestanaHojaCasa> alElegirPestana;
 
   @override
@@ -694,6 +731,7 @@ class _Arriba extends ConsumerWidget {
             ocupada: ocupado,
             guardada: guardada,
             ahora: ahora,
+            bajas: bajas,
           ),
           PestanaHojaCasa.historial => historial!(context, paraLaPestana),
           PestanaHojaCasa.notas => notas!(context, paraLaPestana),

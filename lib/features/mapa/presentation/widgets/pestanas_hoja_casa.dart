@@ -143,6 +143,8 @@ typedef FilaDePersona = ({
 /// - [alAgregar] `null` = no se ofrece (la casa está dada de baja: solo se ve, o no hay quién agregue).
 /// - [guardada] es el aviso de la última alta («Guardamos a Jorge en este teléfono.»).
 /// - Las filas se arman por fuera ([filas]): la pestaña no sabe de cobros ni de fichas.
+/// - [bajas]: «Mostrar bajas» y las personas dadas de baja (32D·04), debajo de «+ Agregar persona»;
+///   las arma la hoja con las piezas de `bajas_de_personas.dart`.
 class PestanaPersonasDeLaCasa extends StatelessWidget {
   const PestanaPersonasDeLaCasa({
     super.key,
@@ -151,9 +153,11 @@ class PestanaPersonasDeLaCasa extends StatelessWidget {
     required this.ocupada,
     this.guardada,
     this.ahora,
+    this.bajas = const [],
   });
 
   final List<FilaDePersona> filas;
+  final List<Widget> bajas;
 
   /// «Hoy», para saber si la cuota de una fila venció.
   final DateTime? ahora;
@@ -208,6 +212,13 @@ class PestanaPersonasDeLaCasa extends StatelessWidget {
             ocupada: ocupada,
           ),
         if (alAgregar != null) _EnlaceAgregar(alTocar: ocupada ? null : alAgregar),
+        // Sin el aire entre filas de la pestaña: las bajas van una debajo de otra, con su borde.
+        if (bajas.isNotEmpty)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: bajas,
+          ),
       ],
     );
   }

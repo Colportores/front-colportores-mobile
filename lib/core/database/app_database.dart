@@ -174,10 +174,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 34: `visita` guarda las horas de la entrevista (`entrevista_entrada` y `entrevista_salida`, #466,
   ///   decisión de Cristian, 23/10) y `visita_misionero`, los misioneros que la colportora dejó en una
   ///   entrevista sin venta («Lo que dejaste», #608; backend-supabase 0160).
+  /// - 35: `sync_queue.op` acepta `marcar_como_duplicado`, el trabajo de la unión de duplicados del
+  ///   motor de sync (contrato-sync-engine §6.2, HU-UBI-006, #679).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 34;
+  static const int versionEsquema = 35;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -499,6 +501,13 @@ class AppDatabase extends _$AppDatabase {
       await m.addColumn(esquema.visita, esquema.visita.entrevistaSalida);
       await m.createTable(esquema.visitaMisionero);
       await m.createIndex(esquema.visitaMisioneroVisitaIdx);
+    },
+    // Reescribe `sync_queue` (SQLite no cambia un `CHECK`) para que `op` acepte
+    // `marcar_como_duplicado`, la unión de duplicados como trabajo del motor (contrato-sync-engine
+    // §6.2). Conserva cada job con su estado, su lugar en la cola y su payload: nada se pierde ni se
+    // vuelve a encolar. `alterTable` vuelve a crear los índices que la tabla ya tenía.
+    from34To35: (m, esquema) async {
+      await m.alterTable(TableMigration(esquema.syncQueue));
     },
   );
 }

@@ -161,7 +161,7 @@ class InMemoryJobStore implements JobStorePort {
       for (final id in _porFila[(entity, pk)] ?? const <String>[]) {
         final q = _jobs[id];
         if (q == null ||
-            q.job.op == Op.insert ||
+            !q.job.op.esperaVersion ||
             q.state == JobState.done ||
             q.state == JobState.invalid) {
           continue;

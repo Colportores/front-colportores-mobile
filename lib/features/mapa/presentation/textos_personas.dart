@@ -49,6 +49,10 @@ abstract final class TextosPersonas {
 
   // Los clientes del depto (11·04).
   static const agregarCliente = '+ Agregar cliente';
+
+  /// «Editar» del encabezado (canvas 11·04): la edición del depto.
+  static const editar = 'Editar';
+
   static const sinTelefono = 'Sin teléfono';
   static const notaDePrivacidad =
       'Los datos de los clientes quedan solo en tu celular. Al coordinador le llega el estado de las '

@@ -11,6 +11,7 @@ import '../../domain/services/validador_persona.dart';
 import '../../domain/usecases/registrar_persona_use_case.dart';
 import '../providers/personas_providers.dart';
 import '../textos_personas.dart';
+import '../widgets/dialogos_modificar.dart';
 import '../widgets/piezas_alta.dart';
 import '../widgets/piezas_persona.dart';
 
@@ -94,9 +95,47 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
   /// Los ids del alta, creados con el primer intento y repetidos en los siguientes.
   IdsAltaPersona? _ids;
 
+  /// Se está preguntando si se descarta (un segundo toque en la ✕ no abre otro aviso).
+  var _preguntando = false;
+
+  /// Lo que valía [_hayCambios] en el último cuadro: el atrás del sistema se decide con eso.
+  var _habiaCambios = false;
+
+  /// Hay algo escrito que se perdería al salir (HU-UBI-011: el alta de persona pregunta como las
+  /// notas, #679). Los espacios solos no cuentan.
+  bool get _hayCambios =>
+      [_nombre, _apellido, _telefono, _nota].any((c) => c.text.trim().isNotEmpty);
+
+  void _alCambiarElTexto() {
+    final hay = _hayCambios;
+    if (hay != _habiaCambios && mounted) setState(() => _habiaCambios = hay);
+  }
+
+  /// La ✕ y el atrás del sistema: sin nada escrito cierran directo; con texto sin guardar preguntan
+  /// «¿Descartar lo que escribiste?» (#679).
+  Future<void> _salir() async {
+    if (_enviando || _preguntando) return;
+    if (!_hayCambios) {
+      Navigator.of(context).pop();
+      return;
+    }
+    _preguntando = true;
+    bool descartar;
+    try {
+      descartar = await confirmarDescartarLoEscrito(context);
+    } finally {
+      _preguntando = false;
+    }
+    if (!mounted || !descartar || _enviando) return;
+    Navigator.of(context).pop();
+  }
+
   @override
   void initState() {
     super.initState();
+    for (final c in [_nombre, _apellido, _telefono, _nota]) {
+      c.addListener(_alCambiarElTexto);
+    }
     _focoNombre.addListener(() {
       if (!_focoNombre.hasFocus && !_nombreTocado) setState(() => _nombreTocado = true);
     });
@@ -209,8 +248,11 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
     final conFalla = _falla != null;
 
     return PopScope(
-      // Mientras se guarda no se sale: el resultado se perdería.
-      canPop: !_enviando,
+      // Mientras se guarda no se sale (el resultado se perdería) y con texto sin guardar se pregunta.
+      canPop: !_enviando && !_hayCambios,
+      onPopInvokedWithResult: (salio, _) {
+        if (!salio && !_enviando) unawaited(_salir());
+      },
       child: Scaffold(
         body: SafeArea(
           child: Column(
@@ -222,7 +264,7 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
                   child: IconButton(
                     tooltip: TextosPersonas.cerrar,
                     constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                    onPressed: _enviando ? null : () => Navigator.of(context).maybePop(),
+                    onPressed: _enviando ? null : () => unawaited(_salir()),
                     icon: const Icon(Icons.close),
                   ),
                 ),

@@ -40,6 +40,7 @@ import 'generated/schema_v31.dart' as v31;
 import 'generated/schema_v32.dart' as v32;
 import 'generated/schema_v33.dart' as v33;
 import 'generated/schema_v34.dart' as v34;
+import 'generated/schema_v35.dart' as v35;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
@@ -2192,4 +2193,88 @@ void main() {
       );
     },
   );
+
+  test('dado la cola del motor en la versión 34, cuando migra a la 35, conserva cada job con su '
+      'estado, su lugar y su payload, y deja entrar la unión de duplicados (#679)', () async {
+    // contrato-sync-engine §6.2: `sync_queue.op` suma `marcar_como_duplicado`. SQLite no cambia un
+    // CHECK: la tabla se reescribe y no puede perder ningún job (son ventas que esperan subir).
+    const alta = v34.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'ubicacion',
+      op: 'insert',
+      payload: '{"id":"ub-a"}',
+      rowPk: 'ub-a',
+      createdAt: 1758700000000,
+      state: 'PENDING',
+      code: '',
+      message: '',
+    );
+    const enEspera = v34.SyncQueueData(
+      id: 'q-2',
+      clientOpId: 'op-2',
+      entity: 'espacio',
+      op: 'update',
+      payload: '{"id":"esp-1","ubicacion_id":"ub-a"}',
+      syncVersion: 3,
+      rowPk: 'esp-1',
+      createdAt: 1758700000001,
+      state: 'WAITING',
+      code: 'ESPERA_ALTA_EN_CONFLICTO',
+      message: 'espera el alta',
+      dependsOn: 'ub-a',
+      claimedAt: 1758700000500,
+    );
+    const hecho = v34.SyncQueueData(
+      id: 'q-3',
+      clientOpId: 'op-3',
+      entity: 'venta',
+      op: 'delete',
+      payload: '{"id":"v-1"}',
+      syncVersion: 1,
+      rowPk: 'v-1',
+      createdAt: 1758700000002,
+      state: 'DONE',
+      code: '',
+      message: '',
+      doneAt: 1758700001000,
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 34,
+      newVersion: 35,
+      createOld: v34.DatabaseAtV34.new,
+      createNew: v35.DatabaseAtV35.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch.insertAll(viejo.syncQueue, [alta, enEspera, hecho]);
+      },
+      validateItems: (nuevo) async {
+        final jobs = await (nuevo.select(
+          nuevo.syncQueue,
+        )..orderBy([(q) => OrderingTerm.asc(q.createdAt)])).get();
+        expect(jobs.map((q) => q.toJson()), [
+          for (final q in [alta, enEspera, hecho]) q.toJson(),
+        ]);
+
+        const insertar =
+            'INSERT INTO sync_queue (id, client_op_id, entity, op, payload, row_pk, created_at, '
+            'state) VALUES ';
+        await nuevo.customStatement(
+          "$insertar('q-4', 'op-4', 'ubicacion', 'marcar_como_duplicado', "
+          "'{\"duplicada_id\":\"ub-b\",\"conservada_id\":\"ub-a\"}', 'ub-b', 1758700000003, "
+          "'PENDING')",
+        );
+        await expectLater(
+          nuevo.customStatement(
+            "$insertar('q-5', 'op-5', 'ubicacion', 'upsert', '{}', 'ub-b', 1758700000004, "
+            "'PENDING')",
+          ),
+          throwsA(anything),
+          reason: 'el CHECK sigue rechazando un op que el motor no conoce',
+        );
+        expect(await nuevo.select(nuevo.syncQueue).get(), hasLength(4));
+      },
+    );
+  });
 }

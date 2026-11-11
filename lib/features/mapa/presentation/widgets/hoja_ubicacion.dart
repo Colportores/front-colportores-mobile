@@ -16,6 +16,7 @@ import '../../domain/usecases/restaurar_espacio_use_case.dart';
 import '../formato_espacios.dart';
 import '../formato_ubicaciones.dart';
 import '../pages/modificar_ubicacion_page.dart';
+import '../pages/personas_del_espacio_page.dart';
 import '../providers/espacios_providers.dart';
 import 'aviso_con_deshacer.dart';
 import 'hoja_depto.dart';
@@ -85,19 +86,20 @@ Future<SalidaModificarUbicacion?> mostrarHojaUbicacion(
 /// La hoja de una ubicación con sus espacios (vista 11·01, HU-UBI-007). Arranca a la mitad de la
 /// pantalla (a casi toda con el texto grande o el lector de pantalla) y se agranda arrastrándola.
 ///
-/// - Sin clientes (decisión de Cristian del 06/10): ni «+ Agregar cliente», ni «Registrar visita», ni
-///   el atajo de la casa al alta de una persona; vuelven con #140 (S7) y #151 (S8).
-///
-/// Para volver a implementar lo diferido (documentado a pedido de Cristian, 06/10):
-/// - Ficha del depto (artboard «11 · 04 Departamento con clientes») y «+ Agregar cliente»: hoy tocar una
-///   fila abre `HojaDepto` (edición, [_editarDepto]). Con #140 la fila abre la ficha (clientes del
-///   espacio, `personasDelEspacioProvider`, y el alta de persona de `AltaPersonaPage`), y la edición y la
-///   baja pasan a un botón de esa ficha. «Ver depto N ›» del repetido (11·03) también va a la ficha.
+/// - Tocar un depto abre su ficha (11·04, `PersonasDelEspacioPage`): sus clientes con
+///   «+ Agregar cliente», «Mostrar bajas» de las personas (32D·04), «Registrar visita» y, en el
+///   encabezado, «Editar», que abre la edición del depto (11·02 con los datos cargados, `HojaDepto`),
+///   donde también se da de baja (#679, decisión §2 del 10/11; lo que el comentario del 06/10 dejaba
+///   para #140). Si el depto se da de baja desde la ficha, la ficha se cierra y la hoja lo aplica.
+/// - «Ver depto N ›» del número repetido (11·03), desde el alta o desde la edición: la hoja deja ese
+///   depto señalado y a la vista, y abre su ficha.
+/// - Con la cuenta restringida (#383) ni la fila, ni «+ Departamento», ni «Editar …» abren nada: el
+///   aviso se ve dentro de la hoja. Un doble toque abre una sola cosa ([_abriendo]).
 /// - Atajo de la casa al alta de una persona: en [_contenido], rama `esCasa`, hoy solo el encabezado y
 ///   «Editar casa».
-/// - «Registrar visita» y «Agendar» (#151): botones de la hoja de la casa (vista 39), no de esta.
+/// - «Registrar visita» y «Agendar» (#151): botones de la hoja de la casa (vista 39) y de la ficha del
+///   depto, no de esta.
 /// - Una casa no tiene deptos: solo el encabezado y «Editar casa».
-/// - Tocar un depto abre su edición (11·02 con los datos cargados), donde también se da de baja.
 class HojaUbicacion extends ConsumerStatefulWidget {
   const HojaUbicacion({
     super.key,
@@ -115,7 +117,7 @@ class HojaUbicacion extends ConsumerStatefulWidget {
 }
 
 class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
-  /// Evita abrir dos veces la hoja de un depto o la edición con dos toques seguidos.
+  /// Evita abrir dos veces la ficha de un depto, el alta o la edición con dos toques seguidos.
   var _abriendo = false;
 
   /// El depto que «Ver depto 102 ›» dejó señalado.
@@ -346,7 +348,7 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
       key: _claveFila(fila.id),
       espacio: fila,
       resaltado: fila.id == _resaltado,
-      alTocar: _abriendo ? null : () => unawaited(_editarDepto(u, fila)),
+      alTocar: _abriendo ? null : () => unawaited(_abrirDepto(fila.id)),
     ),
     _CabeceraBajas(:final cantidad, :final abierta) => CabeceraDadosDeBaja(
       cantidad: cantidad,
@@ -407,32 +409,38 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
       _aviso = null;
       _abriendo = true;
     });
+    SalidaHojaDepto? salida;
     try {
-      final salida = await mostrarHojaDepto(context, ubicacion: u, colportorId: widget.colportorId);
-      _aplicar(salida);
+      salida = await mostrarHojaDepto(context, ubicacion: u, colportorId: widget.colportorId);
     } finally {
       if (mounted) setState(() => _abriendo = false);
     }
+    // Después de soltar la guarda: «Ver depto N ›» abre la ficha de ese depto.
+    _aplicar(salida);
   }
 
-  Future<void> _editarDepto(Ubicacion u, Espacio e) async {
+  /// La ficha del depto [espacioId] (11·04). Lo que pase en ella y le toque a la hoja (el depto se dio
+  /// de baja, se eligió «Ver depto N ›» de otro) vuelve como su salida. Volver de la ficha del depto
+  /// señalado no le saca la señal.
+  Future<void> _abrirDepto(String espacioId) async {
     if (_abriendo) return;
     if (_frena()) return;
     setState(() {
       _aviso = null;
       _abriendo = true;
     });
+    SalidaHojaDepto? salida;
     try {
-      final salida = await mostrarHojaDepto(
+      salida = await PersonasDelEspacioPage.abrir(
         context,
-        ubicacion: u,
+        espacioId: espacioId,
         colportorId: widget.colportorId,
-        espacio: e,
       );
-      _aplicar(salida);
     } finally {
       if (mounted) setState(() => _abriendo = false);
     }
+    if (salida == null && espacioId == _resaltado) return;
+    _aplicar(salida);
   }
 
   void _aplicar(SalidaHojaDepto? salida) {
@@ -440,7 +448,7 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
     switch (salida) {
       case VerDeptoElegido(:final espacioId):
         setState(() => _resaltado = espacioId);
-        _mostrarFila(espacioId);
+        unawaited(_verDepto(espacioId));
       case DeptoDadoDeBaja(:final espacio):
         setState(() => _resaltado = null);
         ref.invalidate(espaciosDadosDeBajaProvider(widget.ubicacionId));
@@ -454,6 +462,12 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
       case DeptoAgregado() || DeptoEditado() || null:
         if (_resaltado != null) setState(() => _resaltado = null);
     }
+  }
+
+  /// «Ver depto N ›»: abre la ficha de ese depto y, al volver, deja su fila (señalada) a la vista.
+  Future<void> _verDepto(String id) async {
+    await _abrirDepto(id);
+    if (mounted && _resaltado == id) _mostrarFila(id);
   }
 
   /// Deja a la vista la fila de [id]. Las filas son perezosas: si todavía no se dibujó, la lista se

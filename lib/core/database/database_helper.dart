@@ -195,7 +195,14 @@ final class DatabaseHelper {
     Object? falla;
     StackTrace? rastro;
     try {
-      await db.close();
+      // `close()` de Drift cierra primero los flujos y espera a que cada suscriptor reciba el
+      // «done», y uno en pausa no lo recibe hasta que se reanuda. Riverpod pausa los providers de lo
+      // que no se ve (Configuración tapa la pantalla principal; las pestañas de atrás): el cierre
+      // quedaba colgado, con la DB abierta y la sesión sin cerrar (#679). Se pide el cierre de los
+      // flujos sin esperarlo y se cierra la conexión, que es lo que suelta el archivo; `close()`
+      // termina solo cuando esos suscriptores se van (volver a cerrar la conexión no hace nada).
+      unawaited(db.close().then<void>((_) {}, onError: (Object _) {}));
+      await db.executor.close();
     } on Object catch (e, stack) {
       falla = e;
       rastro = stack;

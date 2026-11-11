@@ -334,6 +334,31 @@ void main() {
     },
   );
 
+  // #679: Drift reutiliza un stream vivo con el mismo SQL y las mismas variables, sin mirar
+  // `readsFrom`. Con otro `SELECT 1` vivo antes (el resumen de la cuenta de «Hoy», que no lee
+  // `personas`), la ficha no se volvía a leer al dar de baja a la persona.
+  test(
+    'con otra consulta de cambios viva antes, dar de baja a la persona vuelve a emitir',
+    () async {
+      await sembrarPersona();
+      final otra = db.customSelect('SELECT 1', readsFrom: {db.productos}).watch().listen((_) {});
+      addTearDown(otra.cancel);
+      await pumpEventQueue();
+      final bajas = <bool>[];
+      final sub = fuente.observar('per-1').listen((l) => bajas.add(l!.persona.estaBorrada));
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      await (db.update(
+        db.personas,
+      )..where((p) => p.id.equals('per-1'))).write(PersonasCompanion(deletedAt: Value(t0)));
+      await pumpEventQueue();
+
+      expect(bajas.first, isFalse);
+      expect(bajas.last, isTrue);
+    },
+  );
+
   group('registrarLlamada', () {
     test('deja click_to_call con el id de la persona y sin el número', () async {
       await sembrarPersona();

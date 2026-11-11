@@ -317,7 +317,7 @@ final class CobranzaLocalDataSourceDrift {
   }
 
   Stream<int> _observarSaldo(String corte, String id) => _db
-      .customSelect('SELECT 1', readsFrom: _tablasDelSaldo)
+      .customSelect('SELECT 1 AS cambio_del_saldo', readsFrom: _tablasDelSaldo)
       .watch()
       .asyncMap((_) => _saldoDe(corte, [Variable<String>(id)]))
       .distinct();
@@ -325,7 +325,10 @@ final class CobranzaLocalDataSourceDrift {
   /// La venta [ventaId] con su saldo cada vez que cambia ella, sus cobros o lo que se vendió; `null`
   /// si no está o se dio de baja.
   Stream<VentaConSaldo?> observarVentaConSaldo(String ventaId) => _db
-      .customSelect('SELECT 1', readsFrom: {..._tablasDelSaldo, _db.productos})
+      .customSelect(
+        'SELECT 1 AS cambio_de_lo_vendido',
+        readsFrom: {..._tablasDelSaldo, _db.productos},
+      )
       .watch()
       .asyncMap((_) => ventaConSaldo(ventaId))
       .distinct();
@@ -335,7 +338,10 @@ final class CobranzaLocalDataSourceDrift {
   /// avisa por tabla). Es la señal con la que la hoja de la casa vuelve a leer lo que debe cada persona
   /// y su próxima cuota sin que nadie recargue (HU-COB-005); no lleva datos.
   Stream<void> alCambiarLoQueSeDebe() => _db
-      .customSelect('SELECT 1', readsFrom: {..._tablasDelSaldo, _db.agendas})
+      .customSelect(
+        'SELECT 1 AS cambio_de_las_cuotas_agendadas',
+        readsFrom: {..._tablasDelSaldo, _db.agendas},
+      )
       .watch()
       .map((_) {});
 

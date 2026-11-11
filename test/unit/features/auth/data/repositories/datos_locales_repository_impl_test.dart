@@ -103,13 +103,17 @@ void main() {
     await directorio.delete(recursive: true);
   });
 
-  Future<void> abrirConJornadas(int cantidad) async {
+  /// Un trabajo de la cola del motor en [estado] (`sync_queue`, contrato §5.1).
+  Future<void> encolar(String id, {String estado = 'PENDING'}) => db!.customStatement(
+    'INSERT INTO sync_queue (id, client_op_id, entity, op, payload, created_at, state) '
+    "VALUES ('$id', 'op-$id', 'jornada', 'insert', '{}', 0, '$estado')",
+  );
+
+  /// La DB abierta con [cantidad] trabajos pendientes de subir.
+  Future<void> abrirConPendientes(int cantidad) async {
     db = await helper.abrir(ClaveDb(Uint8List.fromList(List<int>.filled(32, 7))));
     for (var i = 0; i < cantidad; i++) {
-      await db!.customStatement(
-        'INSERT INTO jornada (id, colportor_id, inicio, created_at, updated_at) '
-        "VALUES ('j$i', 'c1', 0, 0, 0)",
-      );
+      await encolar('j$i');
     }
   }
 
@@ -130,16 +134,45 @@ void main() {
       );
     });
 
-    test('con la DB abierta, cada jornada local cuenta como sin sincronizar', () async {
-      await abrirConJornadas(2);
+    test('con la DB abierta, cuenta los trabajos de la cola que el servidor no confirmó', () async {
+      await abrirConPendientes(2);
 
       final r = await repo.resumen();
 
       expect(r.getOrElse(() => throw StateError('Left')).operacionesSinSincronizar, 2);
     });
 
+    // #679: se contaban las filas de `jornada`, así que lo ya subido seguía «sin sincronizar» y el
+    // borrado no se podía confirmar nunca.
+    test(
+      'dado todo ya subido (trabajos DONE y filas de negocio), no hay nada sin sincronizar',
+      () async {
+        await abrirConPendientes(0);
+        await db!.customStatement(
+          'INSERT INTO jornada (id, colportor_id, inicio, created_at, updated_at) '
+          "VALUES ('j-subida', 'c1', 0, 0, 0)",
+        );
+        await encolar('hecho', estado: 'DONE');
+
+        final r = await repo.resumen();
+
+        expect(r.getOrElse(() => throw StateError('Left')).operacionesSinSincronizar, 0);
+      },
+    );
+
+    test('cuentan como sin sincronizar los trabajos en vuelo, en espera y con error', () async {
+      await abrirConPendientes(0);
+      for (final estado in ['PENDING', 'IN_FLIGHT', 'BLOCKED', 'WAITING', 'INVALID', 'DONE']) {
+        await encolar('t-$estado', estado: estado);
+      }
+
+      final r = await repo.resumen();
+
+      expect(r.getOrElse(() => throw StateError('Left')).operacionesSinSincronizar, 5);
+    });
+
     test('con el archivo pero sin la DB abierta, el conteo llega como desconocido', () async {
-      await abrirConJornadas(0);
+      await abrirConPendientes(0);
       await helper.cerrar();
       db = null;
 
@@ -172,7 +205,7 @@ void main() {
 
   group('borrar', () {
     test('con operaciones sin sincronizar, se niega: no cierra ni toca nada', () async {
-      await abrirConJornadas(1);
+      await abrirConPendientes(1);
       await guardarDekYEnvoltorio();
 
       final r = await repo.borrar(incluirBackupDrive: false);
@@ -189,16 +222,14 @@ void main() {
     });
 
     test('la carrera: una fila que entra DESPUÉS del resumen no se borra sin aviso', () async {
-      await abrirConJornadas(0);
+      await abrirConPendientes(0);
       await guardarDekYEnvoltorio();
       final resumen = await repo.resumen();
       expect(resumen.getOrElse(() => throw StateError('Left')).operacionesSinSincronizar, 0);
 
-      // La pantalla de jornada, viva debajo en la pila, escribe entre el resumen y el borrado.
-      await db!.customStatement(
-        'INSERT INTO jornada (id, colportor_id, inicio, created_at, updated_at) '
-        "VALUES ('nueva', 'c1', 0, 0, 0)",
-      );
+      // La pantalla de jornada, viva debajo en la pila, escribe (y encola) entre el resumen y el
+      // borrado.
+      await encolar('nueva');
       final r = await repo.borrar(incluirBackupDrive: false);
 
       expect(
@@ -209,14 +240,14 @@ void main() {
       );
       expect(helper.abierta, isTrue, reason: 'no se cerró la DB');
       expect(await helper.existe(), isTrue, reason: 'la fila nueva sigue en el teléfono');
-      final filas = await db!.customSelect('SELECT COUNT(*) AS n FROM jornada').getSingle();
+      final filas = await db!.customSelect('SELECT COUNT(*) AS n FROM sync_queue').getSingle();
       expect(filas.read<int>('n'), 1);
     });
 
     test(
       'sin poder contar (archivo presente, DB cerrada), se niega con «no se pudo revisar»',
       () async {
-        await abrirConJornadas(0);
+        await abrirConPendientes(0);
         await helper.cerrar();
         db = null;
 
@@ -231,7 +262,7 @@ void main() {
     );
 
     test('con reintento (un borrado que ya empezó) no cuenta ni se vuelve a bloquear', () async {
-      await abrirConJornadas(0);
+      await abrirConPendientes(0);
       await helper.cerrar();
       db = null;
 
@@ -244,7 +275,7 @@ void main() {
     test(
       'dado un intento que falló después de cerrar la DB, reintentar termina el borrado',
       () async {
-        await abrirConJornadas(0);
+        await abrirConPendientes(0);
         await guardarDekYEnvoltorio();
         var intentos = 0;
         final conFallaAMitad = DatosLocalesRepositoryImpl(
@@ -276,7 +307,7 @@ void main() {
     test(
       'borra también la carpeta tickets/ con las fotos sin cifrar de los comprobantes',
       () async {
-        await abrirConJornadas(0);
+        await abrirConPendientes(0);
         await guardarDekYEnvoltorio();
         final fotos = AlmacenDeFotosEnDisco(directorio.path);
         await fotos.guardar('t-1', TipoDeImagen.jpeg, fotoDePrueba());
@@ -306,7 +337,7 @@ void main() {
 
     test('si no se pueden borrar las fotos de los tickets, el borrado falla y reintentar lo '
         'termina (nunca se da por borrado con fotos sueltas)', () async {
-      await abrirConJornadas(0);
+      await abrirConPendientes(0);
       await guardarDekYEnvoltorio();
       final fotos = AlmacenDeFotosEnDisco(directorio.path);
       await fotos.guardar('t-1', TipoDeImagen.jpeg, fotoDePrueba());
@@ -341,7 +372,7 @@ void main() {
     test(
       'sin pendientes, cierra y borra la DB, olvida la DEK y su envoltorio y respeta Drive',
       () async {
-        await abrirConJornadas(0);
+        await abrirConPendientes(0);
         await guardarDekYEnvoltorio();
 
         final r = await repo.borrar(incluirBackupDrive: false);
@@ -495,7 +526,7 @@ void main() {
       });
 
       test('con trabajo sin sincronizar se niega y no toca el permiso', () async {
-        await abrirConJornadas(1);
+        await abrirConPendientes(1);
 
         final r = await conPermiso().borrar(incluirBackupDrive: false);
 

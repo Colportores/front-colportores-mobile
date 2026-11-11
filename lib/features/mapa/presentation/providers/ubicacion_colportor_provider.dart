@@ -145,7 +145,9 @@ class UbicacionColportorNotifier extends Notifier<UbicacionColportorState> {
   /// vuelve a intentar. Solo si el colportor había tocado «Activar GPS»; el regreso de cualquier
   /// otra app no hace nada.
   Future<void> reintentarGpsSiHaceFalta() async {
-    if (!_enAjustes || state.gps != EstadoGpsLista.sinGps) return;
+    // El diálogo del permiso también pausa y reanuda la app: si «Activar GPS» sigue en curso, ese
+    // regreso no es el de los ajustes y leer ahora pediría el permiso otra vez, encimado (#679).
+    if (_activando || !_enAjustes || state.gps != EstadoGpsLista.sinGps) return;
     _enAjustes = false;
     await _leer();
   }

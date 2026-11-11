@@ -26,7 +26,7 @@ final class FichaPersonaLocalDataSourceDrift {
 
   Stream<LecturaDeFicha?> observar(String personaId) {
     final cambios = _db.customSelect(
-      'SELECT 1',
+      'SELECT 1 AS cambio_de_la_ficha',
       readsFrom: {
         _db.personas,
         _db.espacioPersonas,
