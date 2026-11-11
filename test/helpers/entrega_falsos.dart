@@ -147,6 +147,7 @@ class EntregasEnMemoria implements EntregaRepository {
     required DateTime ahora,
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
+    DateTime? soloDesde,
   }) async {
     diferidas.add((
       ventaId: ventaId,
@@ -217,8 +218,9 @@ class EntregasEnMemoria implements EntregaRepository {
   @override
   Future<Either<Failure, EntregaRegistrada>> registrarEntrega(
     String ventaId,
-    List<Entrega> filas,
-  ) async {
+    List<Entrega> filas, {
+    DateTime? soloDesde,
+  }) async {
     recibidas.add((ventaId: ventaId, filas: filas));
     final espera = compuerta;
     if (espera != null) await espera.future;

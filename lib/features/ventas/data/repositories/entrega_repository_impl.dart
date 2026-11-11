@@ -59,10 +59,11 @@ final class EntregaRepositoryImpl implements EntregaRepository {
   @override
   Future<Either<Failure, EntregaRegistrada>> registrarEntrega(
     String ventaId,
-    List<Entrega> filas,
-  ) async {
+    List<Entrega> filas, {
+    DateTime? soloDesde,
+  }) async {
     try {
-      return Right(await _local.registrarEntrega(ventaId, filas));
+      return Right(await _local.registrarEntrega(ventaId, filas, soloDesde: soloDesde));
     } on EntregaSinVentaException {
       _log.info(LogModulo.db, 'ENTREGA_ALTA_RECHAZADA', 'venta ausente', {
         'venta_id': ventaId,
@@ -110,6 +111,7 @@ final class EntregaRepositoryImpl implements EntregaRepository {
     required DateTime ahora,
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
+    DateTime? soloDesde,
   }) async {
     try {
       return Right(
@@ -119,8 +121,11 @@ final class EntregaRepositoryImpl implements EntregaRepository {
           ahora: ahora,
           filasNuevas: filasNuevas,
           idDeLaCita: idDeLaCita,
+          soloDesde: soloDesde,
         ),
       );
+    } on EntregaYaAgendadaException {
+      return const Left(FailureValidacion(campos: {'entrega': _yaAgendada}));
     } on EntregaSinPendientesException catch (e) {
       return Left(
         FailureValidacion(campos: {'entrega': e.sinFilas ? _sinProductos : _yaEntregada}),
@@ -179,6 +184,8 @@ final class EntregaRepositoryImpl implements EntregaRepository {
 
   // Textos a confirmar (el canvas no dibuja estos errores): dicen qué pasó y qué hacer.
   static const _yaEntregada = 'Esa venta ya está entregada: no queda nada pendiente.';
+  static const _yaAgendada =
+      'Esa venta ya tiene una entrega agendada. Entregá el libro nuevo ahora o en esa visita.';
   static const _sinProductos = 'Elegí al menos un producto para dejar para otro día.';
   static const _sinEntregas = 'Esa venta no tiene entregas pendientes.';
   static const _nadaPendiente = 'No queda nada pendiente de entregar en esa venta.';

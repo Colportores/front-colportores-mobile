@@ -31,6 +31,7 @@ import 'features/agenda/presentation/flujo_agendar_visita.dart';
 import 'features/agenda/presentation/flujo_detalle_agenda.dart';
 import 'features/agenda/presentation/flujo_entrevista_dada.dart';
 import 'features/agenda/presentation/flujo_vender_desde_la_casa.dart';
+import 'features/agenda/presentation/flujo_venta_que_crece.dart';
 import 'features/agenda/presentation/providers/consulta_agenda_providers.dart';
 import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
@@ -419,6 +420,20 @@ Future<void> main() async {
             final contexto = navigatorKeyColportores.currentContext;
             if (contexto == null) return false;
             return FlujoVenderDesdeLaCasa.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «Sumar un libro» de la hoja de la casa y de la ficha (vista 42, 42B·09A a 09D, #693, «Venta
+        // crece»): la venta abierta de la persona («¿A qué venta lo sumás?» con más de una), el libro
+        // nuevo sin otro talonario, su entrega y su cobro. Devuelve `VentaRegistradaEnLaCasa` si se sumó.
+        sumarUnLibroDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoVentaQueCrece.abrir(
               contexto,
               datos,
               colportorId: ref.read(sesionProvider).value?.usuarioId,

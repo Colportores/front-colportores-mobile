@@ -39,8 +39,9 @@ final class _EntregasQueDejanPendiente extends EntregasEnMemoria {
   @override
   Future<Either<Failure, EntregaRegistrada>> registrarEntrega(
     String ventaId,
-    List<Entrega> filas,
-  ) async {
+    List<Entrega> filas, {
+    DateTime? soloDesde,
+  }) async {
     recibidas.add((ventaId: ventaId, filas: filas));
     return Right(
       EntregaRegistrada(

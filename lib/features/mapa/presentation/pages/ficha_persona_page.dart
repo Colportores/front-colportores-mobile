@@ -7,6 +7,7 @@ import '../../../../core/error/failure.dart';
 import '../../../agenda/domain/entities/tipo_agenda.dart';
 import '../../../agenda/presentation/flujo_agendar_visita.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
+import '../../../ventas/presentation/widgets/fila_sumar_un_libro.dart';
 import '../../domain/entities/ficha_de_persona.dart';
 import '../../domain/services/filtro_de_historial.dart';
 import '../../domain/usecases/ficha_persona_use_cases.dart';
@@ -256,6 +257,20 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     await destino((ventaId: ventaId, personaId: widget.personaId, espacioId: widget.espacioId));
   });
 
+  /// «Sumar un libro» (42B·09A, «Venta crece»): el libro nuevo va a la venta abierta de la persona,
+  /// sin otro talonario. Al volver, la ficha, que lee en vivo, ya muestra el total y el saldo nuevos.
+  Future<void> _sumarUnLibro(FichaDePersona ficha) => _unaAlaVez(() async {
+    final destino = ref.read(sumarUnLibroDesdeLaCasaProvider);
+    final lugar = ficha.lugar;
+    if (destino == null || lugar == null) return;
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    await destino((
+      ubicacionId: lugar.ubicacion.id,
+      espacioId: widget.espacioId,
+      personaId: widget.personaId,
+    ));
+  });
+
   Future<void> _registrarVisita(FichaDePersona ficha) => _unaAlaVez(() async {
     final destino = ref.read(registrarVisitaDesdeLaCasaProvider);
     final lugar = ficha.lugar;
@@ -375,6 +390,9 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
             ? null
             : _devolver,
         alRegistrarVisita: () => _registrarVisita(ficha),
+        alSumarUnLibro: ref.watch(sumarUnLibroDesdeLaCasaProvider) == null
+            ? null
+            : () => _sumarUnLibro(ficha),
         conEntrega: ref.watch(registrarEntregaDesdeLaFichaProvider) != null,
         ocupado: _abriendo,
         alAgendarCobranza: _agendarCobranza,
@@ -572,6 +590,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     required this.alElegirFiltro,
     required this.alDevolver,
     required this.alRegistrarVisita,
+    required this.alSumarUnLibro,
     required this.conEntrega,
     required this.ocupado,
     required this.alAgendarCobranza,
@@ -600,6 +619,9 @@ class _CuerpoDeLaFicha extends StatelessWidget {
   /// `null`: las ventas no se tocan (ficha de solo lectura, sin destino o ya abriéndose algo).
   final ValueChanged<String>? alDevolver;
   final VoidCallback alRegistrarVisita;
+
+  /// «Sumar un libro» (42B·09A); `null` = no se ofrece (sin destino).
+  final VoidCallback? alSumarUnLibro;
 
   /// Hay a dónde llevar «Registrar entrega»; sin destino el botón no se dibuja.
   final bool conEntrega;
@@ -698,6 +720,16 @@ class _CuerpoDeLaFicha extends StatelessWidget {
                 alRegistrarEntrega: alRegistrarEntrega,
               ),
             ],
+            // 42B·09A: la fila va debajo de la persona también en su ficha, solo si tiene una venta
+            // abierta (la fila lo decide). En solo lectura no se ofrece.
+            if (!soloLectura && lugar != null)
+              FilaSumarUnLibro(
+                personaId: persona.id,
+                nombre: persona.nombre,
+                alTocar: alSumarUnLibro,
+                ocupada: ocupado,
+                separacion: 10,
+              ),
           ] else
             const SinMovimientosDeCuenta(),
         ],

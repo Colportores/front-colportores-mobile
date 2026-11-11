@@ -1,10 +1,14 @@
 // Semillas y dobles de las ventas (HU-VEN-001, #423) para los tests contra la DB real en memoria.
+import 'dart:async';
+
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/componente_vendido.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/nueva_venta.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/venta.dart';
+import 'package:colportores_mobile/features/ventas/domain/entities/venta_abierta.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/venta_item.dart';
+import 'package:colportores_mobile/features/ventas/domain/repositories/venta_que_crece_repository.dart';
 import 'package:colportores_mobile/features/ventas/domain/repositories/venta_repository.dart';
 import 'package:dartz/dartz.dart';
 
@@ -89,4 +93,76 @@ class VentasEnMemoria implements VentaRepository {
     required String numero,
     required DateTime fecha,
   }) async => Right(talonario);
+}
+
+/// [VentaQueCreceRepository] en memoria («Venta crece», #693): las ventas abiertas que se le dan y lo
+/// que llega a [sumar], que responde con la venta con el total nuevo o con [respuesta].
+class VentaQueCreceEnMemoria implements VentaQueCreceRepository {
+  VentaQueCreceEnMemoria({this.abiertas = const [], this.citas});
+
+  /// Las ventas abiertas que lee cualquier persona.
+  List<VentaAbierta> abiertas;
+
+  /// Si no es `null`, lo que devuelve [observarAbiertasDe] es este error.
+  Object? errorAlLeer;
+
+  /// Las citas que ya tiene cualquier venta; `null` = ninguna.
+  CitasDeLaVenta? citas;
+
+  /// Si no es `null`, lo que devuelve [sumar] (en vez de guardar). Se consume de a una.
+  final respuestas = <Failure>[];
+
+  /// Si no es `null`, [sumar] espera a que se complete.
+  Completer<void>? compuerta;
+
+  /// Lo que llegó a [sumar], en orden.
+  final sumas =
+      <({String ventaId, List<VentaItem> items, int sumado, String? motivo, int? diferencia})>[];
+
+  @override
+  Stream<List<VentaAbierta>> observarAbiertasDe(String personaId) {
+    final error = errorAlLeer;
+    if (error != null) return Stream.error(error);
+    return Stream.value(abiertas);
+  }
+
+  @override
+  Future<Either<Failure, CitasDeLaVenta>> citasDe(String ventaId) async =>
+      Right(citas ?? (cobranzaAgendada: false, entregaAgendada: false));
+
+  @override
+  Future<Either<Failure, VentaQueCrecio>> sumar(
+    String ventaId,
+    List<VentaItem> itemsNuevos, {
+    required String numeroTalonario,
+    required int sumadoCentavos,
+    required DateTime ahora,
+    String? motivoMontoManual,
+    int? diferenciaCentavos,
+  }) async {
+    sumas.add((
+      ventaId: ventaId,
+      items: itemsNuevos,
+      sumado: sumadoCentavos,
+      motivo: motivoMontoManual,
+      diferencia: diferenciaCentavos,
+    ));
+    await compuerta?.future;
+    if (respuestas.isNotEmpty) return Left(respuestas.removeAt(0));
+    final abierta = abiertas.where((v) => v.ventaId == ventaId).firstOrNull;
+    final anterior = abierta?.montoTotalCentavos ?? 0;
+    return Right(
+      VentaQueCrecio(
+        venta: ventaDe(
+          ventaId,
+          talonario: numeroTalonario,
+          monto: anterior + sumadoCentavos,
+          vinculo: abierta?.espacioPersonaId ?? 'ep-1',
+        ),
+        items: itemsNuevos,
+        totalAnteriorCentavos: anterior,
+        sumadoEl: ahora,
+      ),
+    );
+  }
 }

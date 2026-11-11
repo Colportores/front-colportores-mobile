@@ -86,11 +86,13 @@ class _SelectorDeProductosState extends State<SelectorDeProductos> {
           spacing: 8,
           children: [
             for (final c in CategoriaDePrecios.values)
-              ChipDeVenta(
-                texto: _nombres[c]!,
-                elegido: c == _categoria,
-                alPresionar: () => setState(() => _categoria = c),
-              ),
+              // A una venta abierta no se le suman misioneros (van por «Lo que dejaste»).
+              if (!(widget.actual.sumaAVenta && c == CategoriaDePrecios.misioneros))
+                ChipDeVenta(
+                  texto: _nombres[c]!,
+                  elegido: c == _categoria,
+                  alPresionar: () => setState(() => _categoria = c),
+                ),
           ],
         ),
         const SizedBox(height: 8),

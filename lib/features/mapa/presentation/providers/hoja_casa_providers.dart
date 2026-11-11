@@ -163,6 +163,14 @@ final cobrarDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDe
   (ref) => null,
 );
 
+/// A dónde lleva «Sumar un libro» (vista 42, 42B·09A; HU-VEN-001, «Venta crece»), desde la hoja de la
+/// casa y desde la ficha de la persona: la venta abierta de esa persona con el libro nuevo, sin otro
+/// talonario. Recibe lo mismo que «$ Cobrar» (la casa y la persona; la venta se elige después, 09B).
+/// Devuelve [VentaRegistradaEnLaCasa] si se sumó. **Sin destino** la fila no se muestra.
+final sumarUnLibroDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(ContextoDeCobro)?>(
+  (ref) => null,
+);
+
 /// Lo que recibe «Ver la ficha» de una persona de la pestaña Personas (vista 39 C·02: «Tocar una
 /// persona abre su ficha», vista 32 B): la persona y el espacio ya puestos y el nombre que la fila ya
 /// tiene, para que «Cargando la ficha de María», el error 32B·07 («No pudimos leer los datos de María en
