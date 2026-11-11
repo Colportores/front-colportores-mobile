@@ -153,6 +153,29 @@ void main() {
       }
     });
 
+    test(
+      'dado el nombre de la zona propia debajo de los marcadores que ocupan su lugar, cuando una '
+      'insignia lo pisa, entonces el nombre se sigue viendo (no queda solo el color, WCAG 1.4.1)',
+      () {
+        final todas = capas(
+          ConstructorEstiloMapa.construir(
+            estiloBase: estiloBase,
+            directorioRecursos: _recursos,
+            config: _config(),
+          ),
+        );
+        final ids = [for (final c in todas) c['id'] as String];
+        final rotulo = ids.indexOf(ConstructorEstiloMapa.capaZonasRotulo);
+        expect(rotulo, isNonNegative);
+        for (final id in ConstructorEstiloMapa.capasQueOcupanLugar) {
+          expect(ids.indexOf(id), greaterThan(rotulo), reason: id);
+        }
+        final layout = todas[rotulo]['layout'] as Map<String, dynamic>;
+        expect(layout['text-allow-overlap'], isTrue);
+        expect(layout['text-ignore-placement'], isTrue);
+      },
+    );
+
     test('sin glyphs (no se pudieron copiar) no hay números de OSM: son texto', () {
       final ids = [
         for (final c in capas(

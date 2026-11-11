@@ -484,7 +484,9 @@ abstract final class ConstructorEstiloMapa {
           'line-width': 4,
         },
       },
-      // El nombre de la zona: lo que dice cuál es la propia sin depender del color ni del grosor.
+      // El nombre de la zona: lo que dice cuál es la propia sin depender del color ni del grosor
+      // (WCAG 1.4.1). Siempre se dibuja (`text-allow-overlap`): está debajo de las
+      // [capasQueOcupanLugar] y, si no, una insignia lo escondería. No esconde a nadie.
       if (conRecursos)
         {
           'id': capaZonasRotulo,
@@ -496,6 +498,8 @@ abstract final class ConstructorEstiloMapa {
             'text-font': ['NotoSans-Medium'],
             'text-size': 13,
             'text-max-width': 9,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
           },
           'paint': {
             'text-color': _hex(ColoresMapa.tinta),
