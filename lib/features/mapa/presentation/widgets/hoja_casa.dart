@@ -770,8 +770,9 @@ class _Cabecera extends StatelessWidget {
                     key: ClavesDeptosDeLaCasa.volver,
                     onTap: alVolver,
                     radius: 24,
+                    // 48×48 dp: la zona de toque mínima (QA #705).
                     child: const SizedBox(
-                      width: 40,
+                      width: 48,
                       height: 48,
                       child: Align(
                         alignment: Alignment.centerLeft,

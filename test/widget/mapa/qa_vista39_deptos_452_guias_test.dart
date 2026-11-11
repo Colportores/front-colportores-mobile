@@ -15,8 +15,8 @@ const _escalas = [1.0, 2.0];
 const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 void main() {
-  // skip: QA #705 — la «‹» de C·10 mide 40×48 dp (`SizedBox(width: 40)` en `_Cabecera`), menos que los
-  // 48×48 dp de la zona de toque; la guía de Flutter no lo detecta por el nodo de semántica.
+  // QA #705: la guía de Flutter no mide la «‹» de C·10 (la tapa su nodo de semántica), así que se mide
+  // a mano.
   testWidgets('QA #705: la «‹» de C·10 mide 48×48 dp o más', (tester) async {
     final semantica = tester.ensureSemantics();
     await llegarA452(tester, Estado452.c10);
@@ -24,7 +24,7 @@ void main() {
     expect(tamano.width, greaterThanOrEqualTo(48), reason: 'ancho: ${tamano.width}');
     expect(tamano.height, greaterThanOrEqualTo(48));
     semantica.dispose();
-  }, skip: !_conHallazgos);
+  });
 
   // skip: QA #705 — con el error de lectura a un tercio, «Reintentar» queda a medias (1,0×) o fuera de
   // vista (2,0×); se llega desplazando la hoja.
