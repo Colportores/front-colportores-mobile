@@ -18,9 +18,11 @@ import 'core/dispositivo/dispositivo_providers.dart';
 import 'core/dispositivo/orientacion_app.dart';
 import 'core/dispositivo/seguridad_dispositivo_canal.dart';
 import 'core/logging/app_logger.dart';
+import 'core/notificaciones/canal_avisos_campania.dart';
 import 'core/notificaciones/notificaciones_providers.dart';
 import 'core/notificaciones/permiso_alarmas_exactas.dart';
 import 'core/notificaciones/permiso_notificaciones_sistema.dart';
+import 'core/notificaciones/push_remotas_firebase.dart';
 import 'core/secure_storage/almacen_seguro_keystore.dart';
 import 'core/secure_storage/archivo_envoltorio_dek.dart';
 import 'core/secure_storage/secure_storage_providers.dart';
@@ -178,6 +180,22 @@ Future<void> main() async {
     activados: preferenciasRecordatorios,
   );
   await recordatorios.iniciar();
+
+  // Push remotas (HU-NOT-003, ADR-014): Firebase Cloud Messaging. Sin el archivo de configuración
+  // de Firebase para este build (`flutter run` en local, un applicationId sin registrar) no arranca
+  // y la app sigue sin push: queda el fake que no recibe nada. Con la app cerrada el aviso lo dibuja
+  // el sistema con el título fijo del servidor (decisión de Cristian del 04/11, «Push fondo»).
+  final pushRemotas = await PushRemotasFirebase.iniciar();
+  // Con push, su canal de Android («Avisos de tu campaña»), el que el manifest le da a FCM por
+  // defecto. Se crea al arrancar: si no existe cuando llega una push con la app cerrada, Android la
+  // pone en el canal de reserva de FCM.
+  if (pushRemotas != null) {
+    await CanalAvisosCampania.crear(
+      FlutterLocalNotificationsPlugin()
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel,
+    );
+  }
 
   final respaldoNocturno = await _prepararRespaldoNocturno();
 
@@ -491,9 +509,9 @@ Future<void> main() async {
         // del centro de notificaciones y la fila de la pestaña Agenda.
         ...FlujoDetalleAgenda.enganches(navigatorKeyColportores),
         // HU-NOT-003: tocar el aviso de una push (el de arriba con la app abierta o el del sistema)
-        // lo marca como leído y lleva a su destino. El adaptador de `firebase_messaging` que las
-        // recibe de verdad va con el proyecto de Firebase (pendiente): `pushRemotasProvider` no
-        // recibe nada hasta entonces.
+        // lo marca como leído y lleva a su destino. Las recibe `firebase_messaging` si Firebase
+        // arrancó; si no, `pushRemotasProvider` se queda con el fake que no recibe nada.
+        if (pushRemotas != null) pushRemotasProvider.overrideWithValue(pushRemotas),
         ...EnganchesPushRemotas.enganches(navigatorKeyColportores),
         // Pestaña Historial de la hoja de la casa (vista 39, C·03 y C·04, #446): las visitas, las ventas
         // y los cobros del lugar, todos en el teléfono. Un cobro abre su detalle (vista 30 B) cuando

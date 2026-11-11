@@ -18,9 +18,9 @@ final permisoNotificacionesSistemaProvider = Provider<PermisoNotificacionesSiste
 
 /// Las push remotas (HU-NOT-003, ADR-014).
 ///
-/// El default es el fake que no recibe nada: todavía no hay `firebase_messaging` en el proyecto (falta
-/// el proyecto de Firebase y sus archivos de configuración). Cuando lleguen, `main.dart` lo
-/// reemplaza con el adaptador de producción.
+/// El default es el fake que no recibe nada: lo usan los tests y la app cuando Firebase no arranca (un
+/// build sin su archivo de configuración). `main.dart` lo reemplaza con `PushRemotasFirebase` si
+/// Firebase arrancó.
 final pushRemotasProvider = Provider<PushRemotas>((ref) => PushRemotasEnMemoria());
 
 /// El permiso «Alarmas y recordatorios» del sistema (HU-NOT-002, «Aviso exacto»).
