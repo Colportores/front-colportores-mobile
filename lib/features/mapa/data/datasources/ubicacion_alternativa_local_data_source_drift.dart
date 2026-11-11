@@ -35,9 +35,11 @@ final class UbicacionAlternativaLocalDataSourceDrift
   }) {
     final vinculos = _db.espacioPersonas;
     final ubicaciones = _db.ubicaciones;
+    final espacios = _db.espacios;
     final consulta =
         _db.select(vinculos).join([
           leftOuterJoin(ubicaciones, ubicaciones.id.equalsExp(vinculos.ubicacionCobranzaAltId)),
+          leftOuterJoin(espacios, espacios.id.equalsExp(vinculos.espacioId)),
         ])..where(
           vinculos.personaId.equals(personaId) &
               vinculos.espacioId.equals(espacioId) &
@@ -48,6 +50,11 @@ final class UbicacionAlternativaLocalDataSourceDrift
       final fila = filas.first;
       final altId = fila.readTable(vinculos).ubicacionCobranzaAltId;
       if (altId == null) return const SinUbicacionAlternativa();
+      // Una alternativa que es la ubicación del propio espacio (HU-UBI-013 no la admite) se lee como
+      // «sin alternativa»: puede quedar así tras unir duplicados (HU-UBI-006). No se borra el dato.
+      if (fila.readTableOrNull(espacios)?.ubicacionId == altId) {
+        return const SinUbicacionAlternativa();
+      }
       final ubicacion = fila.readTableOrNull(ubicaciones);
       if (ubicacion == null) return UbicacionAlternativaFaltante(altId);
       if (ubicacion.deletedAt != null) return UbicacionAlternativaDeBaja(altId);

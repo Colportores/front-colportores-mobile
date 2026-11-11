@@ -507,6 +507,39 @@ void main() {
       },
     );
 
+    test(
+      'dada una alternativa que es la ubicación del propio espacio (quedó así tras unir duplicados), '
+      'cuando se observa, emite «sin alternativa» y no la sugiere, aunque el dato siga guardado',
+      () async {
+        // Como la deja la unión: el vínculo vive en ub-1 y su alternativa pasó a ser ub-1.
+        await (db.update(db.espacioPersonas)..where((v) => v.personaId.equals('per-1'))).write(
+          const EspacioPersonasCompanion(ubicacionCobranzaAltId: Value('ub-1')),
+        );
+
+        final m = mirar();
+        await hasta(m.emitidos, 1);
+
+        expect(m.emitidos.last, const SinUbicacionAlternativa());
+        expect(m.emitidos.last.sugerida, isNull);
+        expect(m.emitidos.last.requiereActualizar, isFalse);
+        expect((await fila()).ubicacionCobranzaAltId, 'ub-1');
+        await m.cerrar();
+      },
+    );
+
+    test('dada una alternativa distinta de la propia, cuando se observa, sigue emitiéndola vigente '
+        'también en el otro depto del mismo edificio', () async {
+      await registrarPersona('per-2', espacioId: 'esp-2');
+      await establecer('ub-2', personaId: 'per-2', espacioId: 'esp-2');
+
+      final emitidos = <EstadoUbicacionAlternativa>[];
+      final sub = local.observar(personaId: 'per-2', espacioId: 'esp-2').listen(emitidos.add);
+      await hasta(emitidos, 1);
+
+      expect((emitidos.last as UbicacionAlternativaVigente).ubicacion.id, 'ub-2');
+      await sub.cancel();
+    });
+
     test('dado un vínculo que no existe, cuando se observa, emite «sin alternativa»', () async {
       final emitidos = <EstadoUbicacionAlternativa>[];
       final sub = local
