@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -60,11 +61,17 @@ final class DarDeBajaYCrearNuevaElegido extends ResultadoEdicionPersona {
 ///   puede tocar**: el toque muestra qué falta, lleva el foco al primer campo con problema y lo
 ///   anuncia al lector de pantalla.
 /// - Un cambio que parece «otra persona» (C·03) muestra el aviso con «Dar de baja y crear nueva» y el
-///   botón pasa a decir «Guardar igual», que guarda sin más. Es «demasiado grande» cuando cambian el
-///   nombre y el apellido a la vez (`CriterioOtraPersonaPorNombreYApellido`, decisión del 27/10): una
-///   tilde, un apellido o el teléfono solos no lo muestran.
+///   botón pasa a decir «Guardar igual», que guarda sin más. La primera vez que aparece, la pantalla
+///   lo trae a la vista sin sacarle el foco al campo (P2 del QA de #142). Es «demasiado grande» cuando
+///   cambian el nombre y el apellido a la vez (`CriterioOtraPersonaPorNombreYApellido`, decisión del
+///   27/10): una tilde, un apellido o el teléfono solos no lo muestran.
 /// - Si guardar falla, el formulario conserva lo escrito, el botón vuelve a habilitarse y pasa a decir
-///   «Reintentar». Un doble toque no guarda dos veces; mientras se guarda no se puede salir.
+///   «Reintentar». El aviso rojo va dentro del contenido que se desplaza, arriba de los campos (como
+///   32A·06), y la pantalla lo trae a la vista (decisión del 11/11, P1 del QA de #142): fijo abajo, al
+///   200 % y con el teclado abierto no entraba. Si la falla es que la persona ya no se puede editar
+///   (se dio de baja o se borró con la pantalla abierta), se vuelve a leer y se muestra el aviso de la
+///   causa real, sin «Reintentar». Un doble toque no guarda dos veces; mientras se guarda no se puede
+///   salir.
 /// - Sin cambios, «Guardar cambios» cierra sin escribir nada (no se toca `updated_at`). La ✕ y el
 ///   atrás del sistema, con cambios sin guardar, preguntan «¿Descartar lo que escribiste?».
 /// - La persona se lee al abrir: cargando, error de lectura («Reintentar»), persona que ya no está y
@@ -341,6 +348,13 @@ class _FormularioState extends ConsumerState<_Formulario> {
   /// La última falla al guardar; `null` si no hay.
   Failure? _falla;
 
+  /// El aviso rojo de la falla y el de «¿Es otra persona?», para traerlos a la vista al aparecer.
+  final _claveAvisoFalla = GlobalKey();
+  final _claveAvisoOtraPersona = GlobalKey();
+
+  /// Ya se trajo a la vista el aviso de «¿Es otra persona?» (solo la primera vez que aparece).
+  var _avisoOtraPersonaMostrado = false;
+
   Persona get _persona => widget.contexto.persona;
 
   @override
@@ -492,10 +506,68 @@ class _FormularioState extends ConsumerState<_Formulario> {
       _cerrar(resultado);
       return;
     }
+    if (_esDeLaPersona(falla) && await _yaNoSePuedeEditar() && mounted) {
+      // La persona se dio de baja o se borró con la pantalla abierta: «Reintentar» repetiría el
+      // error. Se vuelve a leer y la pantalla cambia al aviso de la causa real (con «Volver»). Lo de
+      // abajo igual rehabilita el formulario, por si la lectura nueva lo deja editable.
+      ref.invalidate(contextoEdicionPersonaProvider(_persona.id));
+    }
+    if (!mounted) return;
     setState(() {
       _enviando = false;
       _falla = falla;
     });
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _traerALaVista(_claveAvisoFalla, hastaArribaSiEntra: true),
+    );
+  }
+
+  /// La persistencia rechazó el guardado por la persona (de solo lectura o borrada).
+  static bool _esDeLaPersona(Failure? falla) =>
+      falla is FailureValidacion && falla.campos.containsKey('persona');
+
+  /// Relee a la persona: `true` si ya no está o quedó de solo lectura. Si la lectura falla, `false`
+  /// (queda el aviso rojo y se puede reintentar).
+  Future<bool> _yaNoSePuedeEditar() async {
+    try {
+      final lectura = await ref.read(personaRepositoryProvider).leerParaEditar(_persona.id);
+      return lectura.fold((_) => false, (contexto) => contexto == null || contexto.soloLectura);
+    } on Object {
+      return false;
+    }
+  }
+
+  /// Trae a la vista el aviso de [clave] sin tocar el foco: lo justo para que se vea entero o, si es
+  /// más alto que la pantalla, con su comienzo arriba. Con [hastaArribaSiEntra] (el aviso rojo, que
+  /// va arriba de los campos), si entra con la pantalla arriba del todo sube hasta ahí: se ven enteros
+  /// el aviso de privacidad y su «No volver a mostrar», sin cortes.
+  void _traerALaVista(GlobalKey clave, {bool hastaArribaSiEntra = false}) {
+    if (!mounted) return;
+    final contexto = clave.currentContext;
+    final objeto = contexto?.findRenderObject();
+    final posicion = contexto == null ? null : Scrollable.maybeOf(contexto)?.position;
+    final viewport = objeto == null ? null : RenderAbstractViewport.maybeOf(objeto);
+    if (objeto == null || posicion == null || viewport == null) return;
+    // `arriba`: el aviso pegado al borde de arriba; `abajo`: pegado al de abajo.
+    final arriba = viewport.getOffsetToReveal(objeto, 0).offset;
+    final abajo = viewport.getOffsetToReveal(objeto, 1).offset;
+    final double destino;
+    if (abajo > arriba) {
+      destino = arriba; // más alto que la pantalla: que se lea desde el comienzo
+    } else if (posicion.pixels >= abajo && posicion.pixels <= arriba) {
+      return; // ya se ve entero
+    } else if (hastaArribaSiEntra && abajo <= posicion.minScrollExtent) {
+      destino = posicion.minScrollExtent;
+    } else {
+      destino = posicion.pixels < abajo ? abajo : arriba;
+    }
+    unawaited(
+      posicion.animateTo(
+        destino.clamp(posicion.minScrollExtent, posicion.maxScrollExtent),
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      ),
+    );
   }
 
   /// «Dar de baja y crear nueva» (C·03): no escribe nada; le devuelve a quien abrió la edición lo que
@@ -533,6 +605,10 @@ class _FormularioState extends ConsumerState<_Formulario> {
         _sirve &&
         _hayCambios &&
         ref.watch(criterioOtraPersonaProvider).pareceOtraPersona(_persona, _datos);
+    if (otraPersona && !_avisoOtraPersonaMostrado) {
+      _avisoOtraPersonaMostrado = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _traerALaVista(_claveAvisoOtraPersona));
+    }
     final etiqueta = conFalla
         ? TextosPersonas.reintentar
         : otraPersona
@@ -560,6 +636,16 @@ class _FormularioState extends ConsumerState<_Formulario> {
                       _Titulo(donde: donde),
                       const SizedBox(height: 16),
                       AvisoPrivacidadPersona(colportorId: widget.colportorId),
+                      // La falla al guardar, arriba de los campos (32A·06).
+                      if (conFalla) ...[
+                        const SizedBox(height: 16),
+                        AvisoAlta(
+                          key: _claveAvisoFalla,
+                          color: ColoresAlta.rojo,
+                          glyph: '!',
+                          texto: _textoFalla,
+                        ),
+                      ],
                       const SizedBox(height: 20),
                       CampoPersona(
                         etiqueta: TextosPersonas.etiquetaNombre,
@@ -604,6 +690,7 @@ class _FormularioState extends ConsumerState<_Formulario> {
                       if (otraPersona) ...[
                         const SizedBox(height: 20),
                         AvisoAlta(
+                          key: _claveAvisoOtraPersona,
                           color: ColoresAlta.ambarBorde,
                           colorInsignia: ColoresAlta.ambar,
                           glyph: '!',
@@ -627,21 +714,11 @@ class _FormularioState extends ConsumerState<_Formulario> {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (conFalla) ...[
-                      AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: _textoFalla),
-                      const SizedBox(height: 12),
-                    ],
-                    BotonAccionPersona(
-                      etiqueta: etiqueta,
-                      aspectoApagado: !_sirve,
-                      enviando: _enviando,
-                      alTocar: _guardar,
-                    ),
-                  ],
+                child: BotonAccionPersona(
+                  etiqueta: etiqueta,
+                  aspectoApagado: !_sirve,
+                  enviando: _enviando,
+                  alTocar: _guardar,
                 ),
               ),
             ],
