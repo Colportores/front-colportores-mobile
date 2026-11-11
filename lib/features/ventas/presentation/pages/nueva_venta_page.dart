@@ -461,6 +461,14 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
       ],
       cta: vacia
           ? null
+          // La venta se cerró mientras se sumaba: reintentar no puede andar. «Volver» lleva a la hoja de
+          // la casa sin preguntar (decisión del 11/11, P1 del QA de #701).
+          : venta.falla is FailureVentaCerrada
+          ? BotonDeVenta(
+              key: const Key('venta_sumar'),
+              texto: TextosVenta.volver,
+              alPresionar: () => Navigator.of(context).pop(),
+            )
           : _crece != null
           ? BotonDeVenta(
               key: const Key('venta_sumar'),

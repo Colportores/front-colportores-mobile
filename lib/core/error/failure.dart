@@ -922,12 +922,13 @@ final class FailureVentaNoGuardada extends Failure {
 
 /// La venta a la que se quería sumar un libro ya está cerrada (pagada y entregada, anulada o con todo
 /// devuelto) o ya no está en el teléfono (HU-VEN-001, decisión de Cristian del 10/11, «Venta cerrada»):
-/// no crece y no se guardó nada. El libro va en una venta nueva. Texto a confirmar (mapa §2: texto).
+/// no crece y no se guardó nada. El libro va en una venta nueva. Un solo texto para las tres causas,
+/// que no dice cuál fue (decisión del 11/11, P2 del QA de #701).
 final class FailureVentaCerrada extends Failure {
   const FailureVentaCerrada({required this.numeroTalonario})
     : super(
         mensaje:
-            'La venta $numeroTalonario ya está pagada y entregada: no se le pueden sumar libros. '
+            'La venta $numeroTalonario ya está cerrada: no se le pueden sumar libros. '
             'Registrá el libro como una venta nueva.',
         codigo: 'VENTA_CERRADA',
       );

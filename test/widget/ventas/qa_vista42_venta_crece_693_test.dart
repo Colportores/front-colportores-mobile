@@ -823,12 +823,12 @@ void main() {
         await tocar(tester, find.byKey(const Key('venta_cta')));
 
         expect(find.text(TextosVenta.reintentar), findsNothing);
+        // Decisión del 11/11 (P1 del QA): el botón dice «Volver».
+        expect(find.text(TextosVenta.volver), findsOneWidget);
       },
-      // skip: QA #693 - tras «venta cerrada» el boton dice «Reintentar» y reintentar no puede andar (menor)
-      skip: !_conHallazgos,
     );
 
-    testWidgets('«venta cerrada» que sigue cerrada: el segundo intento no suma nada ni se traba', (
+    testWidgets('«venta cerrada»: «Volver» sale sin preguntar, sin sumar nada ni trabarse', (
       tester,
     ) async {
       final repo = VentasAbiertasQA(abiertas: [_v39])
@@ -841,24 +841,25 @@ void main() {
       await sumarSaludYHogar(tester);
 
       await tocar(tester, find.byKey(const Key('venta_cta')));
+      expect(find.textContaining('Registrá el libro como una venta nueva'), findsOneWidget);
+      // Decisión del 11/11 (P1 del QA): el segundo toque es «Volver», sin la pregunta de salir.
       await tocar(tester, find.byKey(const Key('venta_cta')));
 
+      expect(find.text(TextosVenta.salirTitulo), findsNothing);
+      expect(salida.cerrada, isTrue);
       expect(salida.guardada, isNull);
-      expect(tester.widget<FilledButton>(find.byKey(const Key('venta_cta'))).onPressed, isNotNull);
-      expect(find.textContaining('Registrá el libro como una venta nueva'), findsOneWidget);
+      expect(repo.sumas, hasLength(1));
     });
 
-    testWidgets(
-      'con la venta anulada o con todo devuelto el aviso no dice «pagada y entregada»',
-      (tester) async {
-        // El mismo `FailureVentaCerrada` sirve para pagada y entregada, anulada y devuelta entera.
-        const f = FailureVentaCerrada(numeroTalonario: '0039');
+    testWidgets('con la venta anulada o con todo devuelto el aviso no dice «pagada y entregada»', (
+      tester,
+    ) async {
+      // El mismo `FailureVentaCerrada` sirve para pagada y entregada, anulada y devuelta entera.
+      const f = FailureVentaCerrada(numeroTalonario: '0039');
 
-        expect(f.mensaje, isNot(contains('pagada y entregada')));
-      },
-      // skip: QA #693 - el aviso «pagada y entregada» tambien sale con la venta anulada o devuelta entera (menor)
-      skip: !_conHallazgos,
-    );
+      expect(f.mensaje, isNot(contains('pagada y entregada')));
+      expect(f.mensaje, contains('ya está cerrada'));
+    });
 
     group('entradas del monto de lo que se suma', () {
       Future<EntornoDeVenta> abrirConMonto(WidgetTester tester) async {
