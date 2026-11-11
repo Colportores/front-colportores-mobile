@@ -151,8 +151,9 @@ abstract final class TextosRecuperacion {
   static const empezar = 'Empezar';
   static const ahoraNo = 'Ahora no';
 
-  /// Caso que 16G no dibuja: no se pudo leer el estado del Drive al tocar la fila (para confirmar;
-  /// pendiente P1 de #691).
+  /// Caso que 16G no dibuja: no se pudo leer el estado del Drive al tocar la fila. No se abre nada
+  /// y se avisa con este texto (decisión del agente de decisiones, 11/11, mapa §2: ante la duda se
+  /// bloquea, con un aviso que guía y no afirma lo que no se sabe; PR #698, P1 de #691).
   static const noPudimosVerTuDrive =
       'No pudimos ver el estado de tu Drive. Probá de nuevo en unos minutos.';
   static const yaNoSePuedeRecuperar =
