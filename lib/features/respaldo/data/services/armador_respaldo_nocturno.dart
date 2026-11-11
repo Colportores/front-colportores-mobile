@@ -46,7 +46,10 @@ DriveDelRespaldo driveDeGoogle(
 ///
 /// Los pasos, en este orden y cortando en el primero que no corresponde (devuelve `null`: hoy no
 /// hay nada para respaldar):
-/// 1. el usuario de la sesión guardada en el almacén seguro ([usuarioDeLaSesionGuardada]);
+/// 1. el usuario de la sesión guardada en el almacén seguro ([usuarioDeLaSesionGuardada]), aunque
+///    la sesión esté vencida (decisión del 04/11 en #583, HU-AUTH-007, #228). Si el almacén **no se
+///    deja leer** no es «sin sesión»: [abrir] lanza [SesionGuardadaIlegible] y la corrida pide
+///    reintentar, con la espera creciente del sistema (decisión del 04/11, QA P1 de #583; #691);
 /// 2. que ese usuario tenga Drive conectado y con permiso;
 /// 3. que exista la DB local y haya DEK en el Keystore (en iOS se lee con el equipo bloqueado,
 ///    `first_unlock_this_device`);
@@ -84,8 +87,12 @@ final class ArmadorDeRespaldoNocturno {
   final ArmadoDelDrive _armarDrive;
   final AppLogger _log;
 
+  /// La sesión de trabajo de esta noche, o `null` si no hay nada para respaldar. Lanza
+  /// [SesionGuardadaIlegible] si el almacén seguro no deja leer la sesión (un iPhone reiniciado que
+  /// todavía no se desbloqueó): [RespaldoNocturno] lo cuenta como falla y pide reintentar. En ese
+  /// punto todavía no se abrió la DB.
   Future<SesionDeRespaldoNocturno?> abrir() async {
-    final usuarioId = await usuarioDeLaSesionGuardada(_almacen);
+    final usuarioId = await _usuarioDeLaSesion();
     if (usuarioId == null) return null;
 
     final estado = (await _drive.estado(usuarioId)).fold((falla) => throw falla, (e) => e);
@@ -150,6 +157,21 @@ final class ArmadorDeRespaldoNocturno {
       return _Sesion(servicio: servicio, auditoria: auditoria, motor: motor, base: _baseLocal);
     } on Object {
       await _baseLocal.cerrar();
+      rethrow;
+    }
+  }
+
+  /// El usuario de la sesión guardada, o `null` sin sesión. Si el almacén no se deja leer, lo anota
+  /// y relanza [SesionGuardadaIlegible]: la corrida pide reintentar.
+  Future<String?> _usuarioDeLaSesion() async {
+    try {
+      return await usuarioDeLaSesionGuardada(_almacen);
+    } on SesionGuardadaIlegible {
+      _log.warn(
+        LogModulo.backup,
+        'BACKUP_NOCTURNO_SESION',
+        'el almacén seguro no deja leer la sesión: se reintenta',
+      );
       rethrow;
     }
   }

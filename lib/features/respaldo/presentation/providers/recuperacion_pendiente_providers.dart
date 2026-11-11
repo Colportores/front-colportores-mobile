@@ -150,16 +150,34 @@ class RecuperacionPendiente extends AsyncNotifier<bool> {
   }
 }
 
-/// Si Configuración muestra «Recuperar mi respaldo» (#610, «Recup. luego»): mientras el teléfono no
-/// tenga nada cargado y el asistente no esté abierto. Se vuelve a mirar cada vez que se abre
-/// Configuración. Si no se pudo mirar, no se muestra.
-final recuperarDespuesDisponibleProvider = FutureProvider.autoDispose<bool>((ref) async {
-  if (!ref.watch(asistenteDeRecuperacionHabilitadoProvider)) return false;
+/// Cómo se ve la fila «Recuperar mi respaldo» de Configuración (vista 16, artboards 16G; #610, #691).
+enum FilaRecuperarRespaldo {
+  /// No se muestra: no hay asistente, ni sesión, o no se pudo mirar la base (la recuperación nunca
+  /// se ofrece sobre algo que no se pudo mirar).
+  oculta,
+
+  /// El teléfono no tiene nada cargado: la fila abre la recuperación (16G·01 a 16G·03).
+  disponible,
+
+  /// Ya hay datos cargados: la fila queda apagada y dice por qué (16G·04, decidido el 10/11), para
+  /// que no la busque sin encontrarla.
+  apagadaConDatos,
+}
+
+/// Cómo muestra Configuración «Recuperar mi respaldo» (#610, «Recup. luego»; 16G): disponible
+/// mientras el teléfono no tenga nada cargado, apagada con el motivo después. Se vuelve a mirar cada
+/// vez que se abre Configuración. Si no se pudo mirar, no se muestra.
+final recuperarDespuesDisponibleProvider = FutureProvider.autoDispose<FilaRecuperarRespaldo>((
+  ref,
+) async {
+  if (!ref.watch(asistenteDeRecuperacionHabilitadoProvider)) return FilaRecuperarRespaldo.oculta;
   final usuarioId = ref.watch(sesionProvider.select((s) => s.value?.usuarioId));
-  if (usuarioId == null) return false;
+  if (usuarioId == null) return FilaRecuperarRespaldo.oculta;
   try {
-    return await ref.read(lectorDeLoRecuperadoProvider).baseSinDatos();
+    return await ref.read(lectorDeLoRecuperadoProvider).baseSinDatos()
+        ? FilaRecuperarRespaldo.disponible
+        : FilaRecuperarRespaldo.apagadaConDatos;
   } on Object {
-    return false;
+    return FilaRecuperarRespaldo.oculta;
   }
 }, retry: _sinReintentos);

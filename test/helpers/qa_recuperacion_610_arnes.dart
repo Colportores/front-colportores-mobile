@@ -136,6 +136,8 @@ Future<void> abrirAppHastaConfiguracion610(
     await tester.pumpAndSettle();
   }
   await tester.pumpAndSettle();
+  // Con el Drive conectado, la fila pasa por la hoja «Recuperar tu respaldo» (16G·02, #691).
+  await conectarDriveDeLaApp(tester);
   await tester.tap(find.byKey(const Key('inicio_configuracion')));
   await tester.pumpAndSettle();
   await tester.ensureVisible(find.byKey(const Key('configuracion_recuperar_respaldo')));
