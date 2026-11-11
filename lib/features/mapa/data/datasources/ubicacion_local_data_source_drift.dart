@@ -565,7 +565,9 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   });
 
   /// Las uniones hechas en el teléfono cuyo trabajo «marcar como duplicado» volvió rechazado
-  /// (`INVALID`) y todavía no se deshicieron, en el orden en que se unieron.
+  /// (`INVALID`) y todavía no se deshicieron, de la más nueva a la más vieja: con uniones encadenadas
+  /// (B a A y después A a C) primero vuelve lo de la última, así lo que trajo la primera está otra vez
+  /// donde lo dejó.
   Selectable<({UnionLocalFila union, String codigo})> _rechazadasSinDeshacer() {
     final uniones = attachedDatabase.unionesLocales;
     final cola = attachedDatabase.syncQueue;
@@ -575,7 +577,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
             cola.state.equals(EstadoJob.invalid) &
             cola.op.equals(_opMarcarComoDuplicado),
       )
-      ..orderBy([OrderingTerm.asc(uniones.unidaEn), OrderingTerm.asc(uniones.trabajoId)]);
+      ..orderBy([OrderingTerm.desc(uniones.unidaEn), OrderingTerm.desc(uniones.trabajoId)]);
     return consulta.map(
       (fila) => (union: fila.readTable(uniones), codigo: fila.readTable(cola).code),
     );

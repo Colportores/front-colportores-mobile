@@ -378,6 +378,39 @@ void main() {
       },
     );
 
+    test(
+      'dado dos uniones encadenadas (B a A y después A a C) y las dos rechazadas, se deshacen de la '
+      'más nueva a la más vieja y cada cosa vuelve a su lugar: el depto a B, A casa y viva, C igual',
+      () async {
+        await sembrarPar();
+        await local.unirDuplicada('ub-a', 'ub-b', ahora: tUnion);
+        await local.insertar(ubicacion('ub-c', tipo: TipoUbicacion.edificio));
+        await sembrarEspacio(db, id: 'esp-c', ubicacionId: 'ub-c', numeroDepto: '1A');
+        await local.unirDuplicada('ub-c', 'ub-a', ahora: DateTime.utc(2026, 11, 2, 9, 30));
+        await rechazar('trabajo-1', 'UB003');
+        await rechazar('trabajo-2', '42501');
+
+        final hechas = await local.deshacerUnionesRechazadas(ahora: tDeshacer);
+
+        expect(hechas.map((h) => (h.conservadaId, h.duplicadaId, h.codigo, h.sinVolver)), [
+          ('ub-c', 'ub-a', '42501', 0),
+          ('ub-a', 'ub-b', 'UB003', 0),
+        ]);
+        expect((await espacio('esp-b2')).ubicacionId, 'ub-b');
+        expect((await espacio('esp-b')).ubicacionId, 'ub-b');
+        expect((await espacio('esp-b')).deletedAt, isNull);
+        expect((await espacio('esp-a')).ubicacionId, 'ub-a');
+        expect((await espacio('esp-c')).ubicacionId, 'ub-c');
+        expect(await espacioDelVinculo('ep-b'), 'esp-b');
+        expect((await fila('ub-a')).deletedAt, isNull);
+        expect((await fila('ub-a')).tipo, 'CASA');
+        expect((await fila('ub-b')).deletedAt, isNull);
+        expect((await fila('ub-c')).tipo, 'EDIFICIO');
+        expect((await union('trabajo-1')).estado, EstadoUnionLocal.deshecha);
+        expect((await union('trabajo-2')).estado, EstadoUnionLocal.deshecha);
+      },
+    );
+
     test('dado que B ya estaba de baja y tenía espacios activos, cuando se deshace, sus espacios '
         'vuelven pero B sigue de baja (no la dio de baja esta unión)', () async {
       await local.insertar(ubicacion('ub-a', tipo: TipoUbicacion.edificio));
