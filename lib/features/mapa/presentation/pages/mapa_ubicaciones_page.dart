@@ -151,6 +151,14 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   /// Un solo alta y una sola leyenda a la vez: un segundo toque no abre otra encima.
   var _abriendoAlta = false;
+
+  /// La ubicación que se acaba de registrar desde este mapa, mientras su hoja sigue abierta: un edificio
+  /// arranca sumando sus deptos (vista 39, N·04). Se olvida al cerrar la hoja o elegir otra.
+  String? _recienRegistrada;
+
+  /// El atrás de a un paso de la hoja de la casa (de un depto a la lista de deptos, C·10 → C·09): el
+  /// atrás del teléfono lo usa antes de cerrar la hoja.
+  final _atrasDeLaHoja = ValueNotifier<VoidCallback?>(null);
   var _abriendoReferencias = false;
 
   /// La pestaña se abrió alguna vez: desde ahí el mapa queda armado aunque se cambie de pestaña (la
@@ -221,6 +229,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     final mapa = _mapa;
     if (mapa != null) _mapaPrincipal.soltar(mapa);
     _camaraViva.dispose();
+    _atrasDeLaHoja.dispose();
     _relojRotulo?.cancel();
     // El mapa deja de estar a la vista: el seguimiento no sigue gastando batería sin pantalla. Fuera
     // del desmontaje (un provider no se toca mientras se arma o se desarma el árbol).
@@ -686,6 +695,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     if (!mounted) return;
     switch (salida) {
       case UbicacionCreada(:final ubicacion):
+        _recienRegistrada = ubicacion.id;
         _notificador.seleccionar(ubicacion.id);
         final nueva = _altura == AlturaHoja.minimizada ? AlturaHoja.tercio : _altura;
         if (nueva != _altura) setState(() => _altura = nueva);
@@ -752,6 +762,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       if (!mounted) return;
       switch (salida) {
         case UbicacionCreada(:final ubicacion):
+          _recienRegistrada = ubicacion.id;
           _notificador.seleccionar(ubicacion.id);
           final nueva = _altura == AlturaHoja.minimizada ? AlturaHoja.tercio : _altura;
           if (nueva != _altura) setState(() => _altura = nueva);
@@ -910,6 +921,10 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     });
     ref.listen(ubicacionColportorProvider, _alCambiarElGps);
     ref.listen(_proveedor, (anterior, nuevo) {
+      // La hoja de la recién registrada se cerró o se eligió otra: la próxima vez es una más.
+      if (_recienRegistrada != null && nuevo.seleccionada?.ubicacion.id != _recienRegistrada) {
+        _recienRegistrada = null;
+      }
       // Sin ubicaciones o sin poder leerlas, la hoja sube sola para decir qué hacer: minimizada solo
       // se ve la pestaña, y a un tercio, en un teléfono chico, el botón quedaría debajo del borde.
       final sinUbicaciones =
@@ -936,7 +951,11 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     return PopScope(
       canPop: !conVistaPrevia,
       onPopInvokedWithResult: (salio, _) {
-        if (!salio && widget.activa) _notificador.cerrarSeleccion();
+        if (salio || !widget.activa) return;
+        // Con un depto abierto (C·10), el atrás vuelve a la lista de deptos; recién ahí cierra la hoja.
+        final pasoAtras = _atrasDeLaHoja.value;
+        if (pasoAtras != null) return pasoAtras();
+        _notificador.cerrarSeleccion();
       },
       child: _contenido(context, estado, ambito, ahora, avisoVisible, zonas, parametrosAlta, alta),
     );
@@ -1161,6 +1180,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                       alActivarGps: () => unawaited(_gps.activarGps()),
                       alRegistrar: () => unawaited(_empezarAlta()),
                       colportorId: widget.colportorId,
+                      recienRegistrada: _recienRegistrada,
+                      atrasDeLaHoja: _atrasDeLaHoja,
                     ),
                   ],
                 ),

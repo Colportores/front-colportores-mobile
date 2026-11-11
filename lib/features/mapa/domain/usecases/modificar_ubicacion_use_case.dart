@@ -91,7 +91,7 @@ final class ModificarUbicacionParams extends Equatable {
 ///    pedidos (doble toque en "Guardar": el primero entró), es un éxito idempotente:
 ///    `Right(UbicacionModificada)` con la fila tal cual, sin escribir ni encolar.
 ///    Si no es ese caso y la fila cambió desde que se cargó la pantalla: `Left(FailureUbicacionCambio)`.
-/// 4. `EDIFICIO` → `CASA`/`NEGOCIO` y `NEGOCIO` → `CASA` ([TipoUbicacion.reduceAUnEspacioHacia])
+/// 4. `EDIFICIO` → `CASA` y `NEGOCIO` → `CASA` ([TipoUbicacion.reduceAUnEspacioHacia])
 ///    con **dos o más** espacios activos: `Left(FailureUbicacionConEspacios)` (S17). Es un
 ///    bloqueo, no una confirmación. Con un solo espacio activo se permite (decisión de Cristian,
 ///    07/10): ese depto pasa a ser el espacio de la casa o del negocio y en la misma transacción

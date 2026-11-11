@@ -10,12 +10,15 @@ enum TipoUbicacion {
   edificio;
 
   /// S17 (HU-UBI-004): si cambiar de este tipo a [nuevo] deja a la ubicación con un solo espacio
-  /// —el de la casa o el del negocio—: de `EDIFICIO` a `CASA` o `NEGOCIO`, y de `NEGOCIO` a `CASA`.
-  /// Con dos o más espacios activos esos cambios se bloquean; con uno pasan y ese espacio queda
-  /// sin `numero_depto` (decisión de Cristian, 07/10).
+  /// —el de la casa—: de `EDIFICIO` o `NEGOCIO` a `CASA`. Con dos o más espacios activos esos
+  /// cambios se bloquean; con uno pasan y ese espacio queda sin `numero_depto` (decisión de Cristian,
+  /// 07/10).
+  ///
+  /// De `EDIFICIO` a `NEGOCIO` ya no reduce nada: el negocio es como un edificio en toda la app y un
+  /// edificio con varios deptos pasa a negocio sin perder ninguno, cada uno con su número (decisión de
+  /// Cristian, 09/11, «Negocio mapa»).
   bool reduceAUnEspacioHacia(TipoUbicacion nuevo) => switch ((this, nuevo)) {
-    (TipoUbicacion.edificio, TipoUbicacion.casa || TipoUbicacion.negocio) => true,
-    (TipoUbicacion.negocio, TipoUbicacion.casa) => true,
+    (TipoUbicacion.edificio || TipoUbicacion.negocio, TipoUbicacion.casa) => true,
     _ => false,
   };
 }

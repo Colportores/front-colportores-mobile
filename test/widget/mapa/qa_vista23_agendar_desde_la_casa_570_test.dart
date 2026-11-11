@@ -24,6 +24,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/agendar_visita_arnes.dart';
+import '../../helpers/deptos_falsos.dart';
 import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/notificaciones_arnes.dart' show Telefono;
 import '../../helpers/persona_falsos.dart';
@@ -64,6 +65,8 @@ Future<_Montaje> _montar(
   // El repositorio de personas dice lo mismo que el contexto de la hoja (en la app salen de la misma DB).
   final personas = PersonaRepositorioFalso()..sembrar(contexto?.personas ?? [mariaFernandez]);
   final overrides = <Override>[
+    // Un edificio muestra sus deptos (C·09, #452): el 3B, que se abre como una casa (C·10).
+    ...overridesDeptos(),
     ...overridesHojaCasa(
       lectura: contexto == null ? null : (_) => Stream.value(contexto),
       registrarVisita: (_) {},
@@ -212,6 +215,7 @@ void main() {
         tipo: TipoUbicacion.edificio,
         contexto: const ContextoDeLaCasa(espacioId: 'esp-3B', personas: []),
       );
+      await abrirDepto(tester);
 
       await _tocarAgendar(tester);
 
@@ -223,7 +227,7 @@ void main() {
   // Decisiones de la revisión del 29/10 (#491 P1 y P2, mapa §2), aplicadas en #570.
   group('decisiones de la revisión', () {
     testWidgets(
-      'edificio sin depto elegido: «+ Agendar» se ve y al tocarlo avisa, sin abrir el formulario',
+      'edificio sin depto elegido: no hay «+ Agendar» ni aviso; se agenda desde el depto (C·10, #452)',
       (tester) async {
         final m = await _montar(
           tester,
@@ -231,11 +235,8 @@ void main() {
           contexto: const ContextoDeLaCasa(personas: []),
         );
 
-        expect(_agendar, findsOneWidget);
-        await tester.tap(_agendar);
-        await asentarAgendar(tester);
-
-        expect(_avisoEdificio, findsOneWidget);
+        expect(_agendar, findsNothing);
+        expect(_avisoEdificio, findsNothing);
         expect(_formulario, findsNothing);
         expect(m.destinos, isEmpty);
       },

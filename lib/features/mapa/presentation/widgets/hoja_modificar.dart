@@ -113,7 +113,7 @@ String mensajeFallaEdicion(Failure falla) => switch (falla) {
 /// «Dar de baja».
 ///
 /// - «Guardar cambios» se habilita recién cuando hay un cambio; los campos cambiados dicen «Editado».
-/// - Pasar a un solo espacio (de edificio a casa o negocio, de negocio a casa) con dos o más
+/// - Pasar a un solo espacio (de edificio o de negocio a casa; de edificio a negocio ya no, decisión del 09/11) con dos o más
 ///   espacios no se puede (S17): el aviso lo dice y el botón queda sin efecto. Con un solo depto sí,
 ///   sin paso de más: el depto pasa a ser el espacio de la casa o del negocio y, si tenía número,
 ///   una línea informativa avisa que queda sin número. El aviso de bloqueo y esa línea se llevan a

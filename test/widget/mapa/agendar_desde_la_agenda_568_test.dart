@@ -594,6 +594,32 @@ void main() {
       expect(m.espacios.listados, 0);
     });
 
+    _probar('un negocio con dos espacios no se elige por ella: avisa cómo elegir el depto (#452)', (
+      tester,
+    ) async {
+      final m = await _montar(
+        tester,
+        filas: [
+          filaLista(
+            'u-3',
+            tipo: TipoUbicacion.negocio,
+            calle: 'Rondeau',
+            numero: '900',
+            espacios: 2,
+          ),
+          filaLista('u-1', calle: 'Mataojo', numero: '2044'),
+        ],
+      );
+      await _tocarAgendar(tester);
+
+      await _elegirCasa(tester, 'Rondeau 900');
+
+      expect(find.text(TextosRegistrarVisita.edificioSinDeptoParaAgendar), findsOneWidget);
+      expect(_seleccion, findsOneWidget);
+      expect(_formulario, findsNothing);
+      expect(m.espacios.listados, 1);
+    });
+
     _probar('una casa dada de baja no se elige: su fila lleva a «Reactivar», no al formulario', (
       tester,
     ) async {

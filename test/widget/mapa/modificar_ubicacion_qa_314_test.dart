@@ -293,22 +293,25 @@ void main() {
       expect(_habilitado(tester), isFalse);
     });
 
-    testWidgets('la línea del depto dice «de la casa» con Casa y «del negocio» con Negocio, y '
-        'sigue al número que cambia con la hoja abierta', (tester) async {
+    testWidgets('la línea del depto dice «de la casa» con Casa (con Negocio no hay línea: el depto '
+        'sigue con su número, 09/11), y sigue al número que cambia con la hoja abierta', (
+      tester,
+    ) async {
       final m = await _abrir(tester);
+      await _tocar(tester, find.text('Negocio'));
+      expect(find.text(_lineaNegocio), findsNothing);
+      expect(find.textContaining('queda como el espacio'), findsNothing);
+
       await _tocar(tester, find.text('Casa'));
       expect(find.text(_lineaCasa), findsOneWidget);
-
-      await _tocar(tester, find.text('Negocio'));
-      expect(find.text(_lineaNegocio), findsOneWidget);
 
       m.repo.cambiarEspacios(1, numeroDepto: '4C');
       await _asentar(tester);
       expect(
-        find.text('El departamento 4C queda como el espacio del negocio, sin número.'),
+        find.text('El departamento 4C queda como el espacio de la casa, sin número.'),
         findsOneWidget,
       );
-      expect(find.text(_lineaNegocio), findsNothing);
+      expect(find.text(_lineaCasa), findsNothing);
 
       m.repo.cambiarEspacios(1);
       await _asentar(tester);
@@ -531,7 +534,7 @@ void main() {
         'entero encima del botón y las guías pasan', (tester) async {
       final handle = tester.ensureSemantics();
       final m = await _abrir(tester, escala: 2);
-      await _tocar(tester, find.text('Negocio'));
+      await _tocar(tester, find.text('Casa'));
 
       m.repo.cambiarEspacios(120);
       await _asentar(tester);

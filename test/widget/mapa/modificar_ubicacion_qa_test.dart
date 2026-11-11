@@ -251,7 +251,7 @@ void main() {
       (tester) async {
         final repo = RepoEdicionFalso(ubicacionGuardada(tipo: TipoUbicacion.edificio), espacios: 3);
         final e = await _montar(tester, repo: repo);
-        await _tocar(tester, find.text('Negocio'));
+        await _tocar(tester, find.text('Casa'));
         expect(
           find.text('Esta ubicación tiene 3 espacios. Borralos o reubicalos primero.'),
           findsOneWidget,

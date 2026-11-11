@@ -164,7 +164,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       if (union != null) throw union;
     }
 
-    // S17: para quedar con un solo espacio (de edificio a casa o negocio, de negocio a casa) tiene
+    // S17: para quedar con un solo espacio (de edificio o de negocio a casa) tiene
     // que haber un depto como mucho; ese depto pasa a ser el espacio de la casa o del negocio y
     // pierde el número. Los de baja no cuentan. Sin ninguno, una casa recibe su espacio default
     // (S13, decisión de Cristian 21/10 «Casa vacía»).

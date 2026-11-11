@@ -607,7 +607,7 @@ final class FailureUltimoEspacioConPersonas extends Failure {
       );
 }
 
-/// Se quiso pasar un `EDIFICIO` a `CASA` o `NEGOCIO`, o un `NEGOCIO` a `CASA`, teniendo **dos o
+/// Se quiso pasar un `EDIFICIO` o un `NEGOCIO` a `CASA` teniendo **dos o
 /// más** espacios activos (HU-UBI-004, "Cambio de tipo bloqueado", Supuesto S17 con la decisión de
 /// Cristian del 07/10: con un solo espacio el cambio se permite y el depto pasa a ser el de la casa
 /// o el del negocio). Texto literal del criterio de aceptación.

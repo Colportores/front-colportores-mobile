@@ -6,8 +6,9 @@ import 'persona_del_espacio.dart';
 /// Lo que la hoja de la casa (vista 39, C·01) sabe además de la ubicación: de qué espacio habla, quién
 /// vive ahí, cuánto debe y la nota más reciente del lugar.
 ///
-/// En un edificio el contexto es siempre el depto (`espacio_id`), nunca el edificio entero (39,
-/// «Reglas comunes»): sin un depto elegido [espacioId] es `null` y no hay personas.
+/// En un edificio (y en un negocio, que es como un edificio: decisión de Cristian del 09/11) el
+/// contexto es siempre el depto (`espacio_id`), nunca el edificio entero (39, «Reglas comunes»): sin un
+/// depto elegido [espacioId] es `null` y no hay personas.
 class ContextoDeLaCasa extends Equatable {
   const ContextoDeLaCasa({
     this.espacioId,
@@ -18,8 +19,8 @@ class ContextoDeLaCasa extends Equatable {
     this.nota,
   });
 
-  /// El espacio de una casa o un negocio (el que el alta crea solo); `null` en un edificio, que
-  /// elige un depto (C·09), o si la ubicación no tiene ningún espacio activo.
+  /// El espacio de una casa (el que el alta crea solo) o el depto elegido (C·10); `null` en un
+  /// edificio o un negocio sin depto elegido (C·09), o si la casa no tiene ningún espacio activo.
   final String? espacioId;
 
   /// Las personas activas del espacio, de la más vieja a la más nueva.

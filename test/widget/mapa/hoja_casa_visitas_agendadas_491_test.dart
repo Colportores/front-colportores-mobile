@@ -15,6 +15,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart'
 import 'package:colportores_mobile/features/mapa/presentation/providers/cobranza_recien_agendada_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_registrar_visita.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/deptos_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/estados_hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_con_quien.dart';
@@ -26,6 +27,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/agenda_items_falsos.dart';
+import '../../helpers/deptos_falsos.dart';
 import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart' show ahoraLista;
 import '../../helpers/persona_falsos.dart';
@@ -94,6 +96,8 @@ Future<_Montaje> _montar(
   addTearDown(tester.view.reset);
   final overrides = <Override>[
     if (recien != null) cobranzaRecienAgendadaProvider.overrideWith(() => _ConCobranza(recien)),
+    // Un edificio muestra sus deptos (C·09, #452): el 3B, que los tests abren como una casa (C·10).
+    ...overridesDeptos(),
     ...overridesHojaCasa(
       registrarVisita: m.visitas.add,
       agendas: repo,
@@ -229,12 +233,16 @@ void main() {
             tipoUbicacion: TipoUbicacion.edificio,
             numeroDepto: '3B',
             ubicacionId: 'u-1',
+            espacioId: 'esp-3B',
           ),
         ]),
         item: itemDeLaHoja(tipo: TipoUbicacion.edificio),
+        contexto: const ContextoDeLaCasa(espacioId: 'esp-3B', personas: []),
       );
+      // La agenda del edificio se ve en cada depto (C·10, #452).
+      await abrirDepto(tester);
 
-      expect(find.text('Depto 3B'), findsOneWidget);
+      expect(find.descendant(of: _seccion, matching: find.text('Depto 3B')), findsOneWidget);
     });
 
     _probar('solo las de esta casa y solo las programadas', (tester) async {
@@ -456,6 +464,7 @@ void main() {
         item: itemDeLaHoja(tipo: TipoUbicacion.edificio),
         contexto: const ContextoDeLaCasa(espacioId: 'esp-3B', personas: []),
       );
+      await abrirDepto(tester);
 
       await tester.tap(_agendar);
       await tester.pump();
@@ -465,7 +474,8 @@ void main() {
     });
 
     _probar(
-      'en un edificio sin depto elegido se ve y al tocarlo avisa que el depto se elige antes',
+      'en un edificio sin depto elegido no hay «+ Agendar»: la hoja muestra sus deptos (C·09) y se '
+      'agenda desde el depto (#452, la decisión del 04/11 ya no hace falta)',
       (tester) async {
         final m = await _montar(
           tester,
@@ -474,11 +484,9 @@ void main() {
           contexto: const ContextoDeLaCasa(personas: []),
         );
 
-        expect(_agendar, findsOneWidget);
-        await tester.tap(_agendar);
-        await tester.pump();
-
-        expect(find.text(TextosRegistrarVisita.edificioSinDeptoParaAgendar), findsOneWidget);
+        expect(_agendar, findsNothing);
+        expect(find.text(TextosRegistrarVisita.edificioSinDeptoParaAgendar), findsNothing);
+        expect(find.byType(DeptosDeLaCasa), findsOneWidget);
         expect(m.citas, isEmpty);
       },
     );

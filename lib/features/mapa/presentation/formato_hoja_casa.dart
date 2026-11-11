@@ -1,5 +1,7 @@
+import '../domain/entities/espacio.dart';
 import '../domain/entities/estado_casa.dart';
 import '../domain/entities/lista_ubicaciones.dart';
+import '../domain/entities/resumen_del_depto.dart';
 import '../domain/entities/ubicacion.dart' show TipoUbicacion;
 import '../domain/services/cercania_de_la_casa.dart';
 import 'formato_baja.dart';
@@ -125,5 +127,134 @@ abstract final class FormatoHojaCasa {
         'a ${FormatoUbicaciones.distancia(distancia)} de vos',
     ];
     return partes.join(' · ');
+  }
+}
+
+/// Los textos de los deptos en la hoja de la casa (vista 39, N·04, N·06, C·09 y C·10). Los del canvas
+/// van letra por letra; los que el canvas no dibuja (vacío, error, volver) están marcados «a confirmar»
+/// (mapa §2: texto) y se listan en el PR.
+abstract final class TextosDeptosDeLaCasa {
+  // Del canvas (N·04, N·06 y C·09).
+  static const deptos = 'DEPTOS';
+  static const agregarDepto = '+ Agregar depto';
+  static const agregarDeptoTarjeta = 'Agregar depto';
+  static const numeroYPiso = 'Número y piso';
+  static const sumaLosDeptos = 'Sumá los deptos que vas a visitar. El resto, cuando llegues.';
+  static const seguir = 'Seguir';
+  static const recienRegistrado = 'recién registrado';
+  static const personas = 'PERSONAS';
+  static const agregarPersona = '+ Agregar';
+
+  /// «Edificio en Grecia 3307» (N·04).
+  static String edificioEn(String direccion) => 'Edificio en $direccion';
+
+  /// «6 DEPTOS» (C·09); «1 DEPTO» con uno.
+  static String cantidad(int total) => total == 1 ? '1 DEPTO' : '$total DEPTOS';
+
+  /// A confirmar: el canvas no dibuja el edificio sin deptos (C·09 vacío).
+  static const sinDeptos = 'Todavía no hay deptos.';
+  static const sinDeptosQueHacer = 'Tocá «+ Agregar depto» para sumar los que vas a visitar.';
+
+  /// A confirmar: lo que dice la hoja si no puede leer los deptos (como la vista 11).
+  static const errorLectura = 'No pudimos leer los deptos de tu teléfono. Probá de nuevo.';
+  static const reintentar = 'Reintentar';
+
+  /// A confirmar: lo que dice la hoja si no se pudo abrir el alta del depto (N·05).
+  static const noPudimosAbrirAlta = 'No pudimos abrir «Agregar depto». Probá de nuevo.';
+
+  /// Lo que lee el lector de pantalla de la flecha «‹» de C·10, que vuelve a la lista de deptos.
+  static const volverALosDeptos = 'Volver a los deptos';
+}
+
+/// Cómo se escriben los deptos en la hoja de la casa (vista 39, C·09 y C·10).
+abstract final class FormatoDeptosDeLaCasa {
+  /// La línea debajo de la dirección de un edificio (C·09: «Edificio · 6 deptos · a 35 m de vos»; N·06:
+  /// «Edificio · 3 deptos · recién registrado»). Sin la cuenta (todavía se lee) va solo el tipo. Un
+  /// edificio dado de baja dice lo mismo que la casa (E·04).
+  static String subtitulo(
+    ItemListaUbicacion item, {
+    required int? cantidad,
+    required bool recienRegistrado,
+  }) {
+    final ubicacion = item.ubicacion;
+    final baja = ubicacion.auditoria.deletedAt;
+    if (item.esBaja && baja != null) {
+      return TextosEstadosHojaCasa.subtituloDeBaja(ubicacion.tipo, baja);
+    }
+    final distancia = item.distanciaMetros;
+    final lejos = CercaniaDeLaCasa.estaLejos(distancia);
+    return [
+      FormatoUbicaciones.tipo(ubicacion.tipo),
+      if (cantidad != null) TextosEspacios.cantidad(cantidad),
+      if (recienRegistrado)
+        TextosDeptosDeLaCasa.recienRegistrado
+      else if (!lejos && distancia != null && FormatoUbicaciones.distancia(distancia).isNotEmpty)
+        'a ${FormatoUbicaciones.distancia(distancia)} de vos',
+    ].join(' · ');
+  }
+
+  /// La línea de abajo de la fila de un depto.
+  ///
+  /// - Recién registrado (N·04): el piso, «Piso 1»; eligiendo el depto (N·06), el piso y el estado,
+  ///   «Piso 1 · Sin visita».
+  /// - En un edificio que ya estaba (C·09), el estado y cuándo: «No contestó · ayer», «Entrevista
+  ///   agendada · jue 24/10 10:00» (la misma forma que la hoja de la casa), «Cobranza pendiente». A
+  ///   confirmar: el canvas escribe «Entrevista jue 24/10 10:00»; va el rótulo del estado, como en la
+  ///   hoja de la casa y la Lista.
+  ///
+  /// Sin [resumen] (no se pudo leer) no dice estado: no se afirma lo que no se sabe.
+  static String detalle(
+    Espacio espacio,
+    ResumenDelDepto? resumen,
+    DateTime ahora, {
+    required bool recienRegistrado,
+    bool conEstado = true,
+  }) {
+    final piso = _piso(espacio, mayuscula: true);
+    if (recienRegistrado) {
+      return [
+        ?piso,
+        if (conEstado && resumen != null) FormatoListaUbicaciones.estado(resumen.estado),
+      ].join(' · ');
+    }
+    if (resumen == null) return piso ?? '';
+    return estadoDelDepto(resumen, ahora);
+  }
+
+  /// El estado del depto y cuándo, como la línea de la hoja de la casa: con una entrevista agendada,
+  /// cuándo es; con un resultado de visita (no contestó, rechazo, entrevista hecha), cuándo fue.
+  static String estadoDelDepto(ResumenDelDepto resumen, DateTime ahora) {
+    final estado = resumen.estado;
+    final rotulo = FormatoMapaUbicaciones.estadoVistaPrevia(
+      estado,
+      resumen.proximaEntrevista,
+      ahora,
+    );
+    final ultima = resumen.ultimaVisita;
+    final deVisita = switch (estado) {
+      EstadoCasa.noContesto || EstadoCasa.rechazo || EstadoCasa.entrevistaHecha => true,
+      _ => false,
+    };
+    return deVisita && ultima != null
+        ? '$rotulo · ${FormatoListaUbicaciones.hace(ultima, ahora)}'
+        : rotulo;
+  }
+
+  /// El título de la hoja con el depto elegido (C·10): «Grecia 3313 · Depto 3B».
+  static String tituloDelDepto(String direccion, Espacio espacio) => direccion.trim().isEmpty
+      ? TextosEspacios.depto(espacio)
+      : '$direccion · ${TextosEspacios.depto(espacio)}';
+
+  /// La línea de abajo con el depto elegido (C·10): «Cobranza pendiente · piso 3». Sin el resumen,
+  /// solo el piso.
+  static String subtituloDelDepto(Espacio espacio, ResumenDelDepto? resumen, DateTime ahora) => [
+    if (resumen != null) estadoDelDepto(resumen, ahora),
+    ?_piso(espacio, mayuscula: false),
+  ].join(' · ');
+
+  static String? _piso(Espacio espacio, {required bool mayuscula}) {
+    final piso = espacio.piso?.trim() ?? '';
+    if (piso.isEmpty) return null;
+    return '${mayuscula ? 'Piso' : 'piso'} $piso';
   }
 }

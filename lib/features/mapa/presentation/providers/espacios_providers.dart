@@ -1,10 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../../core/database/database_providers.dart';
 import '../../../../core/error/failure.dart';
+import '../../data/datasources/resumen_de_los_deptos_drift.dart';
 import '../../domain/entities/espacio.dart';
+import '../../domain/entities/resumen_del_depto.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/services/agrupador_espacios.dart';
+import '../../domain/services/lector_resumen_de_los_deptos.dart';
 import '../../domain/usecases/agregar_espacio_use_case.dart';
 import '../../domain/usecases/dar_de_baja_espacio_use_case.dart';
 import '../../domain/usecases/listar_espacios_use_case.dart';
@@ -103,3 +107,25 @@ final ubicacionDeLaHojaProvider = FutureProvider.autoDispose.family<Ubicacion?, 
   final lectura = await ref.watch(ubicacionRepositoryProvider).obtener(ubicacionId);
   return lectura.fold((Failure falla) => throw falla, (ubicacion) => ubicacion);
 }, retry: _sinReintentos);
+
+/// De dónde sale lo que dice cada fila de la hoja del edificio (vista 39, C·09): el estado de cada depto,
+/// su última visita y su próxima entrevista. Sin la DB local abierta no hay de dónde: lanza, y la hoja
+/// muestra los deptos sin estado (no se afirma lo que no se sabe).
+final lectorResumenDeLosDeptosProvider = Provider<LectorResumenDeLosDeptos>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return ResumenDeLosDeptosDrift(db, ahora: ref.watch(relojEspaciosProvider));
+});
+
+/// Qué edificio lee la hoja y de quién son las entrevistas que cuenta.
+typedef ClaveResumenDeLosDeptos = ({String ubicacionId, String? colportorId});
+
+/// El resumen de cada depto activo de un edificio (`espacio.id` → resumen), al día. Una falla de
+/// lectura sale como error del provider.
+final resumenDeLosDeptosProvider = StreamProvider.autoDispose
+    .family<Map<String, ResumenDelDepto>, ClaveResumenDeLosDeptos>(
+      (ref, clave) => ref
+          .watch(lectorResumenDeLosDeptosProvider)
+          .observar(clave.ubicacionId, colportorId: clave.colportorId),
+      retry: _sinReintentos,
+    );
