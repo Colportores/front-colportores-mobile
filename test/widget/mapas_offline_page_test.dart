@@ -164,7 +164,7 @@ void main() {
       expect(find.text('Mi departamento'), findsOneWidget);
       expect(find.text('Todo Uruguay'), findsOneWidget);
       expect(find.text('Montevideo · 86 MB'), findsOneWidget);
-      expect(find.text('Llega con el paso a Pro'), findsNWidgets(2));
+      expect(find.text('Todavía no está disponible'), findsNWidgets(2));
       expect(_clave('mapas_offline_ayuda_ciudad'), findsOneWidget);
       expect(
         find.text('Se baja con Wi-Fi. En el teléfono te quedan 2,1 GB libres.'),
@@ -228,7 +228,7 @@ void main() {
 
       expect(find.text('Montevideo (departamento) · 250 MB'), findsOneWidget);
       expect(find.text('900 MB'), findsOneWidget);
-      expect(find.text('Llega con el paso a Pro'), findsNothing);
+      expect(find.text('Todavía no está disponible'), findsNothing);
       await tester.tap(_clave('mapas_offline_nivel_uruguay'));
       await _asentar(tester);
       expect(find.text('Todo Uruguay'), findsOneWidget);

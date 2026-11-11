@@ -32,7 +32,7 @@ void main() {
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
       expect(fila.read<int>('user_version'), db.schemaVersion);
-      expect(db.schemaVersion, 24);
+      expect(db.schemaVersion, 36);
       expect(AppDatabase.versionEsquema, db.schemaVersion);
     });
 
@@ -47,6 +47,7 @@ void main() {
           'table espacio',
           'index espacio_ubicacion_idx',
           'table ubicacion_par_decidido',
+          'table ubicacion_union_local',
           'table campania_ciudad',
           'index campania_ciudad_ciudad_id_idx',
           'table zona',
@@ -92,7 +93,10 @@ void main() {
           'table devolucion',
           'index devolucion_venta_idx',
           'table deposito',
+          'table deuda_casa_cache',
           'index deposito_ticket_idx',
+          'table ticket',
+          'table ticket_foto_local',
           'table sync_meta',
         ]),
       );
@@ -101,7 +105,7 @@ void main() {
     test('dado una DB nueva, cuando abre, loguea DB_CREADA con la versión', () async {
       await db.customSelect('SELECT 1').get();
 
-      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":24}']);
+      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":36}']);
     });
 
     test('dado una DB ya creada, cuando se vuelve a abrir, no loguea nada', () async {
@@ -141,7 +145,7 @@ void main() {
 
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
-      expect(fila.read<int>('user_version'), 24);
+      expect(fila.read<int>('user_version'), 36);
       expect(
         await _esquema(db),
         containsAll([
@@ -149,6 +153,7 @@ void main() {
           'table ubicacion',
           'table espacio',
           'table ubicacion_par_decidido',
+          'table ubicacion_union_local',
           'table campania_ciudad',
           'table zona',
           'table zona_vertice',
@@ -174,11 +179,14 @@ void main() {
           'table devolucion',
           'index devolucion_venta_idx',
           'table deposito',
+          'table deuda_casa_cache',
           'index deposito_ticket_idx',
+          'table ticket',
+          'table ticket_foto_local',
           'table sync_meta',
         ]),
       );
-      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":24}']);
+      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":36}']);
     });
   });
 }

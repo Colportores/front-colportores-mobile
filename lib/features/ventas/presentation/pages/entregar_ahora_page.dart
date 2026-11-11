@@ -1,0 +1,531 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../../core/error/failure.dart';
+import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
+import '../../domain/entities/entrega.dart';
+import '../../domain/entities/nueva_venta.dart';
+import '../formato_entrega.dart';
+import '../formato_venta.dart';
+import '../providers/entrega_providers.dart';
+import '../providers/entregar_ahora_notifier.dart';
+import '../widgets/piezas_entrega.dart';
+import '../widgets/piezas_venta.dart';
+
+/// «Entregar ahora» (vista 27, grupo B, HU-VEN-002): con la venta recién registrada, la colportora que
+/// tiene el material encima tilda lo que entrega y cierra la operación en un paso (27B·01); después ve
+/// cómo quedó la venta (27B·03, venta completa, o 27B·04, entregada con saldo).
+///
+/// En V1 no hay stock (decisión del 23/10, el stock es V2, HU-STK-007): la app confía en la
+/// colportora, así que no muestra «Tenés N en mano» ni «No tenés suficiente en mano» (27B·02). Lo que
+/// destilda queda pendiente para otro día (27C).
+///
+/// Devuelve la [EntregaRegistrada] al cerrarse («Volver al mapa»); `null` si se sale sin entregar. El
+/// color de la casa (`house_status`) ya se recalculó en la misma transacción.
+///
+/// [alCobrar] y [alAgendarCobranza] dibujan «Cobrar ahora» y «Agendar la cobranza» (27B·04) y los
+/// engancha quien tenga esa pantalla (el cobro, la vista 28; la cobranza, la vista 22). Sin destino no
+/// se dibujan: un botón que no lleva a ningún lado sería mentir (HU-UBI-003). Cada salida (volver,
+/// cobrar o agendar) corre una sola vez: un doble toque no cierra dos pantallas.
+///
+/// [saldoCentavos] es lo que la venta todavía debe (después de «Cobrar ahora» en 27A·14, lo que quedó
+/// sin cobrar): con la entrega completa y saldo 0, la venta está completa (27B·03). Sin él, el monto
+/// entero de la venta.
+///
+/// Con [alEntregar] (el hilo de la venta, vista 42, 42B·01) no hay 27B·03 ni 27B·04: apenas queda
+/// registrada la entrega (o si ya estaba), sigue el hilo con ella, que termina en «Así quedó la venta».
+class EntregarAhoraPage extends ConsumerStatefulWidget {
+  const EntregarAhoraPage({
+    super.key,
+    required this.guardada,
+    required this.nombreDelCliente,
+    this.alCobrar,
+    this.alAgendarCobranza,
+    this.alEntregar,
+    this.saldoCentavos,
+  });
+
+  final VentaGuardada guardada;
+  final String nombreDelCliente;
+  final ValueChanged<EntregaRegistrada>? alCobrar;
+  final ValueChanged<EntregaRegistrada>? alAgendarCobranza;
+  final ValueChanged<EntregaRegistrada>? alEntregar;
+  final int? saldoCentavos;
+
+  static Route<EntregaRegistrada> ruta({
+    required VentaGuardada guardada,
+    required String nombreDelCliente,
+    ValueChanged<EntregaRegistrada>? alCobrar,
+    ValueChanged<EntregaRegistrada>? alAgendarCobranza,
+    int? saldoCentavos,
+  }) => MaterialPageRoute<EntregaRegistrada>(
+    builder: (_) => EntregarAhoraPage(
+      guardada: guardada,
+      nombreDelCliente: nombreDelCliente,
+      alCobrar: alCobrar,
+      alAgendarCobranza: alAgendarCobranza,
+      saldoCentavos: saldoCentavos,
+    ),
+  );
+
+  @override
+  ConsumerState<EntregarAhoraPage> createState() => _EntregarAhoraPageState();
+}
+
+class _EntregarAhoraPageState extends ConsumerState<EntregarAhoraPage> {
+  var _saliendo = false;
+
+  VentaGuardada get _guardada => widget.guardada;
+
+  String get _eyebrow => TextosVenta.eyebrowTalonario(_guardada.venta.numeroTalonario);
+
+  int get _saldo => widget.saldoCentavos ?? _guardada.venta.montoTotalCentavos;
+
+  void _cerrar([EntregaRegistrada? registrada]) {
+    if (_saliendo) return;
+    _saliendo = true;
+    Navigator.of(context).pop(registrada);
+  }
+
+  /// [salida], para que corra una sola vez (un doble toque en «Cobrar ahora» no abre dos cobros).
+  ValueChanged<EntregaRegistrada>? _unaVez(ValueChanged<EntregaRegistrada>? salida) =>
+      salida == null
+      ? null
+      : (registrada) {
+          if (_saliendo) return;
+          _saliendo = true;
+          salida(registrada);
+        };
+
+  /// Sigue el hilo de la venta con la entrega registrada, una sola vez.
+  void _seguir(EntregaRegistrada registrada) => _unaVez(widget.alEntregar)?.call(registrada);
+
+  @override
+  Widget build(BuildContext context) {
+    final datos = ref.watch(datosDeLaEntregaProvider(_guardada));
+    return Scaffold(
+      key: const Key('entrega_pagina'),
+      body: SafeArea(
+        child: datos.when(
+          loading: () => _Marco(
+            cabecera: CabeceraVenta(
+              eyebrow: _eyebrow,
+              titulo: TextosEntrega.titulo,
+              subtitulo: widget.nombreDelCliente,
+              alVolver: _cerrar,
+            ),
+            hijos: const [_EsqueletoDeEntrega()],
+          ),
+          error: (error, _) => _Marco(
+            cabecera: CabeceraVenta(
+              eyebrow: _eyebrow,
+              titulo: TextosEntrega.titulo,
+              subtitulo: widget.nombreDelCliente,
+              alVolver: _cerrar,
+            ),
+            hijos: [
+              AvisoDeVenta(
+                texto: error is Failure
+                    ? error.mensaje
+                    : const FailureEntregaNoDisponible().mensaje,
+                textoAccion: TextosEntrega.reintentar,
+                alAccion: () => ref.invalidate(datosDeLaEntregaProvider(_guardada)),
+              ),
+            ],
+          ),
+          data: (datos) {
+            if (datos.previas.isNotEmpty) {
+              // Ya se entregó (volvió atrás y reentró, o un reintento): se muestra cómo quedó, sin
+              // entregar de nuevo; en el hilo de la venta, sigue con lo que ya estaba.
+              final registrada = EntregaRegistrada(entregas: datos.previas, yaEstaba: true);
+              if (widget.alEntregar != null) return _Siguiendo(alSeguir: () => _seguir(registrada));
+              return _Resultado(
+                guardada: _guardada,
+                registrada: registrada,
+                nombres: datos.nombres,
+                eyebrow: _eyebrow,
+                saldo: _saldo,
+                alCobrar: _unaVez(widget.alCobrar),
+                alAgendarCobranza: _unaVez(widget.alAgendarCobranza),
+                alVolver: _cerrar,
+              );
+            }
+            if (datos.lineas.isEmpty) {
+              return _Marco(
+                cabecera: CabeceraVenta(
+                  eyebrow: _eyebrow,
+                  titulo: TextosEntrega.titulo,
+                  subtitulo: widget.nombreDelCliente,
+                  alVolver: _cerrar,
+                ),
+                hijos: const [AvisoDeVenta(texto: TextosEntrega.sinProductos, error: false)],
+              );
+            }
+            return _Formulario(
+              args: ArgumentosDeEntrega(guardada: _guardada, lineas: datos.lineas),
+              nombres: datos.nombres,
+              nombreDelCliente: widget.nombreDelCliente,
+              eyebrow: _eyebrow,
+              saldo: _saldo,
+              alCobrar: _unaVez(widget.alCobrar),
+              alAgendarCobranza: _unaVez(widget.alAgendarCobranza),
+              alEntregar: widget.alEntregar == null ? null : _seguir,
+              alVolver: _cerrar,
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Cabecera y contenido que se desplaza, sin botón de abajo.
+class _Marco extends StatelessWidget {
+  const _Marco({required this.cabecera, required this.hijos});
+
+  final Widget cabecera;
+  final List<Widget> hijos;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      children: [cabecera, ...hijos],
+    );
+  }
+}
+
+class _EsqueletoDeEntrega extends StatelessWidget {
+  const _EsqueletoDeEntrega();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget bloque() => Container(
+      height: 56,
+      decoration: BoxDecoration(
+        color: ColoresAgenda.esqueleto,
+        borderRadius: BorderRadius.circular(14),
+      ),
+    );
+    return Semantics(
+      liveRegion: true,
+      label: TextosEntrega.cargando,
+      child: ExcludeSemantics(
+        child: Column(
+          key: const Key('entrega_cargando'),
+          children: [
+            bloque(),
+            const SizedBox(height: 10),
+            bloque(),
+            const SizedBox(height: 10),
+            bloque(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 27B·01: qué se entrega.
+class _Formulario extends ConsumerStatefulWidget {
+  const _Formulario({
+    required this.args,
+    required this.nombres,
+    required this.nombreDelCliente,
+    required this.eyebrow,
+    required this.saldo,
+    required this.alVolver,
+    this.alCobrar,
+    this.alAgendarCobranza,
+    this.alEntregar,
+  });
+
+  final ArgumentosDeEntrega args;
+  final Map<String, String> nombres;
+  final String nombreDelCliente;
+  final String eyebrow;
+  final int saldo;
+  final void Function([EntregaRegistrada?]) alVolver;
+  final ValueChanged<EntregaRegistrada>? alCobrar;
+  final ValueChanged<EntregaRegistrada>? alAgendarCobranza;
+  final ValueChanged<EntregaRegistrada>? alEntregar;
+
+  @override
+  ConsumerState<_Formulario> createState() => _FormularioState();
+}
+
+class _FormularioState extends ConsumerState<_Formulario> {
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final args = widget.args;
+    ref.listen(entregarAhoraProvider(args).select((s) => s.falla), (anterior, falla) {
+      // El aviso de error está arriba: si la lista es larga y estaba más abajo, se lo lleva a la vista.
+      if (falla != null && _scroll.hasClients) _scroll.jumpTo(0);
+    });
+    final estado = ref.watch(entregarAhoraProvider(args));
+    final notifier = ref.read(entregarAhoraProvider(args).notifier);
+
+    final registrada = estado.registrada;
+    final alEntregar = widget.alEntregar;
+    if (registrada != null && alEntregar != null) {
+      return _Siguiendo(alSeguir: () => alEntregar(registrada));
+    }
+    if (registrada != null) {
+      return _Resultado(
+        guardada: args.guardada,
+        registrada: registrada,
+        nombres: widget.nombres,
+        eyebrow: widget.eyebrow,
+        saldo: widget.saldo,
+        alCobrar: widget.alCobrar,
+        alAgendarCobranza: widget.alAgendarCobranza,
+        alVolver: widget.alVolver,
+      );
+    }
+
+    final lineas = args.lineas;
+    final sinMarcar = [
+      for (final l in lineas)
+        if (!estado.marcadas.contains(l.clave)) l,
+    ];
+    final ocupado = estado.entregando;
+    final sinNada = estado.marcadas.isEmpty;
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            controller: _scroll,
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            children: [
+              CabeceraVenta(
+                eyebrow: widget.eyebrow,
+                titulo: TextosEntrega.titulo,
+                subtitulo: widget.nombreDelCliente,
+                // Mientras se guarda no se sale: la entrega se escribe igual y habría que volver a
+                // entrar para verla.
+                alVolver: ocupado ? null : () => widget.alVolver(),
+              ),
+              if (estado.falla case final falla?) ...[
+                AvisoDeVenta(texto: falla.mensaje),
+                const SizedBox(height: 10),
+              ],
+              const RotuloDeSeccion(TextosEntrega.queEntregas),
+              const SizedBox(height: 7),
+              for (final linea in lineas) ...[
+                FilaDeEntrega(
+                  titulo: linea.titulo,
+                  detalle: linea.detalle,
+                  marcada: estado.marcadas.contains(linea.clave),
+                  alCambiar: ocupado ? null : () => notifier.alternar(linea.clave),
+                ),
+                const SizedBox(height: 8),
+              ],
+              if (sinMarcar.isNotEmpty && !sinNada)
+                AvisoDeVenta(
+                  texto: TextosEntrega.quedaParaOtroDia([for (final l in sinMarcar) l.nombre]),
+                  error: false,
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+          child: BotonDeVenta(
+            texto: estado.falla != null
+                ? TextosEntrega.reintentar
+                : TextosEntrega.entregarN(estado.marcadas.length, todo: sinMarcar.isEmpty),
+            nota: sinNada ? TextosEntrega.elegiUnProducto : null,
+            ocupado: ocupado,
+            alPresionar: sinNada ? null : notifier.entregar,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// La entrega ya está registrada y el hilo de la venta sigue (42B·01): una ruedita mientras se va.
+class _Siguiendo extends StatefulWidget {
+  const _Siguiendo({required this.alSeguir});
+
+  final VoidCallback alSeguir;
+
+  @override
+  State<_Siguiendo> createState() => _SiguiendoState();
+}
+
+class _SiguiendoState extends State<_Siguiendo> {
+  @override
+  void initState() {
+    super.initState();
+    // Después del cuadro: no se navega mientras se construye.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.alSeguir();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(key: Key('entrega_siguiendo'), child: CircularProgressIndicator());
+  }
+}
+
+/// 27B·03 (venta completa) o 27B·04 (entregada con saldo).
+class _Resultado extends StatelessWidget {
+  const _Resultado({
+    required this.guardada,
+    required this.registrada,
+    required this.nombres,
+    required this.eyebrow,
+    required this.saldo,
+    required this.alVolver,
+    this.alCobrar,
+    this.alAgendarCobranza,
+  });
+
+  final VentaGuardada guardada;
+  final EntregaRegistrada registrada;
+  final Map<String, String> nombres;
+  final String eyebrow;
+
+  /// Lo que la venta todavía debe, en centavos.
+  final int saldo;
+  final void Function([EntregaRegistrada?]) alVolver;
+  final ValueChanged<EntregaRegistrada>? alCobrar;
+  final ValueChanged<EntregaRegistrada>? alAgendarCobranza;
+
+  @override
+  Widget build(BuildContext context) {
+    final quedaPendiente = registrada.quedaPendiente;
+    final completa = !quedaPendiente && saldo == 0;
+    final pendientes = [
+      for (final e in registrada.entregas)
+        if (e.pendiente) e,
+    ];
+    // Sin saldo no hay nada que cobrar ni que agendar (aunque quede material para otro día).
+    final cobrar = saldo > 0 ? alCobrar : null;
+    final agendar = saldo > 0 ? alAgendarCobranza : null;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (volvio, _) {
+        if (!volvio) alVolver(registrada);
+      },
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              key: const Key('entrega_resultado'),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              children: [
+                CabeceraVenta(
+                  eyebrow: eyebrow,
+                  titulo: completa
+                      ? TextosEntrega.tituloListo
+                      : TextosEntrega.tituloEntregaRegistrada,
+                ),
+                if (completa)
+                  CartelDeVentaCompleta(
+                    titulo: TextosEntrega.ventaCompleta,
+                    detalle: TextosEntrega.entregasteTodoYPagada(
+                      habiaQueCobrar: guardada.venta.montoTotalCentavos > 0,
+                    ),
+                  )
+                else ...[
+                  RenglonDeResumen(
+                    rotulo: TextosEntrega.entregado,
+                    valor: quedaPendiente
+                        ? TextosEntrega.entregadoDe(
+                            registrada.entregas.length - pendientes.length,
+                            registrada.entregas.length,
+                          )
+                        : TextosEntrega.todo,
+                  ),
+                  if (quedaPendiente)
+                    RenglonDeResumen(
+                      rotulo: TextosEntrega.pendiente,
+                      valor: [for (final e in pendientes) _conCantidad(e, nombres)].join(', '),
+                    ),
+                  RenglonDeResumen(
+                    rotulo: TextosEntrega.saldo,
+                    valor: FormatoVenta.monto(saldo),
+                    cifra: true,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    quedaPendiente
+                        ? (saldo > 0
+                              ? TextosEntrega.casaEntregaYCobranzaPendientes
+                              : TextosEntrega.casaEntregaPendiente)
+                        : TextosEntrega.casaCobranzaPendiente,
+                    key: const Key('entrega_casa'),
+                    style: const TextStyle(fontSize: 14, height: 1.4, color: ColoresAgenda.tinta),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (cobrar != null)
+                  FilledButton(
+                    key: const Key('entrega_cobrar'),
+                    onPressed: () => cobrar(registrada),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(56),
+                      backgroundColor: ColoresAgenda.navy,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: const Text(
+                      TextosEntrega.cobrarAhora,
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                if (agendar != null)
+                  TextButton(
+                    key: const Key('entrega_agendar_cobranza'),
+                    onPressed: () => agendar(registrada),
+                    style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                    child: const Text(
+                      TextosEntrega.agendarLaCobranza,
+                      style: TextStyle(fontWeight: FontWeight.w600, color: ColoresAgenda.azul),
+                    ),
+                  ),
+                if (cobrar == null && agendar == null)
+                  BotonDeVenta(
+                    texto: TextosEntrega.volverAlMapa,
+                    alPresionar: () => alVolver(registrada),
+                  )
+                else
+                  TextButton(
+                    key: const Key('entrega_volver'),
+                    onPressed: () => alVolver(registrada),
+                    style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                    child: const Text(
+                      TextosEntrega.volverAlMapa,
+                      style: TextStyle(fontWeight: FontWeight.w600, color: ColoresAgenda.azul),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  static String _conCantidad(Entrega e, Map<String, String> nombres) =>
+      '${nombres[e.productoId] ?? 'Producto sin nombre'} × ${e.cantidad}';
+}

@@ -26,6 +26,9 @@ abstract final class TextosFicha {
   static const filtroEntregaPendiente = 'Entrega pendiente';
   static const sinHistorialTitulo = 'Todavía no hay visitas ni ventas';
   static const registrarVisita = 'Registrar visita';
+  static const agendarCobranza = '+ Agendar cobranza';
+  static const registrarEntrega = 'Registrar entrega';
+  static const entregar = 'Entregar';
   static const reintentar = 'Reintentar';
   static const reactivar = 'Reactivar';
   static const reactivarDepto = 'Reactivar el depto';
@@ -228,6 +231,9 @@ abstract final class FormatoFicha {
 
   /// La línea de abajo: el monto de una venta, «Venta 0042» de un cobro. `null` si no hay.
   static String? subtitulo(MovimientoDeFicha m) => switch (m) {
+    // 42B·08E: «✦ 3 misioneros», los que se dejaron en esa entrevista sin venta.
+    VisitaEnFicha(:final misioneros) when misioneros > 0 =>
+      misioneros == 1 ? '✦ 1 misionero' : '✦ $misioneros misioneros',
     VentaEnFicha(:final montoCentavos) => FormatoBajaPersona.monto(montoCentavos),
     CobroEnFicha(:final numeroTalonario) =>
       numeroTalonario == null ? null : 'Venta $numeroTalonario',
@@ -236,7 +242,8 @@ abstract final class FormatoFicha {
 
   /// Lo que lee el lector de pantalla de un movimiento, de una vez.
   static String paraLector(MovimientoDeFicha m, DateTime ahora) {
-    final sub = subtitulo(m);
+    // La estrella de «✦ 3 misioneros» es un adorno: el lector dice solo «3 misioneros».
+    final sub = subtitulo(m)?.replaceFirst('✦ ', '');
     return [antetitulo(m, ahora), titulo(m), ?sub].join('. ');
   }
 }

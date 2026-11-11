@@ -19,11 +19,14 @@ import '../../../notificaciones/presentation/providers/notificaciones_providers.
 import '../../../notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
 import '../../domain/entities/anticipacion_recordatorio.dart';
 import '../../domain/entities/franja_horaria.dart';
+import '../../domain/entities/sugerencia_de_fecha.dart';
 import '../../domain/entities/tipo_agenda.dart';
 import '../../domain/services/recordatorios.dart';
+import '../../domain/services/sugeridor_de_fecha.dart';
 import '../../domain/usecases/agendar_visita_use_case.dart';
 import '../formato_agendar_visita.dart';
 import '../providers/agenda_providers.dart';
+import '../providers/entrevistas_cercanas_providers.dart';
 import '../providers/recordatorios_providers.dart';
 import '../textos_agendar_visita.dart';
 import '../widgets/piezas_agendar_visita.dart';
@@ -55,6 +58,7 @@ class AgendarVisitaPage extends ConsumerStatefulWidget {
     this.espacioPersonaId,
     required this.colportorId,
     this.tipoInicial = TipoAgenda.entrevista,
+    this.diaInicial,
   });
 
   /// La casa o el depto de la visita.
@@ -68,6 +72,11 @@ class AgendarVisitaPage extends ConsumerStatefulWidget {
 
   final TipoAgenda tipoInicial;
 
+  /// El día con que abre el formulario (a las 10:00), si viene de «+ Agendar» del rótulo de un día de la
+  /// Agenda (#568). Sin día —o con uno que no es futuro— abre con mañana a las 10:00, como siempre.
+  /// Elegir un día es tocar la fecha: la fecha sugerida por las entrevistas cercanas no la pisa.
+  final DateTime? diaInicial;
+
   /// Cuántos caracteres admite la nota: un resguardo para que un pegado enorme no trabe el
   /// formulario (a confirmar; la HU no fija un tope).
   static const largoNota = 500;
@@ -79,6 +88,7 @@ class AgendarVisitaPage extends ConsumerStatefulWidget {
     String? espacioPersonaId,
     required String colportorId,
     TipoAgenda tipo = TipoAgenda.entrevista,
+    DateTime? diaInicial,
   }) => Navigator.of(context).push<AgendaGuardada>(
     MaterialPageRoute(
       builder: (_) => AgendarVisitaPage(
@@ -86,6 +96,7 @@ class AgendarVisitaPage extends ConsumerStatefulWidget {
         espacioPersonaId: espacioPersonaId,
         colportorId: colportorId,
         tipoInicial: tipo,
+        diaInicial: diaInicial,
       ),
     ),
   );
@@ -105,11 +116,25 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
   /// La persona eligió (o sacó) la franja a mano: de ahí en más la hora no la cambia sola.
   var _franjaAMano = false;
 
+  /// «Entrevista estricta» (R·03): la hora exacta acordada reemplaza a la franja. Solo cuenta si el
+  /// tipo es entrevista ([_estricta]).
+  var _esEstricta = false;
+
+  /// La fecha que se sugirió por las entrevistas cercanas (R·02); `null` hasta que se lee y si no hay.
+  SugerenciaDeFecha? _sugerencia;
+
+  /// La persona ya tocó el día, la hora, la franja o la entrevista estricta: una sugerencia que llega
+  /// tarde no le pisa lo que eligió.
+  var _tocoLaFecha = false;
+
   /// Hay un guardado en curso: no admite otro toque, no deja salir y bloquea los campos.
   var _enviando = false;
 
   /// La última falla al guardar (23A·06); `null` si no hay.
   Failure? _falla;
+
+  /// Para traer el aviso de falla a la vista si la persona había desplazado el formulario.
+  final _claveAvisoFalla = GlobalKey();
 
   /// La hora que la persona ya confirmó con «Agendar igual». Mientras no cambien el día ni la hora, un
   /// «Reintentar» tras una falla no vuelve a preguntar; si cambian, la hoja vuelve a aparecer.
@@ -135,8 +160,26 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
     final ahora = ref.read(relojVisitaProvider)();
     // Mañana a las 10:00 (media mañana): siempre en el futuro, así que se puede agendar sin tocar nada.
     _cuando = DateTime(ahora.year, ahora.month, ahora.day + 1, 10);
+    final dia = widget.diaInicial;
+    // Solo un día futuro: hoy y los pasados siguen con la fecha de siempre.
+    if (dia != null &&
+        DateTime(
+          dia.year,
+          dia.month,
+          dia.day,
+        ).isAfter(DateTime(ahora.year, ahora.month, ahora.day))) {
+      _cuando = DateTime(dia.year, dia.month, dia.day, 10);
+      _tocoLaFecha = true;
+    }
     _franja = FranjaHoraria.sugeridaPara(_cuando.hour * 60 + _cuando.minute);
     unawaited(_leerAvisos());
+    // La fecha sugerida es una ayuda: se lee en segundo plano, sin frenar el formulario, y si falla no
+    // se ve nada (el formulario sigue como siempre).
+    ref.listenManual(
+      entrevistasCercanasProvider((espacioId: widget.espacioId, colportorId: widget.colportorId)),
+      (_, _) => _aplicarSugerencia(),
+      fireImmediately: true,
+    );
   }
 
   @override
@@ -189,17 +232,94 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
     return _cuando.isBefore(alMinuto);
   }
 
+  /// «Entrevista estricta» vigente: solo una entrevista tiene hora acordada.
+  bool get _estricta => _esEstricta && _tipo == TipoAgenda.entrevista;
+
+  /// La tarjeta «SUGERIDA» (R·02) se muestra mientras el formulario siga como lo dejó la sugerencia.
+  bool get _sugerenciaVigente {
+    final s = _sugerencia;
+    return s != null &&
+        _tipo == TipoAgenda.entrevista &&
+        _cuando == s.momento &&
+        _franja == s.franja;
+  }
+
+  /// Pone la fecha sugerida en el formulario, una sola vez, si hay una, el tipo es entrevista y la
+  /// persona todavía no tocó la fecha. Se llama al llegar las entrevistas cercanas y al pasar a
+  /// «Entrevista» (si se abrió como cobranza).
+  void _aplicarSugerencia() {
+    if (!mounted || _sugerencia != null || _tocoLaFecha || _enviando) return;
+    if (_tipo != TipoAgenda.entrevista) return;
+    final cercanas = ref
+        .read(
+          entrevistasCercanasProvider((
+            espacioId: widget.espacioId,
+            colportorId: widget.colportorId,
+          )),
+        )
+        .asData
+        ?.value;
+    if (cercanas == null) return;
+    final sugerida = SugeridorDeFecha.calcular(cercanas, ahora: _ahora());
+    if (sugerida == null) return;
+    setState(() {
+      _sugerencia = sugerida;
+      _cuando = sugerida.momento;
+      _franja = sugerida.franja;
+    });
+  }
+
+  void _cambiarTipo(TipoAgenda tipo) {
+    setState(() => _tipo = tipo);
+    _aplicarSugerencia();
+  }
+
   Future<void> _elegirDiaYHora() async {
     if (_enviando) return;
-    final elegido = await mostrarHojaDiaYHora(context, inicial: _cuando, ahora: _ahora());
+    final elegido = await mostrarHojaDiaYHora(
+      context,
+      inicial: _cuando,
+      ahora: _ahora(),
+      conHora: !_estricta,
+    );
     if (elegido == null || !mounted) return;
     setState(() {
+      _tocoLaFecha = true;
       _cuando = elegido;
       if (!_franjaAMano) _franja = FranjaHoraria.sugeridaPara(elegido.hour * 60 + elegido.minute);
     });
   }
 
+  /// R·03: la hora exacta que se acordó con la persona, con el mismo selector de hora de la hoja
+  /// «Día y hora».
+  Future<void> _elegirHoraAcordada() async {
+    if (_enviando) return;
+    final elegida = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: _cuando.hour, minute: _cuando.minute),
+    );
+    if (elegida == null || !mounted) return;
+    setState(() {
+      _tocoLaFecha = true;
+      _cuando = DateTime(_cuando.year, _cuando.month, _cuando.day, elegida.hour, elegida.minute);
+      if (!_franjaAMano) _franja = FranjaHoraria.sugeridaPara(elegida.hour * 60 + elegida.minute);
+    });
+  }
+
+  void _alternarEstricta(bool valor) {
+    if (_enviando) return;
+    setState(() {
+      _tocoLaFecha = true;
+      _esEstricta = valor;
+      // Al volver a la franja, la que corresponde a la hora que quedó (si no la eligió a mano).
+      if (!valor && !_franjaAMano) {
+        _franja = FranjaHoraria.sugeridaPara(_cuando.hour * 60 + _cuando.minute);
+      }
+    });
+  }
+
   void _elegirFranja(FranjaHoraria f) => setState(() {
+    _tocoLaFecha = true;
     _franjaAMano = true;
     _franja = f == _franja ? null : f;
   });
@@ -253,7 +373,9 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
           colportorId: widget.colportorId,
           tipo: _tipo,
           fechaProgramada: _cuando,
-          franja: _franja,
+          // Con la entrevista estricta se guarda la hora exacta en lugar de la franja (R·03).
+          franja: _estricta ? null : _franja,
+          esEstricta: _estricta,
           nota: _nota.text,
           direccion: contexto == null ? '' : _direccionDelAviso(contexto),
           confirmoHoraPasada: confirmoHoraPasada || _horaConfirmada == _cuando,
@@ -277,7 +399,23 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
           _enviando = false;
           _falla = falla ?? const FailureInesperado();
         });
+        WidgetsBinding.instance.addPostFrameCallback((_) => _mostrarElAvisoDeFalla());
     }
+  }
+
+  /// El aviso rojo va entre el tipo y la hora: si la persona estaba más abajo (texto grande, nota con
+  /// el teclado) lo trae a la vista para que vea por qué el botón pasó a «Reintentar».
+  void _mostrarElAvisoDeFalla() {
+    if (!mounted) return;
+    final contexto = _claveAvisoFalla.currentContext;
+    if (contexto == null) return;
+    unawaited(
+      Scrollable.ensureVisible(
+        contexto,
+        duration: const Duration(milliseconds: 200),
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+      ),
+    );
   }
 
   /// «Av. Italia 1234», con el depto si es un edificio: lo que lleva el aviso de la visita. Nunca el
@@ -335,6 +473,66 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
       return TextosAgendarVisita.sinTiempoDeAviso(_minutosDeAnticipacion);
     }
     return TextosAgendarVisita.recordatorio(_minutosDeAnticipacion);
+  }
+
+  /// La fecha del formulario, según el caso del canvas de la vista 39:
+  ///
+  /// - **R·03, entrevista estricta**: la tarjeta «FECHA» (solo el día), sin franjas, y el campo «HORA
+  ///   ACORDADA» debajo del interruptor;
+  /// - **R·02, con entrevistas cerca**: la tarjeta «SUGERIDA» con el día, la franja y cuántas hay;
+  /// - en cualquier otro caso (sin entrevistas cerca, o ya cambió la fecha, o es una cobranza), el
+  ///   campo «DÍA Y HORA» de siempre (23A·01).
+  List<Widget> _fecha() {
+    final bloqueado = _enviando;
+    final VoidCallback? cambiar = bloqueado ? null : () => unawaited(_elegirDiaYHora());
+    final Widget fecha;
+    if (_estricta) {
+      fecha = TarjetaFechaAgendar(
+        etiqueta: TextosAgendarVisita.etiquetaFecha,
+        titulo: FormatoAgendarVisita.diaLargo(_cuando),
+        alTocar: cambiar,
+      );
+    } else if (_sugerenciaVigente) {
+      final s = _sugerencia!;
+      fecha = TarjetaFechaAgendar(
+        etiqueta: TextosAgendarVisita.etiquetaSugerida,
+        titulo:
+            '${FormatoAgendarVisita.diaLargo(_cuando)} · '
+            '${s.franja?.rango ?? FormatoAgendarVisita.hora(_cuando)}',
+        detalle: TextosAgendarVisita.entrevistasCerca(s.cantidad),
+        alTocar: cambiar,
+      );
+    } else {
+      fecha = CampoDiaYHora(
+        valor: FormatoAgendarVisita.cuando(_cuando, _ahora()),
+        alTocar: cambiar,
+        error: _horaPasada ? TextosAgendarVisita.horaPasadaCorta : null,
+      );
+    }
+    return [
+      fecha,
+      const SizedBox(height: 16),
+      if (!_estricta) ...[
+        ChipsFranja(elegida: _franja, bloqueado: bloqueado, alElegir: _elegirFranja),
+        const SizedBox(height: 16),
+      ],
+      if (_tipo == TipoAgenda.entrevista) ...[
+        InterruptorEstricta(valor: _estricta, alCambiar: bloqueado ? null : _alternarEstricta),
+        const SizedBox(height: 16),
+      ],
+      if (_estricta) ...[
+        CampoDiaYHora(
+          etiqueta: TextosAgendarVisita.etiquetaHoraAcordada,
+          lector: TextosAgendarVisita.lectorHoraAcordada,
+          claveCampo: ClavesAgendarVisita.campoHoraAcordada,
+          claveError: ClavesAgendarVisita.errorHoraAcordada,
+          valor: FormatoAgendarVisita.hora(_cuando),
+          alTocar: bloqueado ? null : () => unawaited(_elegirHoraAcordada()),
+          error: _horaPasada ? TextosAgendarVisita.horaPasadaCorta : null,
+        ),
+        const SizedBox(height: 16),
+      ],
+    ];
   }
 
   @override
@@ -419,13 +617,20 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
                       SelectorTipoAgenda(
                         tipo: _tipo,
                         bloqueado: _enviando,
-                        alCambiar: (t) => setState(() => _tipo = t),
+                        alCambiar: _cambiarTipo,
                       ),
                       if (conFalla) ...[
                         const SizedBox(height: 16),
                         KeyedSubtree(
                           key: ClavesAgendarVisita.avisoFalla,
-                          child: AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: _textoFalla),
+                          child: KeyedSubtree(
+                            key: _claveAvisoFalla,
+                            child: AvisoAlta(
+                              color: ColoresAlta.rojo,
+                              glyph: '!',
+                              texto: _textoFalla,
+                            ),
+                          ),
                         ),
                       ],
                       if (sinPermiso) ...[
@@ -455,14 +660,7 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
                         ),
                       ],
                       const SizedBox(height: 16),
-                      CampoDiaYHora(
-                        valor: FormatoAgendarVisita.cuando(_cuando, _ahora()),
-                        alTocar: _enviando ? null : () => unawaited(_elegirDiaYHora()),
-                        error: _horaPasada ? TextosAgendarVisita.horaPasadaCorta : null,
-                      ),
-                      const SizedBox(height: 16),
-                      ChipsFranja(elegida: _franja, bloqueado: _enviando, alElegir: _elegirFranja),
-                      const SizedBox(height: 16),
+                      ..._fecha(),
                       CampoPersona(
                         etiqueta: TextosAgendarVisita.etiquetaNota,
                         sugerencia: TextosAgendarVisita.sugerenciaNota,

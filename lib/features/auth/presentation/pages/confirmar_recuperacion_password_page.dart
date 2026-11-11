@@ -170,6 +170,10 @@ class _ConfirmarRecuperacionPasswordPageState
   bool get _cumpleMayuscula => PoliticaPassword.tieneMayuscula(_nueva.text);
   bool get _cumpleNumero => PoliticaPassword.tieneNumero(_nueva.text);
   bool get _cumple => PoliticaPassword.validar(_nueva.text) == null;
+
+  /// Pasa los 72 bytes que acepta el servidor (#296): el campo lo dice y «Guardar» queda apagado.
+  /// Nunca se recorta lo escrito ni se muestra un contador.
+  bool get _demasiadoLarga => PoliticaPassword.excedeLargoMaximo(_nueva.text);
   bool get _coinciden => _repetida.text.isNotEmpty && _repetida.text == _nueva.text;
   bool get _puedeGuardar => !_guardando && _cumple && _coinciden;
 
@@ -191,6 +195,8 @@ class _ConfirmarRecuperacionPasswordPageState
     setState(() {
       if (_nueva.text.isEmpty) {
         _erroresCampo = const {'password': _faltaNueva};
+      } else if (_demasiadoLarga) {
+        // El campo ya lo dice (siempre a la vista): no se lo pisa con otro texto.
       } else if (!_cumple) {
         _erroresCampo = const {'password': _faltaRequisitos};
       } else if (_repetida.text.isEmpty) {
@@ -590,7 +596,9 @@ class _ConfirmarRecuperacionPasswordPageState
                       : colores.gris,
                   campoKey: const Key('confirmar_recuperacion_nueva'),
                   controller: _nueva,
-                  errorText: _erroresCampo['password'],
+                  errorText: _demasiadoLarga
+                      ? PoliticaPassword.demasiadoLarga
+                      : _erroresCampo['password'],
                   habilitado: !_guardando,
                   accionTeclado: TextInputAction.next,
                   alCambiar: _alCambiar,

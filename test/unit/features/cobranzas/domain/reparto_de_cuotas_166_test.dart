@@ -199,17 +199,96 @@ void main() {
       },
     );
 
-    test('dada la última cuota cambiada, cuando se reajusta, no hay a quién ajustar', () {
-      final r = RepartoDeCuotas.reajustar(
-        montos: iguales,
-        indice: 2,
-        nuevoMonto: 50000,
-        saldo: 250000,
-      );
-      expect(r.montos, [83300, 83300, 50000]);
-      expect(r.ajustadas, isEmpty);
-      expect(r.esValido, isTrue);
-    });
+    test(
+      'dada la última cuota escrita a mano, cuando se reajusta, no se acepta y los montos quedan como estaban (#608)',
+      () {
+        final r = RepartoDeCuotas.reajustar(
+          montos: iguales,
+          indice: 2,
+          nuevoMonto: 50000,
+          saldo: 250000,
+        );
+        expect(r.problemas, {2: ProblemaDeCuota.ultimaCalculada});
+        expect(r.montos, [83300, 83300, 83400]);
+        expect(r.ajustadas, isEmpty);
+        expect(r.esValido, isFalse);
+      },
+    );
+
+    test(
+      'dada la última cuota escrita a mano con un monto mayor al saldo, cuando se reajusta, también se rechaza como calculada (#608)',
+      () {
+        final r = RepartoDeCuotas.reajustar(
+          montos: iguales,
+          indice: 2,
+          nuevoMonto: 100000,
+          saldo: 250000,
+        );
+        expect(r.problemas, {2: ProblemaDeCuota.ultimaCalculada});
+        expect(r.montos, iguales);
+      },
+    );
+
+    test(
+      'dada la última cuota con el mismo monto que tiene, cuando se reajusta, no hay nada que rechazar (#608)',
+      () {
+        final r = RepartoDeCuotas.reajustar(
+          montos: iguales,
+          indice: 2,
+          nuevoMonto: 83400,
+          saldo: 250000,
+        );
+        expect(r.esValido, isTrue);
+        expect(r.montos, iguales);
+        expect(r.ajustadas, isEmpty);
+      },
+    );
+
+    test(
+      'dada una sola cuota abierta (la única es la última), cuando se reajusta, no se acepta (#608)',
+      () {
+        final r = RepartoDeCuotas.reajustar(
+          montos: [150000],
+          indice: 0,
+          nuevoMonto: 100000,
+          saldo: 150000,
+          pagados: [0],
+        );
+        expect(r.problemas, {0: ProblemaDeCuota.ultimaCalculada});
+        expect(r.montos, [150000]);
+      },
+    );
+
+    test(
+      'dada una cuota anterior cambiada, cuando se reajusta, la última siempre queda como lo que falta del saldo (#608)',
+      () {
+        for (final nuevo in [1000, 40000, 100000, 125000, 249000]) {
+          final r = RepartoDeCuotas.reajustar(
+            montos: [125000, 125000],
+            indice: 0,
+            nuevoMonto: nuevo,
+            saldo: 250000,
+          );
+          expect(r.esValido, isTrue, reason: '$nuevo');
+          expect(r.montos.last, 250000 - nuevo, reason: '$nuevo');
+          expect(r.montos.fold<int>(0, (a, b) => a + b), 250000, reason: '$nuevo');
+        }
+      },
+    );
+
+    test(
+      'dadas cuatro cuotas, cuando se cambia la tercera, la cuarta es lo que falta y las anteriores no se tocan (#608)',
+      () {
+        final r = RepartoDeCuotas.reajustar(
+          montos: RepartoDeCuotas.partesIguales(100000, 4),
+          indice: 2,
+          nuevoMonto: 40000,
+          saldo: 100000,
+        );
+        expect(r.montos, [25000, 25000, 40000, 10000]);
+        expect(r.ajustadas, {3});
+      },
+    );
 
     test(
       'dada una cuota mayor al saldo, cuando se reajusta, se marca y las que siguen quedan en cero (30A-02C)',
@@ -241,19 +320,6 @@ void main() {
           saldo: 250000,
         );
         expect(r.problemas, {0: ProblemaDeCuota.noDejaParaLasSiguientes});
-      },
-    );
-
-    test(
-      'dada la última cuota que hace pasar el saldo a las anteriores, cuando se reajusta, supera el saldo',
-      () {
-        final r = RepartoDeCuotas.reajustar(
-          montos: iguales,
-          indice: 2,
-          nuevoMonto: 100000,
-          saldo: 250000,
-        );
-        expect(r.problemas, {2: ProblemaDeCuota.superaElSaldo});
       },
     );
 
@@ -297,6 +363,43 @@ void main() {
       );
     },
   );
+
+  test('ultimaEsLoQueFalta: las cuotas suman justo lo que hay por repartir (#608)', () {
+    expect(RepartoDeCuotas.ultimaEsLoQueFalta([83300, 83300, 83400], 250000), isTrue);
+    expect(RepartoDeCuotas.ultimaEsLoQueFalta([83300, 83300, 50000], 250000), isFalse);
+    expect(RepartoDeCuotas.ultimaEsLoQueFalta([83300, 83300, 90000], 250000), isFalse);
+    expect(RepartoDeCuotas.ultimaEsLoQueFalta(const [], 0), isFalse);
+  });
+
+  group('ultimaAbierta (#608)', () {
+    Cuota c(int n, {bool cubierta = false}) => Cuota(
+      agendaId: 'a$n',
+      numero: n,
+      fecha: DateTime(2026, 11, n, 10),
+      montoCentavos: 1000,
+      estado: cubierta ? EstadoAgenda.cumplida : EstadoAgenda.programada,
+    );
+
+    test('dado un plan con cuotas abiertas, es la abierta de mayor número', () {
+      expect(RepartoDeCuotas.ultimaAbierta([c(1), c(2), c(3)])?.numero, 3);
+    });
+
+    test('dada la última pagada, es la abierta anterior', () {
+      expect(RepartoDeCuotas.ultimaAbierta([c(1), c(2), c(3, cubierta: true)])?.numero, 2);
+    });
+
+    test('dada una sola abierta, esa es la última', () {
+      expect(
+        RepartoDeCuotas.ultimaAbierta([c(1, cubierta: true), c(2, cubierta: true), c(3)])?.numero,
+        3,
+      );
+    });
+
+    test('dado un plan todo pagado o sin cuotas, no hay última abierta', () {
+      expect(RepartoDeCuotas.ultimaAbierta([c(1, cubierta: true)]), isNull);
+      expect(RepartoDeCuotas.ultimaAbierta(const []), isNull);
+    });
+  });
 
   group('estadoDe', () {
     final plan = [cita('a1', 26, 83300), cita('a2', 28, 83300), cita('a3', 30, 83400)];
@@ -458,6 +561,41 @@ void main() {
     });
 
     test(
+      'dada una cita NO_CUMPLIDA vieja de una cuota, cuando se arma, sigue siendo cuota abierta y programada (#608)',
+      () {
+        final e = RepartoDeCuotas.estadoDe(
+          citas: [
+            cita('a1', 26, 83300, estado: EstadoAgenda.noCumplida),
+            cita('a2', 28, 83300),
+            cita('a3', 30, 83400),
+          ],
+          cobros: const [],
+        );
+        expect(e.cuotas.map((c) => c.numero), [1, 2, 3]);
+        expect(e.cuotas.first.estado, EstadoAgenda.programada);
+        expect(e.cuotas.first.sePuedeModificar, isTrue);
+        expect(e.aCerrar, isEmpty);
+        // Pasada la fecha, se ve vencida (30A-06).
+        expect(e.cuotas.first.situacion(DateTime(2026, 10, 27, 9)), SituacionDeCuota.vencida);
+      },
+    );
+
+    test(
+      'dada una cita NO_CUMPLIDA vieja cubierta por un cobro, cuando se arma, queda para cerrar como cualquier cuota abierta (#608)',
+      () {
+        final e = RepartoDeCuotas.estadoDe(
+          citas: [
+            cita('a1', 26, 83300, estado: EstadoAgenda.noCumplida),
+            cita('a2', 28, 83300),
+          ],
+          cobros: [cobro(83300)],
+        );
+        expect(e.aCerrar, ['a1']);
+        expect(e.cuotas.first.estaCubierta, isTrue);
+      },
+    );
+
+    test(
       'dada una cuota cancelada, cuando se arma, deja de ser cuota y las demás se renumeran',
       () {
         final citas = [
@@ -500,7 +638,6 @@ void main() {
           c(2, 83300, pagado: 40000),
           c(3, 83400),
         ], 100000);
-        expect(pago.primeraCuota, 2);
         expect(pago.completadas.map((p) => p.cuota.numero), [2]);
         expect(pago.completadas.single.aplicadoCentavos, 43300);
         expect(pago.adelanto?.cuota.numero, 3);
@@ -528,7 +665,6 @@ void main() {
     test('dado un plan sin cuotas abiertas, cuando se aplica, el pago es libre', () {
       final pago = RepartoDeCuotas.aplicarPago([c(1, 50000, cubierta: true)], 70000);
       expect(pago.esVacia, isTrue);
-      expect(pago.primeraCuota, isNull);
       expect(pago.sobranteCentavos, 70000);
     });
   });

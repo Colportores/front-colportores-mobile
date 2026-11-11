@@ -7,9 +7,11 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/modificar_ubicacion_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/pages/personas_del_espacio_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/espacios_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/textos_personas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_depto.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_ubicacion.dart';
 import 'package:flutter/material.dart';
@@ -161,6 +163,10 @@ final botonEditarUbicacion = find.byKey(ClavesHojaUbicacion.editar);
 final cerrarHojaUbicacion = find.byKey(ClavesHojaUbicacion.cerrar);
 Finder filaDepto(String id) => find.byKey(ClavesHojaUbicacion.fila(id));
 
+/// La ficha del depto (11·04) y su «Editar».
+final fichaDepto = find.byType(PersonasDelEspacioPage);
+final botonEditarDepto = find.byKey(ClavesPersonasDelEspacio.editar);
+
 final hojaDepto = find.byKey(ClavesHojaDepto.hoja);
 final campoNumero = find.descendant(
   of: find.byKey(ClavesHojaDepto.numero),
@@ -201,9 +207,23 @@ Future<void> abrirAltaDepto(WidgetTester tester) async {
   await asentarHoja(tester);
 }
 
-/// Toca la fila del depto [id] y deja que suba la hoja de su edición.
-Future<void> abrirEdicionDepto(WidgetTester tester, String id) async {
+/// Toca la fila del depto [id]: abre su ficha (vista 11·04, #679).
+Future<void> abrirFichaDepto(WidgetTester tester, String id) async {
   await tester.tap(filaDepto(id));
+  await asentarHoja(tester);
+}
+
+/// Abre la edición del depto [id] como la abre el colportor: la fila abre la ficha (11·04) y su
+/// «Editar» la hoja de la edición (#679).
+Future<void> abrirEdicionDepto(WidgetTester tester, String id) async {
+  await abrirFichaDepto(tester, id);
+  await tester.tap(botonEditarDepto);
+  await asentarHoja(tester);
+}
+
+/// Vuelve de la ficha del depto (11·04) a la hoja del edificio con «‹».
+Future<void> volverDeLaFicha(WidgetTester tester) async {
+  await tester.tap(find.byTooltip(TextosPersonas.volver));
   await asentarHoja(tester);
 }
 

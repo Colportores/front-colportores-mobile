@@ -3,10 +3,14 @@
 /// (RPC `marcar_como_duplicado`, backend-supabase 0026).
 ///
 /// **No es un upsert de una fila**, así que no entra por `EncoladorSync`: su forma en la cola es del
-/// motor de sync (#178, backend-supabase#70) y no se inventa acá. El puerto lo llama la unión local
-/// **dentro de su transacción**: si falla, la unión se revierte entera. Hasta que el motor exista,
-/// `EncoladorMarcarDuplicadoSinMotor` falla a propósito.
+/// motor de sync (contrato-sync-engine §6.2, `EncoladorMarcarDuplicadoMotor`) y no se inventa acá.
+/// El puerto lo llama la unión local **dentro de su transacción**: si falla, la unión se revierte
+/// entera. Sin motor (DB cerrada), `EncoladorMarcarDuplicadoSinMotor` falla a propósito.
 abstract interface class EncoladorMarcarDuplicado {
-  /// Encola «la ubicación [duplicadaId] es un duplicado de [conservadaId]».
-  Future<void> encolarMarcarDuplicado({required String duplicadaId, required String conservadaId});
+  /// Encola «la ubicación [duplicadaId] es un duplicado de [conservadaId]» y devuelve el `id` del
+  /// trabajo en la cola: la unión lo guarda para saber, si vuelve rechazado, qué unión deshacer (#679).
+  Future<String> encolarMarcarDuplicado({
+    required String duplicadaId,
+    required String conservadaId,
+  });
 }

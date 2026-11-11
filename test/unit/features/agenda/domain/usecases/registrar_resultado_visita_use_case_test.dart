@@ -6,6 +6,7 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/misionero_dejado.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita_guardada.dart';
@@ -18,6 +19,7 @@ typedef _Recibida = ({Visita visita, String? agendaId, NotaDeCampo? nota});
 
 final class _RepositorioFalso implements AgendaRepository {
   final recibidas = <_Recibida>[];
+  final misionerosPorVisita = <String, List<MisioneroDejado>>{};
 
   /// Lo que devuelve la próxima llamada (si no, la visita guardada tal cual).
   Either<Failure, VisitaGuardada>? respuesta;
@@ -27,8 +29,10 @@ final class _RepositorioFalso implements AgendaRepository {
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
+    List<MisioneroDejado> misioneros = const [],
   }) async {
     recibidas.add((visita: visita, agendaId: agendaId, nota: nota));
+    misionerosPorVisita[visita.id] = misioneros;
     return respuesta ?? Right(VisitaGuardada(visita: visita));
   }
 
@@ -228,6 +232,86 @@ void main() {
         r,
         const Left<Failure, ResultadoVisitaRegistrado>(FailureInesperado(causa: 'StateError')),
       );
+    });
+  });
+
+  group('las horas de la entrevista (#466) y lo que dejó sin venta (#608)', () {
+    final entrada = DateTime.utc(2026, 11, 10, 17, 23, 30, 123, 456);
+    final salida = DateTime.utc(2026, 11, 10, 17, 41);
+
+    test('la visita guarda la entrada y la salida, al milisegundo', () async {
+      await casoDeUso(
+        RegistrarResultadoVisitaParams(
+          ids: casoDeUso.nuevosIds(),
+          espacioId: 'esp-1',
+          colportorId: 'col-1',
+          resultado: TipoResultadoVisita.entrevista,
+          entrevistaEntrada: entrada,
+          entrevistaSalida: salida,
+        ),
+      );
+
+      final visita = repositorio.recibidas.single.visita;
+      expect(visita.entrevistaEntrada, DateTime.utc(2026, 11, 10, 17, 23, 30, 123));
+      expect(visita.entrevistaSalida, salida);
+    });
+
+    test('sin horas, la visita no inventa ninguna', () async {
+      await casoDeUso(params());
+
+      final visita = repositorio.recibidas.single.visita;
+      expect([visita.entrevistaEntrada, visita.entrevistaSalida], [null, null]);
+    });
+
+    test('una sola de las dos horas no se guarda: dice qué falta', () async {
+      final r = await casoDeUso(
+        RegistrarResultadoVisitaParams(
+          ids: casoDeUso.nuevosIds(),
+          espacioId: 'esp-1',
+          colportorId: 'col-1',
+          resultado: TipoResultadoVisita.entrevista,
+          entrevistaEntrada: entrada,
+        ),
+      );
+
+      expect(camposDe(r).keys, ['horas']);
+      expect(repositorio.recibidas, isEmpty);
+    });
+
+    test('los misioneros van con la visita, uno por producto, sin los de cantidad 0', () async {
+      final ids = casoDeUso.nuevosIds();
+      await casoDeUso(
+        RegistrarResultadoVisitaParams(
+          ids: ids,
+          espacioId: 'esp-1',
+          colportorId: 'col-1',
+          resultado: TipoResultadoVisita.entrevista,
+          misioneros: const {'p-camino': 2, 'p-esperanza': 0, ' p-paz ': 1},
+        ),
+      );
+
+      final dejados = repositorio.misionerosPorVisita[ids.visita]!;
+      expect(
+        [for (final m in dejados) (m.productoId, m.cantidad, m.visitaId)],
+        [('p-camino', 2, ids.visita), ('p-paz', 1, ids.visita)],
+      );
+      expect(dejados.map((m) => m.id).toSet(), hasLength(2));
+      expect(dejados.first.auditoria.createdBy, 'col-1');
+    });
+
+    test('una cantidad negativa no guarda nada', () async {
+      final r = await casoDeUso(
+        RegistrarResultadoVisitaParams(
+          ids: casoDeUso.nuevosIds(),
+          espacioId: 'esp-1',
+          colportorId: 'col-1',
+          resultado: TipoResultadoVisita.entrevista,
+          misioneros: const {'p-camino': -1},
+        ),
+      );
+
+      expect(camposDe(r).keys, ['misioneros']);
+      expect(repositorio.recibidas, isEmpty);
     });
   });
 

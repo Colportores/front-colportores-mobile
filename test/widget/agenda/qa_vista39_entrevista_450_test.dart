@@ -59,7 +59,7 @@ void main() {
         '18 min',
         '¿HUBO VENTA?',
         'Sí, registrar la venta',
-        'No, guardar y volver al mapa',
+        'No hubo venta', // decisión del 10/11 (42B·08A, QA #432 P2)
       ]) {
         expect(find.text(texto), findsOneWidget, reason: texto);
       }
@@ -84,16 +84,13 @@ void main() {
       expect(find.text('¿HUBO VENTA?'), findsOneWidget);
     });
 
-    testWidgets(
-      'R·07: el canvas dibuja solo Entrada y Salida, sin la fila «Duración» de R·06',
-      (tester) async {
-        await llegar(tester, Estado39.r07);
+    testWidgets('R·07: el canvas dibuja solo Entrada y Salida, sin la fila «Duración» de R·06', (
+      tester,
+    ) async {
+      await llegar(tester, Estado39.r07);
 
-        expect(find.byKey(ClavesEntrevista.duracion), findsNothing);
-      },
-      // skip: QA #450 — R·07 muestra «Duración» (22 min) y el canvas no la dibuja (menor).
-      skip: true,
-    );
+      expect(find.byKey(ClavesEntrevista.duracion), findsNothing);
+    });
   });
 
   group('matriz de estados × tamaños × letra', () {
@@ -152,9 +149,8 @@ void main() {
 
         final rotulo = tester.renderObject<RenderParagraph>(find.text(TextosEntrevista.campoNota));
         expect(rotulo.didExceedMaxLines, isFalse, reason: 'el rótulo termina en «OPCI…»');
+        await capturar(tester, 'nota_360x640_x2');
       },
-      // skip: QA #450 — a 200 % el rótulo flotante del campo termina en «OPCI…» y se pierde «OPCIONAL».
-      skip: true,
     );
   });
 
@@ -345,21 +341,33 @@ void main() {
       },
     );
 
-    testWidgets(
-      'cerrar R·06 mientras guarda: la colportora ve igual la confirmación «Guardado…»',
-      (tester) async {
-        final r = await llegar(tester, Estado39.r06Guardando);
+    testWidgets('R·06 con el guardado en vuelo no se cierra ni arrastrándola hacia abajo', (
+      tester,
+    ) async {
+      final r = await llegar(tester, Estado39.r06Guardando);
 
-        await tester.binding.handlePopRoute();
-        await tester.pumpAndSettle();
-        r.montaje.agenda.compuerta!.complete();
-        await tester.pumpAndSettle();
+      await tester.drag(find.byKey(ClavesEntrevista.hojaTermino), const Offset(0, 600));
+      await tester.pumpAndSettle();
 
-        expect(find.text(TextosEntrevista.guardada('Grecia 3307')), findsOneWidget);
-      },
-      // skip: QA #450 — la hoja se puede cerrar mientras guarda y entonces no hay confirmación.
-      skip: true,
-    );
+      expect(find.byKey(ClavesEntrevista.hojaTermino), findsOneWidget);
+      expect(find.text(TextosEntrevista.guardando), findsOneWidget);
+      r.montaje.agenda.compuerta!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text(TextosEntrevista.guardada('Grecia 3307')), findsOneWidget);
+    });
+
+    testWidgets('cerrar R·06 mientras guarda: la colportora ve igual la confirmación «Guardado…»', (
+      tester,
+    ) async {
+      final r = await llegar(tester, Estado39.r06Guardando);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      r.montaje.agenda.compuerta!.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text(TextosEntrevista.guardada('Grecia 3307')), findsOneWidget);
+    });
 
     testWidgets('con el guardado trabado y una falla después, el botón vuelve y se reintenta', (
       tester,
@@ -420,21 +428,18 @@ void main() {
       expect(r.montaje.agenda.recibidas, hasLength(1));
     });
 
-    testWidgets(
-      'el reloj atrasado no muestra una duración negativa como «menos de 1 min»',
-      (tester) async {
-        final r = await llegar(tester, Estado39.r06);
-        await tester.binding.handlePopRoute();
-        await tester.pumpAndSettle();
-        r.montaje.reloj = () => DateTime(2026, 10, 23, 14, 10);
-        await tocar(tester, find.byKey(ClavesEntrevista.avisoFijo));
-        await tocar(tester, find.byKey(ClavesEntrevista.finalizar));
+    testWidgets('el reloj atrasado no muestra una duración negativa como «menos de 1 min»', (
+      tester,
+    ) async {
+      final r = await llegar(tester, Estado39.r06);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      r.montaje.reloj = () => DateTime(2026, 10, 23, 14, 10);
+      await tocar(tester, find.byKey(ClavesEntrevista.avisoFijo));
+      await tocar(tester, find.byKey(ClavesEntrevista.finalizar));
 
-        expect(find.text('menos de 1 min'), findsNothing);
-      },
-      // skip: QA #450 — con el reloj atrasado R·06 dice «menos de 1 min» (menor).
-      skip: true,
-    );
+      expect(find.text('menos de 1 min'), findsNothing);
+    });
   });
 
   group('una entrevista que quedó abierta de días atrás', () {

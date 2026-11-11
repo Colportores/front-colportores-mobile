@@ -14,6 +14,12 @@ abstract final class EventoAuditoriaLocal {
   /// de la persona: nunca el valor viejo ni el nuevo (son datos personales, R-UB01) y sin motivo.
   static const personaModificada = 'persona_modificada';
 
+  /// La unión de duplicados que puso la baja `duplicado_de_<A>` de esta ubicación (B) se deshizo
+  /// porque el servidor rechazó su trabajo (#679): `uuid` es B, `motivo` el código del rechazo
+  /// (`UB003`…) y `creado_en` el instante en que se deshizo. Desde ahí la marca de la unión ya no
+  /// cuenta como motivo de una baja de B.
+  static const ubicacionUnionDeshecha = 'ubicacion_union_deshecha';
+
   /// La justificación de «Crear igual» (HU-UBI-001, #282): `uuid` es el `id` de la ubicación nueva
   /// (o la que se está editando y se deja igual, HU-UBI-004), `motivo` lo que escribió el colportor y
   /// `creado_en` el `updated_at` con que quedó guardada. Solo local: no se sincroniza.
@@ -50,6 +56,11 @@ abstract final class EventoAuditoriaLocal {
   /// en el depósito mismo y no se copian acá.
   static const depositoRegistrado = 'deposito_registrado';
 
+  /// Un ticket de tarjeta o de depósito registrado (HU-COB-007, «Audit log local»): `uuid` es el `id` del
+  /// ticket y `creado_en` el instante en que se registró. Sin motivo: el monto, la autorización y la
+  /// tarjeta viajan en el ticket mismo y no se copian acá.
+  static const ticketRegistrado = 'ticket_registrado';
+
   /// La verificación semanal del backup en Drive encontró la cadena entera (HU-SYNC-009). `uuid` es
   /// [uuidBackup] y `creado_en` el instante de la verificación. Sin motivo.
   static const backupIntegridadOk = 'backup_integrity_ok';
@@ -60,6 +71,14 @@ abstract final class EventoAuditoriaLocal {
 
   /// El `uuid` de los eventos del backup: no hay una fila afectada, es el backup en su conjunto.
   static const uuidBackup = 'backup';
+
+  /// Una push remota se descartó porque traía un campo que no es un tipo de evento ni un UUID
+  /// (HU-NOT-003, R-NO02). `uuid` es [uuidPush] y `motivo` los NOMBRES de los campos separados por
+  /// coma, nunca sus valores. Solo local.
+  static const pushDatosPersonales = 'push_pii_detected';
+
+  /// El `uuid` de los eventos de las push: no hay una fila afectada, es la push recibida.
+  static const uuidPush = 'push';
 }
 
 /// Tabla `audit_log` de la DB local cifrada: la auditoría del dispositivo (R-UB09; las HU la llaman

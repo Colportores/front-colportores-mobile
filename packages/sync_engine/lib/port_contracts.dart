@@ -368,6 +368,30 @@ void runJobStoreContract(String nombre, JobStorePort Function() crear) {
         expect(versiones, {enVuelo: 7, pendiente: 7, alta: null, otra: 1});
       });
 
+      test(
+          'la unión de duplicados vuelve tal cual de la cola, y rebaseVersions '
+          'no le pone versión (§6.2)', () async {
+        final cola = crear();
+        await cola.append(SyncJob(
+          clientOpId: 'op-union',
+          entity: 'ubicacion',
+          op: Op.marcarComoDuplicado,
+          payload: const {'duplicada_id': 'u-b', 'conservada_id': 'u-a'},
+          createdAt: _t0,
+          rowPk: 'u-b',
+        ));
+
+        await cola.rebaseVersions('ubicacion', {'u-b': 7});
+
+        final [q] = await cola.claimPending(limit: 10);
+        expect(q.job.op, Op.marcarComoDuplicado);
+        expect(q.job.payload, {'duplicada_id': 'u-b', 'conservada_id': 'u-a'});
+        expect(q.job.rowPk, 'u-b');
+        expect(q.job.syncVersion, isNull);
+        expect(await cola.unsentFor('ubicacion', 'u-b'), isEmpty,
+            reason: 'ya salió');
+      });
+
       test('rebaseVersions no toca lo que ya terminó', () async {
         final cola = crear();
         final id = await cola.append(_deFila('op-1', 'u-1'));

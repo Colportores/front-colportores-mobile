@@ -750,25 +750,30 @@ void main() {
   });
 
   group('AuthRemoteDataSourceSupabase.reenviarVerificacion', () {
-    test('cuando reenvía, llama a resend con type signup y el emailRedirectTo', () async {
-      when(
-        () => auth.resend(
-          email: 'ana@example.com',
-          type: OtpType.signup,
-          emailRedirectTo: ConfigSupabase.redirectBase,
-        ),
-      ).thenAnswer((_) async => ResendResponse());
+    // #679: el enlace reenviado vuelve a `/verificado`, como el del registro; con la base sola la
+    // app no lo reconocía y quedaba en «El enlace expiró».
+    test(
+      'cuando reenvía, llama a resend con type signup y el emailRedirectTo de la verificación',
+      () async {
+        when(
+          () => auth.resend(
+            email: 'ana@example.com',
+            type: OtpType.signup,
+            emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
+          ),
+        ).thenAnswer((_) async => ResendResponse());
 
-      await dataSource().reenviarVerificacion('ana@example.com');
+        await dataSource().reenviarVerificacion('ana@example.com');
 
-      verify(
-        () => auth.resend(
-          email: 'ana@example.com',
-          type: OtpType.signup,
-          emailRedirectTo: ConfigSupabase.redirectBase,
-        ),
-      ).called(1);
-    });
+        verify(
+          () => auth.resend(
+            email: 'ana@example.com',
+            type: OtpType.signup,
+            emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
+          ),
+        ).called(1);
+      },
+    );
 
     test('dado el límite de emails de Supabase, lanza ServidorException con mensaje', () {
       when(

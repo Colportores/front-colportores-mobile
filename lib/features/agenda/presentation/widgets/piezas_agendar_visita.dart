@@ -5,6 +5,7 @@ import '../../../mapa/presentation/widgets/campos_ubicacion.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart';
 import '../../domain/entities/franja_horaria.dart';
 import '../../domain/entities/tipo_agenda.dart';
+import '../formato_agenda.dart' show TextosAgenda;
 import '../formato_agendar_visita.dart';
 import '../textos_agendar_visita.dart';
 
@@ -30,7 +31,14 @@ abstract final class ClavesAgendarVisita {
   static Key franja(FranjaHoraria f) => Key('agendar_franja_${f.codigo}');
   static Key dia(int desdeHoy) => Key('agendar_dia_$desdeHoy');
   static const otroDia = Key('agendar_otro_dia');
+  static const hojaDiaFijo = Key('agendar_hoja_dia_fijo');
   static const diaElegido = Key('agendar_dia_elegido');
+
+  // Vista 39, R·02 y R·03.
+  static const tarjetaFecha = Key('agendar_tarjeta_fecha');
+  static const interruptorEstricta = Key('agendar_estricta');
+  static const campoHoraAcordada = Key('agendar_campo_hora_acordada');
+  static const errorHoraAcordada = Key('agendar_error_hora_acordada');
 }
 
 /// El renglón de con quién y dónde es la visita (23A·01): las iniciales, el nombre y la dirección.
@@ -145,7 +153,8 @@ class _EsqueletoPersona extends StatelessWidget {
   }
 }
 
-/// «TIPO»: Entrevista o Cobranza.
+/// «TIPO»: Entrevista o Cobranza. La cita de una entrega (HU-VEN-003) se ve con su tipo y no se puede
+/// cambiar a otro: nace de una venta y su tipo no es una elección de quien la edita.
 class SelectorTipoAgenda extends StatelessWidget {
   const SelectorTipoAgenda({
     super.key,
@@ -183,15 +192,26 @@ class SelectorTipoAgenda extends StatelessWidget {
                   : ColoresAlta.tinta,
             ),
           ),
-          segments: const [
-            ButtonSegment(
-              value: TipoAgenda.entrevista,
-              label: Text(TextosAgendarVisita.entrevista),
-            ),
-            ButtonSegment(value: TipoAgenda.cobranza, label: Text(TextosAgendarVisita.cobranza)),
-          ],
+          // Una cita de entrega (HU-VEN-003) no cambia de tipo: se ve sola, elegida. Con tres
+          // segmentos, a 2,0× las etiquetas se parten a la mitad (QA #433); con uno entra siempre.
+          segments: tipo == TipoAgenda.entrega
+              ? const [
+                  ButtonSegment(value: TipoAgenda.entrega, label: Text(TextosAgenda.tagEntrega)),
+                ]
+              : const [
+                  ButtonSegment(
+                    value: TipoAgenda.entrevista,
+                    label: Text(TextosAgendarVisita.entrevista),
+                  ),
+                  ButtonSegment(
+                    value: TipoAgenda.cobranza,
+                    label: Text(TextosAgendarVisita.cobranza),
+                  ),
+                ],
           selected: {tipo},
-          onSelectionChanged: bloqueado || alCambiar == null ? null : (s) => alCambiar!(s.first),
+          onSelectionChanged: bloqueado || alCambiar == null || tipo == TipoAgenda.entrega
+              ? null
+              : (s) => alCambiar!(s.first),
         ),
       ],
     );
@@ -201,11 +221,28 @@ class SelectorTipoAgenda extends StatelessWidget {
 /// «DÍA Y HORA»: el valor elegido; al tocarlo se abre la hoja «Día y hora» (23A·02). Con [error] (23A·03)
 /// el borde y el texto se ponen rojos y el aviso va debajo.
 class CampoDiaYHora extends StatelessWidget {
-  const CampoDiaYHora({super.key, required this.valor, required this.alTocar, this.error});
+  const CampoDiaYHora({
+    super.key,
+    required this.valor,
+    required this.alTocar,
+    this.error,
+    this.etiqueta = TextosAgendarVisita.etiquetaDiaYHora,
+    this.lector = TextosAgendarVisita.lectorDiaYHora,
+    this.claveCampo = ClavesAgendarVisita.campoDiaYHora,
+    this.claveError = ClavesAgendarVisita.errorHora,
+  });
 
   final String valor;
   final VoidCallback? alTocar;
   final String? error;
+
+  /// El rótulo del campo: «DÍA Y HORA», o «HORA ACORDADA» con la entrevista estricta (R·03).
+  final String etiqueta;
+
+  /// Cómo lo lee el lector de pantalla, dado [valor].
+  final String Function(String valor) lector;
+  final Key claveCampo;
+  final Key claveError;
 
   @override
   Widget build(BuildContext context) {
@@ -215,11 +252,11 @@ class CampoDiaYHora extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const ExcludeSemantics(child: EtiquetaCampoUbicacion(TextosAgendarVisita.etiquetaDiaYHora)),
+        ExcludeSemantics(child: EtiquetaCampoUbicacion(etiqueta)),
         const SizedBox(height: 6),
         Semantics(
           button: true,
-          label: TextosAgendarVisita.lectorDiaYHora(valor),
+          label: lector(valor),
           excludeSemantics: true,
           onTap: alTocar,
           child: Material(
@@ -229,7 +266,7 @@ class CampoDiaYHora extends StatelessWidget {
               side: BorderSide(color: color, width: 1.5),
             ),
             child: InkWell(
-              key: ClavesAgendarVisita.campoDiaYHora,
+              key: claveCampo,
               onTap: alTocar,
               customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: ConstrainedBox(
@@ -261,12 +298,146 @@ class CampoDiaYHora extends StatelessWidget {
             liveRegion: true,
             child: Text(
               error!,
-              key: ClavesAgendarVisita.errorHora,
+              key: claveError,
               style: theme.textTheme.bodySmall?.copyWith(color: ColoresAlta.rojo),
             ),
           ),
         ],
       ],
+    );
+  }
+}
+
+/// La tarjeta de la fecha de la vista 39: «SUGERIDA» (R·02) con las entrevistas cercanas que la
+/// explican, o «FECHA» (R·03) con la entrevista estricta, donde la hora va aparte. Al tocarla se abre la
+/// hoja «Día y hora»; «Cambiar» es parte de la tarjeta, no un segundo destino.
+class TarjetaFechaAgendar extends StatelessWidget {
+  const TarjetaFechaAgendar({
+    super.key,
+    required this.etiqueta,
+    required this.titulo,
+    this.detalle,
+    required this.alTocar,
+  });
+
+  /// «SUGERIDA» o «FECHA».
+  final String etiqueta;
+
+  /// «Jueves 24/10 · 10:00 a 11:30» o «Jueves 24/10».
+  final String titulo;
+
+  /// «2 entrevistas a menos de 300 m ese día»; `null` en R·03.
+  final String? detalle;
+
+  /// `null`: bloqueada (se está guardando).
+  final VoidCallback? alTocar;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final gris = theme.extension<ColoresColportaje>()?.gris ?? ColoresAlta.gris;
+    return Semantics(
+      button: true,
+      label: TextosAgendarVisita.lectorTarjetaFecha(etiqueta, titulo, detalle),
+      excludeSemantics: true,
+      onTap: alTocar,
+      child: Material(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: ColoresAlta.grisBorde),
+        ),
+        child: InkWell(
+          key: ClavesAgendarVisita.tarjetaFecha,
+          onTap: alTocar,
+          customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE0B43C),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: const Text(
+                      '◷',
+                      style: TextStyle(color: Color(0xFF0E1A2B), fontSize: 16),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          etiqueta,
+                          style: const TextStyle(
+                            fontFamily: 'JetBrainsMono',
+                            fontSize: 10,
+                            letterSpacing: 1.6,
+                            color: ColoresAlta.gris,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(titulo, style: theme.textTheme.titleMedium),
+                        if (detalle != null) ...[
+                          const SizedBox(height: 2),
+                          Text(detalle!, style: theme.textTheme.bodySmall?.copyWith(color: gris)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    TextosAgendarVisita.cambiar,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: alTocar == null ? gris : ColoresAlta.azul,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// El interruptor «Entrevista estricta» (R·02 y R·03): hora fija acordada con la persona. Prendido, la
+/// hora exacta reemplaza a la franja.
+class InterruptorEstricta extends StatelessWidget {
+  const InterruptorEstricta({super.key, required this.valor, required this.alCambiar});
+
+  final bool valor;
+
+  /// `null`: bloqueado (se está guardando).
+  final ValueChanged<bool>? alCambiar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: ColoresAlta.grisBorde),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SwitchListTile(
+        key: ClavesAgendarVisita.interruptorEstricta,
+        value: valor,
+        onChanged: alCambiar,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+        title: const Text(TextosAgendarVisita.estricta),
+        subtitle: const Text(TextosAgendarVisita.estrictaAyuda),
+      ),
     );
   }
 }
@@ -333,18 +504,29 @@ const _formaHoja = RoundedRectangleBorder(
 );
 
 /// La hoja «Día y hora» (23A·02): los próximos días, «Otro día…» y la hora de a 5 minutos. Devuelve el
-/// instante elegido al tocar «Listo», o `null` si se la cerró sin confirmar (no cambia nada).
+/// instante elegido al tocar «Listo», o `null` si se la cerró sin confirmar (no cambia nada). Con
+/// [conHora] en `false` (entrevista estricta, R·03) solo se elige el día y la hora de [inicial] queda
+/// como está: la hora se escribe en «Hora acordada».
 Future<DateTime?> mostrarHojaDiaYHora(
   BuildContext context, {
   required DateTime inicial,
   required DateTime ahora,
+  bool conHora = true,
+  bool conDia = true,
+  bool sinHoyNiManana = false,
 }) => showModalBottomSheet<DateTime>(
   context: context,
   isScrollControlled: true,
   useSafeArea: true,
   backgroundColor: Colors.white,
   shape: _formaHoja,
-  builder: (_) => HojaDiaYHora(inicial: inicial, ahora: ahora),
+  builder: (_) => HojaDiaYHora(
+    inicial: inicial,
+    ahora: ahora,
+    conHora: conHora,
+    conDia: conDia,
+    sinHoyNiManana: sinHoyNiManana,
+  ),
 );
 
 /// Cuántos minutos suben o bajan los botones − y + de la hora.
@@ -354,10 +536,28 @@ const pasoDeLaHora = 5;
 const diasDeAtajo = 5;
 
 class HojaDiaYHora extends StatefulWidget {
-  const HojaDiaYHora({super.key, required this.inicial, required this.ahora});
+  const HojaDiaYHora({
+    super.key,
+    required this.inicial,
+    required this.ahora,
+    this.conHora = true,
+    this.conDia = true,
+    this.sinHoyNiManana = false,
+  });
 
   final DateTime inicial;
   final DateTime ahora;
+
+  /// Si la hoja pide también la hora; `false`: solo el día.
+  final bool conHora;
+
+  /// Si la hoja pide el día; `false`: solo la hora del día de [inicial] («Hoy» y «Mañana» de «¿Cuándo
+  /// volvés a cobrar?», 42B·01B, que ya dicen el día).
+  final bool conDia;
+
+  /// Sin los chips «Hoy» y «Mañana», que ya están en la pregunta de quien abre la hoja («Otro día» de
+  /// «¿Cuándo volvés a cobrar?», 42B·01C): los atajos arrancan pasado mañana.
+  final bool sinHoyNiManana;
 
   @override
   State<HojaDiaYHora> createState() => _HojaDiaYHoraState();
@@ -371,7 +571,20 @@ class _HojaDiaYHoraState extends State<HojaDiaYHora> {
 
   DateTime _masDias(int n) => DateTime(_hoy.year, _hoy.month, _hoy.day + n);
 
-  void _moverHora(int delta) => setState(() => _minutos = (_minutos + delta) % (24 * 60));
+  /// Sube o baja la hora y, al pasar la medianoche, el día con ella: de 23:55 a 00:00 es el día que
+  /// sigue, no el mismo (la cita quedaría 24 h antes de lo que pidió). Hacia atrás vale lo mismo,
+  /// salvo antes de las 00:00 de hoy, donde la hora se queda: no se agenda en el pasado.
+  void _moverHora(int delta) {
+    const dia = 24 * 60;
+    final total = _minutos + delta;
+    final saltoDeDia = total >= dia ? 1 : (total < 0 ? -1 : 0);
+    final nuevoDia = DateTime(_dia.year, _dia.month, _dia.day + saltoDeDia);
+    if (nuevoDia.isBefore(_hoy)) return;
+    setState(() {
+      _dia = nuevoDia;
+      _minutos = ((total % dia) + dia) % dia;
+    });
+  }
 
   Future<void> _elegirOtroDia() async {
     final elegido = await showDatePicker(
@@ -396,7 +609,10 @@ class _HojaDiaYHoraState extends State<HojaDiaYHora> {
     final theme = Theme.of(context);
     final gris = theme.extension<ColoresColportaje>()?.gris ?? ColoresAlta.gris;
     final esquema = theme.colorScheme;
-    final atajos = [for (var i = 0; i < diasDeAtajo; i++) _masDias(i)];
+    final desde = widget.sinHoyNiManana ? 2 : 0;
+    // Sin «Hoy» ni «Mañana» quedan cuatro días (de pasado mañana en adelante), como dibuja 42B·01C.
+    final cuantos = widget.sinHoyNiManana ? diasDeAtajo - 1 : diasDeAtajo;
+    final atajos = [for (var i = desde; i < desde + cuantos; i++) _masDias(i)];
     final fueraDeAtajo = !atajos.any((d) => FormatoAgendarVisita.mismoDia(d, _dia));
     final franja = FranjaHoraria.sugeridaPara(_minutos);
 
@@ -433,95 +649,118 @@ class _HojaDiaYHoraState extends State<HojaDiaYHora> {
           children: [
             Semantics(
               header: true,
-              child: Text(TextosAgendarVisita.hojaTitulo, style: theme.textTheme.titleLarge),
+              child: Text(
+                !widget.conDia
+                    ? TextosAgendarVisita.hojaTituloHora
+                    : widget.conHora
+                    ? TextosAgendarVisita.hojaTitulo
+                    : TextosAgendarVisita.hojaTituloDia,
+                style: theme.textTheme.titleLarge,
+              ),
             ),
-            const SizedBox(height: 16),
-            const ExcludeSemantics(child: EtiquetaCampoUbicacion(TextosAgendarVisita.etiquetaDia)),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (var i = 0; i < atajos.length; i++)
-                  chipDia(
-                    switch (i) {
-                      0 => TextosAgendarVisita.hoy,
-                      1 => TextosAgendarVisita.manana,
-                      _ => FormatoAgendarVisita.diaCorto(atajos[i]),
-                    },
-                    atajos[i],
-                    ClavesAgendarVisita.dia(i),
+            if (!widget.conDia) ...[
+              const SizedBox(height: 4),
+              Text(
+                FormatoAgendarVisita.diaLargo(_dia),
+                key: ClavesAgendarVisita.hojaDiaFijo,
+                style: theme.textTheme.bodyMedium?.copyWith(color: gris),
+              ),
+            ],
+            if (widget.conDia) ...[
+              const SizedBox(height: 16),
+              const ExcludeSemantics(
+                child: EtiquetaCampoUbicacion(TextosAgendarVisita.etiquetaDia),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (var i = 0; i < atajos.length; i++)
+                    chipDia(
+                      switch (i + desde) {
+                        0 => TextosAgendarVisita.hoy,
+                        1 => TextosAgendarVisita.manana,
+                        _ => FormatoAgendarVisita.diaCorto(atajos[i]),
+                      },
+                      atajos[i],
+                      ClavesAgendarVisita.dia(i + desde),
+                    ),
+                  if (fueraDeAtajo)
+                    chipDia(
+                      '${FormatoAgendarVisita.diaCorto(_dia)}/${_dia.month}',
+                      _dia,
+                      ClavesAgendarVisita.diaElegido,
+                    ),
+                  ActionChip(
+                    key: ClavesAgendarVisita.otroDia,
+                    label: const Text(TextosAgendarVisita.otroDia),
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: ColoresAlta.grisBorde),
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                    onPressed: _elegirOtroDia,
                   ),
-                if (fueraDeAtajo)
-                  chipDia(
-                    '${FormatoAgendarVisita.diaCorto(_dia)}/${_dia.month}',
-                    _dia,
-                    ClavesAgendarVisita.diaElegido,
+                ],
+              ),
+            ],
+            if (widget.conHora) ...[
+              const SizedBox(height: 20),
+              const ExcludeSemantics(
+                child: EtiquetaCampoUbicacion(TextosAgendarVisita.etiquetaHora),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton.outlined(
+                    key: ClavesAgendarVisita.hojaMenos,
+                    tooltip: TextosAgendarVisita.menosHora,
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                    onPressed: () => _moverHora(-pasoDeLaHora),
+                    icon: const Icon(Icons.remove),
                   ),
-                ActionChip(
-                  key: ClavesAgendarVisita.otroDia,
-                  label: const Text(TextosAgendarVisita.otroDia),
-                  backgroundColor: Colors.white,
-                  side: const BorderSide(color: ColoresAlta.grisBorde),
-                  materialTapTargetSize: MaterialTapTargetSize.padded,
-                  onPressed: _elegirOtroDia,
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            const ExcludeSemantics(child: EtiquetaCampoUbicacion(TextosAgendarVisita.etiquetaHora)),
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton.outlined(
-                  key: ClavesAgendarVisita.hojaMenos,
-                  tooltip: TextosAgendarVisita.menosHora,
-                  constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                  onPressed: () => _moverHora(-pasoDeLaHora),
-                  icon: const Icon(Icons.remove),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: InkWell(
-                    key: ClavesAgendarVisita.hojaHora,
-                    onTap: _escribirLaHora,
-                    borderRadius: BorderRadius.circular(12),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minWidth: 96, minHeight: 48),
-                      child: Center(
-                        child: Text(
-                          FormatoAgendarVisita.minutosComoHora(_minutos),
-                          semanticsLabel:
-                              'Hora ${FormatoAgendarVisita.minutosComoHora(_minutos)}. Tocá para escribirla',
-                          style: const TextStyle(
-                            fontFamily: 'JetBrainsMono',
-                            fontSize: 20,
-                            fontWeight: FontWeight.w500,
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: InkWell(
+                      key: ClavesAgendarVisita.hojaHora,
+                      onTap: _escribirLaHora,
+                      borderRadius: BorderRadius.circular(12),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minWidth: 96, minHeight: 48),
+                        child: Center(
+                          child: Text(
+                            FormatoAgendarVisita.minutosComoHora(_minutos),
+                            semanticsLabel:
+                                'Hora ${FormatoAgendarVisita.minutosComoHora(_minutos)}. Tocá para escribirla',
+                            style: const TextStyle(
+                              fontFamily: 'JetBrainsMono',
+                              fontSize: 20,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.outlined(
-                  key: ClavesAgendarVisita.hojaMas,
-                  tooltip: TextosAgendarVisita.masHora,
-                  constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                  onPressed: () => _moverHora(pasoDeLaHora),
-                  icon: const Icon(Icons.add),
+                  const SizedBox(width: 8),
+                  IconButton.outlined(
+                    key: ClavesAgendarVisita.hojaMas,
+                    tooltip: TextosAgendarVisita.masHora,
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                    onPressed: () => _moverHora(pasoDeLaHora),
+                    icon: const Icon(Icons.add),
+                  ),
+                ],
+              ),
+              if (franja != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  TextosAgendarVisita.franjaSugerida(franja.etiqueta),
+                  key: ClavesAgendarVisita.hojaFranja,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: gris),
                 ),
               ],
-            ),
-            if (franja != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                TextosAgendarVisita.franjaSugerida(franja.etiqueta),
-                key: ClavesAgendarVisita.hojaFranja,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(color: gris),
-              ),
             ],
             const SizedBox(height: 20),
             FilledButton(

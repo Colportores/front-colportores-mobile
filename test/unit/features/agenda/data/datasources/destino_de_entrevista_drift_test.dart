@@ -30,7 +30,7 @@ void main() {
 
   Future<DestinoDeEntrevista?> resolver({
     String espacioId = 'esp-1',
-    String espacioPersonaId = 'ep-1',
+    String? espacioPersonaId = 'ep-1',
   }) => destino.resolver(espacioId: espacioId, espacioPersonaId: espacioPersonaId);
 
   setUp(() async {
@@ -64,6 +64,20 @@ void main() {
       await resolver(),
       const DestinoDeEntrevista(espacioId: 'esp-que-quedo', espacioPersonaId: 'ep-1'),
     );
+  });
+
+  test('una entrevista sin persona (#669): la visita queda de la casa, sin persona', () async {
+    await sembrarPersona();
+
+    expect(await resolver(espacioPersonaId: null), const DestinoDeEntrevista(espacioId: 'esp-1'));
+  });
+
+  test('una entrevista sin persona en una casa que ya no está: no hay dónde guardarla', () async {
+    await (db.update(
+      db.espacios,
+    )..where((e) => e.id.equals('esp-1'))).write(EspaciosCompanion(deletedAt: Value(t0)));
+
+    expect(await resolver(espacioPersonaId: null), isNull);
   });
 
   test('la persona dada de baja: la visita queda de la casa, sin persona', () async {

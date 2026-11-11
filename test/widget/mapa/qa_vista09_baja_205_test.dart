@@ -127,7 +127,9 @@ Future<_Escenario> _hojaEn(
         _Hoja.bloqueadaCobranza ||
         _Hoja.bloqueadaCobranzaSinIr => const PendientesUbicacion(cobranzaPendiente: _cobranza),
         _Hoja.bloqueadaAjena => const PendientesUbicacion(tieneVentas: true),
-        _Hoja.segundaConfirmacion => const PendientesUbicacion(visitasPropiasPendientes: 2),
+        _Hoja.segundaConfirmacion => const PendientesUbicacion(
+          entrevistasAgendadas: ['ag-1', 'ag-2'],
+        ),
         _ => PendientesUbicacion.ninguno,
       });
   final u = ubicacionGuardada();
@@ -443,8 +445,8 @@ void main() {
       expect(find.text('Todavía no se puede dar de baja'), findsOneWidget);
       expect(
         find.text(
-          r'Tiene una cobranza pendiente de $U 1.450 (2.ª cuota). Registrá el cobro antes de '
-          'darla de baja.',
+          r'Tiene una cobranza pendiente de $U 1.450 (2.ª cuota). Una casa con ventas no se puede '
+          'dar de baja. Si ya no existe, cobrá lo pendiente y avisale a tu coordinador.',
         ),
         findsOneWidget,
       );
@@ -457,22 +459,19 @@ void main() {
       await _hojaEn(tester, _Hoja.bloqueadaAjena);
       expect(
         find.text(
-          'No podés dar de baja esta casa porque tiene ventas o visitas de otro colportor. Si ya '
-          'no existe, avisale a tu coordinador.',
+          'No podés dar de baja esta casa porque tiene ventas. Si ya no existe, avisale a tu '
+          'coordinador.',
         ),
         findsOneWidget,
       );
     });
 
-    testWidgets('HU: la segunda confirmación dice el literal con las visitas pendientes', (
+    testWidgets('HU: la segunda confirmación dice el literal con las entrevistas agendadas', (
       tester,
     ) async {
       await _hojaEn(tester, _Hoja.segundaConfirmacion);
       expect(
-        find.text(
-          'Esta ubicación tiene 2 visitas pendientes. Si la das de baja, no podrás registrar '
-          'nuevas visitas, pero el historial se conserva.',
-        ),
+        find.text('Esta casa tiene 2 entrevistas agendadas. Si la das de baja, se cancelan.'),
         findsOneWidget,
       );
     });

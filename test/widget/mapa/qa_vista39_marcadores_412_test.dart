@@ -9,6 +9,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:colportores_mapa/colportores_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/marcador_cercano.dart';
@@ -147,9 +148,11 @@ void main() {
 
     test('dada la franja clara de «Entrega y pago», cuando se la compara con el azul del fondo, '
         'entonces sigue viéndose (más de 2:1) y es la misma de la lista', () {
-      expect(ColoresLista.azulClaro, const Color(0xFF4D76B1));
-      expect(_contraste(ColoresLista.azulClaro, ColoresLista.azul), greaterThan(2));
-      expect(_contraste(Colors.white, ColoresLista.azulClaro), greaterThanOrEqualTo(4.5));
+      // Desde #673 sale del token de lib-mapa (la decisión de lib-mapa#4: sigue en #4D76B1).
+      final azulClaro = Color(EstadosDeCasa.entregaYPago.franjas!.clara);
+      expect(azulClaro, const Color(0xFF4D76B1));
+      expect(_contraste(azulClaro, ColoresLista.azul), greaterThan(2));
+      expect(_contraste(Colors.white, azulClaro), greaterThanOrEqualTo(4.5));
     });
   });
 

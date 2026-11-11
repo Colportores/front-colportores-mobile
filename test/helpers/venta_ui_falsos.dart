@@ -9,6 +9,7 @@ import 'package:colportores_mobile/features/catalogo/presentation/providers/prec
 import 'package:colportores_mobile/features/ventas/domain/entities/cliente_de_la_venta.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/nueva_venta.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/precios_de_la_venta.dart';
+import 'package:colportores_mobile/features/ventas/domain/entities/venta_abierta.dart';
 import 'package:colportores_mobile/features/ventas/domain/repositories/fuente_de_precios_de_la_venta.dart';
 import 'package:colportores_mobile/features/ventas/domain/repositories/venta_repository.dart';
 import 'package:colportores_mobile/features/ventas/presentation/pages/nueva_venta_page.dart';
@@ -46,35 +47,35 @@ CatalogoLocal catalogoDeVentas({int libros = 5}) {
       const ProductoDelCatalogo(
         id: 'p-camino',
         nombre: 'El camino a Cristo',
-        tipo: TipoDeProducto.misionero,
+        categoria: CategoriaDeProducto.misioneros,
         esMisionero: true,
       ),
       const ProductoDelCatalogo(
         id: 'p-vida-feliz',
         nombre: 'Vida Feliz',
-        tipo: TipoDeProducto.revista,
+        categoria: CategoriaDeProducto.revistas,
       ),
       const ProductoDelCatalogo(
         id: 'p-deseado',
         nombre: 'El Deseado de todas las gentes',
-        tipo: TipoDeProducto.libro,
+        categoria: CategoriaDeProducto.espirituales,
       ),
       const ProductoDelCatalogo(
         id: 'p-gran-esperanza',
         nombre: 'La gran esperanza',
-        tipo: TipoDeProducto.misionero,
+        categoria: CategoriaDeProducto.misioneros,
         esMisionero: true,
       ),
       const ProductoDelCatalogo(
         id: 'p-nuestra-salud',
         nombre: 'Nuestra Salud',
-        tipo: TipoDeProducto.revista,
+        categoria: CategoriaDeProducto.revistas,
       ),
       for (var i = 0; i < libros; i++)
         ProductoDelCatalogo(
           id: 'p-libro-$i',
           nombre: i < nombres.length ? nombres[i] : 'Libro ${i.toString().padLeft(4, '0')}',
-          tipo: TipoDeProducto.libro,
+          categoria: i.isEven ? CategoriaDeProducto.bonificables : CategoriaDeProducto.espirituales,
           esBonificable: i.isEven,
         ),
     ],
@@ -175,7 +176,10 @@ final class FuenteDePreciosDeLaVentaFalsa implements FuenteDePreciosDeLaVenta {
   Completer<void>? bloqueo;
 
   @override
-  Future<Either<Failure, PreciosDeLaVenta>> leer(String espacioPersonaId) async {
+  Future<Either<Failure, PreciosDeLaVenta>> leer({
+    required String colportorId,
+    required String espacioPersonaId,
+  }) async {
     lecturas++;
     final espera = bloqueo;
     if (espera != null) await espera.future;
@@ -189,14 +193,22 @@ final class FuenteDePreciosDeLaVentaFalsa implements FuenteDePreciosDeLaVenta {
 
 /// Todo lo que el test controla de la pantalla de la venta.
 final class EntornoDeVenta {
-  EntornoDeVenta({CatalogoLocal? catalogo, PreciosDeLaVenta? precios, VentasEnMemoria? ventas})
-    : repo = ConsultaDePreciosFalsa(catalogo ?? catalogoDeVentas()),
-      fuente = FuenteDePreciosDeLaVentaFalsa(precios),
-      ventas = ventas ?? VentasEnMemoria();
+  EntornoDeVenta({
+    CatalogoLocal? catalogo,
+    PreciosDeLaVenta? precios,
+    VentasEnMemoria? ventas,
+    VentaQueCreceEnMemoria? crece,
+  }) : repo = ConsultaDePreciosFalsa(catalogo ?? catalogoDeVentas()),
+       fuente = FuenteDePreciosDeLaVentaFalsa(precios),
+       ventas = ventas ?? VentasEnMemoria(),
+       crece = crece ?? VentaQueCreceEnMemoria();
 
   final ConsultaDePreciosFalsa repo;
   final FuenteDePreciosDeLaVentaFalsa fuente;
   final VentasEnMemoria ventas;
+
+  /// «Venta crece» (#693): las ventas abiertas y lo que se les suma.
+  final VentaQueCreceEnMemoria crece;
   DateTime ahora = DateTime.utc(2026, 10, 28, 13);
   var _ids = 0;
 
@@ -207,6 +219,7 @@ final class EntornoDeVenta {
     consultaDePreciosRepositoryProvider.overrideWithValue(repo),
     fuenteDePreciosDeLaVentaProvider.overrideWithValue(fuente),
     ventaRepositoryProvider.overrideWithValue(ventas),
+    ventaQueCreceRepositoryProvider.overrideWithValue(crece),
     relojVentaProvider.overrideWithValue(() => ahora),
     generadorIdVentaProvider.overrideWithValue(() {
       final id = 'id-${++_ids}';
@@ -232,6 +245,7 @@ Future<Salida> montarNuevaVenta(
   ClienteDeLaVenta cliente = maria,
   AntesDeGuardarLaVenta? antesDeGuardar,
   bool abrir = true,
+  VentaAbierta? creceSobre,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -254,7 +268,11 @@ Future<Salida> montarNuevaVenta(
                 onPressed: () async {
                   final g = await Navigator.of(context).push(
                     NuevaVentaPage.ruta(
-                      argumentos: ArgumentosDeVenta(colportorId: 'col-1', cliente: cliente),
+                      argumentos: ArgumentosDeVenta(
+                        colportorId: 'col-1',
+                        cliente: cliente,
+                        creceSobre: creceSobre,
+                      ),
                       antesDeGuardar: antesDeGuardar,
                     ),
                   );

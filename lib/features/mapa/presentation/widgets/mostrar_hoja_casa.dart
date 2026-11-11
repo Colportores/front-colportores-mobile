@@ -28,6 +28,7 @@ Future<void> mostrarHojaCasa(
   required String colportorId,
   required ItemListaUbicacion item,
   FutureOr<void> Function(ItemListaUbicacion item)? alReactivar,
+  ValueChanged<String>? alAbrirOtra,
 }) => showModalBottomSheet<void>(
   context: context,
   isScrollControlled: true,
@@ -39,8 +40,12 @@ Future<void> mostrarHojaCasa(
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) =>
-      _HojaCasaDeLaLista(colportorId: colportorId, inicial: item, alReactivar: alReactivar),
+  builder: (_) => _HojaCasaDeLaLista(
+    colportorId: colportorId,
+    inicial: item,
+    alReactivar: alReactivar,
+    alAbrirOtra: alAbrirOtra,
+  ),
 );
 
 class _HojaCasaDeLaLista extends ConsumerWidget {
@@ -48,11 +53,13 @@ class _HojaCasaDeLaLista extends ConsumerWidget {
     required this.colportorId,
     required this.inicial,
     required this.alReactivar,
+    required this.alAbrirOtra,
   });
 
   final String colportorId;
   final ItemListaUbicacion inicial;
   final FutureOr<void> Function(ItemListaUbicacion item)? alReactivar;
+  final ValueChanged<String>? alAbrirOtra;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -78,6 +85,13 @@ class _HojaCasaDeLaLista extends ConsumerWidget {
             : () => alReactivar!(item),
         arriba: arriba,
         colportorId: colportorId,
+        // Cierra esta hoja y recién después abre la otra: un `maybePop` pendiente cerraría la nueva.
+        alAbrirOtra: alAbrirOtra == null
+            ? null
+            : (id) {
+                Navigator.of(context).pop();
+                alAbrirOtra!(id);
+              },
       ),
     );
   }

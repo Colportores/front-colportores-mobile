@@ -6,10 +6,10 @@ import '../../../../core/sync/encolador_sync.dart';
 import '../../../mapa/domain/services/house_status_updater.dart';
 import '../../../ventas/data/datasources/estado_de_devolucion.dart';
 import '../../../ventas/data/models/venta_model.dart';
+import '../../../ventas/domain/entities/venta_para_devolver.dart' show CuentaDeLaVenta;
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../domain/entities/cobranza.dart';
 import '../../domain/entities/venta_con_saldo.dart';
-import '../../domain/services/reparto_de_cuotas.dart';
 import '../models/cobranza_model.dart';
 import 'cobro_valido.dart';
 import 'cuotas_local_data_source_drift.dart';
@@ -43,6 +43,25 @@ final class CobroFechaAnteriorException extends CobroRechazadoException {
 
   @override
   String toString() => 'CobroFechaAnteriorException';
+}
+
+/// Una venta viva con sus cuentas ([CuentaDeLaVenta]) y a quién se le vendió.
+final class VentaConCuenta {
+  const VentaConCuenta({
+    required this.ventaId,
+    required this.espacioPersonaId,
+    required this.fecha,
+    required this.cuenta,
+  });
+
+  final String ventaId;
+
+  /// El vínculo persona-espacio de la venta (de ahí sale el cliente).
+  final String espacioPersonaId;
+
+  /// Cuándo se hizo la venta.
+  final DateTime fecha;
+  final CuentaDeLaVenta cuenta;
 }
 
 /// Lee y escribe los cobros en las tablas `cobranza` y `venta` de la DB cifrada.
@@ -99,20 +118,15 @@ final class CobranzaLocalDataSourceDrift {
       throw const CobroFechaAnteriorException();
     }
 
-    // Con un plan de cuotas, el cobro lleva el número de la primera cuota a la que va (HU-COB-004).
-    final plan = await _cuotas.leerPlanDe(venta);
-    final numeroCuota =
-        cobro.numeroCuota ??
-        RepartoDeCuotas.aplicarPago(plan.cuotas, cobro.montoCentavos).primeraCuota;
-    final guardado = numeroCuota == cobro.numeroCuota ? cobro : cobro.conNumeroCuota(numeroCuota);
-
-    await _db.into(_db.cobranzas).insert(_aFila(guardado));
-    await _encolador.encolar('cobranza', OperacionSync.insert, CobranzaModel.toJson(guardado));
+    // El cobro no guarda a qué cuota va (decisión del 03/11, #608): qué cuotas cubrió se calcula con
+    // los cobros y las cuotas (`RepartoDeCuotas.estadoDe`).
+    await _db.into(_db.cobranzas).insert(_aFila(cobro));
+    await _encolador.encolar('cobranza', OperacionSync.insert, CobranzaModel.toJson(cobro));
     // Las cuotas que este cobro cubre pasan a CUMPLIDA y suben por el motor, en la misma transacción.
-    await _cuotas.cerrarLasCubiertas(venta.id, ahora: guardado.auditoria.updatedAt);
-    await _recalcular(venta.espacioPersonaId, guardado);
+    await _cuotas.cerrarLasCubiertas(venta.id, ahora: cobro.auditoria.updatedAt);
+    await _recalcular(venta.espacioPersonaId, cobro);
 
-    return CobroRegistrado(cobranza: guardado, venta: await _conSaldo(venta));
+    return CobroRegistrado(cobranza: cobro, venta: await _conSaldo(venta));
   });
 
   /// Ver [CobranzaRepository.ventaConSaldo].
@@ -153,11 +167,36 @@ final class CobranzaLocalDataSourceDrift {
     return salida;
   }
 
+  /// El día de la cuota que toca de cada una de [personaIds] (la línea «Debe $ 1.200 · cuota sáb 26/10»
+  /// de la hoja de la casa, HU-COB-005): una por persona, sumando las ventas de todos sus vínculos
+  /// vivos. De las cuotas todavía sin cubrir queda la de fecha más temprana: si alguna ya venció, la
+  /// vencida más vieja; si no, la abierta más próxima (decisión P2 de #402). Solo cuentan las ventas
+  /// vivas que todavía se deben (con las devoluciones adentro, la misma fórmula del saldo): la cita
+  /// pendiente de una venta ya saldada no es una cuota que cobrar. Quien no tiene plan, o no tiene
+  /// ninguna cuota abierta, no figura.
+  Future<Map<String, DateTime>> proximaCuotaPorPersona(Iterable<String> personaIds) async {
+    final salida = <String, DateTime>{};
+    for (final personaId in personaIds) {
+      final filas = await _db
+          .customSelect('$_sqlVentas$_cortePersona', variables: [Variable<String>(personaId)])
+          .get();
+      final saldos = await _saldoDeCadaVenta(filas);
+      for (final entrada in saldos.entries) {
+        if (entrada.value <= 0) continue;
+        final fecha = await _cuotas.proximaCuotaAbiertaDe(entrada.key);
+        if (fecha == null) continue;
+        final actual = salida[personaId];
+        if (actual == null || fecha.isBefore(actual)) salida[personaId] = fecha;
+      }
+    }
+    return salida;
+  }
+
   // ---- Saldo pendiente reactivo (HU-COB-005) ----------------------------------------------------
   //
   // `saldo = lo que el cliente se queda − lo que ya pagó`, por venta, nunca negativo, con las
   // devoluciones (HU-VEN-004) adentro: se queda con = monto de la venta − lo devuelto; ya pagó = cobros
-  // válidos − lo reembolsado. Los cortes suman el saldo de cada venta viva. Una sola fórmula
+  // válidos. Los cortes suman el saldo de cada venta viva. Una sola fórmula
   // ([CuentaDeLaVenta]) para los tres cortes, para [saldosPorPersona], para la venta suelta
   // ([_conSaldo]) y para el color de la casa. Cada `Stream` emite el valor de ahora al suscribirse y uno
   // nuevo solo si cambió, cuando se registra, se da de baja o llega por el pull cualquier venta, cobro o
@@ -221,26 +260,64 @@ final class CobranzaLocalDataSourceDrift {
     return _sumarSaldos(filas, hasta: hasta);
   }
 
+  /// Las cuentas de cada venta viva del colportor [colportorId] (la de la fórmula [CuentaDeLaVenta]),
+  /// con a quién se le vendió y cuándo: de acá salen el saldo de cada cliente y lo que se le debe en
+  /// el detalle de Mi plata (HU-CTA-003). La suma de sus saldos es [saldoTotalDe].
+  Future<List<VentaConCuenta>> cuentasDeLasVentasDe(String colportorId) async {
+    final filas = await _db
+        .customSelect(
+          'SELECT v.id AS id, v.espacio_persona_id AS ep, v.fecha AS fecha, '
+          'v.monto_total AS monto, COALESCE('
+          '(SELECT SUM(c.monto) FROM cobranza c WHERE c.venta_id = v.id AND ${CobroValido.sql}), 0) '
+          'AS cobrado FROM venta v WHERE v.deleted_at IS NULL AND $_corteColportor '
+          'ORDER BY v.fecha, v.id',
+          variables: [Variable<String>(colportorId)],
+        )
+        .get();
+    final resumenes = await EstadoDeDevolucion.resumenesDe(_db, [
+      for (final fila in filas) fila.read<String>('id'),
+    ]);
+    return [
+      for (final fila in filas)
+        VentaConCuenta(
+          ventaId: fila.read<String>('id'),
+          espacioPersonaId: fila.read<String>('ep'),
+          fecha: DateTime.fromMillisecondsSinceEpoch(fila.read<int>('fecha'), isUtc: true),
+          cuenta: (resumenes[fila.read<String>('id')] ?? ResumenDeDevoluciones.ninguna).cuentaDe(
+            montoTotalCentavos: fila.read<int>('monto'),
+            cobradoCentavos: fila.read<int>('cobrado'),
+          ),
+        ),
+    ];
+  }
+
   /// La suma del saldo de las ventas de [filas] (`id`, `monto`, `cobrado`); con [hasta], con las
   /// devoluciones de ese momento.
   Future<int> _sumarSaldos(List<QueryRow> filas, {DateTime? hasta}) async {
+    final saldos = await _saldoDeCadaVenta(filas, hasta: hasta);
+    return saldos.values.fold<int>(0, (suma, saldo) => suma + saldo);
+  }
+
+  /// El saldo de cada venta de [filas] (`id`, `monto`, `cobrado`), por `venta.id`.
+  Future<Map<String, int>> _saldoDeCadaVenta(List<QueryRow> filas, {DateTime? hasta}) async {
     final resumenes = await EstadoDeDevolucion.resumenesDe(_db, [
       for (final fila in filas) fila.read<String>('id'),
     ], hasta: hasta);
-    var saldo = 0;
-    for (final fila in filas) {
-      saldo += (resumenes[fila.read<String>('id')] ?? ResumenDeDevoluciones.ninguna)
-          .cuentaDe(
-            montoTotalCentavos: fila.read<int>('monto'),
-            cobradoCentavos: fila.read<int>('cobrado'),
-          )
-          .saldoCentavos;
-    }
-    return saldo;
+    return {
+      for (final fila in filas)
+        fila.read<String>(
+          'id',
+        ): (resumenes[fila.read<String>('id')] ?? ResumenDeDevoluciones.ninguna)
+            .cuentaDe(
+              montoTotalCentavos: fila.read<int>('monto'),
+              cobradoCentavos: fila.read<int>('cobrado'),
+            )
+            .saldoCentavos,
+    };
   }
 
   Stream<int> _observarSaldo(String corte, String id) => _db
-      .customSelect('SELECT 1', readsFrom: _tablasDelSaldo)
+      .customSelect('SELECT 1 AS cambio_del_saldo', readsFrom: _tablasDelSaldo)
       .watch()
       .asyncMap((_) => _saldoDe(corte, [Variable<String>(id)]))
       .distinct();
@@ -248,10 +325,25 @@ final class CobranzaLocalDataSourceDrift {
   /// La venta [ventaId] con su saldo cada vez que cambia ella, sus cobros o lo que se vendió; `null`
   /// si no está o se dio de baja.
   Stream<VentaConSaldo?> observarVentaConSaldo(String ventaId) => _db
-      .customSelect('SELECT 1', readsFrom: {..._tablasDelSaldo, _db.productos})
+      .customSelect(
+        'SELECT 1 AS cambio_de_lo_vendido',
+        readsFrom: {..._tablasDelSaldo, _db.productos},
+      )
       .watch()
       .asyncMap((_) => ventaConSaldo(ventaId))
       .distinct();
+
+  /// Avisa, al suscribirse y cada vez que cambia una venta, un cobro, el vínculo de una persona con una
+  /// casa o una cita de la agenda (las cuotas del plan lo son), que lo que se debe pudo cambiar (Drift
+  /// avisa por tabla). Es la señal con la que la hoja de la casa vuelve a leer lo que debe cada persona
+  /// y su próxima cuota sin que nadie recargue (HU-COB-005); no lleva datos.
+  Stream<void> alCambiarLoQueSeDebe() => _db
+      .customSelect(
+        'SELECT 1 AS cambio_de_las_cuotas_agendadas',
+        readsFrom: {..._tablasDelSaldo, _db.agendas},
+      )
+      .watch()
+      .map((_) {});
 
   /// Lo que debe la persona [personaId], en centavos, sumando sus ventas vivas.
   Stream<int> observarSaldoDePersona(String personaId) => _observarSaldo(_cortePersona, personaId);
@@ -274,8 +366,6 @@ final class CobranzaLocalDataSourceDrift {
       montoTotalCentavos: venta.montoTotal,
       cobradoCentavos: await CobroValido.cobradoDe(_db, venta.id),
       devueltoCentavos: devoluciones.todoDevuelto ? venta.montoTotal : devoluciones.valorCentavos,
-      reembolsadoCentavos: devoluciones.reembolsadoCentavos,
-      retenidoCentavos: devoluciones.retenidoCentavos,
       descripcion: await _descripcion(venta.id),
     );
   }
@@ -343,18 +433,22 @@ final class CobranzaLocalDataSourceDrift {
     );
   }
 
+  /// La fila como entidad: la usan los que ligan algo al cobro (el ticket, HU-COB-007) y encolan su
+  /// `update` con la fila entera.
+  static Cobranza aEntidad(CobranzaFila fila) => _aCobranza(fila);
+
   static Cobranza _aCobranza(CobranzaFila fila) => Cobranza(
     id: fila.id,
     ventaId: fila.ventaId,
     montoCentavos: fila.monto,
     medio: CobranzaModel.medioDesdeCodigo(fila.medio),
     fecha: fila.fecha,
-    numeroCuota: fila.numeroCuota,
     tarjetaTipo: CobranzaModel.tipoDeTarjetaDesdeCodigo(fila.tarjetaTipo),
     tarjetaMarca: fila.tarjetaMarca,
     numeroAprobacion: fila.numeroAprobacion,
     referenciaTransferencia: fila.referenciaTransferencia,
     bancoOrigen: fila.bancoOrigen,
+    ticketId: fila.ticketId,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,
@@ -370,7 +464,6 @@ final class CobranzaLocalDataSourceDrift {
     monto: c.montoCentavos,
     medio: CobranzaModel.codigoDelMedio(c.medio),
     fecha: c.fecha,
-    numeroCuota: Value(c.numeroCuota),
     tarjetaTipo: Value(
       c.tarjetaTipo == null ? null : CobranzaModel.codigoDelTipoDeTarjeta(c.tarjetaTipo!),
     ),
@@ -378,6 +471,7 @@ final class CobranzaLocalDataSourceDrift {
     numeroAprobacion: Value(c.numeroAprobacion),
     referenciaTransferencia: Value(c.referenciaTransferencia),
     bancoOrigen: Value(c.bancoOrigen),
+    ticketId: Value(c.ticketId),
     createdAt: c.auditoria.createdAt,
     updatedAt: c.auditoria.updatedAt,
     createdBy: Value(c.auditoria.createdBy),

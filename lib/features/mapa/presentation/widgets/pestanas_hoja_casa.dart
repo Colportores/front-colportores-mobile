@@ -131,6 +131,7 @@ class _Opcion extends StatelessWidget {
 typedef FilaDePersona = ({
   PersonaDelEspacio persona,
   int? saldoCentavos,
+  DateTime? cuota,
   String? detalle,
   VoidCallback? alCobrar,
   VoidCallback? alAbrir,
@@ -142,6 +143,8 @@ typedef FilaDePersona = ({
 /// - [alAgregar] `null` = no se ofrece (la casa está dada de baja: solo se ve, o no hay quién agregue).
 /// - [guardada] es el aviso de la última alta («Guardamos a Jorge en este teléfono.»).
 /// - Las filas se arman por fuera ([filas]): la pestaña no sabe de cobros ni de fichas.
+/// - [bajas]: «Mostrar bajas» y las personas dadas de baja (32D·04), debajo de «+ Agregar persona»;
+///   las arma la hoja con las piezas de `bajas_de_personas.dart`.
 class PestanaPersonasDeLaCasa extends StatelessWidget {
   const PestanaPersonasDeLaCasa({
     super.key,
@@ -149,9 +152,15 @@ class PestanaPersonasDeLaCasa extends StatelessWidget {
     required this.alAgregar,
     required this.ocupada,
     this.guardada,
+    this.ahora,
+    this.bajas = const [],
   });
 
   final List<FilaDePersona> filas;
+  final List<Widget> bajas;
+
+  /// «Hoy», para saber si la cuota de una fila venció.
+  final DateTime? ahora;
   final VoidCallback? alAgregar;
   final bool ocupada;
   final String? guardada;
@@ -172,17 +181,22 @@ class PestanaPersonasDeLaCasa extends StatelessWidget {
             texto: guardada!,
           ),
         if (filas.isEmpty)
-          const Padding(
+          Padding(
             key: ClavesHojaCasa.sinPersonas,
-            padding: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-            child: Text(
-              TextosPestanasHojaCasa.sinPersonas,
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 14,
-                height: 1.4,
-                color: ColoresLista.grisTexto,
-              ),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 4,
+              children: [
+                const Text(TextosPestanasHojaCasa.sinPersonas, style: _estiloVacio),
+                // Solo si se puede agregar: en una casa de baja «para después» no tiene sentido.
+                if (alAgregar != null)
+                  const Text(
+                    TextosPestanasHojaCasa.sinPersonasParaDespues,
+                    key: ClavesHojaCasa.sinPersonasParaDespues,
+                    style: _estiloVacio,
+                  ),
+              ],
             ),
           ),
         for (final fila in filas)
@@ -190,16 +204,32 @@ class PestanaPersonasDeLaCasa extends StatelessWidget {
             key: ValueKey('fila_persona_${fila.persona.persona.id}'),
             persona: fila.persona.persona,
             saldoCentavos: fila.saldoCentavos,
+            cuota: fila.cuota,
+            ahora: ahora,
             detalle: fila.detalle,
             alCobrar: fila.alCobrar,
             alAbrir: fila.alAbrir,
             ocupada: ocupada,
           ),
         if (alAgregar != null) _EnlaceAgregar(alTocar: ocupada ? null : alAgregar),
+        // Sin el aire entre filas de la pestaña: las bajas van una debajo de otra, con su borde.
+        if (bajas.isNotEmpty)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: bajas,
+          ),
       ],
     );
   }
 }
+
+const _estiloVacio = TextStyle(
+  fontFamily: 'Inter',
+  fontSize: 14,
+  height: 1.4,
+  color: ColoresLista.grisTexto,
+);
 
 /// «+ Agregar persona» (canvas: texto azul de 13,5), con un objetivo táctil de 48 dp.
 class _EnlaceAgregar extends StatelessWidget {

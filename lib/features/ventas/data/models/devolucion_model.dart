@@ -2,7 +2,7 @@ import '../../../mapa/data/models/auditoria_json.dart';
 import '../../domain/entities/devolucion.dart';
 
 /// DTO de [Devolucion]: la fila entera que se encola para el sync. [toJson] usa los nombres de columna
-/// de `public.devolucion` (`backend-supabase`, migraciones 0108, 0136 y 0142) y las fechas en
+/// de `public.devolucion` (`backend-supabase`, migraciones 0108, 0136, 0142 y 0157) y las fechas en
 /// ISO-8601 UTC. No lleva `colportor_id`: lo pone el servidor desde el JWT y el push lo descarta
 /// (contrato §2.4). Un test fija la lista exacta de claves.
 ///
@@ -13,8 +13,6 @@ abstract final class DevolucionModel {
     'id': devolucion.id,
     'venta_id': devolucion.ventaId,
     'productos_devueltos': productosAJson(devolucion.productos),
-    'dinero_retenido': devolucion.dineroRetenidoCentavos,
-    'monto_reembolsado': devolucion.montoReembolsadoCentavos,
     'motivo': devolucion.motivo,
     'fecha_devolucion': devolucion.fechaDevolucion.toIso8601String(),
     ...auditoriaAJson(devolucion.auditoria),

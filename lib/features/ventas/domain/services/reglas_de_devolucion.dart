@@ -6,7 +6,8 @@ import '../entities/venta_para_devolver.dart';
 import 'reglas_de_venta.dart';
 
 /// Las reglas puras de una devolución (HU-VEN-004, ADR-002), sin pantalla ni base: la ventana de 72 h,
-/// qué libros salen de lo que se elige, cuánto vale lo devuelto y qué se hace con la plata de más.
+/// qué libros salen de lo que se elige, cuánto vale lo devuelto y que una venta saldada no acepta
+/// devoluciones (decisión de Cristian, 03/11, «Devol. saldo»: nunca queda plata a favor del cliente).
 abstract final class ReglasDeDevolucion {
   /// Cuánto tiempo tiene la colportora, desde la venta, para registrar una devolución. Pasado ese
   /// plazo la registra el coordinador (HU-VEN-004, escenario «Devolución más allá de 72h»).
@@ -132,7 +133,11 @@ abstract final class ReglasDeDevolucion {
   ];
 
   /// Cómo queda la venta con lo [elegidas] (ya ajustado con [ajustar]): lo que se queda el cliente,
-  /// lo que pagó de más y lo que le falta pagar.
+  /// lo que ya pagó y lo que le falta pagar.
+  ///
+  /// Lo devuelto se descuenta de la deuda **hasta el saldo**: si lo que vale pasa de lo que el cliente
+  /// debía, el saldo queda en cero y lo pagado que sobra ([CuentaDeLaDevolucion.sinDevolverCentavos])
+  /// no se devuelve ni queda a su favor.
   static CuentaDeLaDevolucion cuenta(VentaParaDevolver venta, Map<String, int> elegidas) {
     final validas = ajustar(venta, elegidas);
     var unidades = 0;
@@ -153,25 +158,9 @@ abstract final class ReglasDeDevolucion {
       valorCentavos: valor,
       seQuedaConCentavos: seQueda,
       yaPagoCentavos: yaPago,
-      pagoDeMasCentavos: math.max(0, yaPago - seQueda - venta.retenidoCentavos),
+      sinDevolverCentavos: math.max(0, yaPago - seQueda),
       saldoNuevoCentavos: math.max(0, seQueda - yaPago),
       esTotal: esTotal,
     );
-  }
-
-  /// Qué guarda la devolución con la plata de más ([pagoDeMas]) según lo que eligió la colportora:
-  /// lo retenido y lo reembolsado en el momento. Sin plata de más no se guarda nada de las dos, aunque
-  /// haya una opción. Devuelve `null` si hay plata de más y no eligió: la elección es obligatoria.
-  static ({int retenido, int? reembolsado})? destinoDeLaDiferencia(
-    int pagoDeMas,
-    QueHacerConLaDiferencia? opcion,
-  ) {
-    if (pagoDeMas <= 0) return (retenido: 0, reembolsado: null);
-    return switch (opcion) {
-      null => null,
-      QueHacerConLaDiferencia.devolverAhora => (retenido: 0, reembolsado: pagoDeMas),
-      QueHacerConLaDiferencia.retener => (retenido: pagoDeMas, reembolsado: null),
-      QueHacerConLaDiferencia.devolverDespues => (retenido: 0, reembolsado: null),
-    };
   }
 }

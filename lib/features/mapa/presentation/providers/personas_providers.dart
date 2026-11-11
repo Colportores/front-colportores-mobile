@@ -6,6 +6,7 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../data/datasources/persona_local_data_source_drift.dart';
 import '../../data/datasources/ubicacion_local_data_source_drift.dart';
+import '../../data/datasources/ultima_visita_de_la_ubicacion_drift.dart';
 import '../../data/datasources/ultima_visita_del_espacio_drift.dart';
 import '../../data/repositories/espacio_repository_impl.dart';
 import '../../data/repositories/persona_repository_impl.dart';
@@ -16,6 +17,8 @@ import '../../domain/repositories/espacio_repository.dart';
 import '../../domain/repositories/persona_repository.dart';
 import '../../domain/services/contador_personas_espacio.dart';
 import '../../domain/services/criterio_otra_persona.dart';
+import '../../domain/services/cuotas_de_personas.dart';
+import '../../domain/services/lector_ultima_visita_de_la_ubicacion.dart';
 import '../../domain/services/lector_ultima_visita_del_espacio.dart';
 import '../../domain/services/saldos_de_personas.dart';
 import '../../domain/usecases/modificar_persona_use_case.dart';
@@ -122,10 +125,31 @@ final ultimaVisitaDelEspacioProvider = StreamProvider.autoDispose
       retry: _sinReintentos,
     );
 
+/// La última visita de cualquier espacio de la ubicación (el renglón «Última visita» de «Reactivar»,
+/// vista 09·03, #330). Sin DB abierta no hay dónde leer: lanza, y quien lo pide no dibuja el renglón.
+final lectorUltimaVisitaDeLaUbicacionProvider = Provider<LectorUltimaVisitaDeLaUbicacion>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return UltimaVisitaDeLaUbicacionDrift(db);
+});
+
 /// De dónde sale lo que debe cada persona (la línea «Saldo» de «¿Con quién?»). Sin ventas locales
 /// todavía (S9) no hay fuente: [SaldosDePersonasSinFuente]. Un test o el S9 lo reemplazan.
 final saldosDePersonasProvider = Provider<SaldosDePersonas>(
   (ref) => const SaldosDePersonasSinFuente(),
+);
+
+/// De dónde sale el día de la cuota que toca de cada persona que debe (la línea «Debe $ 1.200 · cuota
+/// sáb 26/10» de la hoja de la casa). `main.dart` lo reemplaza por `CuotasDePersonasLocal` (las citas de
+/// cobranza de los planes, HU-COB-004); sin fuente (los tests) la fila dice solo lo que debe.
+final cuotasDePersonasProvider = Provider<CuotasDePersonas>(
+  (ref) => const CuotasDePersonasSinFuente(),
+);
+
+/// Cuándo vuelve a leer la hoja de la casa lo que debe cada persona: un aviso por cada cambio en las
+/// ventas, los cobros o las cuotas. Sin fuente (los tests) lee una sola vez.
+final cambiosDeLoQueSeDebeProvider = Provider<CambiosDeLoQueSeDebe>(
+  (ref) => sinCambiosDeLoQueSeDebe,
 );
 
 /// Lo que debe cada persona de [espacioId], en centavos, por `persona.id`. Una falla al leerlo no

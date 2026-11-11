@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../agenda/domain/entities/tipo_agenda.dart';
+import '../../../agenda/presentation/flujo_agendar_visita.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
+import '../../../ventas/presentation/widgets/fila_sumar_un_libro.dart';
 import '../../domain/entities/ficha_de_persona.dart';
 import '../../domain/services/filtro_de_historial.dart';
 import '../../domain/usecases/ficha_persona_use_cases.dart';
@@ -40,14 +43,22 @@ import 'notas_de_persona_page.dart';
 /// - Más de 100 movimientos: se muestran de a 100 con «Ver más».
 /// - «MOSTRAR» (32B·03) filtra el historial por estado: «Todo», «Con saldo» o «Entrega pendiente». No
 ///   se guarda: al reentrar vuelve a «Todo».
-/// - Los chips «+ Agendar cobranza» y «Registrar entrega» son de HU-VEN-005, y la ubicación
-///   alternativa, de la vista 22: no están acá.
+/// - Bajo la cuenta, las acciones rápidas de HU-VEN-005 (32B·01): «+ Agendar cobranza» abre «Agendar
+///   visita» de cobranza con la casa y la persona puestas, y «Registrar entrega» abre la pantalla de
+///   entregas pendientes (`registrarEntregaDesdeLaFichaProvider`; sin destino no se dibuja). No están
+///   con la persona de baja o el depto de baja (32B·04 y 32B·08), ni en la ficha vacía (32B·05) ni
+///   sin ventas. Con una de las dos abriéndose, la otra queda apagada.
+/// - La tarjeta de una entrega pendiente del historial ofrece «Entregar» (32B·01): el mismo destino, ya en
+///   la venta de esa tarjeta. Sin destino o en solo lectura no se ofrece.
+/// - La ubicación alternativa es de la vista 22: no está acá.
 class FichaPersonaPage extends ConsumerStatefulWidget {
   const FichaPersonaPage({
     super.key,
     required this.personaId,
     required this.espacioId,
     required this.colportorId,
+    this.nombre,
+    this.nombreCompleto,
   });
 
   final String personaId;
@@ -58,6 +69,15 @@ class FichaPersonaPage extends ConsumerStatefulWidget {
   /// UUID del usuario con la sesión iniciada (`created_by` de las notas nuevas).
   final String colportorId;
 
+  /// El nombre de pila que quien la abre ya tenía (la fila de la pestaña Personas): mientras la ficha
+  /// no se leyó dice «Cargando la ficha de María» y, si no se puede leer, 32B·07 («No pudimos leer los
+  /// datos de María en tu teléfono.»). `null` = «de la persona».
+  final String? nombre;
+
+  /// El nombre que la fila mostraba («María Fernández»): es el título de 32B·06 y 32B·07 mientras la
+  /// ficha no se leyó (el canvas lo dibuja arriba, a 26 pt). `null` = sin título.
+  final String? nombreCompleto;
+
   /// De a cuántos movimientos se muestra el historial.
   static const pagina = 100;
 
@@ -66,10 +86,17 @@ class FichaPersonaPage extends ConsumerStatefulWidget {
     required String personaId,
     required String espacioId,
     required String colportorId,
+    String? nombre,
+    String? nombreCompleto,
   }) => Navigator.of(context).push<void>(
     MaterialPageRoute(
-      builder: (_) =>
-          FichaPersonaPage(personaId: personaId, espacioId: espacioId, colportorId: colportorId),
+      builder: (_) => FichaPersonaPage(
+        personaId: personaId,
+        espacioId: espacioId,
+        colportorId: colportorId,
+        nombre: nombre,
+        nombreCompleto: nombreCompleto,
+      ),
     ),
   );
 
@@ -169,6 +196,53 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     await editar(widget.personaId);
   });
 
+  /// «+ Agendar cobranza» (32B·01, HU-VEN-005): «Agendar visita» de cobranza con la casa y la persona ya
+  /// puestas. Al guardar vuelve acá con el aviso «Agendada…».
+  Future<void> _agendarCobranza() => _unaAlaVez(() async {
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    // El vínculo de la persona con este depto: la agenda cuelga de él.
+    final personas = await ref
+        .read(personaRepositoryProvider)
+        .observarDelEspacio(widget.espacioId)
+        .first;
+    final vinculo = personas.where((p) => p.persona.id == widget.personaId).firstOrNull?.vinculo;
+    if (!mounted) return;
+    if (vinculo == null || widget.colportorId.trim().isEmpty) {
+      _avisar(TextosFicha.noPudimosAbrir);
+      return;
+    }
+    await FlujoAgendarVisita.abrir(
+      context,
+      espacioId: widget.espacioId,
+      espacioPersonaId: vinculo.id,
+      colportorId: widget.colportorId,
+      tipo: TipoAgenda.cobranza,
+    );
+  });
+
+  /// «Registrar entrega» (32B·01, HU-VEN-005): la pantalla de entregas pendientes de esta persona. Al
+  /// volver, la ficha, que lee en vivo, ya muestra lo entregado.
+  Future<void> _registrarEntrega() => _unaAlaVez(() async {
+    final destino = ref.read(registrarEntregaDesdeLaFichaProvider);
+    if (destino == null) return;
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    await destino((personaId: widget.personaId, espacioId: widget.espacioId, ventaId: null));
+  });
+
+  /// «Entregar» en la tarjeta de una entrega pendiente (32B·01, HU-VEN-005): el mismo destino que
+  /// «Registrar entrega», ya en la venta de esa tarjeta. Sin la venta (no se conoce) llega sin ella y el
+  /// destino pregunta «¿Qué venta?».
+  Future<void> _entregarPendiente(EntregaEnFicha entrega) => _unaAlaVez(() async {
+    final destino = ref.read(registrarEntregaDesdeLaFichaProvider);
+    if (destino == null) return;
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    await destino((
+      personaId: widget.personaId,
+      espacioId: widget.espacioId,
+      ventaId: entrega.ventaId,
+    ));
+  });
+
   Future<void> _darDeBaja(FichaDePersona ficha) => _unaAlaVez(() async {
     if (frenaPorCuentaRestringida(context, ref)) return;
     await mostrarHojaBajaPersona(context, persona: ficha.persona);
@@ -181,6 +255,20 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     if (destino == null) return;
     if (frenaPorCuentaRestringida(context, ref)) return;
     await destino((ventaId: ventaId, personaId: widget.personaId, espacioId: widget.espacioId));
+  });
+
+  /// «Sumar un libro» (42B·09A, «Venta crece»): el libro nuevo va a la venta abierta de la persona,
+  /// sin otro talonario. Al volver, la ficha, que lee en vivo, ya muestra el total y el saldo nuevos.
+  Future<void> _sumarUnLibro(FichaDePersona ficha) => _unaAlaVez(() async {
+    final destino = ref.read(sumarUnLibroDesdeLaCasaProvider);
+    final lugar = ficha.lugar;
+    if (destino == null || lugar == null) return;
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    await destino((
+      ubicacionId: lugar.ubicacion.id,
+      espacioId: widget.espacioId,
+      personaId: widget.personaId,
+    ));
   });
 
   Future<void> _registrarVisita(FichaDePersona ficha) => _unaAlaVez(() async {
@@ -258,13 +346,26 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     if (lectura.hasError && ficha == null) {
       cuerpo = _Mensaje(
         clave: ClavesFicha.error,
-        texto: TextosFicha.noPudimosLeer(null),
+        texto: TextosFicha.noPudimosLeer(widget.nombre),
+        titulo: widget.nombreCompleto,
         alReintentar: _reintentar,
       );
     } else if (lectura.hasValue && ficha == null) {
       cuerpo = const _Mensaje(texto: TextosFicha.personaNoEncontrada);
     } else if (ficha == null) {
-      cuerpo = const SingleChildScrollView(child: CargandoFicha(nombre: null));
+      cuerpo = SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_tituloSinLeer(widget.nombreCompleto) case final titulo?)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                child: _TituloDeLaPersona(titulo),
+              ),
+            CargandoFicha(nombre: widget.nombre),
+          ],
+        ),
+      );
     } else {
       cuerpo = _CuerpoDeLaFicha(
         ficha: ficha,
@@ -289,6 +390,14 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
             ? null
             : _devolver,
         alRegistrarVisita: () => _registrarVisita(ficha),
+        alSumarUnLibro: ref.watch(sumarUnLibroDesdeLaCasaProvider) == null
+            ? null
+            : () => _sumarUnLibro(ficha),
+        conEntrega: ref.watch(registrarEntregaDesdeLaFichaProvider) != null,
+        ocupado: _abriendo,
+        alAgendarCobranza: _agendarCobranza,
+        alRegistrarEntrega: _registrarEntrega,
+        alEntregar: _entregarPendiente,
         alReactivarPersona: () => _reactivarPersona(ficha),
         alReactivarDepto: () => _reactivarDepto(ficha),
       );
@@ -396,9 +505,12 @@ class _Cabecera extends StatelessWidget {
 /// Un estado que no es la ficha (error al leer, persona que no está): el mensaje, centrado y
 /// desplazable.
 class _Mensaje extends StatelessWidget {
-  const _Mensaje({required this.texto, this.alReintentar, this.clave});
+  const _Mensaje({required this.texto, this.titulo, this.alReintentar, this.clave});
 
   final String texto;
+
+  /// El nombre de la persona, arriba del mensaje (32B·07); `null` = sin título.
+  final String? titulo;
   final VoidCallback? alReintentar;
   final Key? clave;
 
@@ -407,9 +519,15 @@ class _Mensaje extends StatelessWidget {
     return SingleChildScrollView(
       key: clave,
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-      child: alReintentar == null
-          ? Text(texto, style: Theme.of(context).textTheme.bodyLarge)
-          : AvisoAlta(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 10,
+        children: [
+          if (_tituloSinLeer(titulo) case final t?) _TituloDeLaPersona(t),
+          if (alReintentar == null)
+            Text(texto, style: Theme.of(context).textTheme.bodyLarge)
+          else
+            AvisoAlta(
               color: ColoresAlta.rojo,
               glyph: '!',
               texto: texto,
@@ -425,6 +543,30 @@ class _Mensaje extends StatelessWidget {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// El título que se puede dibujar sin haber leído la ficha: el nombre que pasó quien la abrió, o `null`.
+String? _tituloSinLeer(String? nombreCompleto) {
+  final titulo = nombreCompleto?.trim() ?? '';
+  return titulo.isEmpty ? null : titulo;
+}
+
+/// El nombre de la persona como título (32B·06 y 32B·07, antes de leer la ficha): el mismo estilo que el
+/// de la ficha leída.
+class _TituloDeLaPersona extends StatelessWidget {
+  const _TituloDeLaPersona(this.texto);
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      header: true,
+      child: Text(texto, style: Theme.of(context).textTheme.headlineMedium),
     );
   }
 }
@@ -448,6 +590,12 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     required this.alElegirFiltro,
     required this.alDevolver,
     required this.alRegistrarVisita,
+    required this.alSumarUnLibro,
+    required this.conEntrega,
+    required this.ocupado,
+    required this.alAgendarCobranza,
+    required this.alRegistrarEntrega,
+    required this.alEntregar,
     required this.alReactivarPersona,
     required this.alReactivarDepto,
   });
@@ -471,6 +619,20 @@ class _CuerpoDeLaFicha extends StatelessWidget {
   /// `null`: las ventas no se tocan (ficha de solo lectura, sin destino o ya abriéndose algo).
   final ValueChanged<String>? alDevolver;
   final VoidCallback alRegistrarVisita;
+
+  /// «Sumar un libro» (42B·09A); `null` = no se ofrece (sin destino).
+  final VoidCallback? alSumarUnLibro;
+
+  /// Hay a dónde llevar «Registrar entrega»; sin destino el botón no se dibuja.
+  final bool conEntrega;
+
+  /// Ya se está abriendo algo: las acciones rápidas quedan apagadas.
+  final bool ocupado;
+  final VoidCallback alAgendarCobranza;
+
+  /// «Entregar» de una entrega pendiente del historial (32B·01).
+  final ValueChanged<EntregaEnFicha> alEntregar;
+  final VoidCallback alRegistrarEntrega;
   final VoidCallback alReactivarPersona;
   final VoidCallback alReactivarDepto;
 
@@ -540,9 +702,35 @@ class _CuerpoDeLaFicha extends StatelessWidget {
         else ...[
           const SizedBox(height: 8),
           // Sin ventas no hay cuenta que sumar: lo dice la HU («Sin movimientos aún»), sin inventar un $ 0.
-          if (ficha.resumen case final cuenta?)
-            TarjetaCuenta(cuenta: cuenta)
-          else
+          if (ficha.resumen case final cuenta?) ...[
+            TarjetaCuenta(cuenta: cuenta),
+            // 32B·01: agendar la cobranza y registrar la entrega sin salir de la ficha. Con la persona o
+            // el depto de baja (32B·04 y 32B·08) la ficha es de solo lectura y no se ofrecen. Cada acción
+            // aparece solo si hay algo que hacer (decisión del 30/10, regla R4): «Agendar cobranza» con
+            // saldo y «Registrar entrega» con entregas pendientes; sin ninguna, no hay bloque.
+            if (!soloLectura &&
+                lugar != null &&
+                (cuenta.tieneSaldo || (conEntrega && cuenta.entregasPendientes > 0))) ...[
+              const SizedBox(height: 10),
+              AccionesRapidasDeLaFicha(
+                conCobranza: cuenta.tieneSaldo,
+                conEntrega: conEntrega && cuenta.entregasPendientes > 0,
+                ocupado: ocupado,
+                alAgendarCobranza: alAgendarCobranza,
+                alRegistrarEntrega: alRegistrarEntrega,
+              ),
+            ],
+            // 42B·09A: la fila va debajo de la persona también en su ficha, solo si tiene una venta
+            // abierta (la fila lo decide). En solo lectura no se ofrece.
+            if (!soloLectura && lugar != null)
+              FilaSumarUnLibro(
+                personaId: persona.id,
+                nombre: persona.nombre,
+                alTocar: alSumarUnLibro,
+                ocupada: ocupado,
+                separacion: 10,
+              ),
+          ] else
             const SinMovimientosDeCuenta(),
         ],
         if (mostrarNotas) ...[
@@ -582,6 +770,12 @@ class _CuerpoDeLaFicha extends StatelessWidget {
                     alTocar: m is VentaEnFicha && alDevolver != null
                         ? () => alDevolver!(m.id)
                         : null,
+                    // «Entregar» solo con destino y sin solo lectura (32B·04 y 32B·08: no se registra
+                    // nada); la entrega pendiente que no se puede entregar queda como tarjeta sin toque.
+                    alEntregar: m is EntregaEnFicha && m.pendiente && conEntrega && !soloLectura
+                        ? () => alEntregar(m)
+                        : null,
+                    ocupado: ocupado,
                   ),
                 ),
             ],

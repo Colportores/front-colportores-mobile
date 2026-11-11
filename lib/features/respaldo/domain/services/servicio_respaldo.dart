@@ -11,6 +11,12 @@ enum OrigenRespaldo {
   /// Automático.
   regeneracion,
 
+  /// La ventana nocturna (03:00, con Wi-Fi y el teléfono cargando), con la app cerrada: lo dispara el
+  /// sistema en un isolate de segundo plano (HU-SYNC-005, #583). Automático. Ahí no hay canal nativo
+  /// de batería: el propio sistema solo lo despierta cargando, y una batería que no se puede leer no
+  /// frena el respaldo.
+  nocturno,
+
   /// La persona lo pidió (el «Reintentar» del aviso) o acaba de conectar Drive. Basta con tener
   /// conexión: fue una acción suya, y el motivo de pedirlo puede ser justamente que lleva días sin
   /// respaldar.

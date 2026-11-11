@@ -11,7 +11,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.d
 import 'package:colportores_mobile/features/agenda/presentation/widgets/hoja_termino_entrevista.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
 import 'package:colportores_mobile/features/ventas/presentation/formato_venta.dart';
-import 'package:colportores_mobile/features/ventas/presentation/widgets/hoja_cuando_cobrar.dart';
+import 'package:colportores_mobile/features/ventas/presentation/pages/cuando_cobrar_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,7 +41,7 @@ void main() {
       await a.tocarKey(tester, ClavesEntrevista.registrarVenta);
       await a.armarLaVenta(tester);
       await a.registrar(tester);
-      await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await a.sinFecha(tester);
 
       final recibida = a.montaje.agenda.recibidas.single;
       expect(recibida.nota?.texto, 'volver con la esposa');
@@ -70,7 +70,7 @@ void main() {
       );
     });
 
-    // skip: QA #428 — decisión P1: el aviso sale al llegar a R·08, después de la hoja (hoy sale antes).
+    // QA #428, decisión P1: el aviso sale al volver al mapa (42B·01H), después del cierre.
     testWidgets('dado el aviso «Venta 0039 guardada.», cuando elijo «Sin fecha», entonces el aviso '
         'sigue a la vista aunque haya tardado en elegir (R·08)', (tester) async {
       await a.montar(tester);
@@ -78,10 +78,10 @@ void main() {
 
       // Ana lee la pregunta unos segundos: el aviso (4 s) corre por debajo de la hoja.
       await tester.pump(const Duration(seconds: 6));
-      await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await a.sinFecha(tester);
 
-      expect(find.text('Venta 0039 guardada.'), findsOneWidget);
-    }, skip: _hallazgo);
+      expect(find.text('Venta 0039 guardada. Cobranza sin fecha.'), findsOneWidget);
+    });
   });
 
   group('casos límite del recorrido', () {
@@ -146,7 +146,7 @@ void main() {
       a.montaje.reloj = () => DateTime(2026, 10, 31, 23, 57);
 
       await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.hoy));
-      await a.tocarKey(tester, const Key('agendar_hoja_listo'));
+      await a.listoYGuardar(tester);
 
       final fecha = a.agendas.recibidas.single.agenda.fechaProgramada.toLocal();
       expect(fecha, DateTime(2026, 10, 31, 23, 59));
@@ -160,7 +160,7 @@ void main() {
       a.montaje.reloj = () => DateTime(2026, 10, 31, 23, 57);
 
       await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.manana));
-      await a.tocarKey(tester, const Key('agendar_hoja_listo'));
+      await a.listoYGuardar(tester);
 
       expect(
         a.agendas.recibidas.single.agenda.fechaProgramada.toLocal(),
@@ -192,7 +192,7 @@ void main() {
       await a.tocarKey(tester, ClavesEntrevista.registrarVenta);
       await a.armarLaVenta(tester);
       await a.registrar(tester);
-      await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await a.sinFecha(tester);
 
       expect(a.montaje.agenda.recibidas, hasLength(1));
       expect(a.entorno.ventas.recibidas, hasLength(1));

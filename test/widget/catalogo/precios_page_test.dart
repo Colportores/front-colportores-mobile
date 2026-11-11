@@ -24,6 +24,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
 import '../../helpers/precios_falsos.dart';
+import '../../helpers/ubicacion_colportor_falsos.dart';
 
 /// Miércoles 28/10/2026, 10:00 (hora local).
 final _ahora = DateTime(2026, 10, 28, 10);
@@ -38,6 +39,7 @@ final class _Entorno {
     DateTime? bajada,
     this.conexion = TipoConexion.wifi,
     this.dias = 15,
+    this.mapaAbierto = true,
   }) : repo = repo ?? ConsultaDePreciosFalsa(),
        ciudades = ciudades ?? FuenteDeCiudadesFalsa(),
        gps = gps ?? GpsFalso(),
@@ -51,6 +53,9 @@ final class _Entorno {
   final FechaDeLosPreciosFalsa fecha;
   TipoConexion conexion;
   int dias;
+
+  /// El colportor ya pasó por el mapa (que es quien pide el GPS): hay una lectura, o el motivo.
+  final bool mapaAbierto;
   DateTime ahora = _ahora;
 
   List<Override> get overrides => [
@@ -59,8 +64,9 @@ final class _Entorno {
     fechaDeLosPreciosProvider.overrideWithValue(fecha),
     diasDeAntiguedadDePreciosProvider.overrideWithValue(DiasFalsos(dias)),
     relojPreciosProvider.overrideWithValue(() => ahora),
-    esperaDelGpsPreciosProvider.overrideWithValue(const Duration(milliseconds: 200)),
     proveedorGpsProvider.overrideWithValue(gps),
+    // Precios no pide el GPS (#651): usa la última lectura del GPS del colportor, si el mapa la tiene.
+    ubicacionColportorDeGps(gps, mapaAbierto: mapaAbierto),
     ciudadesParaAltaProvider.overrideWithValue(alta),
     conexionProvider.overrideWith((ref) => Stream.value(conexion)),
   ];
@@ -233,6 +239,149 @@ void main() {
     });
   });
 
+  group('26·02 Etiqueta de cada producto por su categoría (#561)', () {
+    _Entorno porCategorias() => _Entorno(repo: ConsultaDePreciosFalsa(catalogoPorCategorias()));
+
+    Finder enLaFila(String nombre, String etiqueta) => find.descendant(
+      of: find.ancestor(of: find.text(nombre), matching: find.byType(Row)).first,
+      matching: find.text(etiqueta),
+    );
+
+    testWidgets('Libros: ◆ Bonificable en los bonificables y ✝ Espiritual en los espirituales', (
+      tester,
+    ) async {
+      await _montar(tester, porCategorias());
+      await _irA(tester, 'libros');
+      for (final nombre in [
+        'Salud y Hogar',
+        'Nuestros Hijos',
+        'El Deseado de todas las gentes',
+        'Patriarcas y Profetas',
+      ]) {
+        expect(find.text(nombre), findsOneWidget, reason: nombre);
+      }
+      expect(find.text('✝ Espiritual'), findsNWidgets(2));
+      // Salud y Hogar y Nuestros Hijos (su categoría) y Patriarcas (el sí/no, aparte de su
+      // categoría): una sola ◆ por fila, nunca repetida.
+      expect(find.text('◆ Bonificable'), findsNWidgets(3));
+      expect(enLaFila('Salud y Hogar', '◆ Bonificable'), findsOneWidget);
+      expect(enLaFila('El Deseado de todas las gentes', '✝ Espiritual'), findsOneWidget);
+      expect(enLaFila('El Deseado de todas las gentes', '◆ Bonificable'), findsNothing);
+      expect(find.text('✦ Misionero'), findsNothing);
+      expect(find.text('Revista'), findsNothing);
+    });
+
+    testWidgets(
+      'un espiritual que cuenta para la beca lleva las dos etiquetas, la categoría primero',
+      (tester) async {
+        await _montar(tester, porCategorias());
+        await _irA(tester, 'libros');
+        final espiritual = enLaFila('Patriarcas y Profetas', '✝ Espiritual');
+        final bonificable = enLaFila('Patriarcas y Profetas', '◆ Bonificable');
+        expect(espiritual, findsOneWidget);
+        expect(bonificable, findsOneWidget);
+        // En el orden de lectura: antes en la misma línea o en una línea más arriba (la pastilla baja
+        // si no entra al lado).
+        final primera = tester.getTopLeft(espiritual);
+        final segunda = tester.getTopLeft(bonificable);
+        expect(
+          primera.dy < segunda.dy || (primera.dy == segunda.dy && primera.dx < segunda.dx),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets('Misioneros: ✦ Misionero y, si cuenta para la beca, también ◆ Bonificable', (
+      tester,
+    ) async {
+      await _montar(tester, porCategorias());
+      await _irA(tester, 'misioneros');
+      expect(find.text('Misionero Esperanza'), findsOneWidget);
+      expect(find.text('Misionero Bonificable'), findsOneWidget);
+      expect(find.text('✦ Misionero'), findsNWidgets(2));
+      expect(find.text('◆ Bonificable'), findsOneWidget);
+      expect(enLaFila('Misionero Bonificable', '◆ Bonificable'), findsOneWidget);
+      expect(find.text('✝ Espiritual'), findsNothing);
+    });
+
+    testWidgets('Revistas: la etiqueta Revista', (tester) async {
+      await _montar(tester, porCategorias());
+      await _irA(tester, 'revistas');
+      expect(find.text('Revista Vida y Salud'), findsOneWidget);
+      expect(find.text('Revista'), findsOneWidget, reason: 'la etiqueta');
+      expect(find.text('◆ Bonificable'), findsNothing);
+    });
+
+    testWidgets('el material y un producto sin categoría no aparecen aunque tengan precio', (
+      tester,
+    ) async {
+      await _montar(tester, porCategorias());
+      for (final pestana in ['libros', 'misioneros', 'revistas']) {
+        await _irA(tester, pestana);
+        expect(find.text('Folleto de la casa'), findsNothing, reason: pestana);
+        expect(find.text('Producto sin categoría'), findsNothing, reason: pestana);
+      }
+    });
+
+    testWidgets('el lector de pantalla dice la categoría y, aparte, que es bonificable', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      await _montar(tester, porCategorias());
+      await _irA(tester, 'libros');
+      expect(
+        find.bySemanticsLabel(RegExp(r'^El Deseado de todas las gentes, espiritual, \$ 1\.000$')),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(
+          RegExp(r'^Patriarcas y Profetas, espiritual, bonificable, \$ 1\.000$'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(RegExp(r'^Salud y Hogar, bonificable, \$ 1\.000$')),
+        findsOneWidget,
+      );
+      semantica.dispose();
+    });
+
+    testWidgets('con el texto al 200 % las etiquetas no desbordan', (tester) async {
+      await _montar(tester, porCategorias(), escala: 2);
+      for (final pestana in ['libros', 'misioneros', 'revistas']) {
+        await _irA(tester, pestana);
+        expect(tester.takeException(), isNull, reason: pestana);
+      }
+      await _irA(tester, 'libros');
+      expect(find.text('✝ Espiritual'), findsWidgets);
+      // La lista se arma a medida que se ve: las filas de más abajo aparecen al deslizar.
+      await _desplazarHasta(tester, find.text('Salud y Hogar'));
+      expect(enLaFila('Salud y Hogar', '◆ Bonificable'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('en una pantalla chica (320 × 568) las etiquetas tampoco desbordan', (
+      tester,
+    ) async {
+      await _montar(tester, porCategorias(), tamano: const Size(320, 568));
+      for (final pestana in ['libros', 'misioneros', 'revistas']) {
+        await _irA(tester, pestana);
+        expect(tester.takeException(), isNull, reason: pestana);
+      }
+    });
+
+    testWidgets('volver atrás y reentrar muestra las mismas etiquetas', (tester) async {
+      final e = porCategorias();
+      await _montar(tester, e);
+      await _irA(tester, 'libros');
+      expect(find.text('✝ Espiritual'), findsNWidgets(2));
+      await _montar(tester, e);
+      await _irA(tester, 'libros');
+      expect(find.text('✝ Espiritual'), findsNWidgets(2));
+      expect(find.text('◆ Bonificable'), findsNWidgets(3));
+    });
+  });
+
   group('26·03 Detalle de una colección', () {
     testWidgets('abre la hoja con lo que lleva, los libros a elegir y el precio en la ciudad', (
       tester,
@@ -313,7 +462,7 @@ void main() {
           ProductoDelCatalogo(
             id: 'p-camino',
             nombre: 'El Camino a Cristo',
-            tipo: TipoDeProducto.libro,
+            categoria: CategoriaDeProducto.espirituales,
           ),
         ],
         excepciones: [
@@ -386,15 +535,23 @@ void main() {
       expect(_verOtra, findsOneWidget);
     });
 
-    testWidgets('un GPS que no contesta no cuelga la pantalla', (tester) async {
-      final gps = GpsFalso()..bloqueo = Completer<void>();
-      await _montar(tester, _Entorno(gps: gps), asentar: false);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
-      await _asentar(tester);
+    testWidgets('si el mapa todavía no leyó el GPS, Precios no lo pide ni abre el permiso', (
+      tester,
+    ) async {
+      final gps = GpsFalso();
+      await _montar(tester, _Entorno(gps: gps, mapaAbierto: false));
       expect(find.text('CIUDAD DE TU ZONA · SIN GPS'), findsOneWidget);
-      gps.bloqueo!.complete();
-      await tester.pump();
+      expect(gps.lecturas, 0);
+      expect(gps.activaciones, isEmpty);
+    });
+
+    testWidgets('con GPS tampoco lo vuelve a leer: usa la última lectura del colportor', (
+      tester,
+    ) async {
+      final gps = GpsFalso();
+      await _montar(tester, _Entorno(gps: gps));
+      expect(find.text('SEGÚN DÓNDE ESTÁS'), findsOneWidget);
+      expect(gps.lecturas, 0);
     });
 
     testWidgets('un GPS fuera de todas sus ciudades también abre con la de su zona', (
@@ -555,7 +712,6 @@ void main() {
         ProviderScope(
           overrides: [
             fechaDeLosPreciosProvider.overrideWithValue(FechaDeLosPreciosFalsa(null)),
-            esperaDelGpsPreciosProvider.overrideWithValue(const Duration(milliseconds: 50)),
             conexionProvider.overrideWith((ref) => Stream.value(TipoConexion.wifi)),
           ],
           child: MaterialApp(
@@ -713,7 +869,11 @@ void main() {
       final e = _Entorno();
       e.repo.catalogo = const CatalogoLocal(
         productos: [
-          ProductoDelCatalogo(id: 'a', nombre: 'Libro nuevo', tipo: TipoDeProducto.libro),
+          ProductoDelCatalogo(
+            id: 'a',
+            nombre: 'Libro nuevo',
+            categoria: CategoriaDeProducto.espirituales,
+          ),
         ],
         generales: [
           PrecioDelCatalogo(id: 'g', productoId: 'a', centavos: 1000, validoDesde: '2026-10-29'),
