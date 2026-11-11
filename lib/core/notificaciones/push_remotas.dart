@@ -14,10 +14,9 @@ final class MensajePush {
 
 /// Las push remotas que llegan al teléfono (HU-NOT-003, ADR-014).
 ///
-/// Puerto en Dart puro. La implementación de producción va sobre `firebase_messaging`, que todavía no
-/// está en el proyecto (falta el proyecto de Firebase y sus archivos de configuración, decisión de
-/// Cristian del 23/10 «Token FCM»); la de los tests y la de la app sin Firebase es
-/// `PushRemotasEnMemoria`, que no recibe nada.
+/// Puerto en Dart puro. La implementación de producción es `PushRemotasFirebase`, sobre
+/// `firebase_messaging` (#614); la de los tests y la de la app sin Firebase (un build sin su archivo
+/// de configuración) es `PushRemotasEnMemoria`, que no recibe nada.
 ///
 /// Un mensaje llega por **una sola** de las tres vías:
 /// - [conLaAppAbierta]: la app está al frente (la UI muestra un aviso sutil, 24C·08);
