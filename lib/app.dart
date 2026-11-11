@@ -33,6 +33,7 @@ import 'features/jornada/presentation/pages/jornadas_por_cerrar_page.dart';
 import 'features/jornada/presentation/providers/jornadas_por_cerrar_providers.dart';
 import 'features/mapa/presentation/providers/limpieza_notas_borradas_providers.dart';
 import 'features/mapa/presentation/providers/pantallas_sobre_el_mapa.dart';
+import 'features/mapa/presentation/providers/uniones_rechazadas_providers.dart';
 import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
 import 'features/notificaciones/presentation/providers/alarmas_exactas_providers.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
@@ -375,6 +376,9 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.watch(reprogramacionPorAlarmasProvider);
     // HU-UBI-012: las notas de persona borradas hace más de 90 días se borran para siempre.
     ref.watch(limpiezaNotasBorradasProvider);
+    // HU-UBI-006 (#679): una unión de duplicados que el servidor rechazó se deshace en el teléfono y el
+    // par vuelve a «Posibles duplicados» con su aviso.
+    ref.watch(unionesRechazadasProvider);
     // HU-VIS-002 («Agenda baja»): la agenda de una casa o un depto dados de baja no suena.
     ref.watch(recordatoriosPorBajaProvider);
     // HU-COB-007: las fotos de los tickets suben cuando hay red y el ticket ya llegó al servidor.

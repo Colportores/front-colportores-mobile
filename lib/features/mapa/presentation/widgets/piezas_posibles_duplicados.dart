@@ -4,6 +4,7 @@ import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../formato_lista_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
+import 'piezas_alta.dart' show ColoresAlta, InsigniaCirculo;
 import 'piezas_lista_ubicaciones.dart';
 import 'textos_posibles_duplicados.dart';
 
@@ -133,6 +134,49 @@ class FilaUbicacionPar extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// El aviso de un par cuya unión rechazó el servidor y quedó separado en el teléfono (HU-UBI-006,
+/// decisión de Cristian, 10/11, «Unión rech.»; #679), arriba en su tarjeta. El canvas de la vista 10
+/// no lo dibuja: usa el borde rojo y el «!» del aviso rojo de la misma pantalla. No es una región
+/// viva: la tarjeta aparece sola en la lista y el lector lo lee al recorrerla.
+class AvisoUnionRechazada extends StatelessWidget {
+  const AvisoUnionRechazada({super.key, required this.texto});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFDF1F1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: ColoresAlta.rojo, width: 1.5),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const InsigniaCirculo(color: ColoresAlta.rojo, glyph: '!'),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                texto,
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13.5,
+                  height: 1.35,
+                  color: ColoresAlta.tinta,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

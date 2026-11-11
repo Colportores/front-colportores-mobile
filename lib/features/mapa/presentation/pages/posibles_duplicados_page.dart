@@ -386,7 +386,8 @@ class _Encabezado extends StatelessWidget {
   }
 }
 
-/// Un par: el motivo y la distancia, las dos ubicaciones y «Revisar».
+/// Un par: el motivo y la distancia, las dos ubicaciones y «Revisar». Si el servidor rechazó la
+/// unión de este par y quedó separado en el teléfono, arriba va el aviso (#679).
 class _TarjetaPar extends StatelessWidget {
   const _TarjetaPar({required this.item, required this.alRevisar});
 
@@ -407,6 +408,13 @@ class _TarjetaPar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (item.rechazoDeUnion case final codigo?) ...[
+            AvisoUnionRechazada(
+              key: Key('union_rechazada_${par.clave}'),
+              texto: TextosPosiblesDuplicados.avisoUnionRechazada(codigo),
+            ),
+            const SizedBox(height: 10),
+          ],
           EncabezadoMotivoPar(
             motivo: TextosPosiblesDuplicados.motivo(par.motivo),
             distancia: TextosPosiblesDuplicados.aDistancia(par.distanciaMetros),
