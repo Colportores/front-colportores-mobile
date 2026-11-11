@@ -9,6 +9,12 @@ abstract final class EventoAuditoriaLocal {
   /// La baja de una ubicación, con el motivo que eligió el colportor.
   static const ubicacionBaja = 'ubicacion_baja';
 
+  /// La unión de duplicados que puso la baja `duplicado_de_<A>` de esta ubicación (B) se deshizo
+  /// porque el servidor rechazó su trabajo (#679): `uuid` es B, `motivo` el código del rechazo
+  /// (`UB003`…) y `creado_en` el instante en que se deshizo. Desde ahí la marca de la unión ya no
+  /// cuenta como motivo de una baja de B.
+  static const ubicacionUnionDeshecha = 'ubicacion_union_deshecha';
+
   /// La justificación de «Crear igual» (HU-UBI-001, #282): `uuid` es el `id` de la ubicación nueva
   /// (o la que se está editando y se deja igual, HU-UBI-004), `motivo` lo que escribió el colportor y
   /// `creado_en` el `updated_at` con que quedó guardada. Solo local: no se sincroniza.

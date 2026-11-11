@@ -41,6 +41,7 @@ import 'generated/schema_v32.dart' as v32;
 import 'generated/schema_v33.dart' as v33;
 import 'generated/schema_v34.dart' as v34;
 import 'generated/schema_v35.dart' as v35;
+import 'generated/schema_v36.dart' as v36;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
@@ -2274,6 +2275,53 @@ void main() {
           reason: 'el CHECK sigue rechazando un op que el motor no conoce',
         );
         expect(await nuevo.select(nuevo.syncQueue).get(), hasLength(4));
+      },
+    );
+  });
+
+  test('dado la cola del motor en la versión 35, cuando migra a la 36, conserva cada job y suma la '
+      'tabla vacía de las uniones locales, que solo acepta APLICADA o DESHECHA (#679)', () async {
+    // La unión de duplicados guarda qué movió para poder deshacerla si el servidor la rechaza. Las
+    // uniones hechas antes de la 36 no tienen esa fila: no se deshacen (quedan como estaban).
+    const union = v35.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'ubicacion',
+      op: 'marcar_como_duplicado',
+      payload: '{"duplicada_id":"ub-b","conservada_id":"ub-a"}',
+      rowPk: 'ub-b',
+      createdAt: 1758700000000,
+      state: 'INVALID',
+      code: 'UB003',
+      message: '',
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 35,
+      newVersion: 36,
+      createOld: v35.DatabaseAtV35.new,
+      createNew: v36.DatabaseAtV36.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch.insertAll(viejo.syncQueue, [union]);
+      },
+      validateItems: (nuevo) async {
+        final jobs = await nuevo.select(nuevo.syncQueue).get();
+        expect(jobs.map((q) => q.toJson()), [union.toJson()]);
+        expect(await nuevo.select(nuevo.ubicacionUnionLocal).get(), isEmpty);
+
+        const insertar =
+            'INSERT INTO ubicacion_union_local (trabajo_id, conservada_id, duplicada_id, unida_en, '
+            'movimientos, estado) VALUES ';
+        await nuevo.customStatement(
+          "$insertar('q-1', 'ub-a', 'ub-b', 1758700000000, '{}', 'APLICADA')",
+        );
+        await expectLater(
+          nuevo.customStatement("$insertar('q-2', 'ub-a', 'ub-b', 1758700000000, '{}', 'OTRA')"),
+          throwsA(anything),
+          reason: 'el CHECK del estado',
+        );
+        expect(await nuevo.select(nuevo.ubicacionUnionLocal).get(), hasLength(1));
       },
     );
   });

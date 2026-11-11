@@ -18,11 +18,11 @@ final class EncoladorMarcarDuplicadoMotor implements EncoladorMarcarDuplicado {
   final SyncEngine _motor;
 
   @override
-  Future<void> encolarMarcarDuplicado({
+  Future<String> encolarMarcarDuplicado({
     required String duplicadaId,
     required String conservadaId,
-  }) async {
-    await _motor.stage('ubicacion', Op.marcarComoDuplicado, {
+  }) {
+    return _motor.stage('ubicacion', Op.marcarComoDuplicado, {
       'duplicada_id': duplicadaId,
       'conservada_id': conservadaId,
     });
