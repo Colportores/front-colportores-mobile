@@ -19,6 +19,7 @@ import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart'
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -189,6 +190,73 @@ void main() {
       expect(await trabajosDeUnion(), isEmpty);
       expect((await ubicaciones.obtener(b))!.auditoria.estaBorrada, isFalse);
     });
+
+    for (final codigo in ['UB003', '42501']) {
+      test(
+        'dado que el servidor rechaza la unión con $codigo, el trabajo queda INVALID, la unión se '
+        'deshace en el teléfono sin borrar nada, y el tipo de A vuelve a casa y sube',
+        () async {
+          final ubicaciones = conElTrabajo();
+          await ubicaciones.insertar(_ubicacion, espacio: _espacio);
+          await ubicaciones.insertar(
+            UbicacionModel.fromJson({..._ubicacion.toJson(), 'id': b, 'numero': '1236'}),
+            espacio: EspacioModel.fromJson({
+              ..._espacio.toJson(),
+              'id': 'esp-b',
+              'ubicacion_id': b,
+            }),
+          );
+          await sembrarEspacio(db, id: 'esp-b2', ubicacionId: b, numeroDepto: '2B');
+          await motor.syncNow();
+          final porDeshacer = <int>[];
+          final sub = ubicaciones.observarUnionesPorDeshacer().listen(porDeshacer.add);
+          addTearDown(sub.cancel);
+
+          final union = await ubicaciones.unirDuplicada(
+            _ubi,
+            b,
+            ahora: DateTime.utc(2026, 10, 16, 13),
+          );
+          expect(union.conservadaPasoAEdificio, isTrue);
+          servidor.rejectJob((await trabajosDeUnion()).single.clientOpId, codigo);
+          final resultado = await motor.syncNow();
+
+          expect(resultado.invalidated, 1);
+          final [trabajo] = await trabajosDeUnion();
+          expect(trabajo.state, 'INVALID');
+          expect(trabajo.code, codigo);
+          await pumpEventQueue();
+          expect(porDeshacer.last, 1, reason: 'el aviso que dispara el deshacer de la app');
+
+          final [deshecha] = await ubicaciones.deshacerUnionesRechazadas(
+            ahora: DateTime.utc(2026, 10, 16, 14),
+          );
+
+          expect(deshecha.codigo, codigo);
+          expect(deshecha.sinVolver, 0);
+          expect((await ubicaciones.obtener(b))!.auditoria.estaBorrada, isFalse);
+          final espaciosDeB = await (db.select(
+            db.espacios,
+          )..where((e) => e.ubicacionId.equals(b))).get();
+          expect(
+            espaciosDeB.map((e) => (e.id, e.deletedAt)),
+            unorderedEquals([('esp-b', null), ('esp-b2', null)]),
+          );
+          expect((await ubicaciones.obtener(_ubi))!.tipo, TipoUbicacion.casa);
+          await pumpEventQueue();
+          expect(porDeshacer.last, 0);
+
+          final otraVuelta = await motor.syncNow();
+
+          expect(otraVuelta.ok, isTrue);
+          expect(otraVuelta.invalidated, 0);
+          final enElServidor = servidor.rowsOf('ubicacion');
+          expect(enElServidor.map((f) => f['id']), unorderedEquals([_ubi, b]));
+          expect(enElServidor.firstWhere((f) => f['id'] == _ubi)['tipo'], 'CASA');
+          expect((await trabajosDeUnion()).single.state, 'INVALID', reason: 'no se reintenta');
+        },
+      );
+    }
 
     test('el provider usa el motor cuando hay uno, y sin motor el que falla', () {
       final conMotor = ProviderContainer(overrides: [motorSyncProvider.overrideWithValue(motor)]);

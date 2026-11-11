@@ -4,12 +4,14 @@ import '../../../../core/database/app_database.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import 'pares_duplicados_local_data_source.dart';
 import 'pares_duplicados_table.dart';
+import 'uniones_locales_table.dart';
 
 part 'pares_duplicados_local_data_source_drift.g.dart';
 
-/// [ParesDuplicadosLocalDataSource] sobre la tabla `ubicacion_par_decidido` ([ParesDecididos]).
-/// No encola nada: la tabla es solo local.
-@DriftAccessor(tables: [ParesDecididos])
+/// [ParesDuplicadosLocalDataSource] sobre la tabla `ubicacion_par_decidido` ([ParesDecididos]) y,
+/// para el aviso de una unión rechazada, `ubicacion_union_local` ([UnionesLocales]). No encola nada:
+/// las dos son solo locales.
+@DriftAccessor(tables: [ParesDecididos, UnionesLocales])
 final class ParesDuplicadosLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     with _$ParesDuplicadosLocalDataSourceDriftMixin
     implements ParesDuplicadosLocalDataSource {
@@ -21,6 +23,22 @@ final class ParesDuplicadosLocalDataSourceDrift extends DatabaseAccessor<AppData
   @override
   Stream<Map<String, ParDecidido>> observarDecididos() =>
       select(paresDecididos).watch().map(_aMapa);
+
+  /// La última unión de cada par manda: si se volvió a unir después del rechazo, ya no hay aviso.
+  @override
+  Stream<Map<String, String>> observarUnionesRechazadas() =>
+      (select(unionesLocales)
+            ..orderBy([(u) => OrderingTerm.asc(u.unidaEn), (u) => OrderingTerm.asc(u.trabajoId)]))
+          .watch()
+          .map((filas) {
+            final ultima = <String, UnionLocalFila>{
+              for (final f in filas) ParDuplicado.claveDe(f.conservadaId, f.duplicadaId): f,
+            };
+            return {
+              for (final MapEntry(key: clave, value: f) in ultima.entries)
+                if (f.estado == EstadoUnionLocal.deshecha) clave: f.codigoRechazo ?? '',
+            };
+          });
 
   static Map<String, ParDecidido> _aMapa(List<ParDecididoFila> filas) => {
     for (final fila in filas)

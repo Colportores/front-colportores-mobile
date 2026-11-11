@@ -28,6 +28,7 @@ import '../../features/mapa/data/datasources/notas_table.dart';
 import '../../features/mapa/data/datasources/pares_duplicados_table.dart';
 import '../../features/mapa/data/datasources/personas_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
+import '../../features/mapa/data/datasources/uniones_locales_table.dart';
 import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
 import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
@@ -100,6 +101,7 @@ part 'app_database.g.dart';
     Tickets,
     TicketFotosLocales,
     DeudaCasaCaches,
+    UnionesLocales,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -176,10 +178,13 @@ class AppDatabase extends _$AppDatabase {
   ///   entrevista sin venta («Lo que dejaste», #608; backend-supabase 0160).
   /// - 35: `sync_queue.op` acepta `marcar_como_duplicado`, el trabajo de la unión de duplicados del
   ///   motor de sync (contrato-sync-engine §6.2, HU-UBI-006, #679).
+  /// - 36: `ubicacion_union_local`, qué movió cada unión de duplicados hecha en el teléfono, solo
+  ///   local: si el servidor rechaza su trabajo, la unión se deshace y el par queda separado
+  ///   (decisión de Cristian, 10/11, «Unión rech.»; HU-UBI-006, #679).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 35;
+  static const int versionEsquema = 36;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -508,6 +513,12 @@ class AppDatabase extends _$AppDatabase {
     // vuelve a encolar. `alterTable` vuelve a crear los índices que la tabla ya tenía.
     from34To35: (m, esquema) async {
       await m.alterTable(TableMigration(esquema.syncQueue));
+    },
+    // Solo crea la tabla de las uniones, vacía: nada de lo guardado cambia. Las uniones hechas antes
+    // de la 36 no guardaron qué movieron, así que si su trabajo vuelve rechazado no se deshacen (los
+    // datos son simulados hasta diciembre: no se migra nada).
+    from35To36: (m, esquema) async {
+      await m.createTable(esquema.ubicacionUnionLocal);
     },
   );
 }

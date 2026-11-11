@@ -122,6 +122,9 @@ final specsDeLaApp = <SyncSpec>[
   // La copia comprimida de la foto de cada ticket y cómo va su subida (HU-COB-007, S41): archivos de este
   // teléfono, que el colportor puede borrar. No sube por el motor.
   SyncSpec.local('ticket_foto_local'),
+  // Qué movió cada unión de duplicados hecha en el teléfono (HU-UBI-006, #679): para deshacerla si el
+  // servidor rechaza su trabajo. Solo `id`; viaja en el backup con la cola de sync.
+  SyncSpec.local('ubicacion_union_local'),
 ];
 
 /// El registro validado contra [tablasLocales] (todas las de la DB, sin [tablasDelMotor]).

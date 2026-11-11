@@ -43,6 +43,9 @@ final class _LocalQueFalla implements ParesDuplicadosLocalDataSource {
   Stream<Map<String, ParDecidido>> observarDecididos() => Stream.error(StateError('disco'));
 
   @override
+  Stream<Map<String, String>> observarUnionesRechazadas() => Stream.error(StateError('disco'));
+
+  @override
   Future<void> decidir(
     String ubicacionId1,
     String ubicacionId2,
