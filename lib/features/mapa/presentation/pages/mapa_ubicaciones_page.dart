@@ -6,6 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../agenda/domain/entities/tipo_agenda.dart';
+import '../../../agenda/domain/services/armador_agenda.dart' show VentanaAgenda;
+import '../../../agenda/domain/services/armador_agendados.dart';
+import '../../../agenda/presentation/providers/consulta_agenda_providers.dart';
 import '../../../agenda/presentation/providers/entrevista_providers.dart';
 import '../../../agenda/presentation/widgets/aviso_entrevista_en_curso.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
@@ -27,6 +31,7 @@ import '../mapa_base/mapa_base.dart';
 import '../mapa_base/marcador_estado.dart' show VarianteMarcador;
 import '../mapa_base/modelo_mapa_base.dart';
 import '../providers/alta_ubicacion_notifier.dart';
+import '../providers/hoja_agendados_provider.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import '../providers/mapa_base_providers.dart';
 import '../providers/mapa_principal_provider.dart';
@@ -45,8 +50,8 @@ import '../widgets/piezas_mapa_ubicaciones.dart';
 import 'alta_ubicacion_page.dart';
 
 /// La pestaña «Mapa» (vista 06, HU-UBI-003): las ubicaciones del colportor sobre el mapa, su GPS y,
-/// abajo, la hoja «Cercanía» con la lista de la más cercana a la más lejana o la vista previa de la
-/// ubicación que se tocó.
+/// abajo, la hoja con «Cercanía» (la lista de la más cercana a la más lejana), «Agendados» o la vista
+/// previa de la ubicación que se tocó.
 ///
 /// Vive dentro de la pantalla principal (`IndexedStack`, que arma todas las pestañas al arrancar):
 /// [activa] dice si la pestaña está a la vista. Hasta que se abre por primera vez no arma el mapa ni
@@ -66,8 +71,9 @@ import 'alta_ubicacion_page.dart';
 /// Cristian del 23/10, «Números casas»: [CuadradosDelMapa]); hasta entonces siguen los puntos y los
 /// grupos de HU-UBI-003.
 ///
-/// Qué queda para otras HU (decisión de Cristian en el #199): «Agendados» y la vista previa con
-/// «Registrar visita» y «Agendar» (HU-VIS-001 y HU-VIS-002) y «Cobranza» (HU-COB-005).
+/// La hoja tiene dos pestañas: «Cercanía» y «Agendados» (06C·03, #407: las visitas de la Agenda
+/// sobre el mapa, con sus chips de tipo y sus grupos por día). Con «Agendados» el mapa atenúa las
+/// casas que no tienen una visita de la lista ([PuntoMapa.atenuado]).
 class MapaUbicacionesPage extends ConsumerStatefulWidget {
   const MapaUbicacionesPage({
     super.key,
@@ -402,6 +408,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     disponible: _tamano.height,
     escala: MediaQuery.textScalerOf(context),
     reserva: _reservaSobreLaHoja(),
+    ancho: MediaQuery.sizeOf(context).width,
   );
 
   /// Centra el mapa en [punto] de modo que quede en la parte que la hoja de [altura] deja libre. El
@@ -822,10 +829,13 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   // ---------------------------------------------------------------- dibujo
 
+  /// Los marcadores del mapa. Con [agendadas] (la hoja en «Agendados», 06C·03) las casas que no están
+  /// entre ellas se ven tenues; la elegida nunca.
   List<PuntoMapa> _puntos(
     MapaUbicacionesState estado, {
     required bool cuadrados,
     AltaUbicacionState? alta,
+    Set<String>? agendadas,
   }) {
     final seleccionada = estado.seleccionada?.ubicacion.id;
     final candidatas = alta?.candidatas ?? const <CandidataDuplicado>[];
@@ -833,7 +843,15 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     return [
       for (final item in estado.lista?.items ?? const <ItemListaUbicacion>[])
         if (!ids.contains(item.ubicacion.id))
-          _punto(item, seleccionada: item.ubicacion.id == seleccionada, cuadrados: cuadrados),
+          _punto(
+            item,
+            seleccionada: item.ubicacion.id == seleccionada,
+            cuadrados: cuadrados,
+            atenuado:
+                agendadas != null &&
+                item.ubicacion.id != seleccionada &&
+                !agendadas.contains(item.ubicacion.id),
+          ),
       for (var i = 0; i < candidatas.length; i++)
         _puntoCandidata(candidatas[i], i, varias: candidatas.length > 1, alta: alta!),
       if (estado.lectura != null)
@@ -868,7 +886,12 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   /// El marcador de una casa: con [cuadrados] el cuadrado de M·02 (con el aro si es la elegida); si
   /// no, el que se toca, el de «cerca tuyo», la insignia de su estado (M·01) o, sin estado, el punto
   /// de «Sin visita». El estado sale de `house_status` (`ItemListaUbicacion.estado`).
-  PuntoMapa _punto(ItemListaUbicacion item, {required bool seleccionada, required bool cuadrados}) {
+  PuntoMapa _punto(
+    ItemListaUbicacion item, {
+    required bool seleccionada,
+    required bool cuadrados,
+    bool atenuado = false,
+  }) {
     final ubicacion = item.ubicacion;
     final variante = VarianteMarcador.de(
       item.estado,
@@ -891,7 +914,29 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       etiqueta: estilo == EstiloPunto.contexto || estilo == EstiloPunto.conEstado
           ? null
           : FormatoMapaUbicaciones.etiquetaPuerta(ubicacion),
+      atenuado: atenuado,
     );
+  }
+
+  // ---------------------------------------------------------------- hoja «Agendados» (06C·03)
+
+  ClaveAgenda _claveAgenda(DateTime ahora) =>
+      (colportorId: widget.colportorId, inicioDeHoy: VentanaAgenda.de(ahora).inicioDeHoy);
+
+  /// Las visitas agendadas de la hoja, armadas con el chip de tipo [tipo]: las mismas de la pestaña
+  /// Agenda con «Pendientes» (HU-VIS-002). Se leen siempre (la pestaña «Agendados N» dice cuántas hay).
+  AsyncValue<VistaAgendados> _agendados(TipoAgenda? tipo) {
+    final ahora = ref.read(relojAgendaProvider)();
+    return ref
+        .watch(agendaLeidaProvider(_claveAgenda(ahora)))
+        .whenData((items) => ArmadorAgendados.armar(items, tipo, ahora));
+  }
+
+  /// Elegir una pestaña con la hoja minimizada la sube a un tercio: si no, la lista no se ve (como
+  /// tocar una fila o un marcador).
+  void _elegirPestana(PestanaHojaMapa pestana) {
+    ref.read(hojaDelMapaProvider(widget.colportorId).notifier).elegirPestana(pestana);
+    if (_altura == AlturaHoja.minimizada) setState(() => _altura = AlturaHoja.tercio);
   }
 
   @override
@@ -905,6 +950,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     final ahora = ref.watch(relojListaUbicacionesProvider)();
     final avisoVisible = ref.watch(avisoMapaVisibleProvider(ambito));
     final zonas = ref.watch(zonasParaElMapaProvider(widget.colportorId));
+    final hojaDelMapa = ref.watch(hojaDelMapaProvider(widget.colportorId));
+    final agendados = _agendados(hojaDelMapa.tipo);
     ref.listen(navegacionInicioProvider.select((n) => n.intencion), (_, intencion) {
       if (intencion != null) _atenderIntencion();
     });
@@ -938,7 +985,18 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       onPopInvokedWithResult: (salio, _) {
         if (!salio && widget.activa) _notificador.cerrarSeleccion();
       },
-      child: _contenido(context, estado, ambito, ahora, avisoVisible, zonas, parametrosAlta, alta),
+      child: _contenido(
+        context,
+        estado,
+        ambito,
+        ahora,
+        avisoVisible,
+        zonas,
+        parametrosAlta,
+        alta,
+        hojaDelMapa,
+        agendados,
+      ),
     );
   }
 
@@ -951,12 +1009,19 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     ZonasParaElMapa zonas,
     ParametrosAlta? parametrosAlta,
     AltaUbicacionState? alta,
+    HojaDelMapaState hojaDelMapa,
+    AsyncValue<VistaAgendados> agendados,
   ) {
     final lectura = estado.lectura;
     final modo = ref.watch(ubicacionColportorProvider.select((g) => g.modo));
     // Con el alta abierta (vista 41) la capa de encima tiene su hoja: la de «Cercanía», los botones y
     // lo de arriba se apartan y el mapa queda libre para el pin.
     final enAlta = parametrosAlta != null && alta != null;
+    // 06C·03: con «Agendados» el mapa atenúa lo que no está agendado. Mientras se lee, o si no se pudo
+    // leer, no atenúa nada (no se sabe qué está agendado).
+    final agendadas = hojaDelMapa.enAgendados && !enAlta && !agendados.hasError
+        ? agendados.value?.ubicaciones
+        : null;
     return LayoutBuilder(
       builder: (context, restricciones) {
         _tamano = restricciones.biggest;
@@ -984,7 +1049,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                   zoomMinimo: MapaAlta.zoomMinimo,
                   zoomMaximo: MapaAlta.zoomMaximo,
                   agruparPuntos: true,
-                  puntos: _puntos(estado, cuadrados: cuadrados, alta: alta),
+                  puntos: _puntos(estado, cuadrados: cuadrados, alta: alta, agendadas: agendadas),
                   zonas: zonas.dibujo,
                   precision: lectura != null
                       ? CirculoPrecision(
@@ -1161,6 +1226,15 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                       alActivarGps: () => unawaited(_gps.activarGps()),
                       alRegistrar: () => unawaited(_empezarAlta()),
                       colportorId: widget.colportorId,
+                      hojaDelMapa: hojaDelMapa,
+                      agendados: agendados,
+                      alElegirPestana: _elegirPestana,
+                      alElegirTipoAgendados: ref
+                          .read(hojaDelMapaProvider(widget.colportorId).notifier)
+                          .elegirTipo,
+                      alReintentarAgendados: () => ref.invalidate(
+                        agendaLeidaProvider(_claveAgenda(ref.read(relojAgendaProvider)())),
+                      ),
                     ),
                   ],
                 ),

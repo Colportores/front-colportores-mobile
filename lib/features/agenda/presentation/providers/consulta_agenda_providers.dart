@@ -85,7 +85,8 @@ final visitasAgendadasDeLaCasaProvider = StreamProvider.autoDispose
     );
 
 /// Los filtros de la agenda del colportor [colportorId]: por tipo y por estado. Se conservan mientras
-/// la pantalla esté montada (la hoja «Agendados» del mapa usa los mismos).
+/// la pantalla esté montada. La hoja «Agendados» del mapa lee las mismas visitas pero tiene su propio
+/// chip de tipo (`hojaDelMapaProvider`): el canvas 06C·03 le dibuja «Entregas» y ningún estado.
 final class FiltrosAgendaNotifier extends Notifier<FiltrosAgenda> {
   FiltrosAgendaNotifier(this.colportorId);
 
