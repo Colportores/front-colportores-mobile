@@ -6,6 +6,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/database/fecha_utc_converter.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../mapa/data/models/ubicacion_model.dart';
+import '../../../mapa/domain/value_objects/coordenadas.dart';
 import '../../domain/entities/agenda.dart';
 import '../../domain/entities/estado_agenda.dart';
 import '../../domain/entities/item_agenda.dart';
@@ -232,6 +233,7 @@ final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
     calle: fila.calle,
     numero: fila.numero,
     deBaja: fila.deletedAt != null,
+    coordenadas: Coordenadas(lat: fila.lat, lon: fila.lon),
   );
 
   static Agenda _aAgenda(AgendaFila fila) => Agenda(
@@ -246,6 +248,11 @@ final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
     estado: EstadoAgenda.desdeCodigo(fila.estado),
     colportorId: fila.colportorId,
     visitaId: fila.visitaId,
+    // La venta, el monto y la entrega: la hoja «Agendados» del mapa (06C·03) dice la cuota y lo que
+    // falta cobrar, y si la entrega lleva un pago.
+    ventaId: fila.ventaId,
+    montoPrevistoCentavos: fila.montoPrevisto,
+    entregaId: fila.entregaId,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,

@@ -190,7 +190,18 @@ abstract final class ConstructorEstiloMapa {
     fuentes[fuentePuntos] = {
       'type': 'geojson',
       'data': coleccionPuntos(config.puntos),
-      if (config.agruparPuntos) ...{'cluster': true, 'clusterRadius': 44, 'clusterMaxZoom': 17},
+      if (config.agruparPuntos) ...{
+        'cluster': true,
+        'clusterRadius': 44,
+        'clusterMaxZoom': 17,
+        // Cuántas casas del grupo no están atenuadas: un grupo es tenue si todas lo son (06C·03).
+        'clusterProperties': {
+          propiedadVivos: [
+            '+',
+            ['case', _estaAtenuado, 0, 1],
+          ],
+        },
+      },
     };
     fuentes[fuentePuntosLibres] = {'type': 'geojson', 'data': coleccionPuntosLibres(config.puntos)};
     fuentes[fuentePrecision] = {'type': 'geojson', 'data': poligonoPrecision(config.precision)};
@@ -202,7 +213,10 @@ abstract final class ConstructorEstiloMapa {
     };
 
     estilo['sources'] = fuentes;
-    estilo['layers'] = [...capas, ..._capasPropias(config, conRecursos: conRecursos)];
+    estilo['layers'] = [
+      ...capas,
+      ..._capasPropias(config, conRecursos: conRecursos).map(_conAtenuado),
+    ];
     return jsonEncode(estilo);
   }
 
@@ -270,6 +284,7 @@ abstract final class ConstructorEstiloMapa {
                 imagenes.contains(MarcadorCercano.nombre(p.etiqueta!, p.variante)))
               'imagen': MarcadorCercano.nombre(p.etiqueta!, p.variante),
             ..._propiedadesDeEstado(p, imagenes),
+            if (p.atenuado) propiedadAtenuado: true,
           },
         },
     ],
@@ -372,6 +387,58 @@ abstract final class ConstructorEstiloMapa {
           },
       ],
     };
+  }
+
+  /// La propiedad de un punto atenuado ([PuntoMapa.atenuado]) y la que suma un grupo con las casas
+  /// suyas que no lo están.
+  static const propiedadAtenuado = 'atenuado';
+  static const propiedadVivos = 'vivos';
+
+  /// La opacidad de lo atenuado (canvas 06C·03: `opacity: .3`).
+  static const opacidadAtenuado = .3;
+
+  static const List<Object?> _estaAtenuado = [
+    '==',
+    ['get', propiedadAtenuado],
+    true,
+  ];
+
+  /// Las propiedades de opacidad de cada tipo de capa de puntos.
+  static const _opacidades = {
+    'circle': ['circle-opacity', 'circle-stroke-opacity'],
+    'symbol': ['icon-opacity', 'text-opacity'],
+  };
+
+  /// [capa] con su opacidad multiplicada por la del atenuado, si dibuja puntos: el punto atenuado (o
+  /// el grupo sin ninguna casa viva) se ve a [opacidadAtenuado] de lo que se veía. Las demás capas
+  /// (zonas, precisión, cercanía) no cambian.
+  static Map<String, dynamic> _conAtenuado(Map<String, dynamic> capa) {
+    final fuente = capa['source'];
+    final propiedades = _opacidades[capa['type']];
+    if ((fuente != fuentePuntos && fuente != fuentePuntosLibres) || propiedades == null) {
+      return capa;
+    }
+    final filtro = capa['filter'];
+    final esGrupo =
+        filtro is List && filtro.length == 2 && filtro[0] == 'has' && filtro[1] == 'point_count';
+    final List<Object?> factor = esGrupo
+        ? [
+            'case',
+            [
+              '==',
+              ['get', propiedadVivos],
+              0,
+            ],
+            opacidadAtenuado,
+            1,
+          ]
+        : ['case', _estaAtenuado, opacidadAtenuado, 1];
+    final paint = {...?(capa['paint'] as Map<String, dynamic>?)};
+    for (final propiedad in propiedades) {
+      final actual = paint[propiedad];
+      paint[propiedad] = actual == null ? factor : ['*', actual, factor];
+    }
+    return {...capa, 'paint': paint};
   }
 
   static const List<Object?> _noEsGrupo = [
