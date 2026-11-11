@@ -14,7 +14,9 @@ import 'package:colportores_mobile/features/mapa/data/services/house_status_upda
 import 'package:colportores_mobile/features/mapa/domain/entities/color_house_status.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/entrega_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/venta_local_data_source_drift.dart';
+import 'package:colportores_mobile/features/ventas/data/models/devolucion_model.dart';
 import 'package:colportores_mobile/features/ventas/data/repositories/entrega_repository_impl.dart';
+import 'package:colportores_mobile/features/ventas/domain/entities/devolucion.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/entrega.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/entrega_diferida.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/entrega_pendiente.dart';
@@ -470,7 +472,7 @@ void main() {
       await local.registrarEntrega('v-1', [
         entregaDe('e-1', 'prod-1'),
         entregaDe('e-2', 'prod-2', pendiente: true),
-        entregaDe('e-3', 'prod-3', pendiente: true),
+        entregaDe('e-3', 'prod-2', pendiente: true),
       ]);
       encolador.encolados.clear();
 
@@ -540,6 +542,151 @@ void main() {
     });
   });
 
+  /// Devuelve [cantidad] libros de `prod-2` (el renglón `i-v-1-2`) de la venta v-1, sin entregar.
+  Future<void> devolver({int cantidad = 2, String id = 'dev-1'}) => db
+      .into(db.devoluciones)
+      .insert(
+        DevolucionesCompanion.insert(
+          id: id,
+          ventaId: 'v-1',
+          productosDevueltos: DevolucionModel.productosAJson([
+            ProductoDevuelto(productoId: 'prod-2', ventaItemId: 'i-v-1-2', cantidad: cantidad),
+          ]),
+          fechaDevolucion: ahora,
+          createdAt: ahora,
+          updatedAt: ahora,
+        ),
+      );
+
+  group('neto de devoluciones (decisión del 30/10, «Devol. s/ent»)', () {
+    test('un libro devuelto sin entregar no figura como pendiente, aunque su fila siga', () async {
+      await vender();
+      await diferir();
+      await devolver();
+
+      final lista = await local.observarPendientes().first;
+
+      expect(lista.single.lineas, const [
+        LineaPendiente(entregaId: 'e-1', productoId: 'prod-1', cantidad: 1),
+      ]);
+      expect((await entregas()).map((e) => e.pendiente), [true, true]);
+    });
+
+    test('una fila devuelta en parte figura con lo que falta', () async {
+      await vender();
+      await diferir();
+      await devolver(cantidad: 1);
+
+      final lista = await local.observarPendientes().first;
+
+      expect(
+        lista.single.lineas.last,
+        const LineaPendiente(entregaId: 'e-2', productoId: 'prod-2', cantidad: 1),
+      );
+    });
+
+    test('con todo lo pendiente devuelto, la venta sale de la lista', () async {
+      await vender();
+      await local.registrarEntrega('v-1', [
+        entregaDe('e-1', 'prod-1'),
+        entregaDe('e-2', 'prod-2', cantidad: 2, pendiente: true),
+      ]);
+      await devolver();
+
+      expect(await local.observarPendientes().first, isEmpty);
+    });
+
+    test('la lista se entera sola de una devolución nueva', () async {
+      await vender();
+      await diferir();
+      final vistas = <int>[];
+      final sub = local.observarPendientes().listen((l) => vistas.add(l.single.lineas.length));
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      await devolver();
+      await pumpEventQueue();
+
+      expect(vistas.first, 2);
+      expect(vistas.last, 1);
+    });
+
+    test('«Entregado hoy» no entrega lo devuelto: esa fila queda como estaba', () async {
+      await vender();
+      await diferir();
+      await devolver();
+
+      await local.cumplir('v-1', ahora: sabado, idDeLaCita: 'c-x');
+
+      final filas = await entregas();
+      expect(filas.first.pendiente, isFalse);
+      expect(filas.last.pendiente, isTrue);
+      expect(filas.last.fechaEntrega, isNull);
+      expect((await citas()).single.estado, 'CUMPLIDA');
+    });
+
+    test('una fila devuelta en parte se entrega con lo que quedaba', () async {
+      await vender();
+      await diferir();
+      await devolver(cantidad: 1);
+
+      await local.cumplir('v-1', ahora: sabado, idDeLaCita: 'c-x');
+
+      final filas = await entregas();
+      expect(filas.last.pendiente, isFalse);
+      expect(filas.last.cantidad, 1);
+    });
+
+    test(
+      'con todo lo pendiente devuelto, «Entregado hoy» no dice «ya estaba» y cierra la cita',
+      () async {
+        await vender();
+        await diferir();
+        await devolver();
+        await (db
+            .into(db.devoluciones)
+            .insert(
+              DevolucionesCompanion.insert(
+                id: 'dev-2',
+                ventaId: 'v-1',
+                productosDevueltos: DevolucionModel.productosAJson([
+                  const ProductoDevuelto(productoId: 'prod-1', ventaItemId: 'i-v-1-1', cantidad: 1),
+                ]),
+                fechaDevolucion: ahora,
+                createdAt: ahora,
+                updatedAt: ahora,
+              ),
+            ));
+
+        final hecho = await local.cumplir('v-1', ahora: sabado, idDeLaCita: 'c-x');
+
+        expect(hecho.todoDevuelto, isTrue);
+        expect(hecho.yaEstaba, isFalse);
+        expect(hecho.entregadas, isEmpty);
+        expect(hecho.citaCumplida, isTrue);
+        expect((await citas()).single.estado, 'CUMPLIDA');
+        // Las filas no se tocan: siguen pendientes, sin fecha de entrega.
+        expect((await entregas()).every((f) => f.pendiente && f.fechaEntrega == null), isTrue);
+      },
+    );
+
+    test('marcar a mano una fila devuelta no la entrega: ya no había nada que entregar', () async {
+      await vender();
+      await diferir();
+      await devolver();
+
+      final hecho = await local.cumplir(
+        'v-1',
+        ahora: sabado,
+        idDeLaCita: 'c-x',
+        entregaIds: {'e-2'},
+      );
+
+      expect(hecho.yaEstaba, isTrue);
+      expect((await entregas()).last.pendiente, isTrue);
+    });
+  });
+
   group('observarPendientes', () {
     test('una entrada por venta con sus filas pendientes, la fecha y la cita', () async {
       await vender();
@@ -557,8 +704,22 @@ void main() {
           ],
           fechaPrevista: sabado,
           agendaId: 'c-1',
+          espacioId: 'esp-1',
+          numeroTalonario: 'T-v-1',
         ),
       ]);
+    });
+
+    test('si el vínculo ya no está, la entrega figura igual y sin casa', () async {
+      await vender();
+      await diferir();
+      await (db.delete(db.espacioPersonas)).go();
+
+      final lista = await local.observarPendientes().first;
+
+      expect(lista.single.ventaId, 'v-1');
+      expect(lista.single.espacioId, isNull);
+      expect(lista.single.numeroTalonario, 'T-v-1');
     });
 
     test('lo entregado no figura y la lista vuelve a vaciarse', () async {
@@ -597,11 +758,11 @@ void main() {
           fecha: sabado,
           cita: 'c-2',
           filas: [
-            entregaDe('e-3', 'prod-3', pendiente: true, ventaId: 'v-2', fechaPrevista: sabado),
+            entregaDe('e-3', 'prod-1', pendiente: true, ventaId: 'v-2', fechaPrevista: sabado),
           ],
         );
         await local.registrarEntrega('v-3', [
-          entregaDe('e-9', 'prod-9', pendiente: true, ventaId: 'v-3'),
+          entregaDe('e-9', 'prod-1', pendiente: true, ventaId: 'v-3'),
         ]);
 
         final lista = await local.observarPendientes().first;
@@ -618,7 +779,7 @@ void main() {
       await diferir(
         venta: 'v-2',
         cita: 'c-2',
-        filas: [entregaDe('e-3', 'prod-3', pendiente: true, ventaId: 'v-2', fechaPrevista: sabado)],
+        filas: [entregaDe('e-3', 'prod-1', pendiente: true, ventaId: 'v-2', fechaPrevista: sabado)],
       );
 
       final de2 = await local.observarPendientes(espacioPersonaId: 'ep-2').first;

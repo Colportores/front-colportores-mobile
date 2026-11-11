@@ -55,6 +55,7 @@ class Entrega extends Equatable {
   Entrega editada({
     required DateTime ahora,
     bool? pendiente,
+    int? cantidad,
     DateTime? fechaPrevista,
     bool sinFechaPrevista = false,
     DateTime? fechaEntrega,
@@ -62,7 +63,7 @@ class Entrega extends Equatable {
     id: id,
     ventaId: ventaId,
     productoId: productoId,
-    cantidad: cantidad,
+    cantidad: cantidad ?? this.cantidad,
     pendiente: pendiente ?? this.pendiente,
     fechaPrevista: sinFechaPrevista ? null : (fechaPrevista ?? this.fechaPrevista),
     fechaEntrega: fechaEntrega ?? this.fechaEntrega,

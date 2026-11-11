@@ -110,6 +110,10 @@ class EntregasEnMemoria implements EntregaRepository {
   /// Si no es `null`, [registrarEntrega] se queda esperando.
   Completer<void>? compuerta;
 
+  /// Filas que [registrarEntrega] suma como pendientes a lo que recibe: así se prueba una entrega
+  /// parcial aunque la venta tenga una sola fila para tildar.
+  List<Entrega> pendientesAlRegistrar = const [];
+
   /// El color con que responde [registrarEntrega].
   ColorHouseStatus? colorDeLaCasa = ColorHouseStatus.cobranzaPendiente;
 
@@ -181,11 +185,26 @@ class EntregasEnMemoria implements EntregaRepository {
   final _pendientes = StreamController<List<EntregaPendiente>>.broadcast();
 
   /// Emite [lista] a quien esté mirando las entregas pendientes.
-  void emitirPendientes(List<EntregaPendiente> lista) => _pendientes.add(lista);
+  void emitirPendientes(List<EntregaPendiente> lista) {
+    pendientesActuales = lista;
+    _pendientes.add(lista);
+  }
+
+  /// Lo último que se emitió: quien empieza a mirar lo recibe enseguida. `null`: todavía no hubo nada
+  /// y la lista queda «cargando».
+  List<EntregaPendiente>? pendientesActuales;
+
+  /// Si no es `null`, quien empieza a mirar las entregas pendientes recibe este error.
+  Object? errorDePendientes;
 
   @override
-  Stream<List<EntregaPendiente>> observarPendientes({String? espacioPersonaId}) =>
-      _pendientes.stream;
+  Stream<List<EntregaPendiente>> observarPendientes({String? espacioPersonaId}) async* {
+    final error = errorDePendientes;
+    if (error != null) throw error;
+    final actual = pendientesActuales;
+    if (actual != null) yield actual;
+    yield* _pendientes.stream;
+  }
 
   @override
   Future<Either<Failure, EntregaRegistrada>> entregarAhora(
@@ -210,8 +229,9 @@ class EntregasEnMemoria implements EntregaRepository {
         EntregaRegistrada(entregas: existentes, colorDeLaCasa: colorDeLaCasa, yaEstaba: true),
       );
     }
-    guardadas[ventaId] = filas;
-    return Right(EntregaRegistrada(entregas: filas, colorDeLaCasa: colorDeLaCasa));
+    final todas = [...filas, ...pendientesAlRegistrar];
+    guardadas[ventaId] = todas;
+    return Right(EntregaRegistrada(entregas: todas, colorDeLaCasa: colorDeLaCasa));
   }
 
   @override

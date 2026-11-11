@@ -1,3 +1,4 @@
+import '../domain/entities/estado_casa.dart';
 import '../domain/entities/lista_ubicaciones.dart';
 import '../domain/entities/ubicacion.dart' show TipoUbicacion;
 import '../domain/services/cercania_de_la_casa.dart';
@@ -93,10 +94,17 @@ abstract final class TextosPestanasHojaCasa {
 
 /// Cómo se escribe la hoja de la casa a partir de la ubicación y su contexto.
 abstract final class FormatoHojaCasa {
+  /// El nombre de la casa con el marcador ⇢ cuando ya no hay nada que cobrar (P1 de #687).
+  static const entregaPendiente = 'Entrega pendiente';
+
   /// La línea chica debajo de la dirección (canvas: «Casa · Cobranza pendiente · a 20 m de vos»): el
   /// tipo, el estado si se sabe (nunca uno que no se sabe) y la distancia si hay GPS. Una casa dada de
   /// baja dice «Casa · dada de baja el 18/10» y no su estado (E·04).
-  static String subtitulo(ItemListaUbicacion item, DateTime ahora) {
+  ///
+  /// [sinSaldo]: ninguna persona de la casa debe nada. Con el marcador ⇢ («Entrega y pago») y sin
+  /// saldo, lo único pendiente es entregar: el nombre dice «Entrega pendiente» (decisión del 10/11, P1
+  /// de #687; el marcador y la leyenda no cambian).
+  static String subtitulo(ItemListaUbicacion item, DateTime ahora, {bool sinSaldo = false}) {
     final ubicacion = item.ubicacion;
     final baja = ubicacion.auditoria.deletedAt;
     if (item.esBaja && baja != null) {
@@ -109,7 +117,9 @@ abstract final class FormatoHojaCasa {
     final lejos = CercaniaDeLaCasa.estaLejos(distancia);
     final partes = [
       FormatoUbicaciones.tipo(ubicacion.tipo),
-      if (estado != null)
+      if (estado == EstadoCasa.entregaYPago && sinSaldo)
+        entregaPendiente
+      else if (estado != null)
         FormatoMapaUbicaciones.estadoVistaPrevia(estado, item.proximaEntrevista, ahora),
       if (!lejos && distancia != null && FormatoUbicaciones.distancia(distancia).isNotEmpty)
         'a ${FormatoUbicaciones.distancia(distancia)} de vos',

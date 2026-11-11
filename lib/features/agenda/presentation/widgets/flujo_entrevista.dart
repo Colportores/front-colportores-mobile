@@ -21,11 +21,13 @@ import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../../ventas/domain/entities/cliente_de_la_venta.dart';
 import '../../../ventas/domain/entities/entrega.dart' show EntregaRegistrada;
 import '../../../ventas/domain/entities/nueva_venta.dart' show VentaGuardada;
+import '../../../ventas/domain/usecases/diferir_entrega_use_case.dart' show ResultadoDiferirEntrega;
 import '../../../ventas/presentation/flujo_cuando_cobrar.dart';
 import '../../../ventas/presentation/formato_venta.dart' show TextosVenta;
 import '../../../ventas/presentation/pages/asi_quedo_la_venta_page.dart';
 import '../../../ventas/presentation/pages/cuando_cobrar_page.dart' show TextosCuandoCobrar;
 import '../../../ventas/presentation/pages/entregar_ahora_page.dart';
+import '../../../ventas/presentation/pages/entregar_otro_dia_page.dart';
 import '../../../ventas/presentation/pages/nueva_venta_page.dart';
 import '../../../ventas/presentation/pages/venta_registrada_page.dart';
 import '../../../ventas/presentation/providers/nueva_venta_notifier.dart' show ArgumentosDeVenta;
@@ -35,6 +37,7 @@ import '../../domain/entities/agenda.dart';
 import '../../domain/entities/detalle_de_agenda.dart';
 import '../../domain/entities/entrevista_en_curso.dart';
 import '../../domain/entities/misionero_dejado.dart';
+import '../../domain/services/recordatorios.dart' show ResultadoRecordatorio;
 import '../../domain/usecases/cerrar_entrevista_con_venta_use_case.dart';
 import '../../domain/usecases/finalizar_entrevista_use_case.dart';
 import '../../domain/usecases/registrar_resultado_visita_use_case.dart';
@@ -548,6 +551,39 @@ abstract final class FlujoEntrevista {
     return (vinculo: vinculo, nombre: nombre);
   }
 
+  /// «+ Registrar venta» de la pestaña Ventas (#546, decisión de Cristian del 28/10): la venta (vista
+  /// 27) de la persona elegida en «¿A quién le vendés?» y todo el hilo que sigue (27A·14, la entrega,
+  /// el cobro, «¿Cuándo volvés a cobrar?» y «Así quedó la venta», 42B·01), con la casa y la persona ya
+  /// resueltas. No hay entrevista ni visita: la venta sale de la pestaña, no de una casa abierta. El
+  /// cierre termina con «Listo» y vuelve a quien lo abrió (no al mapa), con el aviso de lo que quedó.
+  ///
+  /// Devuelve [VentaGuardadaEnLaEntrevista] si se guardó, o [VentaSinCompletar] si no.
+  static Future<SalidaTerminoEntrevista> venderDesdeVentas(
+    BuildContext context,
+    ProviderContainer ref, {
+    required String colportorId,
+    required String espacioId,
+    required String espacioPersonaId,
+    required String persona,
+    required String direccion,
+  }) {
+    final navegador = Navigator.of(context);
+    return _venderYSeguir(
+      context,
+      ref,
+      mensajero: ScaffoldMessenger.maybeOf(context),
+      navegador: navegador,
+      colportorId: colportorId,
+      espacioId: espacioId,
+      espacioPersonaId: espacioPersonaId,
+      persona: persona,
+      direccion: direccion,
+      // Como desde la jornada: «Listo» y sin llevar al mapa.
+      desdeLaJornada: true,
+      noSeGuardo: null,
+    );
+  }
+
   /// «Vender» de «¿Qué pasó?» (vista 39, decisión de Cristian del 04/11, «Vender desde el mapa»): la
   /// venta (vista 27) de la casa y la persona que ya tuvieron una entrevista dada, y de ahí todo lo que
   /// sigue a «Sí, registrar la venta»: «Venta registrada», el cobro, «¿Cuándo volvés a cobrar?» y R·08
@@ -753,6 +789,8 @@ abstract final class FlujoEntrevista {
     // El hilo de la venta (vista 42, 42B·01): 27A·14 → entrega (27B·01) → cobro (28·01) → con saldo,
     // «¿Cuándo volvés a cobrar?» (01B) → «Así quedó la venta» (01D a 01G) → el mapa con un aviso (01H).
     var entrega = EntregaDelCierre.otroDia;
+    // La entrega que quedó agendada en «Entregar otro día» (27C·01, #435), para el cierre (01F, 01G).
+    ResultadoDiferirEntrega? diferida;
     var saldo = total;
     CobranzaDeLaVenta cobranza = const SinSaldoQueCobrar();
     if (contextoFirme.mounted) {
@@ -765,7 +803,10 @@ abstract final class FlujoEntrevista {
                 contextoFirme,
                 guardada: guardada,
                 nombre: cliente.nombre,
-                conEntregarAhora: entrega == EntregaDelCierre.otroDia,
+                // Con la entrega ya agendada (27C·01) el grupo ENTREGA no vuelve: entregarla ahora
+                // dejaría una «Entrega agendada» de algo entregado (revisión de #687).
+                conEntregarAhora: entrega == EntregaDelCierre.otroDia && diferida == null,
+                conEntregarOtroDia: entrega == EntregaDelCierre.otroDia && diferida == null,
                 conCobro: cobrar != null,
               )
             : null;
@@ -779,9 +820,22 @@ abstract final class FlujoEntrevista {
             entrega = registrada.quedaPendiente
                 ? EntregaDelCierre.parcial
                 : EntregaDelCierre.completa;
+            // Lo que se había dejado para otro día se acaba de entregar (su cita ya se cumplió): el
+            // cierre no muestra una «Entrega agendada» de algo entregado. Si quedó algo, se pregunta
+            // de nuevo para cuándo (abajo).
+            diferida = null;
           }
         }
-        // «Entregar otro día» (27C, MomentoDeEntrega.otroDia) pide acá la fecha de la entrega con #435.
+        // «Entregar otro día» (27C·01): la fecha de la entrega. Volver sin guardarla vuelve a «¿Y
+        // ahora?», como salir del cobro sin cobrar.
+        if (seguimiento?.entrega == MomentoDeEntrega.otroDia && contextoFirme.mounted) {
+          diferida = await _entregarOtroDia(
+            contextoFirme,
+            guardada: guardada,
+            nombre: cliente.nombre,
+          );
+          if (diferida == null) continue;
+        }
         if (seguimiento?.cobrarAhora == true && cobrar != null && contextoFirme.mounted) {
           final quedo = await _cobrarAhora(
             ref,
@@ -795,6 +849,17 @@ abstract final class FlujoEntrevista {
           saldo = quedo;
         }
         break;
+      }
+      // Sin entregar todo y sin fecha de entrega todavía, la app la pide antes del cierre y antes de
+      // «¿Cuándo volvés a cobrar?» (42B·01F: cobrada sin entregar; 01G: «Terminar sin entregar ni
+      // cobrar»; y tras una entrega parcial, para lo que quedó: decisión del 10/11, P2 de #687).
+      // Volver sin elegir la deja sin fecha: lo que falta sigue en «Entregas pendientes».
+      if (entrega != EntregaDelCierre.completa && diferida == null && contextoFirme.mounted) {
+        diferida = await _entregarOtroDia(
+          contextoFirme,
+          guardada: guardada,
+          nombre: cliente.nombre,
+        );
       }
       if (contextoFirme.mounted) {
         cobranza = await FlujoCuandoCobrar.preguntar(
@@ -821,6 +886,12 @@ abstract final class FlujoEntrevista {
               descripcion: descripcion,
               totalCentavos: total,
               entrega: entrega,
+              entregaAgendada: diferida == null
+                  ? null
+                  : (
+                      fecha: diferida.entrega.cita.fechaProgramada.toLocal(),
+                      conRecordatorio: diferida.recordatorio == ResultadoRecordatorio.programado,
+                    ),
               cobradoCentavos: total - saldo,
               saldoCentavos: saldo,
               cobranza: cobranza,
@@ -843,8 +914,21 @@ abstract final class FlujoEntrevista {
       }
     }
     // 42B·01H: el aviso en el mapa, con lo que quedó.
+    final diaDeEntrega = diferida?.entrega.cita.fechaProgramada.toLocal();
     avisar(switch (cobranza) {
       _ when !cerrada => TextosEntrevista.ventaGuardadaEntrevistaAbierta,
+      CobranzaAgendada(:final agenda) when diaDeEntrega != null =>
+        TextosCierreDeVenta.avisoEntregaYCobranzaAgendada(
+          numero,
+          diaDeEntrega,
+          agenda.fechaProgramada.toLocal(),
+        ),
+      CobranzaSinFecha() when diaDeEntrega != null =>
+        TextosCierreDeVenta.avisoEntregaYCobranzaSinFecha(numero, diaDeEntrega),
+      SinSaldoQueCobrar() when diaDeEntrega != null => TextosCierreDeVenta.avisoEntregaAgendada(
+        numero,
+        diaDeEntrega,
+      ),
       CobranzaAgendada(:final agenda) => TextosCierreDeVenta.avisoCobranzaAgendada(
         numero,
         agenda.fechaProgramada.toLocal(),
@@ -873,6 +957,7 @@ abstract final class FlujoEntrevista {
     required VentaGuardada guardada,
     required String nombre,
     required bool conEntregarAhora,
+    required bool conEntregarOtroDia,
     required bool conCobro,
   }) => Navigator.of(context).push<SeguimientoDeLaVenta>(
     MaterialPageRoute(
@@ -880,6 +965,7 @@ abstract final class FlujoEntrevista {
         guardada: guardada,
         nombreDelCliente: nombre,
         conEntregarAhora: conEntregarAhora,
+        conEntregarOtroDia: conEntregarOtroDia,
         conCobro: conCobro,
         alContinuar: (seguimiento) => Navigator.of(ruta).pop(seguimiento),
         alTerminar: () => Navigator.of(ruta).pop(),
@@ -902,6 +988,17 @@ abstract final class FlujoEntrevista {
         alEntregar: (registrada) => Navigator.of(ruta).pop(registrada),
       ),
     ),
+  );
+
+  /// «Entregar otro día» (27C·01, #435): la fecha y la hora de la entrega, con su cita y su
+  /// recordatorio. Sin aviso propio: lo que quedó lo dicen el cierre y el aviso del mapa. `null` si
+  /// volvió sin guardar.
+  static Future<ResultadoDiferirEntrega?> _entregarOtroDia(
+    BuildContext context, {
+    required VentaGuardada guardada,
+    required String nombre,
+  }) => Navigator.of(context).push<ResultadoDiferirEntrega>(
+    EntregarOtroDiaPage.ruta(guardada: guardada, nombreDelCliente: nombre, conAviso: false),
   );
 
   /// «Cambiar» de la cobranza en «Así quedó la venta» (42B·01E → 22C·02): «Modificar agenda» con la

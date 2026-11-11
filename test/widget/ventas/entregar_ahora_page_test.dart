@@ -378,8 +378,8 @@ void main() {
       expect(find.text(r'$ 8.900'), findsOneWidget);
       expect(
         find.text(
-          'La casa sigue como «Entrega y cobranza pendientes» hasta que entregues lo que falta y '
-          'el saldo llegue a cero.',
+          'La casa sigue como «Entrega y pago» hasta que entregues lo que falta y el saldo llegue a '
+          'cero.',
         ),
         findsOneWidget,
       );

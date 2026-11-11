@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
@@ -279,10 +281,42 @@ final class EntregaLocalDataSourceDrift {
     }
     final espacioId = await _espacioDe(venta.espacioPersonaId);
 
+    // Solo lo que falta entregar del neto (decisión del 30/10, «Devol. s/ent»): un libro devuelto sin
+    // entregarse no se marca, aunque su fila siga pendiente; una fila devuelta en parte se entrega con
+    // lo que queda.
+    final neto = await _pendienteNeto(ventaId, [
+      for (final fila in previas)
+        if (fila.pendiente) (id: fila.id, productoId: fila.productoId, cantidad: fila.cantidad),
+    ]);
     final aEntregar = [
       for (final fila in previas)
-        if (fila.pendiente && (entregaIds == null || entregaIds.contains(fila.id))) fila,
+        if (neto.containsKey(fila.id) && (entregaIds == null || entregaIds.contains(fila.id))) fila,
     ];
+    if (aEntregar.isEmpty && neto.isEmpty && previas.any((f) => f.pendiente)) {
+      // Hay filas pendientes pero todo lo que tenían se devolvió sin entregarse: no hay nada que
+      // entregar y no es «ya estaba entregada». La visita de la entrega ya no hace falta: su cita se
+      // cierra (CUMPLIDA, como cuando no queda nada pendiente) para que no quede programada para
+      // siempre. Las filas no se tocan (decisión del 30/10, «Devol. s/ent»).
+      var cita = await _citaViva(ventaId);
+      if (cita != null) {
+        cita = await _escribirCita(
+          cita.id,
+          AgendasCompanion(
+            estado: Value(EstadoAgenda.cumplida.codigo),
+            updatedAt: Value(instanteMs(ahora)),
+          ),
+        );
+      }
+      return EntregaCumplida(
+        entregas: previas,
+        entregadas: const [],
+        cita: cita,
+        citaCumplida: cita != null,
+        direccion: espacioId == null ? '' : await _direccionDe(espacioId),
+        colorDeLaCasa: espacioId == null ? null : await _colorDelEspacio(espacioId),
+        todoDevuelto: true,
+      );
+    }
     if (aEntregar.isEmpty) {
       // Sin nada pendiente que se haya pedido entregar: ya estaba entregado (un segundo toque o un
       // reintento), con ids o sin ellos. «Marcar de nuevo lo hecho» no es un error (QA #433, P2).
@@ -297,11 +331,13 @@ final class EntregaLocalDataSourceDrift {
     }
 
     for (final fila in aEntregar) {
-      await _actualizar(fila.editada(ahora: ahora, pendiente: false, fechaEntrega: ahora));
+      await _actualizar(
+        fila.editada(ahora: ahora, pendiente: false, fechaEntrega: ahora, cantidad: neto[fila.id]),
+      );
     }
     final restantes = [
       for (final fila in previas)
-        if (fila.pendiente && !aEntregar.any((e) => e.id == fila.id)) fila,
+        if (neto.containsKey(fila.id) && !aEntregar.any((e) => e.id == fila.id)) fila,
     ];
     final cuando = nuevaFecha == null ? null : instanteMs(nuevaFecha);
     for (final fila in restantes) {
@@ -371,13 +407,65 @@ final class EntregaLocalDataSourceDrift {
   });
 
   /// Ver [EntregaRepository.observarPendientes].
+  ///
+  /// Lo pendiente es **neto de devoluciones** (decisión del 30/10, «Devol. s/ent»): un libro que volvió
+  /// sin entregarse no figura, aunque su fila `entrega` siga pendiente ([_pendienteNeto]). Por eso se
+  /// vuelve a leer también cuando cambian los renglones de la venta o sus devoluciones.
   Stream<List<EntregaPendiente>> observarPendientes({String? espacioPersonaId}) {
+    final cambios = _db.tableUpdates(
+      TableUpdateQuery.onAllTables([
+        _db.entregas,
+        _db.ventas,
+        _db.ventaItems,
+        _db.agendas,
+        _db.espacioPersonas,
+        _db.devoluciones,
+      ]),
+    );
+    StreamSubscription<void>? suscripcion;
+    late final StreamController<List<EntregaPendiente>> salida;
+    var leyendo = false;
+    var otraVez = false;
+    Future<void> leer() async {
+      // Un cambio mientras se lee pide otra lectura al terminar: nunca queda una vista vieja.
+      if (leyendo) {
+        otraVez = true;
+        return;
+      }
+      leyendo = true;
+      try {
+        do {
+          otraVez = false;
+          final lista = await _pendientes(espacioPersonaId);
+          if (!salida.isClosed) salida.add(lista);
+        } while (otraVez && !salida.isClosed);
+      } on Object catch (error, pila) {
+        if (!salida.isClosed) salida.addError(error, pila);
+      } finally {
+        leyendo = false;
+      }
+    }
+
+    salida = StreamController<List<EntregaPendiente>>(
+      onListen: () {
+        suscripcion = cambios.listen((_) => unawaited(leer()));
+        unawaited(leer());
+      },
+      onCancel: () => suscripcion?.cancel(),
+    );
+    return salida.stream;
+  }
+
+  /// Una lectura de lo pendiente (ver [observarPendientes]).
+  Future<List<EntregaPendiente>> _pendientes(String? espacioPersonaId) async {
     final entregas = _db.entregas;
     final ventas = _db.ventas;
     final agendas = _db.agendas;
+    final vinculos = _db.espacioPersonas;
     final consulta =
         _db.select(entregas).join([
             innerJoin(ventas, ventas.id.equalsExp(entregas.ventaId)),
+            leftOuterJoin(vinculos, vinculos.id.equalsExp(ventas.espacioPersonaId)),
             leftOuterJoin(
               agendas,
               agendas.ventaId.equalsExp(ventas.id) &
@@ -395,36 +483,79 @@ final class EntregaLocalDataSourceDrift {
                     : ventas.espacioPersonaId.equals(espacioPersonaId)),
           )
           ..orderBy([OrderingTerm.asc(entregas.createdAt), OrderingTerm.asc(entregas.id)]);
-    return consulta.watch().map((filas) {
-      final porVenta = <String, _VentaPendiente>{};
-      for (final fila in filas) {
-        final venta = fila.readTable(ventas);
-        final entrega = fila.readTable(entregas);
-        final cita = fila.readTableOrNull(agendas);
-        final acumulada = porVenta.putIfAbsent(
+    final filas = await consulta.get();
+    final porVenta = <String, _VentaPendiente>{};
+    final filasPorVenta = <String, List<({String id, String productoId, int cantidad})>>{};
+    for (final fila in filas) {
+      final venta = fila.readTable(ventas);
+      final entrega = fila.readTable(entregas);
+      final cita = fila.readTableOrNull(agendas);
+      final acumulada = porVenta.putIfAbsent(
+        venta.id,
+        () => _VentaPendiente(
           venta.id,
-          () => _VentaPendiente(venta.id, venta.espacioPersonaId, venta.fecha),
-        );
-        acumulada.lineas.putIfAbsent(
-          entrega.id,
-          () => LineaPendiente(
-            entregaId: entrega.id,
-            productoId: entrega.productoId,
-            cantidad: entrega.cantidad,
-          ),
-        );
-        final fecha = entrega.fechaPrevista;
-        if (fecha != null && (acumulada.fecha == null || fecha.isBefore(acumulada.fecha!))) {
-          acumulada.fecha = fecha;
-        }
-        final agendaId = acumulada.agendaId;
-        if (cita != null && (agendaId == null || cita.id.compareTo(agendaId) < 0)) {
-          acumulada.agendaId = cita.id;
-        }
+          venta.espacioPersonaId,
+          venta.fecha,
+          fila.readTableOrNull(vinculos)?.espacioId,
+          venta.numeroTalonario,
+        ),
+      );
+      final propias = filasPorVenta.putIfAbsent(venta.id, () => []);
+      if (!propias.any((e) => e.id == entrega.id)) {
+        propias.add((id: entrega.id, productoId: entrega.productoId, cantidad: entrega.cantidad));
       }
-      final lista = porVenta.values.toList()..sort(_VentaPendiente.comparar);
-      return [for (final v in lista) v.aEntidad()];
-    });
+      final fecha = entrega.fechaPrevista;
+      if (fecha != null && (acumulada.fecha == null || fecha.isBefore(acumulada.fecha!))) {
+        acumulada.fecha = fecha;
+      }
+      final agendaId = acumulada.agendaId;
+      if (cita != null && (agendaId == null || cita.id.compareTo(agendaId) < 0)) {
+        acumulada.agendaId = cita.id;
+      }
+    }
+    for (final MapEntry(key: ventaId, value: propias) in filasPorVenta.entries) {
+      final neto = await _pendienteNeto(ventaId, propias);
+      final acumulada = porVenta[ventaId]!;
+      for (final e in propias) {
+        final cantidad = neto[e.id];
+        if (cantidad == null) continue;
+        acumulada.lineas[e.id] = LineaPendiente(
+          entregaId: e.id,
+          productoId: e.productoId,
+          cantidad: cantidad,
+        );
+      }
+    }
+    final lista = [
+      for (final v in porVenta.values)
+        if (v.lineas.isNotEmpty) v,
+    ]..sort(_VentaPendiente.comparar);
+    return [for (final v in lista) v.aEntidad()];
+  }
+
+  /// Cuánto de cada fila pendiente de [ventaId] falta entregar de verdad, `entrega.id` → cantidad:
+  /// lo vendido **menos lo devuelto** y menos lo ya entregado se reparte entre las [pendientes] en su
+  /// orden. Una fila de un libro que volvió sin entregarse no figura; una que volvió en parte figura
+  /// con lo que queda (decisión del 30/10, «Devol. s/ent»: la fila no se borra ni toca el stock).
+  Future<Map<String, int>> _pendienteNeto(
+    String ventaId,
+    List<({String id, String productoId, int cantidad})> pendientes,
+  ) async {
+    final restante = Map<String, int>.of(
+      ReglasDeEntrega.cantidadesFaltantes(
+        await EstadoDeEntrega.vendidoDe(_db, ventaId),
+        await EstadoDeEntrega.entregadoDe(_db, ventaId),
+      ),
+    );
+    final neto = <String, int>{};
+    for (final fila in pendientes) {
+      final falta = restante[fila.productoId] ?? 0;
+      if (falta <= 0) continue;
+      final cantidad = fila.cantidad < falta ? fila.cantidad : falta;
+      neto[fila.id] = cantidad;
+      restante[fila.productoId] = falta - cantidad;
+    }
+    return neto;
   }
 
   /// La venta [ventaId] sin baja, o [EntregaSinVentaException].
@@ -505,6 +636,7 @@ final class EntregaLocalDataSourceDrift {
   Future<void> _actualizar(Entrega e) async {
     await (_db.update(_db.entregas)..where((x) => x.id.equals(e.id))).write(
       EntregasCompanion(
+        cantidad: Value(e.cantidad),
         pendiente: Value(e.pendiente),
         fechaPrevista: Value(e.fechaPrevista),
         fechaEntrega: Value(e.fechaEntrega),
@@ -631,11 +763,19 @@ final class EntregaLocalDataSourceDrift {
 
 /// Lo que se junta de una venta mientras se recorren las filas de la consulta de pendientes.
 final class _VentaPendiente {
-  _VentaPendiente(this.ventaId, this.espacioPersonaId, this.vendidaEl);
+  _VentaPendiente(
+    this.ventaId,
+    this.espacioPersonaId,
+    this.vendidaEl,
+    this.espacioId,
+    this.numeroTalonario,
+  );
 
   final String ventaId;
   final String espacioPersonaId;
   final DateTime vendidaEl;
+  final String? espacioId;
+  final String numeroTalonario;
   final lineas = <String, LineaPendiente>{};
   DateTime? fecha;
   String? agendaId;
@@ -646,6 +786,8 @@ final class _VentaPendiente {
     lineas: lineas.values.toList(),
     fechaPrevista: fecha,
     agendaId: agendaId,
+    espacioId: espacioId,
+    numeroTalonario: numeroTalonario,
   );
 
   /// Primero las que tienen fecha, de la más próxima a la más lejana; después las que no, de la venta

@@ -55,6 +55,8 @@ import 'features/mapa/presentation/flujo_ficha_desde_la_casa.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/flujo_ver_venta_desde_la_casa.dart';
 import 'features/mapa/presentation/providers/baja_ubicacion_providers.dart';
+import 'features/mapa/presentation/providers/ficha_persona_providers.dart'
+    show registrarEntregaDesdeLaFichaProvider;
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'features/mapa/presentation/providers/lugar_de_trabajo_providers.dart';
 import 'features/mapa/presentation/providers/personas_providers.dart';
@@ -84,6 +86,7 @@ import 'features/tickets/presentation/providers/tickets_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
+import 'features/ventas/presentation/flujo_entregar_desde_la_ficha.dart';
 import 'features/ventas/presentation/pages/devolucion_page.dart';
 import 'features/ventas/presentation/providers/ventas_providers.dart'
     show cobrarDespuesDeLaVentaProvider;
@@ -361,6 +364,21 @@ Future<void> main() async {
               colportorId: colportorId,
               espacioId: datos.espacioId,
               personaId: datos.personaId,
+            );
+          },
+        ),
+        // «Registrar entrega» y «Entregar» de la ficha de la persona (vista 32, 32B·01 → 27C·03, #429 y
+        // #435): «Marcar entregado» de la venta de la fila o, desde el chip, «¿Qué venta?» si hay más
+        // de una con algo pendiente. Devuelve `true` si se marcó algo.
+        registrarEntregaDesdeLaFichaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoEntregarDesdeLaFicha.abrir(
+              contexto,
+              personaId: datos.personaId,
+              espacioId: datos.espacioId,
+              ventaId: datos.ventaId,
             );
           },
         ),

@@ -13,6 +13,10 @@ import '../../../mapa/presentation/providers/hoja_casa_providers.dart'
 import '../../../mapa/presentation/providers/personas_providers.dart';
 import '../../../mapa/presentation/textos_personas.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart';
+import '../../../ventas/domain/usecases/cumplir_entrega_use_case.dart';
+import '../../../ventas/presentation/formato_entrega_diferida.dart' show TextosEntregaDiferida;
+import '../../../ventas/presentation/providers/entrega_providers.dart'
+    show cumplirEntregaUseCaseProvider;
 import '../../domain/entities/detalle_de_agenda.dart';
 import '../../domain/entities/estado_agenda.dart';
 import '../../domain/entities/franja_horaria.dart';
@@ -32,7 +36,10 @@ import 'modificar_agenda_page.dart';
 ///
 /// - **Programada** (23C·01): «Registrar resultado» lleva a «¿Qué pasó?» de la vista 39 con la casa y
 ///   la agenda ya puestas; «Modificar» abre 23C·02; «Cancelar agenda» va como enlace al pie.
-///   Una cita de ENTREGA no ofrece «Registrar resultado» hasta el flujo de #435 (entrega para otro día).
+///   En una cita de **entrega** (HU-VEN-003) «Registrar resultado» no va: su lugar lo toma «Entregado
+///   hoy», que marca como entregado lo pendiente de la venta (una sola llamada mientras guarda). Si no
+///   se puede guardar, un aviso fijo arriba lo dice y «Entregado hoy» queda a mano para reintentar
+///   (decisión del 28/10, P3 del QA de #435).
 /// - **Modificada** (23C·03): al volver de «Modificar», el detalle ya muestra lo nuevo y el aviso de éxito
 ///   («Guardado. El recordatorio pasó a las 10:00.») queda en pantalla.
 /// - **Cumplida o no cumplida** (23C·06): el aviso «Esta visita ya tiene resultado…» y ninguna salida.
@@ -127,6 +134,49 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
     if (mounted) ref.invalidate(detalleDeAgendaProvider(widget.agendaId));
   }
 
+  /// Ya hay un «Entregado hoy» en curso: un segundo toque no llama de nuevo.
+  var _entregando = false;
+
+  /// El último «Entregado hoy» no se pudo guardar: el aviso queda fijo hasta que un reintento sale bien
+  /// o se sale de la pantalla.
+  var _fallaAlEntregar = false;
+
+  /// «Entregado hoy» (HU-VEN-003, «Cumplir entrega pendiente»): lo pendiente de la venta pasa a
+  /// entregado con la fecha de hoy y la cita se cumple.
+  Future<void> _entregadoHoy(DetalleDeAgenda detalle) async {
+    final ventaId = detalle.agenda.ventaId;
+    if (_entregando || ventaId == null) return;
+    setState(() => _entregando = true);
+    final mensajero = ScaffoldMessenger.maybeOf(context);
+    String? aviso;
+    try {
+      final hecho = await ref
+          .read(cumplirEntregaUseCaseProvider)
+          .call(CumplirEntregaParams(ventaId: ventaId));
+      aviso = hecho.fold(
+        (_) => null,
+        (r) => r.entrega.todoDevuelto
+            ? TextosEntregaDiferida.nadaQueEntregarDevuelto
+            : r.entrega.yaEstaba
+            ? TextosEntregaDiferida.yaEstabaEntregada
+            : TextosEntregaDiferida.entregaMarcada,
+      );
+    } on Object {
+      // Sin base abierta o cualquier falla inesperada: no se marcó nada y se puede reintentar.
+      aviso = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _entregando = false;
+      _fallaAlEntregar = aviso == null;
+    });
+    if (aviso == null) return;
+    ref.invalidate(detalleDeAgendaProvider(widget.agendaId));
+    mensajero
+      ?..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(aviso)));
+  }
+
   Future<void> _registrar(DetalleDeAgenda detalle, String ubicacionId) async {
     final destino = ref.read(registrarVisitaDesdeLaCasaProvider);
     if (destino == null || _abriendo) return;
@@ -194,6 +244,9 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
                         alModificar: () => unawaited(_modificar(d)),
                         alVerLasCuotas: () => unawaited(_verLasCuotas(d)),
                         alRegistrar: (ubicacionId) => unawaited(_registrar(d, ubicacionId)),
+                        alEntregadoHoy: () => unawaited(_entregadoHoy(d)),
+                        entregando: _entregando,
+                        fallaAlEntregar: _fallaAlEntregar,
                         alCancelar: _alCancelar,
                         alVolverSinCancelar: _alVolverSinCancelar,
                       ),
@@ -214,6 +267,8 @@ abstract final class ClavesDetalleAgenda {
   static const aviso = Key('detalle_agenda_aviso');
   static const reintentar = Key('detalle_agenda_reintentar');
   static const registrar = Key('detalle_agenda_registrar');
+  static const entregadoHoy = Key('detalle_agenda_entregado_hoy');
+  static const avisoEntrega = Key('detalle_agenda_aviso_entrega');
   static const avisoCasa = Key('detalle_agenda_aviso_casa');
   static const modificar = Key('detalle_agenda_modificar');
   static const avisoCerrada = Key('detalle_agenda_aviso_cerrada');
@@ -284,6 +339,9 @@ class _Cuerpo extends ConsumerWidget {
     required this.alModificar,
     required this.alVerLasCuotas,
     required this.alRegistrar,
+    required this.alEntregadoHoy,
+    required this.entregando,
+    required this.fallaAlEntregar,
     required this.alCancelar,
     required this.alVolverSinCancelar,
   });
@@ -292,6 +350,13 @@ class _Cuerpo extends ConsumerWidget {
   final VoidCallback alModificar;
   final VoidCallback alVerLasCuotas;
   final ValueChanged<String> alRegistrar;
+  final VoidCallback alEntregadoHoy;
+
+  /// Hay un «Entregado hoy» en curso: el botón no responde y lo dice con una ruedita.
+  final bool entregando;
+
+  /// El último «Entregado hoy» no se pudo guardar (aviso fijo arriba).
+  final bool fallaAlEntregar;
   final ValueChanged<ResultadoCancelarAgenda> alCancelar;
   final VoidCallback alVolverSinCancelar;
 
@@ -309,9 +374,10 @@ class _Cuerpo extends ConsumerWidget {
     final reloj = ref.watch(relojVisitaProvider);
     final programada = agenda.estado == EstadoAgenda.programada;
     final registrarEnganche = ref.watch(registrarVisitaDesdeLaCasaProvider);
-    // Una cita de ENTREGA no se cierra con «Registrar resultado»: dejaría la entrega pendiente sin
-    // cita ni aviso. Hasta que exista el flujo de #435 (entrega para otro día) no se ofrece.
-    final registrar = agenda.tipo == TipoAgenda.entrega ? null : registrarEnganche;
+    // Una cita de ENTREGA no se cierra con «Registrar resultado» (abriría «¿Qué pasó?» de una visita y
+    // dejaría la entrega pendiente sin cita): su lugar lo toma «Entregado hoy».
+    final esEntrega = agenda.tipo == TipoAgenda.entrega;
+    final registrar = esEntrega ? null : registrarEnganche;
     final ubicacionId = contexto?.ubicacion.id;
 
     final subtitulo = _subtitulo(contexto, _persona(personas, agenda.espacioPersonaId));
@@ -322,6 +388,20 @@ class _Cuerpo extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (fallaAlEntregar && esEntrega && programada) ...[
+            Semantics(
+              liveRegion: true,
+              child: const KeyedSubtree(
+                key: ClavesDetalleAgenda.avisoEntrega,
+                child: AvisoAlta(
+                  color: ColoresAlta.rojo,
+                  glyph: '!',
+                  texto: TextosEntregaDiferida.noPudimosMarcar,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           const Text(
             TextosDetalleAgenda.rotulo,
             style: TextStyle(
@@ -441,6 +521,24 @@ class _Cuerpo extends ConsumerWidget {
                 child: const Text(TextosDetalleAgenda.registrarResultado),
               ),
             if (registrar != null) const SizedBox(height: 10),
+            if (esEntrega && agenda.ventaId != null) ...[
+              FilledButton(
+                key: ClavesDetalleAgenda.entregadoHoy,
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+                onPressed: entregando ? null : alEntregadoHoy,
+                child: entregando
+                    ? Semantics(
+                        label: TextosEntregaDiferida.marcando,
+                        child: const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                      )
+                    : const Text(TextosEntregaDiferida.entregadoHoy),
+              ),
+              const SizedBox(height: 10),
+            ],
             OutlinedButton(
               key: ClavesDetalleAgenda.modificar,
               style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),

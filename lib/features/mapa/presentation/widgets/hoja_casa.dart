@@ -257,7 +257,18 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
     );
     // Con el contexto sin llegar (cargando o error) el subtítulo va vacío (canvas, E·01 y E·02); una
     // casa de baja ya sabe qué decir.
-    final subtitulo = contexto.hasValue ? FormatoHojaCasa.subtitulo(item, widget.ahora) : '';
+    final leido = contexto.asData?.value;
+    final subtitulo = leido == null
+        ? ''
+        : FormatoHojaCasa.subtitulo(
+            item,
+            widget.ahora,
+            // Solo se sabe en una casa o negocio con su espacio leído; un edificio se nombra como
+            // siempre.
+            sinSaldo:
+                leido.espacioId != null &&
+                leido.personas.every((p) => leido.saldoDe(p.persona.id) == null),
+          );
     return SingleChildScrollView(
       child: Semantics(
         container: true,

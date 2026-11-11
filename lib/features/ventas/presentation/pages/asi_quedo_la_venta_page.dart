@@ -60,6 +60,20 @@ abstract final class TextosCierreDeVenta {
   /// «Cobranza · Pedro».
   static String cobranzaSinFecha(String persona) => _conNombre('Cobranza', persona);
 
+  /// «SÁB 26/10»: el día de la entrega agendada (01F, 01G; el canvas no pone la hora).
+  static String diaEnTarjeta(DateTime fecha) =>
+      FormatoAgendarVisita.diaCortoYMes(fecha).toUpperCase();
+
+  /// «Entrega agendada · Pedro».
+  static String entregaAgendada(String persona) => _conNombre('Entrega agendada', persona);
+
+  /// «Colección de 1 libro · con recordatorio»: qué se entrega y si va a sonar el aviso (sin aviso se
+  /// dice, nunca se promete uno que no suena).
+  static String detalleDeLaEntrega(String descripcion, {required bool conRecordatorio}) => [
+    descripcion.trim(),
+    if (conRecordatorio) 'con recordatorio' else 'sin recordatorio',
+  ].where((t) => t.isNotEmpty).join(' · ');
+
   /// «Saldo $ 800 · en Grecia 3307».
   static String saldoEn(int centavos, String direccion) => direccion.trim().isEmpty
       ? 'Saldo ${FormatoVenta.monto(centavos)}'
@@ -88,6 +102,22 @@ abstract final class TextosCierreDeVenta {
   /// «Venta 0039 guardada. Cobranza sin fecha.»
   static String avisoCobranzaSinFecha(String numero) =>
       'Venta $numero guardada. Cobranza sin fecha.';
+
+  /// 01F: «Venta 0039 guardada. Entrega agendada: sáb 26/10.»
+  static String avisoEntregaAgendada(String numero, DateTime entrega) =>
+      'Venta $numero guardada. Entrega agendada: ${_dia(entrega)}.';
+
+  /// 01G: «Venta 0039 guardada. Entrega: sáb 26/10. Cobranza sin fecha.»
+  static String avisoEntregaYCobranzaSinFecha(String numero, DateTime entrega) =>
+      'Venta $numero guardada. Entrega: ${_dia(entrega)}. Cobranza sin fecha.';
+
+  /// La entrega y la cobranza con fecha (el canvas no lo dibuja; se arma como 01E y 01G): «Venta 0039
+  /// guardada. Entrega: sáb 26/10. Cobranza agendada: lun 28/10 · 10:00.»
+  static String avisoEntregaYCobranzaAgendada(String numero, DateTime entrega, DateTime cobro) =>
+      'Venta $numero guardada. Entrega: ${_dia(entrega)}. Cobranza agendada: '
+      '${_dia(cobro)} · ${FormatoAgendarVisita.hora(cobro)}.';
+
+  static String _dia(DateTime fecha) => FormatoAgendarVisita.diaCortoYMes(fecha).toLowerCase();
 }
 
 /// Las claves de la pantalla, para los tests.
@@ -95,6 +125,7 @@ abstract final class ClavesCierreDeVenta {
   static const pagina = Key('cierre_venta_pagina');
   static const completa = Key('cierre_venta_completa');
   static const tarjetaCobranza = Key('cierre_venta_cobranza');
+  static const tarjetaEntrega = Key('cierre_venta_entrega');
   static const accionCobranza = Key('cierre_venta_cobranza_accion');
   static const fallaCobranza = Key('cierre_venta_cobranza_falla');
   static const volver = Key('cierre_venta_volver');
@@ -105,8 +136,8 @@ abstract final class ClavesCierreDeVenta {
 ///
 /// Muestra lo vendido, la entrega, el cobro y el saldo; sin saldo y con todo entregado, «Venta
 /// completa» (01D). Con saldo, la tarjeta de la cobranza: con fecha y «Cambiar» (01E), o «Sin fecha»
-/// y «Poner fecha» (01G). La tarjeta de la entrega agendada (01F, 01G) llega con «Entregar otro día»
-/// (27C, #435).
+/// y «Poner fecha» (01G). Con la entrega agendada en «Entregar otro día» (27C, #435), su tarjeta
+/// «Entrega agendada» va antes que la de la cobranza (01F, 01G).
 ///
 /// No tiene atrás: la venta ya está guardada. El atrás del sistema hace lo mismo que el botón. Devuelve
 /// cómo quedó la cobranza (con lo que haya cambiado acá).
@@ -124,6 +155,7 @@ class AsiQuedoLaVentaPage extends StatefulWidget {
     required this.cobranza,
     this.alCambiar,
     this.alPonerFecha,
+    this.entregaAgendada,
     this.textoBoton = TextosCierreDeVenta.volverAlMapa,
   });
 
@@ -144,6 +176,10 @@ class AsiQuedoLaVentaPage extends StatefulWidget {
 
   /// «Poner fecha» de la cobranza sin fecha: vuelve a preguntar «¿Cuándo volvés a cobrar?».
   final Future<CobranzaDeLaVenta> Function()? alPonerFecha;
+
+  /// La entrega que quedó agendada en «Entregar otro día» (27C·01): cuándo (local) y si va a sonar el
+  /// recordatorio; `null` si no se agendó ninguna.
+  final ({DateTime fecha, bool conRecordatorio})? entregaAgendada;
 
   final String textoBoton;
 
@@ -250,7 +286,22 @@ class _AsiQuedoLaVentaPageState extends State<AsiQuedoLaVentaPage> {
                       ),
                       const SizedBox(height: 14),
                       if (completa) const _CartelCompleta(),
-                      // «Entrega agendada» (01F, 01G) se suma acá con «Entregar otro día» (27C, #435).
+                      if (widget.entregaAgendada case final entrega?) ...[
+                        _TarjetaDeCobranza(
+                          clave: ClavesCierreDeVenta.tarjetaEntrega,
+                          glifo: '⇢',
+                          colorGlifo: ColoresAgenda.gris,
+                          antes: TextosCierreDeVenta.diaEnTarjeta(entrega.fecha),
+                          titulo: TextosCierreDeVenta.entregaAgendada(widget.persona),
+                          detalle: TextosCierreDeVenta.detalleDeLaEntrega(
+                            widget.descripcion,
+                            conRecordatorio: entrega.conRecordatorio,
+                          ),
+                          accion: null,
+                          alAccion: null,
+                        ),
+                        if (tarjeta != null) const SizedBox(height: 10),
+                      ],
                       ?tarjeta,
                     ],
                   ),
@@ -353,6 +404,9 @@ class _CartelCompleta extends StatelessWidget {
 /// Grecia 3307» y «Cambiar» (01E); o «SIN FECHA» y «Poner fecha» (01G).
 class _TarjetaDeCobranza extends StatelessWidget {
   const _TarjetaDeCobranza({
+    this.clave = ClavesCierreDeVenta.tarjetaCobranza,
+    this.glifo = r'$',
+    this.colorGlifo = ColoresAgenda.azul,
     required this.antes,
     required this.titulo,
     required this.detalle,
@@ -361,6 +415,9 @@ class _TarjetaDeCobranza extends StatelessWidget {
     this.fallo = false,
   });
 
+  final Key clave;
+  final String glifo;
+  final Color colorGlifo;
   final String antes;
   final String titulo;
   final String detalle;
@@ -375,11 +432,11 @@ class _TarjetaDeCobranza extends StatelessWidget {
       width: 30,
       height: 30,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: ColoresAgenda.azul, borderRadius: BorderRadius.circular(6)),
-      child: const ExcludeSemantics(
+      decoration: BoxDecoration(color: colorGlifo, borderRadius: BorderRadius.circular(6)),
+      child: ExcludeSemantics(
         child: Text(
-          r'$',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+          this.glifo,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
         ),
       ),
     );
@@ -388,11 +445,11 @@ class _TarjetaDeCobranza extends StatelessWidget {
       children: [
         Text(
           antes,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11.5,
             letterSpacing: 0.6,
             fontWeight: FontWeight.w700,
-            color: ColoresAgenda.azul,
+            color: colorGlifo,
           ),
         ),
         Text(titulo, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
@@ -428,7 +485,7 @@ class _TarjetaDeCobranza extends StatelessWidget {
             ),
           );
     return Container(
-      key: ClavesCierreDeVenta.tarjetaCobranza,
+      key: clave,
       padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
       decoration: BoxDecoration(
         color: Colors.white,

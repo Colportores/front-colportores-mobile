@@ -27,6 +27,7 @@ import 'package:colportores_mobile/features/ventas/data/models/entrega_model.dar
 import 'package:colportores_mobile/features/ventas/data/repositories/entrega_repository_impl.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/componente_vendido.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/entrega_pendiente.dart';
+import 'package:colportores_mobile/features/ventas/domain/entities/venta_item.dart';
 import 'package:colportores_mobile/features/ventas/domain/usecases/cumplir_entrega_use_case.dart';
 import 'package:colportores_mobile/features/ventas/domain/usecases/diferir_entrega_use_case.dart';
 import 'package:drift/drift.dart' show OrderingTerm, Value, driftRuntimeOptions;
@@ -110,12 +111,17 @@ void main() {
       (db.select(db.entregas)..orderBy([(e) => OrderingTerm.asc(e.id)])).get();
   Future<List<AgendaFila>> citas() => db.select(db.agendas).get();
 
-  Future<void> vender({String id = 'v-1', int monto = 150000}) async {
+  Future<void> vender({String id = 'v-1', int monto = 150000, List<VentaItem>? items}) async {
     // Lo vendido es lo que deja [dejar] por defecto: así «entregado» también lo es para la casa.
-    await ventas.registrar(ventaDe(id, monto: monto, talonario: 'T-$id'), [
-      itemDe('i-$id-1', id, cantidad: 2),
-      itemDe('i-$id-2', id, productoId: 'prod-2', cantidad: 1),
-    ]);
+    // Lo pendiente es neto de lo vendido (decisión del 30/10): las filas tienen que ser de lo vendido.
+    await ventas.registrar(
+      ventaDe(id, monto: monto, talonario: 'T-$id'),
+      items ??
+          [
+            itemDe('i-$id-1', id, cantidad: 2),
+            itemDe('i-$id-2', id, productoId: 'prod-2', cantidad: 1),
+          ],
+    );
     encolador.encolados.clear();
   }
 
@@ -511,7 +517,7 @@ void main() {
     });
 
     test('una sola entrega, un solo producto, cantidad máxima', () async {
-      await vender();
+      await vender(items: [itemDe('i-v-1-1', 'v-1', productoId: 'p', cantidad: 99999)]);
 
       final r = await diferir(
         dejar(
@@ -538,8 +544,8 @@ void main() {
         }
         for (var i = 1; i < 30; i += 2) {
           await repo.registrarEntrega('v-$i', [
-            entregaDe('s-$i-0', 'p-0', ventaId: 'v-$i'),
-            entregaDe('s-$i-1', 'p-1', pendiente: true, ventaId: 'v-$i'),
+            entregaDe('s-$i-0', 'prod-1', cantidad: 2, ventaId: 'v-$i'),
+            entregaDe('s-$i-1', 'prod-2', pendiente: true, ventaId: 'v-$i'),
           ]);
         }
 
