@@ -34,8 +34,9 @@ class _RepoFalso implements EntregaRepository {
   @override
   Future<Either<Failure, EntregaRegistrada>> registrarEntrega(
     String ventaId,
-    List<Entrega> filas,
-  ) => throw UnimplementedError('Lo cubre entregar_lo_tildado_use_case_test.dart');
+    List<Entrega> filas, {
+    DateTime? soloDesde,
+  }) => throw UnimplementedError('Lo cubre entregar_lo_tildado_use_case_test.dart');
 
   @override
   Future<Either<Failure, List<Entrega>>> deLaVenta(String ventaId) async => const Right([]);
@@ -47,6 +48,7 @@ class _RepoFalso implements EntregaRepository {
     required DateTime ahora,
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
+    DateTime? soloDesde,
   }) => throw UnimplementedError('Lo cubre entrega_diferida_use_cases_test.dart');
 
   @override

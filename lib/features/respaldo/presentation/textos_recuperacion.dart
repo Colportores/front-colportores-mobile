@@ -131,11 +131,31 @@ abstract final class TextosRecuperacion {
       'hayas cargado nada en este teléfono. Una vez que cargues datos, ya no vas a poder traerlo.';
   static const volver = 'Volver';
 
-  // La fila de Configuración «Recuperar mi respaldo» (#610). El canvas de Configuración (vista 16)
-  // todavía no la dibuja: mapa §2, retoque pedido al diseño.
+  // La fila de Configuración «Recuperar mi respaldo» (#610, #691): vista 16, artboards 16G.
   static const filaConfiguracion = 'Recuperar mi respaldo';
-  static const filaConfiguracionDetalle =
-      'Traé lo que tenías en otro teléfono. Solo mientras no hayas cargado nada acá.';
+
+  /// 16G·01: con Drive conectado.
+  static const filaConfiguracionDetalle = 'Traé a este teléfono lo que guardaste en tu Drive';
+
+  /// 16G·03: sin Drive conectado.
+  static const filaConfiguracionSinDrive = 'Conectá tu Drive para buscar tu respaldo';
+
+  /// 16G·04: ya cargó datos (decidido el 10/11).
+  static const filaConfiguracionApagada = 'No disponible: ya cargaste datos en este teléfono';
+
+  // 16G·02, la hoja «Antes de empezar».
+  static const tituloHojaRecuperar = 'Recuperar tu respaldo';
+  static String textoHojaRecuperar(String cuentaDrive) =>
+      'Traemos a este teléfono lo que guardaste en $cuentaDrive. Se puede mientras no cargues nada '
+      'acá.';
+  static const empezar = 'Empezar';
+  static const ahoraNo = 'Ahora no';
+
+  /// Caso que 16G no dibuja: no se pudo leer el estado del Drive al tocar la fila. No se abre nada
+  /// y se avisa con este texto (decisión del agente de decisiones, 11/11, mapa §2: ante la duda se
+  /// bloquea, con un aviso que guía y no afirma lo que no se sabe; PR #698, P1 de #691).
+  static const noPudimosVerTuDrive =
+      'No pudimos ver el estado de tu Drive. Probá de nuevo en unos minutos.';
   static const yaNoSePuedeRecuperar =
       'Ya hay datos cargados en este teléfono, así que no se puede traer el respaldo.';
   static const noSePudoRevisar =

@@ -85,6 +85,9 @@ Future<void> _empezarSinRecuperar(WidgetTester tester) async {
 }
 
 Future<void> _irAConfiguracion(WidgetTester tester) async {
+  // Con el Drive conectado la fila pasa por la hoja «Recuperar tu respaldo» (16G·02, #691); sin
+  // Drive, por la conexión con Google (16G·03, en `recuperar_respaldo_16g_691_test.dart`).
+  await conectarDriveDeLaApp(tester);
   await tester.tap(_abrirConfiguracion);
   await tester.pumpAndSettle();
   expect(_configuracion, findsOneWidget);
@@ -107,10 +110,7 @@ void main() {
 
     await tester.ensureVisible(_filaRecuperar);
     expect(find.text('Recuperar mi respaldo'), findsOneWidget);
-    expect(
-      find.text('Traé lo que tenías en otro teléfono. Solo mientras no hayas cargado nada acá.'),
-      findsOneWidget,
-    );
+    expect(find.text('Traé a este teléfono lo que guardaste en tu Drive'), findsOneWidget);
   });
 
   testWidgets('al tocarla vuelve el asistente, con la búsqueda y las mismas opciones', (
@@ -121,7 +121,7 @@ void main() {
     await _irAConfiguracion(tester);
     final busquedasAntes = arnes.servicio.busquedas;
 
-    await _tocar(tester, _filaRecuperar);
+    await recuperarDesdeConfiguracion(tester);
 
     expect(_asistente, findsOneWidget);
     expect(_configuracion, findsNothing, reason: 'Configuración sale de la pila');
@@ -138,8 +138,9 @@ void main() {
     await _irAConfiguracion(tester);
     final raizAntes = ProviderScope.containerOf(tester.element(find.byType(ColportoresApp)));
     await tester.ensureVisible(_filaRecuperar);
-
     await tester.tap(_filaRecuperar);
+    await _asentar(tester);
+    await tester.tap(hojaRecuperarEmpezar);
     // El primer cuadro tira la raíz vieja entera: ya no hay nada de ella andando.
     await tester.pump();
     await tester.pump();
@@ -163,7 +164,7 @@ void main() {
     await _abrirApp(tester, telefono, arnes);
     await _empezarSinRecuperar(tester);
     await _irAConfiguracion(tester);
-    await _tocar(tester, _filaRecuperar);
+    await recuperarDesdeConfiguracion(tester);
 
     final navegador = tester.state<NavigatorState>(find.byType(Navigator).first);
 
@@ -176,7 +177,7 @@ void main() {
     await _abrirApp(tester, telefono, arnes);
     await _empezarSinRecuperar(tester);
     await _irAConfiguracion(tester);
-    await _tocar(tester, _filaRecuperar);
+    await recuperarDesdeConfiguracion(tester);
 
     await _tocar(tester, cta);
     await tester.enterText(campoContrasena, 'la-de-antes');
@@ -196,7 +197,7 @@ void main() {
     await _abrirApp(tester, telefono, arnes);
     await _empezarSinRecuperar(tester);
     await _irAConfiguracion(tester);
-    await _tocar(tester, _filaRecuperar);
+    await recuperarDesdeConfiguracion(tester);
 
     await empezarSinRecuperar(tester, cta2);
     await tester.pumpAndSettle();
@@ -222,18 +223,19 @@ void main() {
     expect(_filaRecuperar, findsOneWidget);
   });
 
-  testWidgets('con datos cargados la fila no está', (tester) async {
+  testWidgets('con datos cargados la fila queda apagada y dice por qué (16G·04)', (tester) async {
     await _abrirApp(tester, telefono, arnes);
     await _empezarSinRecuperar(tester);
     arnes.lector.sinDatos = false;
 
     await _irAConfiguracion(tester);
 
-    expect(_filaRecuperar, findsNothing);
-    expect(find.text('Recuperar mi respaldo'), findsNothing);
+    await tester.ensureVisible(_filaRecuperar);
+    expect(tester.widget<ListTile>(_filaRecuperar).enabled, isFalse);
+    expect(find.text('No disponible: ya cargaste datos en este teléfono'), findsOneWidget);
   });
 
-  testWidgets('si cargó datos con Configuración abierta: avisa por qué no y la fila se va', (
+  testWidgets('si cargó datos con Configuración abierta: avisa por qué no y la fila se apaga', (
     tester,
   ) async {
     await _abrirApp(tester, telefono, arnes);
@@ -242,7 +244,7 @@ void main() {
     await tester.ensureVisible(_filaRecuperar);
     arnes.lector.sinDatos = false;
 
-    await _tocar(tester, _filaRecuperar);
+    await recuperarDesdeConfiguracion(tester);
 
     expect(_asistente, findsNothing);
     expect(_configuracion, findsOneWidget);
@@ -251,7 +253,8 @@ void main() {
       find.text('Ya hay datos cargados en este teléfono, así que no se puede traer el respaldo.'),
       findsOneWidget,
     );
-    expect(_filaRecuperar, findsNothing);
+    expect(tester.widget<ListTile>(_filaRecuperar).enabled, isFalse, reason: '16G·04');
+    expect(find.text('No disponible: ya cargaste datos en este teléfono'), findsOneWidget);
   });
 
   testWidgets('si no se puede mirar la base: avisa, no abre y al reentrar se puede volver a '
@@ -262,7 +265,7 @@ void main() {
     await tester.ensureVisible(_filaRecuperar);
     arnes.lector.errorAlMirar = StateError('base cerrada');
 
-    await _tocar(tester, _filaRecuperar);
+    await recuperarDesdeConfiguracion(tester);
 
     expect(_asistente, findsNothing);
     expect(
@@ -276,7 +279,7 @@ void main() {
     await tester.tap(_atras);
     await tester.pumpAndSettle();
     await _irAConfiguracion(tester);
-    await _tocar(tester, _filaRecuperar);
+    await recuperarDesdeConfiguracion(tester);
     expect(_asistente, findsOneWidget);
   });
 
@@ -289,14 +292,14 @@ void main() {
     await tester.ensureVisible(_filaRecuperar);
     arnes.resuelta.errorAlDesmarcar = StateError('almacén cerrado');
 
-    await _tocar(tester, _filaRecuperar);
+    await recuperarDesdeConfiguracion(tester);
 
     expect(_asistente, findsNothing);
     expect(_configuracion, findsOneWidget, reason: 'la app no se reinició');
     expect(_avisoNo, findsOneWidget);
 
     arnes.resuelta.errorAlDesmarcar = null;
-    await _tocar(tester, _filaRecuperar);
+    await recuperarDesdeConfiguracion(tester);
     expect(_asistente, findsOneWidget);
   });
 
@@ -312,6 +315,10 @@ void main() {
 
     await tester.tap(_filaRecuperar);
     await tester.tap(_filaRecuperar, warnIfMissed: false);
+    await _asentar(tester);
+    expect(hojaRecuperarRespaldo, findsOneWidget, reason: 'una sola hoja');
+    await tester.tap(hojaRecuperarEmpezar);
+    await tester.tap(hojaRecuperarEmpezar, warnIfMissed: false);
     await _asentar(tester);
 
     // Se decide una sola vez: la marca se quita una vez y el asistente que abre es uno.
@@ -343,7 +350,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('Recuperar mi respaldo'), findsOneWidget);
-    await _tocar(tester, _filaRecuperar);
+    await recuperarDesdeConfiguracion(tester);
     expect(_asistente, findsOneWidget);
   });
 
@@ -355,7 +362,7 @@ void main() {
     arnes.servicio.busqueda = VariosRespaldosEnDrive([respaldoDePrueba, respaldoDePrueba]);
     await _irAConfiguracion(tester);
 
-    await _tocar(tester, _filaRecuperar);
+    await recuperarDesdeConfiguracion(tester);
 
     expect(tester.widget<Text>(titulo).data, 'Encontramos más de un respaldo');
     expect(textoDe(cta), 'Recuperar todos mis datos');

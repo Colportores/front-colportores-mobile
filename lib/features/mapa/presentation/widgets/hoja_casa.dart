@@ -7,6 +7,9 @@ import '../../../agenda/presentation/formato_agenda.dart' show TextosAgenda;
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart'
     show frenaPorCuentaRestringida;
 import '../../../inicio/presentation/providers/navegacion_inicio_provider.dart';
+import '../../../ventas/presentation/providers/ventas_providers.dart' show ventasAbiertasDeProvider;
+import '../../../ventas/presentation/textos_venta_que_crece.dart';
+import '../../../ventas/presentation/widgets/fila_sumar_un_libro.dart';
 import '../../domain/entities/contexto_de_la_casa.dart';
 import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
@@ -249,6 +252,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
               alRegistrarVisita: _registrarVisita(datos),
               alAgendar: _agendar(datos),
               alCobrar: _cobrar(datos),
+              alSumar: _sumarUnLibro(datos),
             ),
       error: (_, _) => AvisoHojaCasa.errorAlLeer(
         alReintentar: () => ref.invalidate(contextoDeLaCasaProvider(clave)),
@@ -430,6 +434,26 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
     }, TextosPestanasHojaCasa.noPudimosAbrirAlta);
   }
 
+  /// Lo que hace «Sumar un libro» (42B·09A, «Venta crece») de la persona [personaId], o `null` si no
+  /// se ofrece: sin destino o con la casa de baja. Comparte la guarda de una acción a la vez.
+  VoidCallback? Function(String personaId) _sumarUnLibro(ContextoDeLaCasa contexto) {
+    final destino = ref.watch(sumarUnLibroDesdeLaCasaProvider);
+    return (personaId) {
+      if (destino == null || widget.item.esBaja) return null;
+      return () => _correr(() async {
+        // Con la cuenta restringida mientras la hoja estaba abierta no se vende.
+        if (frenaPorCuentaRestringida(context, ref)) return;
+        final sumado = await destino((
+          ubicacionId: widget.item.ubicacion.id,
+          espacioId: contexto.espacioId,
+          personaId: personaId,
+        ));
+        // Sumado: el mapa queda libre con la casa en su color nuevo (si no, la hoja sigue).
+        if (sumado is VentaRegistradaEnLaCasa && mounted) _volverAlMapa();
+      }, TextosVentaQueCrece.noPudimosAbrir);
+    };
+  }
+
   /// Lo que hace «$ Cobrar» de la persona [personaId], o `null` si no se ofrece.
   VoidCallback? Function(String personaId) _cobrar(ContextoDeLaCasa contexto) {
     final destino = ref.watch(cobrarDesdeLaCasaProvider);
@@ -568,7 +592,7 @@ class _Cabecera extends StatelessWidget {
 }
 
 /// El resumen: los avisos que correspondan, la persona, la nota y «Registrar visita».
-class _Resumen extends StatelessWidget {
+class _Resumen extends ConsumerWidget {
   const _Resumen({
     required this.item,
     required this.contexto,
@@ -581,6 +605,7 @@ class _Resumen extends StatelessWidget {
     required this.alRegistrarVisita,
     required this.alAgendar,
     required this.alCobrar,
+    required this.alSumar,
   });
 
   final ItemListaUbicacion item;
@@ -595,8 +620,11 @@ class _Resumen extends StatelessWidget {
   final VoidCallback? alAgendar;
   final VoidCallback? Function(String personaId) alCobrar;
 
+  /// «Sumar un libro» (42B·09A) de la persona; `null` = no se ofrece.
+  final VoidCallback? Function(String personaId) alSumar;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final persona = contexto.personaDestacada;
     final nota = contexto.nota;
     final distancia = item.distanciaMetros;
@@ -617,6 +645,17 @@ class _Resumen extends StatelessWidget {
             cuota: contexto.cuotaQueTocaDe(persona.persona.id),
             ahora: ahora,
             alCobrar: alCobrar(persona.persona.id),
+            ocupada: ocupado,
+          ),
+        // 42B·09A: debajo de la persona, solo si tiene una venta abierta (sin ella no deja hueco).
+        if (persona != null &&
+            !item.esBaja &&
+            alSumar(persona.persona.id) != null &&
+            (ref.watch(ventasAbiertasDeProvider(persona.persona.id)).value?.isNotEmpty ?? false))
+          FilaSumarUnLibro(
+            personaId: persona.persona.id,
+            nombre: persona.persona.nombre,
+            alTocar: alSumar(persona.persona.id),
             ocupada: ocupado,
           ),
         if (nota != null) FilaNotaDelLugar(nota: nota),

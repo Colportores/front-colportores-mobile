@@ -17,6 +17,7 @@ final class EntregarAhoraParams extends Equatable {
     required this.colportorId,
     this.aEntregar,
     this.quedanPendientes = const [],
+    this.soloDesde,
   });
 
   final String ventaId;
@@ -31,8 +32,12 @@ final class EntregarAhoraParams extends Equatable {
   /// Lo que destildó: queda pendiente para otro día. Solo cuenta con [aEntregar].
   final List<ComponenteVendido> quedanPendientes;
 
+  /// Solo cuenta lo que se sumó a una venta abierta desde este instante (42B·09D, «Venta crece»): lo
+  /// de antes no se toca. Solo con [aEntregar].
+  final DateTime? soloDesde;
+
   @override
-  List<Object?> get props => [ventaId, colportorId, aEntregar, quedanPendientes];
+  List<Object?> get props => [ventaId, colportorId, aEntregar, quedanPendientes, soloDesde];
 }
 
 /// HU-VEN-002: «Entregar ahora». Marca como entregado todo lo vendido en la venta —una fila por
@@ -149,7 +154,7 @@ final class EntregarAhoraUseCase implements UseCase<EntregaRegistrada, EntregarA
           auditoria: auditoria(),
         ),
     ];
-    return _repository.registrarEntrega(ventaId, filas);
+    return _repository.registrarEntrega(ventaId, filas, soloDesde: params.soloDesde);
   }
 
   /// Una cantidad por producto, en el orden en que aparecen.

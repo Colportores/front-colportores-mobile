@@ -167,6 +167,8 @@ class _EntregarOtroDiaPageState extends ConsumerState<EntregarOtroDiaPage> {
                 ventaId: guardada.venta.id,
                 colportorId: guardada.venta.colportorId,
                 productos: contenido.productos,
+                // El libro que se sumó a una venta abierta (42B·09D): lo de antes no se toca.
+                soloDesde: guardada is VentaQueCrecio ? guardada.sumadoEl : null,
               ),
               contenido: contenido,
               cabecera: ({alVolver}) => _cabecera(widget.nombreDelCliente, alVolver: alVolver),

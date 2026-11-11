@@ -99,6 +99,10 @@ class EntregarAhoraNotifier extends Notifier<EntregarAhoraState> {
         colportorId: venta.colportorId,
         aEntregar: productosDe(true),
         quedanPendientes: productosDe(false),
+        soloDesde: switch (args.guardada) {
+          final VentaQueCrecio crecio => crecio.sumadoEl,
+          _ => null,
+        },
       ),
     );
     if (!ref.mounted) return resultado.fold((_) => null, (r) => r);

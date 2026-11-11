@@ -182,19 +182,25 @@ void main() {
   });
 
   group('recuperarDespuesDisponibleProvider (la fila de Configuración)', () {
-    test('se muestra con un teléfono sin datos', () async {
+    test('disponible con un teléfono sin datos', () async {
       final c = armar();
       await c.read(sesionProvider.future);
 
-      expect(await c.read(recuperarDespuesDisponibleProvider.future), isTrue);
+      expect(
+        await c.read(recuperarDespuesDisponibleProvider.future),
+        FilaRecuperarRespaldo.disponible,
+      );
     });
 
-    test('no se muestra con datos cargados', () async {
+    test('apagada con datos cargados (16G·04: se ve y dice por qué)', () async {
       final c = armar();
       await c.read(sesionProvider.future);
       arnes.lector.sinDatos = false;
 
-      expect(await c.read(recuperarDespuesDisponibleProvider.future), isFalse);
+      expect(
+        await c.read(recuperarDespuesDisponibleProvider.future),
+        FilaRecuperarRespaldo.apagadaConDatos,
+      );
     });
 
     test('no se muestra si no se pudo mirar la base', () async {
@@ -202,17 +208,23 @@ void main() {
       await c.read(sesionProvider.future);
       arnes.lector.errorAlMirar = StateError('base cerrada');
 
-      expect(await c.read(recuperarDespuesDisponibleProvider.future), isFalse);
+      expect(await c.read(recuperarDespuesDisponibleProvider.future), FilaRecuperarRespaldo.oculta);
     });
 
     test('no se muestra con el asistente apagado ni sin sesión', () async {
       final apagado = armar(habilitado: false);
       await apagado.read(sesionProvider.future);
-      expect(await apagado.read(recuperarDespuesDisponibleProvider.future), isFalse);
+      expect(
+        await apagado.read(recuperarDespuesDisponibleProvider.future),
+        FilaRecuperarRespaldo.oculta,
+      );
 
       final sinSesion = armar(conSesion: false);
       await sinSesion.read(sesionProvider.future);
-      expect(await sinSesion.read(recuperarDespuesDisponibleProvider.future), isFalse);
+      expect(
+        await sinSesion.read(recuperarDespuesDisponibleProvider.future),
+        FilaRecuperarRespaldo.oculta,
+      );
     });
   });
 }

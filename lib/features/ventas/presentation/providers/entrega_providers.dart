@@ -126,8 +126,17 @@ final datosDeLaEntregaProvider = FutureProvider.autoDispose.family<DatosDeLaEntr
       for (final item in guardada.items)
         if (!item.estaBorrada) item,
     ];
-    final previas = (await ref.watch(entregaRepositoryProvider).deLaVenta(guardada.venta.id))
+    final todas = (await ref.watch(entregaRepositoryProvider).deLaVenta(guardada.venta.id))
         .fold<List<Entrega>>((falla) => throw falla, (filas) => filas);
+    // Lo que se sumó a una venta abierta (42B·09D): lo entregado o pendiente de antes no es de esta
+    // entrega (no frena la del libro nuevo ni se vuelve a ofrecer).
+    final previas = switch (guardada) {
+      final VentaQueCrecio crecio => [
+        for (final e in todas)
+          if (!e.auditoria.createdAt.isBefore(crecio.sumadoEl)) e,
+      ],
+      _ => todas,
+    };
     final catalogo = await ref
         .watch(fuenteDeProductosDeLaEntregaProvider)
         .leer(

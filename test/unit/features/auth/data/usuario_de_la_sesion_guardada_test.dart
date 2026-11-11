@@ -50,9 +50,39 @@ void main() {
     },
   );
 
-  test('si el almacén no se deja leer, null y no lanza', () async {
-    almacen.alLeer = true;
+  // Decisión del 04/11 en #583 (QA P1), #691: «no pude leer el almacén» no es «no hay sesión».
+  test(
+    'si el almacén no se deja leer, lanza SesionGuardadaIlegible (no es «sin sesión»)',
+    () async {
+      almacen.alLeer = true;
 
-    expect(await usuarioDeLaSesionGuardada(almacen), isNull);
+      await expectLater(usuarioDeLaSesionGuardada(almacen), throwsA(isA<SesionGuardadaIlegible>()));
+    },
+  );
+
+  test(
+    'el error del almacén no viaja en la excepción (puede traer un pedazo de la sesión)',
+    () async {
+      almacen.alLeer = true;
+
+      final error = await usuarioDeLaSesionGuardada(
+        almacen,
+      ).then<Object?>((_) => null, onError: (Object e) => e);
+
+      expect(error, isA<SesionGuardadaIlegible>());
+      expect(error.toString(), 'SesionGuardadaIlegible');
+    },
+  );
+
+  test('cuando el almacén vuelve a leerse, devuelve el usuario como siempre', () async {
+    await guardar({
+      'user': {'id': 'u-2'},
+    });
+    almacen.alLeer = true;
+    await expectLater(usuarioDeLaSesionGuardada(almacen), throwsA(isA<SesionGuardadaIlegible>()));
+
+    almacen.alLeer = false;
+
+    expect(await usuarioDeLaSesionGuardada(almacen), 'u-2');
   });
 }

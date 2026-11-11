@@ -43,6 +43,7 @@ class _RepoQueExplota extends EntregasEnMemoria {
     required DateTime ahora,
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
+    DateTime? soloDesde,
   }) => throw StateError('sin base abierta');
 }
 

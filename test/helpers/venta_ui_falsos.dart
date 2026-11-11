@@ -9,6 +9,7 @@ import 'package:colportores_mobile/features/catalogo/presentation/providers/prec
 import 'package:colportores_mobile/features/ventas/domain/entities/cliente_de_la_venta.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/nueva_venta.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/precios_de_la_venta.dart';
+import 'package:colportores_mobile/features/ventas/domain/entities/venta_abierta.dart';
 import 'package:colportores_mobile/features/ventas/domain/repositories/fuente_de_precios_de_la_venta.dart';
 import 'package:colportores_mobile/features/ventas/domain/repositories/venta_repository.dart';
 import 'package:colportores_mobile/features/ventas/presentation/pages/nueva_venta_page.dart';
@@ -192,14 +193,22 @@ final class FuenteDePreciosDeLaVentaFalsa implements FuenteDePreciosDeLaVenta {
 
 /// Todo lo que el test controla de la pantalla de la venta.
 final class EntornoDeVenta {
-  EntornoDeVenta({CatalogoLocal? catalogo, PreciosDeLaVenta? precios, VentasEnMemoria? ventas})
-    : repo = ConsultaDePreciosFalsa(catalogo ?? catalogoDeVentas()),
-      fuente = FuenteDePreciosDeLaVentaFalsa(precios),
-      ventas = ventas ?? VentasEnMemoria();
+  EntornoDeVenta({
+    CatalogoLocal? catalogo,
+    PreciosDeLaVenta? precios,
+    VentasEnMemoria? ventas,
+    VentaQueCreceEnMemoria? crece,
+  }) : repo = ConsultaDePreciosFalsa(catalogo ?? catalogoDeVentas()),
+       fuente = FuenteDePreciosDeLaVentaFalsa(precios),
+       ventas = ventas ?? VentasEnMemoria(),
+       crece = crece ?? VentaQueCreceEnMemoria();
 
   final ConsultaDePreciosFalsa repo;
   final FuenteDePreciosDeLaVentaFalsa fuente;
   final VentasEnMemoria ventas;
+
+  /// «Venta crece» (#693): las ventas abiertas y lo que se les suma.
+  final VentaQueCreceEnMemoria crece;
   DateTime ahora = DateTime.utc(2026, 10, 28, 13);
   var _ids = 0;
 
@@ -210,6 +219,7 @@ final class EntornoDeVenta {
     consultaDePreciosRepositoryProvider.overrideWithValue(repo),
     fuenteDePreciosDeLaVentaProvider.overrideWithValue(fuente),
     ventaRepositoryProvider.overrideWithValue(ventas),
+    ventaQueCreceRepositoryProvider.overrideWithValue(crece),
     relojVentaProvider.overrideWithValue(() => ahora),
     generadorIdVentaProvider.overrideWithValue(() {
       final id = 'id-${++_ids}';
@@ -235,6 +245,7 @@ Future<Salida> montarNuevaVenta(
   ClienteDeLaVenta cliente = maria,
   AntesDeGuardarLaVenta? antesDeGuardar,
   bool abrir = true,
+  VentaAbierta? creceSobre,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -257,7 +268,11 @@ Future<Salida> montarNuevaVenta(
                 onPressed: () async {
                   final g = await Navigator.of(context).push(
                     NuevaVentaPage.ruta(
-                      argumentos: ArgumentosDeVenta(colportorId: 'col-1', cliente: cliente),
+                      argumentos: ArgumentosDeVenta(
+                        colportorId: 'col-1',
+                        cliente: cliente,
+                        creceSobre: creceSobre,
+                      ),
                       antesDeGuardar: antesDeGuardar,
                     ),
                   );

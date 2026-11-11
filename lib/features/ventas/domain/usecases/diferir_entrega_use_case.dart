@@ -19,6 +19,7 @@ final class DiferirEntregaParams extends Equatable {
     required this.colportorId,
     required this.fechaPrevista,
     this.productos = const [],
+    this.soloDesde,
   });
 
   final String ventaId;
@@ -35,8 +36,12 @@ final class DiferirEntregaParams extends Equatable {
   /// pendiente, 27C·02 «Poner fecha»), se pone la fecha a lo pendiente y esto no se usa.
   final List<ComponenteVendido> productos;
 
+  /// Solo lo que se sumó a una venta abierta desde este instante (42B·09D, «Venta crece»): lo
+  /// pendiente de antes conserva su fecha. `null` = toda la venta.
+  final DateTime? soloDesde;
+
   @override
-  List<Object?> get props => [ventaId, colportorId, fechaPrevista, productos];
+  List<Object?> get props => [ventaId, colportorId, fechaPrevista, productos, soloDesde];
 }
 
 /// Lo que devuelve [DiferirEntregaUseCase]: la entrega guardada y qué pasó con el aviso de la cita.
@@ -123,6 +128,7 @@ final class DiferirEntregaUseCase
       ahora: ahora,
       filasNuevas: filasNuevas,
       idDeLaCita: _generarId(),
+      soloDesde: params.soloDesde,
     );
     return guardada.fold(
       (falla) async => Left<Failure, ResultadoDiferirEntrega>(falla),

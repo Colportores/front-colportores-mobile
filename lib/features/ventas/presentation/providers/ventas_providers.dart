@@ -6,15 +6,19 @@ import '../../../../core/sync/sync_providers.dart';
 import '../../../mapa/presentation/providers/house_status_providers.dart';
 import '../../data/datasources/personas_para_vender_drift.dart';
 import '../../data/datasources/venta_local_data_source_drift.dart';
+import '../../data/repositories/venta_que_crece_repository_impl.dart';
 import '../../data/repositories/venta_repository_impl.dart';
 import '../../data/services/fuente_de_precios_de_la_venta_local.dart';
 import '../../data/services/fuente_de_precios_de_la_venta_sin_fuente.dart';
 import '../../domain/entities/persona_para_vender.dart';
 import '../../domain/entities/precios_de_la_venta.dart';
+import '../../domain/entities/venta_abierta.dart';
 import '../../domain/repositories/fuente_de_precios_de_la_venta.dart';
 import '../../domain/repositories/lector_de_personas_para_vender.dart';
+import '../../domain/repositories/venta_que_crece_repository.dart';
 import '../../domain/repositories/venta_repository.dart';
 import '../../domain/usecases/registrar_venta_use_case.dart';
+import '../../domain/usecases/sumar_a_la_venta_use_case.dart';
 
 // Cableado de las ventas (BACK-HU-VEN-001, #423). Presentation conoce domain; data se inyecta acá.
 
@@ -46,6 +50,39 @@ final registrarVentaUseCaseProvider = Provider<RegistrarVentaUseCase>(
     generarId: ref.watch(generadorIdVentaProvider),
     ahora: ref.watch(relojVentaProvider),
   ),
+);
+
+// --- «Venta crece» (HU-VEN-001, 42B·09) ---
+
+/// Las ventas abiertas de una persona y sumarles renglones, sobre la misma DB que la venta. Sin DB
+/// abierta no hay dónde leer: lanza, y quien lo lee lo traduce a un error (o no ofrece «Sumar un
+/// libro»).
+final ventaQueCreceRepositoryProvider = Provider<VentaQueCreceRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return VentaQueCreceRepositoryImpl(
+    VentaLocalDataSourceDrift(
+      db,
+      encolador: ref.watch(encoladorSyncProvider),
+      estadoDeLasCasas: ref.watch(houseStatusUpdaterProvider),
+    ),
+  );
+});
+
+/// HU-VEN-001, «Venta crece»: sumar otro libro a una venta abierta (42B·09C).
+final sumarALaVentaUseCaseProvider = Provider<SumarALaVentaUseCase>(
+  (ref) => SumarALaVentaUseCase(
+    ref.watch(ventaQueCreceRepositoryProvider),
+    generarId: ref.watch(generadorIdVentaProvider),
+    ahora: ref.watch(relojVentaProvider),
+  ),
+);
+
+/// Las ventas abiertas de la persona [personaId], en vivo y de la más reciente a la más vieja: deciden
+/// si la hoja de la casa y la ficha ofrecen «Sumar un libro» (42B·09A).
+final ventasAbiertasDeProvider = StreamProvider.autoDispose.family<List<VentaAbierta>, String>(
+  (ref, personaId) => ref.watch(ventaQueCreceRepositoryProvider).observarAbiertasDe(personaId),
+  retry: _sinReintentos,
 );
 
 /// De dónde sale la ciudad (y la campaña en curso) de la casa del cliente: la casa y las réplicas del

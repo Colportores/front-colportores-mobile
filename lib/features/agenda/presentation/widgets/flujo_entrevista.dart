@@ -6,8 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../../core/error/failure.dart';
+import '../../../cobranzas/presentation/pages/modificar_cuotas_page.dart';
 import '../../../cobranzas/presentation/providers/cobranzas_providers.dart'
-    show saldoPendienteRepositoryProvider;
+    show planDeCuotasRepositoryProvider, saldoPendienteRepositoryProvider;
 import '../../../inicio/presentation/providers/navegacion_inicio_provider.dart';
 import '../../../mapa/presentation/pages/alta_persona_page.dart';
 import '../../../mapa/presentation/providers/cobranza_recien_agendada_providers.dart';
@@ -20,7 +21,10 @@ import '../../../mapa/presentation/widgets/aviso_con_deshacer.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../../ventas/domain/entities/cliente_de_la_venta.dart';
 import '../../../ventas/domain/entities/entrega.dart' show EntregaRegistrada;
-import '../../../ventas/domain/entities/nueva_venta.dart' show VentaGuardada;
+import '../../../ventas/domain/entities/nueva_venta.dart' show VentaGuardada, VentaQueCrecio;
+import '../../../ventas/domain/entities/venta_abierta.dart';
+import '../../../ventas/domain/entities/venta_para_devolver.dart' show CuentaDeLaVenta;
+import '../../../ventas/domain/repositories/venta_que_crece_repository.dart' show CitasDeLaVenta;
 import '../../../ventas/domain/usecases/diferir_entrega_use_case.dart' show ResultadoDiferirEntrega;
 import '../../../ventas/presentation/flujo_cuando_cobrar.dart';
 import '../../../ventas/presentation/formato_venta.dart' show TextosVenta;
@@ -32,7 +36,8 @@ import '../../../ventas/presentation/pages/nueva_venta_page.dart';
 import '../../../ventas/presentation/pages/venta_registrada_page.dart';
 import '../../../ventas/presentation/providers/nueva_venta_notifier.dart' show ArgumentosDeVenta;
 import '../../../ventas/presentation/providers/ventas_providers.dart'
-    show ContextoDeCobroDeLaVenta, cobrarDespuesDeLaVentaProvider;
+    show ContextoDeCobroDeLaVenta, cobrarDespuesDeLaVentaProvider, ventaQueCreceRepositoryProvider;
+import '../../../ventas/presentation/textos_venta_que_crece.dart';
 import '../../domain/entities/agenda.dart';
 import '../../domain/entities/detalle_de_agenda.dart';
 import '../../domain/entities/entrevista_en_curso.dart';
@@ -950,6 +955,207 @@ abstract final class FlujoEntrevista {
     return VentaGuardadaEnLaEntrevista(numeroTalonario: numero);
   }
 
+  /// «Venta crece» (HU-VEN-001, decisión de Cristian del 10/11; vista 42, 42B·09C → 09D): suma otro
+  /// libro a la venta abierta [venta] de la persona y sigue con lo que toca después.
+  ///
+  /// 1. 42B·09C: la venta abierta con lo ya vendido a la vista y lo que se suma (el mismo talonario).
+  /// 2. 42B·09D: «¿Y ahora?» del libro nuevo. La entrega es **solo del libro que se sumó** (lo
+  ///    pendiente de antes no se toca); si la venta ya tiene una entrega agendada, no se agenda otra
+  ///    (se entrega ahora o queda pendiente). El cobro es del saldo entero de la venta. Con un plan de
+  ///    cuotas en curso se ofrece «Modificar cuotas» (30A·09) con el saldo nuevo: la colportora
+  ///    reparte, la app no inventa cuotas.
+  /// 3. Si queda saldo y la venta no tiene una cobranza agendada (ni cuotas por cobrar), «¿Cuándo
+  ///    volvés a cobrar?» (42B·01B); si ya la tiene, queda la cita y no se pregunta.
+  /// 4. El mapa libre con el aviso «Libro sumado a la venta 0039. Saldo $ 1.200.».
+  ///
+  /// Devuelve `true` si se sumó (aunque después no se entregue ni se cobre nada) y `false` si se salió
+  /// sin sumar.
+  static Future<bool> sumarALaVenta(
+    BuildContext context,
+    ProviderContainer ref, {
+    required String colportorId,
+    required String espacioId,
+    required VentaAbierta venta,
+  }) async {
+    final navegador = Navigator.of(context);
+    final mensajero = ScaffoldMessenger.maybeOf(context);
+    final contextoFirme = navegador.context;
+    final rotulo = await _rotuloDe(
+      ref,
+      espacioId: espacioId,
+      espacioPersonaId: venta.espacioPersonaId,
+    );
+    final cliente = await _cliente(
+      ref,
+      espacioId: espacioId,
+      espacioPersonaId: venta.espacioPersonaId,
+      persona: rotulo.persona,
+      direccion: rotulo.direccion,
+    );
+    if (!contextoFirme.mounted) return false;
+    final guardada = await navegador.push(
+      NuevaVentaPage.ruta(
+        argumentos: ArgumentosDeVenta(
+          colportorId: colportorId,
+          cliente: cliente,
+          creceSobre: venta,
+        ),
+      ),
+    );
+    if (guardada is! VentaQueCrecio) return false;
+
+    final numero = guardada.venta.numeroTalonario;
+    var saldo = CuentaDeLaVenta(
+      montoTotalCentavos: guardada.venta.montoTotalCentavos,
+      cobradoCentavos: venta.cobradoCentavos,
+      devueltoCentavos: venta.devueltoCentavos,
+    ).saldoCentavos;
+    final citas = await _citasDe(ref, guardada.venta.id);
+    final conCuotas = await _conCuotasAbiertas(ref, guardada.venta.id);
+
+    var entrega = EntregaDelCierre.otroDia;
+    ResultadoDiferirEntrega? diferida;
+    CobranzaDeLaVenta cobranza = const SinSaldoQueCobrar();
+    if (contextoFirme.mounted) {
+      final cobrar = ref.read(cobrarDespuesDeLaVentaProvider);
+      while (true) {
+        final pendienteDeEntregar = entrega == EntregaDelCierre.otroDia && diferida == null;
+        final seguimiento = contextoFirme.mounted
+            ? await _ventaRegistrada(
+                contextoFirme,
+                guardada: guardada,
+                nombre: cliente.nombre,
+                conEntregarAhora: pendienteDeEntregar,
+                // Lo pendiente de antes ya tiene su cita: no se agenda otra para el libro nuevo.
+                conEntregarOtroDia: pendienteDeEntregar && !citas.entregaAgendada,
+                conCobro: cobrar != null,
+                crece: TextosDelCierreQueCrece(
+                  eyebrow: TextosVentaQueCrece.eyebrowCierre(numero),
+                  titulo: TextosVentaQueCrece.tituloCierre(numero, guardada.unidades),
+                  subtitulo: TextosVentaQueCrece.subtituloCierre(
+                    cliente.nombre,
+                    guardada.venta.montoTotalCentavos,
+                    saldo,
+                  ),
+                  rotuloEntrega: TextosVentaQueCrece.entregaDelLibroNuevo,
+                  detalleCobro: TextosVentaQueCrece.saldoDeLaVenta(saldo),
+                  detalleModificarCuotas: conCuotas
+                      ? TextosVentaQueCrece.modificarCuotasSub(saldo)
+                      : null,
+                ),
+              )
+            : null;
+        if (seguimiento?.entrega == MomentoDeEntrega.ahora && contextoFirme.mounted) {
+          final registrada = await _entregarAhora(
+            contextoFirme,
+            guardada: guardada,
+            nombre: cliente.nombre,
+          );
+          if (registrada != null) {
+            entrega = registrada.quedaPendiente
+                ? EntregaDelCierre.parcial
+                : EntregaDelCierre.completa;
+            diferida = null;
+          }
+        }
+        if (seguimiento?.entrega == MomentoDeEntrega.otroDia && contextoFirme.mounted) {
+          diferida = await _entregarOtroDia(
+            contextoFirme,
+            guardada: guardada,
+            nombre: cliente.nombre,
+          );
+          if (diferida == null) continue;
+        }
+        if (seguimiento?.cobrarAhora == true && cobrar != null && contextoFirme.mounted) {
+          final quedo = await _cobrarAhora(
+            ref,
+            cobrar,
+            guardada: guardada,
+            espacioId: espacioId,
+            espacioPersonaId: venta.espacioPersonaId,
+            colportorId: colportorId,
+          );
+          if (quedo == null) continue;
+          saldo = quedo;
+        }
+        if (seguimiento?.modificarCuotas == true && contextoFirme.mounted) {
+          await ModificarCuotasPage.abrir(
+            contextoFirme,
+            ventaId: guardada.venta.id,
+            espacioId: espacioId,
+            espacioPersonaId: venta.espacioPersonaId,
+          );
+        }
+        break;
+      }
+      // Sin entregar el libro nuevo y sin fecha, se pide antes de la cobranza, como en una venta
+      // (42B·01F y 01G). Si lo de antes ya tiene su cita, no se agenda otra.
+      if (entrega != EntregaDelCierre.completa &&
+          diferida == null &&
+          !citas.entregaAgendada &&
+          contextoFirme.mounted) {
+        diferida = await _entregarOtroDia(
+          contextoFirme,
+          guardada: guardada,
+          nombre: cliente.nombre,
+        );
+      }
+      // Con una cobranza ya agendada (o cuotas por cobrar) queda esa cita y no se pregunta de nuevo.
+      if (!citas.cobranzaAgendada && !conCuotas && contextoFirme.mounted) {
+        cobranza = await FlujoCuandoCobrar.preguntar(
+          contextoFirme,
+          ref,
+          numeroTalonario: numero,
+          espacioId: espacioId,
+          espacioPersonaId: venta.espacioPersonaId,
+          colportorId: colportorId,
+          persona: cliente.nombre,
+          direccion: cliente.direccion,
+          saldoCentavos: saldo,
+        );
+      }
+    }
+    _avisar(
+      mensajero,
+      cobranza is CobranzaNoAgendada
+          ? TextosCuandoCobrar.noSePudoAgendar
+          : TextosVentaQueCrece.aviso(numero, guardada.unidades, saldo),
+    );
+    final cita = switch (cobranza) {
+      CobranzaAgendada(:final agenda) => agenda,
+      _ => null,
+    };
+    await _volverAlMapa(ref, espacioId, cobranza: cita, persona: cliente.nombre);
+    return true;
+  }
+
+  /// Las citas que ya tiene la venta. Si no se pueden leer, como si lo de antes tuviera su entrega
+  /// agendada (no se agenda otra) y sin cobranza (se pregunta: mejor de más que una deuda sin cita).
+  static Future<CitasDeLaVenta> _citasDe(ProviderContainer ref, String ventaId) async {
+    const sinSaber = (cobranzaAgendada: false, entregaAgendada: true);
+    try {
+      return (await ref.read(ventaQueCreceRepositoryProvider).citasDe(ventaId)).fold(
+        (_) => sinSaber,
+        (citas) => citas,
+      );
+    } on Object {
+      return sinSaber;
+    }
+  }
+
+  /// La venta tiene un plan de cuotas con alguna sin pagar (30A·09 se ofrece). Si no se puede leer,
+  /// no se ofrece.
+  static Future<bool> _conCuotasAbiertas(ProviderContainer ref, String ventaId) async {
+    try {
+      return (await ref.read(planDeCuotasRepositoryProvider).leer(ventaId)).fold(
+        (_) => false,
+        (plan) => plan?.tieneCuotasAbiertas ?? false,
+      );
+    } on Object {
+      return false;
+    }
+  }
+
   /// 27A·14 «Venta registrada: ¿y ahora?». Sin salida del atrás: se sale con «Continuar» (o «Terminar
   /// sin entregar ni cobrar») y es lo que elige lo que se hace después. `null` = terminó sin pedir nada.
   static Future<SeguimientoDeLaVenta?> _ventaRegistrada(
@@ -959,6 +1165,7 @@ abstract final class FlujoEntrevista {
     required bool conEntregarAhora,
     required bool conEntregarOtroDia,
     required bool conCobro,
+    TextosDelCierreQueCrece? crece,
   }) => Navigator.of(context).push<SeguimientoDeLaVenta>(
     MaterialPageRoute(
       builder: (ruta) => VentaRegistradaPage(
@@ -967,6 +1174,7 @@ abstract final class FlujoEntrevista {
         conEntregarAhora: conEntregarAhora,
         conEntregarOtroDia: conEntregarOtroDia,
         conCobro: conCobro,
+        crece: crece,
         alContinuar: (seguimiento) => Navigator.of(ruta).pop(seguimiento),
         alTerminar: () => Navigator.of(ruta).pop(),
       ),
