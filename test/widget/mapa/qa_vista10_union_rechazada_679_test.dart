@@ -218,7 +218,10 @@ void main() {
         final datos = _datos()..rechazarUnion(_parItalia, 'UB003');
         await _montar(tester, datos, tamano: const Size(412, 915), escala: 1);
 
-        expect(tester.getSemantics(_aviso(_parItalia)), matchesSemantics(label: _textoUb003));
+        expect(
+          tester.getSemantics(_aviso(_parItalia)),
+          matchesSemantics(label: _textoUb003, isLiveRegion: true),
+        );
         manejador.dispose();
       },
     );

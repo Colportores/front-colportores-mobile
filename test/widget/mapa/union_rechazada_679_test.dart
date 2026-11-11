@@ -153,7 +153,10 @@ void main() {
     final datos = _datos()..rechazarUnion(_parItalia, 'CG001');
     await _montar(tester, datos);
 
-    expect(tester.getSemantics(_aviso(_parItalia)), matchesSemantics(label: _textoGenerico));
+    expect(
+      tester.getSemantics(_aviso(_parItalia)),
+      matchesSemantics(label: _textoGenerico, isLiveRegion: true),
+    );
     manejador.dispose();
   });
 

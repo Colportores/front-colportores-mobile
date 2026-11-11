@@ -141,8 +141,9 @@ class FilaUbicacionPar extends StatelessWidget {
 
 /// El aviso de un par cuya unión rechazó el servidor y quedó separado en el teléfono (HU-UBI-006,
 /// decisión de Cristian, 10/11, «Unión rech.»; #679), arriba en su tarjeta. El canvas de la vista 10
-/// no lo dibuja: usa el borde rojo y el «!» del aviso rojo de la misma pantalla. No es una región
-/// viva: la tarjeta aparece sola en la lista y el lector lo lee al recorrerla.
+/// no lo dibuja: usa el borde rojo y el «!» del aviso rojo de la misma pantalla. Es una región viva,
+/// como los demás avisos de la pantalla: puede aparecer solo, con la vista abierta, cuando el teléfono
+/// deshace la unión (WCAG 4.1.3).
 class AvisoUnionRechazada extends StatelessWidget {
   const AvisoUnionRechazada({super.key, required this.texto});
 
@@ -152,6 +153,7 @@ class AvisoUnionRechazada extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
+      liveRegion: true,
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
         decoration: BoxDecoration(
