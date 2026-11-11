@@ -20,7 +20,7 @@ const _camino = PrecioDeProducto(
   nombre: 'El camino a Cristo',
   centavos: 15000,
   origen: OrigenDelPrecio.general,
-  tipo: TipoDeProducto.misionero,
+  categoriaDelProducto: CategoriaDeProducto.misioneros,
   esMisionero: true,
 );
 const _deseado = PrecioDeProducto(
@@ -28,28 +28,28 @@ const _deseado = PrecioDeProducto(
   nombre: 'El Deseado de todas las gentes',
   centavos: 15000,
   origen: OrigenDelPrecio.general,
-  tipo: TipoDeProducto.libro,
+  categoriaDelProducto: CategoriaDeProducto.espirituales,
 );
 const _vidaFeliz = PrecioDeProducto(
   id: 'p-vf',
   nombre: 'Vida Feliz',
   centavos: 12000,
   origen: OrigenDelPrecio.general,
-  tipo: TipoDeProducto.revista,
+  categoriaDelProducto: CategoriaDeProducto.revistas,
 );
 const _saludYHogar = PrecioDeProducto(
   id: 'p-l0',
   nombre: 'Salud y Hogar',
   centavos: 200000,
   origen: OrigenDelPrecio.general,
-  tipo: TipoDeProducto.libro,
+  categoriaDelProducto: CategoriaDeProducto.espirituales,
 );
 const _nuestrosHijos = PrecioDeProducto(
   id: 'p-l1',
   nombre: 'Nuestros Hijos',
   centavos: 200001,
   origen: OrigenDelPrecio.general,
-  tipo: TipoDeProducto.libro,
+  categoriaDelProducto: CategoriaDeProducto.espirituales,
 );
 const _combo2 = PrecioDeCombo(
   id: 'k-2',
@@ -188,49 +188,52 @@ void main() {
     });
   });
 
-  group('una venta solo de misioneros: no cuenta como venta', () {
+  group('solo misioneros: no es una venta y no se registra (04/11, «Misio. entrev»)', () {
     Future<void> soloMisioneros() async {
       notifier().fijarProductos(const [ProductoElegido(producto: _camino, cantidad: 2)]);
       await notifier().escribirTalonario('77');
     }
 
-    test('no hay total que cambiar a mano: vale 0 aunque haya quedado abierto', () async {
-      notifier()
-        ..fijarProductos(const [
-          ProductoElegido(producto: _camino, cantidad: 2),
-          ProductoElegido(producto: _vidaFeliz, cantidad: 1),
-        ])
-        ..cambiarElMonto()
-        ..escribirMonto('500')
-        ..escribirMotivo('a voluntad');
-      await notifier().escribirTalonario('77');
-      notifier().quitar(estado().renglones.last.clave);
+    test(
+      'quitar lo que se cobra deja solo misioneros: no hay total a mano ni se registra',
+      () async {
+        notifier()
+          ..fijarProductos(const [
+            ProductoElegido(producto: _camino, cantidad: 2),
+            ProductoElegido(producto: _vidaFeliz, cantidad: 1),
+          ])
+          ..cambiarElMonto()
+          ..escribirMonto('500')
+          ..escribirMotivo('a voluntad');
+        await notifier().escribirTalonario('77');
+        expect(estado().puedeRegistrar, isTrue);
+        notifier().quitar(estado().renglones.last.clave);
 
-      expect(estado().cobraAlgo, isFalse);
-      expect(estado().cambiandoElMonto, isFalse);
-      expect(estado().puedeRegistrar, isTrue);
+        expect(estado().cobraAlgo, isFalse);
+        expect(estado().cambiandoElMonto, isFalse);
+        expect(estado().soloMisioneros, isTrue);
+        expect(estado().puedeRegistrar, isFalse);
+      },
+    );
 
-      await notifier().registrar();
-
-      final r = repo.recibidas.single;
-      expect(r.venta.montoTotalCentavos, 0);
-      expect(r.venta.motivoMontoManual, isNull);
-      expect(r.diferencia, isNull);
-      expect(r.items.single.precioUnitarioCentavos, 0);
-    });
-
-    test('se guarda para bajar el stock, con precio 0 y subtotal 0', () async {
+    test('registrar no guarda nada ni ocupa el talonario', () async {
       await soloMisioneros();
 
       final guardada = await notifier().registrar();
 
-      expect(guardada, isNotNull);
-      final item = repo.recibidas.single.items.single;
-      expect(
-        [item.productoId, item.cantidad, item.precioUnitarioCentavos, item.subtotalCentavos],
-        ['p-camino', 2, 0, 0],
-      );
-      expect(guardada!.totalCentavos, 0);
+      expect(guardada, isNull);
+      expect(repo.recibidas, isEmpty);
+    });
+
+    test('con algo que se cobra, el misionero va en la venta (a \$ 0)', () async {
+      notifier().fijarProductos(const [
+        ProductoElegido(producto: _camino, cantidad: 2),
+        ProductoElegido(producto: _vidaFeliz, cantidad: 1),
+      ]);
+      await notifier().escribirTalonario('77');
+
+      expect(estado().soloMisioneros, isFalse);
+      expect(estado().puedeRegistrar, isTrue);
     });
   });
 

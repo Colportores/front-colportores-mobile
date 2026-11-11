@@ -1,10 +1,12 @@
 import 'package:dartz/dartz.dart';
+import 'package:drift/drift.dart' show Variable;
 
 import '../../../../core/database/app_database.dart';
 import '../../../../core/database/database_helper.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/secure_storage/custodia_clave_db.dart';
+import '../../../../datos/sync_queue_table.dart' show EstadoJob;
 import '../../domain/entities/resumen_datos_locales.dart';
 import '../../domain/repositories/datos_locales_repository.dart';
 import '../datasources/auth_remote_data_source.dart';
@@ -16,10 +18,10 @@ import '../datasources/backup_drive_data_source.dart';
 ///
 /// ## Qué se cuenta hoy
 ///
-/// - **Operaciones sin sincronizar**: todavía no hay motor de sync ni `sync_queue` (ADR-007), así
-///   que **nada** de lo local se subió nunca: cada fila de negocio cuenta como pendiente. Hoy la
-///   única tabla de negocio es `jornada` (HU-JOR-001). Cuando exista `sync_queue`, el conteo pasa a
-///   ser el de esa tabla.
+/// - **Operaciones sin sincronizar**: los trabajos de la cola del motor (`sync_queue`) que el
+///   servidor todavía no confirmó: todo estado salvo `DONE` (`PENDING`, `IN_FLIGHT`, en espera
+///   —`BLOCKED`/`WAITING`— e `INVALID`; HU-AUTH-010). Las filas de negocio ya subidas no cuentan:
+///   antes se contaban las de `jornada` y el borrado quedaba bloqueado para siempre (#679).
 /// - **Personas y visitas**: sus tablas todavía no existen (HU-UBI, HU-VIS), así que no puede haber
 ///   ninguna en el teléfono.
 ///
@@ -34,6 +36,7 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
     this._custodia,
     this._backupDrive, {
     this.retirarPermisoDrive,
+    this.borrarFotosDeTickets,
     AppLogger? logger,
   }) : _log = logger ?? AppLogger.instance;
 
@@ -46,6 +49,10 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
   /// Retira el permiso de Drive en Google (#184, decisión del agente de decisiones). De mejor
   /// esfuerzo; nunca borra el respaldo de Drive.
   final Future<void> Function()? retirarPermisoDrive;
+
+  /// Borra la carpeta `tickets/` con las copias de las fotos de los comprobantes (imágenes sin
+  /// cifrar, fuera de la DB; #426). Falla si no puede: sin esto «borrar todo» dejaría fotos.
+  final Future<void> Function()? borrarFotosDeTickets;
   final AppLogger _log;
 
   @override
@@ -96,6 +103,8 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
       await _cerrarDb();
       await _helper.borrar();
       await _custodia.olvidarDatosDelUsuario();
+      // Las fotos de los tickets viven fuera de la DB cifrada, sin cifrar: se borran también.
+      await borrarFotosDeTickets?.call();
       // Caché de tiles del mapa: llega con el mapa (Sprint 5, ADR-011); hoy no existe.
     } on Object catch (e, st) {
       _log.error(LogModulo.db, 'WIPE_FAIL', 'el borrado local falló', const {}, e, st);
@@ -155,7 +164,12 @@ final class DatosLocalesRepositoryImpl implements DatosLocalesRepository {
     try {
       final db = _dbAbierta();
       if (db == null) return await _helper.existe() ? null : 0;
-      final fila = await db.customSelect('SELECT COUNT(*) AS n FROM jornada').getSingle();
+      final fila = await db
+          .customSelect(
+            'SELECT COUNT(*) AS n FROM sync_queue WHERE state <> ?',
+            variables: [Variable.withString(EstadoJob.done)],
+          )
+          .getSingle();
       return fila.read<int>('n');
     } on Object catch (e, st) {
       _log.error(

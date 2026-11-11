@@ -30,6 +30,39 @@ Future<VentaConSaldo?> mostrarHojaQueVenta(
   required String personaId,
   String? nombre,
 }) async {
+  final salida = await salirDeHojaQueVenta(context, personaId: personaId, nombre: nombre);
+  return salida is VentaElegida ? salida.venta : null;
+}
+
+/// Cómo terminó «¿Qué venta?».
+sealed class SalidaQueVenta {
+  const SalidaQueVenta();
+}
+
+/// La colportora eligió (o se saltó, por tener una sola) la [venta] que cobra.
+final class VentaElegida extends SalidaQueVenta {
+  const VentaElegida(this.venta);
+
+  final VentaConSaldo venta;
+}
+
+/// Tocó «Cancelar»: no cobra. Dispara la pregunta «¿María no te pagó?» (decisión de Cristian, 03/11),
+/// igual que salir del cobro sin cobrar (ver `FlujoCobrarDesdeLaCasa`).
+final class CanceloQueVenta extends SalidaQueVenta {
+  const CanceloQueVenta();
+}
+
+/// Cerró sin elegir y sin tocar «Cancelar»: atrás, tocar afuera o «Cerrar» del aviso «sin saldo».
+final class CerroQueVenta extends SalidaQueVenta {
+  const CerroQueVenta();
+}
+
+/// Lo mismo que [mostrarHojaQueVenta], pero distingue «Cancelar» de cerrar sin elegir.
+Future<SalidaQueVenta> salirDeHojaQueVenta(
+  BuildContext context, {
+  required String personaId,
+  String? nombre,
+}) async {
   // La lectura previa evita que, con una sola venta, la hoja se abra para cerrarse enseguida.
   List<VentaConSaldo>? previas;
   var fallo = false;
@@ -40,7 +73,7 @@ Future<VentaConSaldo?> mostrarHojaQueVenta(
     fallo = previas == null;
     if (previas != null) {
       final paso = PasoQueVenta.de(previas);
-      if (paso is UnaVentaConSaldo) return paso.venta;
+      if (paso is UnaVentaConSaldo) return VentaElegida(paso.venta);
     }
   } on TimeoutException {
     // No dio tiempo: la hoja se abre «cargando» y lee ella.
@@ -48,8 +81,8 @@ Future<VentaConSaldo?> mostrarHojaQueVenta(
     // Falló la lectura: la hoja lo dice enseguida, con su «Reintentar».
     fallo = true;
   }
-  if (!context.mounted) return null;
-  return showModalBottomSheet<VentaConSaldo>(
+  if (!context.mounted) return const CerroQueVenta();
+  final salio = await showModalBottomSheet<Object>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -64,6 +97,11 @@ Future<VentaConSaldo?> mostrarHojaQueVenta(
       fallaPrevia: fallo,
     ),
   );
+  return switch (salio) {
+    VentaConSaldo() => VentaElegida(salio),
+    CanceloQueVenta() => const CanceloQueVenta(),
+    _ => const CerroQueVenta(),
+  };
 }
 
 enum _Lectura { cargando, lista, sinSaldo, conError }
@@ -164,10 +202,11 @@ class _HojaQueVentaState extends ConsumerState<HojaQueVenta> {
     });
   }
 
-  void _cerrarCon(VentaConSaldo? venta) {
+  /// Cierra con la [venta] elegida o, con `null`, sin cobrar. [cancelar]: es el «Cancelar» tocado.
+  void _cerrarCon(VentaConSaldo? venta, {bool cancelar = false}) {
     if (_cerrando) return;
     _cerrando = true;
-    Navigator.of(context).pop(venta);
+    Navigator.of(context).pop(venta ?? (cancelar ? const CanceloQueVenta() : null));
   }
 
   /// La venta elegida de [ventas]: la tocada o, si no se tocó ninguna (o ya no está), la primera.
@@ -178,8 +217,11 @@ class _HojaQueVentaState extends ConsumerState<HojaQueVenta> {
   @override
   Widget build(BuildContext context) {
     final cuerpo = switch (_lectura) {
-      _Lectura.cargando => _Cargando(alCancelar: () => _cerrarCon(null)),
-      _Lectura.conError => _ErrorDeLectura(alReintentar: _leer, alCancelar: () => _cerrarCon(null)),
+      _Lectura.cargando => _Cargando(alCancelar: () => _cerrarCon(null, cancelar: true)),
+      _Lectura.conError => _ErrorDeLectura(
+        alReintentar: _leer,
+        alCancelar: () => _cerrarCon(null, cancelar: true),
+      ),
       _Lectura.sinSaldo => _SinSaldo(nombre: widget.nombre, alCerrar: () => _cerrarCon(null)),
       _Lectura.lista => _lista(context),
     };
@@ -238,7 +280,7 @@ class _HojaQueVentaState extends ConsumerState<HojaQueVenta> {
               _BotonSecundario(
                 clave: ClavesQueVenta.cancelar,
                 etiqueta: TextosQueVenta.cancelar,
-                alTocar: () => _cerrarCon(null),
+                alTocar: () => _cerrarCon(null, cancelar: true),
               ),
             ],
           ),

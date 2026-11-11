@@ -6,13 +6,16 @@ name: Production
 # un mensaje claro mientras el environment no tenga sus variables y secretos. Nunca usa las variables de dev del repo:
 # android-build.yml exige APP_ENV=production y rechaza la URL del proyecto dev.
 #
-# Environment `production` (lo crea Cristian; con revisores requeridos y solo la rama `production`):
-#   Variables: APP_ENV=production, SUPABASE_URL, SUPABASE_ANON_KEY (+ opcionales de android-build.yml),
+# Environment `production` (lo crea Cristian; con revisores requeridos y solo la rama `production`). Tabla completa,
+# con ejemplos y cómo se carga cada una, en docs/ci-variables.md. Si falta algo, el workflow falla y el mensaje dice cuál.
+#   Variables: APP_ENV=production, PRODUCTION_SUPABASE_URL, PRODUCTION_SUPABASE_ANON_KEY (+ opcionales de android-build.yml;
+#              los nombres SUPABASE_URL / SUPABASE_ANON_KEY existen a nivel repositorio con los valores de dev: producción no los lee),
 #              PLAY_PACKAGE_NAME (applicationId; hoy com.colportores.colportores_mobile),
 #              PLAY_TRACK (internal | alpha | beta | production; por defecto internal),
 #              PLAY_RELEASE_STATUS (draft | completed; por defecto draft: la versión queda en borrador en la consola).
 #   Secretos:  ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD (clave de subida),
 #              PLAY_SERVICE_ACCOUNT_JSON (cuenta de servicio con permiso de publicar en la app).
+# Sin secretos en forks ni PR: el job solo corre por push a la rama `production` del repo.
 # La primera versión de una app nueva se sube a mano desde Play Console; desde la segunda, este workflow.
 
 on:
@@ -42,6 +45,8 @@ jobs:
       artefacto: colportores-production.aab
       exigir-entorno: true
       exigir-firma: true
+      # El applicationId de producción es el de siempre (tiene que coincidir con PLAY_PACKAGE_NAME).
+      aplicar-identidad: false
       retencion-dias: 30
     secrets: inherit
 
@@ -64,10 +69,11 @@ jobs:
         run: |
           fallas=0
           falla() { echo "::error title=Google Play::$1"; fallas=$((fallas + 1)); }
-          [ -n "$PLAY_PACKAGE_NAME" ] || falla "falta la variable PLAY_PACKAGE_NAME en el environment production."
-          [ "$HAY_CUENTA" = true ] || falla "falta el secreto PLAY_SERVICE_ACCOUNT_JSON en el environment production."
-          case "${PLAY_TRACK:-internal}" in internal|alpha|beta|production) ;; *) falla "PLAY_TRACK inválido: internal, alpha, beta o production." ;; esac
-          case "${PLAY_RELEASE_STATUS:-draft}" in draft|completed) ;; *) falla "PLAY_RELEASE_STATUS inválido: draft o completed." ;; esac
+          donde="Settings → Environments → production"
+          [ -n "$PLAY_PACKAGE_NAME" ] || falla "falta la variable PLAY_PACKAGE_NAME (applicationId, hoy com.colportores.colportores_mobile) en el environment production: se carga en ${donde} → Variables, o con: gh variable set PLAY_PACKAGE_NAME --env production --body com.colportores.colportores_mobile"
+          [ "$HAY_CUENTA" = true ] || falla "falta el secreto PLAY_SERVICE_ACCOUNT_JSON (JSON de la cuenta de servicio de Google Play) en el environment production: se carga en ${donde} → Secrets, o con: gh secret set PLAY_SERVICE_ACCOUNT_JSON --env production < cuenta.json"
+          case "${PLAY_TRACK:-internal}" in internal|alpha|beta|production) ;; *) falla "PLAY_TRACK inválido: internal, alpha, beta o production (vacío = internal)." ;; esac
+          case "${PLAY_RELEASE_STATUS:-draft}" in draft|completed) ;; *) falla "PLAY_RELEASE_STATUS inválido: draft o completed (vacío = draft)." ;; esac
           [ "$fallas" -eq 0 ] || exit 1
 
       - uses: actions/download-artifact@v4

@@ -43,6 +43,37 @@ abstract final class TextosAgendarVisita {
   static String franjaSugerida(String etiqueta) =>
       'Franja sugerida: ${etiqueta[0].toLowerCase()}${etiqueta.substring(1)}';
 
+  /// La hoja cuando solo se elige el día (entrevista estricta, R·03).
+  static const hojaTituloDia = 'Día';
+
+  /// La hoja cuando el día ya está elegido y solo falta la hora («¿Cuándo volvés a cobrar?», 42B·01B).
+  static const hojaTituloHora = 'Hora';
+
+  // Vista 39, R·02: la fecha sugerida por las entrevistas cercanas.
+  static const etiquetaSugerida = 'SUGERIDA';
+  static const etiquetaFecha = 'FECHA';
+  static const cambiar = 'Cambiar';
+
+  /// «2 entrevistas a menos de 300 m ese día» (la distancia es la del canvas: 300 m).
+  static String entrevistasCerca(int cantidad) => cantidad == 1
+      ? '1 entrevista a menos de 300 m ese día'
+      : '$cantidad entrevistas a menos de 300 m ese día';
+
+  /// La tarjeta de la fecha para el lector: «Fecha sugerida: Jueves 24/10 · 10:00 a 11:30. 2
+  /// entrevistas a menos de 300 m ese día. Tocá para cambiar».
+  static String lectorTarjetaFecha(String etiqueta, String titulo, String? detalle) {
+    final nombre = etiqueta == etiquetaSugerida ? 'Fecha sugerida' : 'Fecha';
+    return '$nombre: $titulo.${detalle == null ? '' : ' $detalle.'} Tocá para cambiar';
+  }
+
+  // Vista 39, R·03: entrevista estricta.
+  static const estricta = 'Entrevista estricta';
+  static const estrictaAyuda = 'Hora fija acordada con la persona';
+  static const etiquetaHoraAcordada = 'HORA ACORDADA';
+
+  /// El campo «HORA ACORDADA» para el lector: «Hora acordada: 10:15. Tocá para cambiar».
+  static String lectorHoraAcordada(String valor) => 'Hora acordada: $valor. Tocá para cambiar';
+
   // 23A·03: la hora ya pasó.
   static const horaPasadaCorta = 'Esa hora ya pasó';
   static const agendarIgual = 'Agendar igual';
@@ -61,7 +92,7 @@ abstract final class TextosAgendarVisita {
   // 23A·05: el aviso de éxito.
   static String agendada(TipoAgenda tipo) => switch (tipo) {
     TipoAgenda.entrevista => 'Agendada. La casa queda como «Entrevista agendada».',
-    TipoAgenda.cobranza => 'Agendada.',
+    TipoAgenda.cobranza || TipoAgenda.entrega => 'Agendada.',
   };
 
   /// La visita quedó agendada, pero faltaba menos que la anticipación y no hay recordatorio.

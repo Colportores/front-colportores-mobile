@@ -13,7 +13,7 @@ import '../../../../core/database/fecha_utc_converter.dart';
 /// componente, con su cantidad (migración 0056). [pendiente] dice si lo que cuenta la fila ya se
 /// entregó (`false`, con [fechaEntrega]) o falta entregarlo (`true`, sin fecha). La entrega inmediata
 /// (HU-VEN-002) crea las filas ya entregadas; las pendientes llegan con la entrega diferida
-/// (HU-VEN-003).
+/// (HU-VEN-003), que les pone la [fechaPrevista].
 ///
 /// **Sin dato del cliente** (ADR-004): cuelga de la venta por un id opaco.
 @DataClassName('EntregaFila')
@@ -30,6 +30,10 @@ class Entregas extends Table {
 
   /// Cuántas unidades cuenta la fila; siempre 1 o más.
   IntColumn get cantidad => integer()();
+
+  /// Cuándo se acordó entregar (`fecha_prevista`, backend 0068); `null` si no hay fecha acordada. Sigue
+  /// ahí cuando la fila ya se entregó. Sube con el resto de la fila.
+  IntColumn get fechaPrevista => integer().nullable().map(const FechaUtcConverter())();
 
   /// Cuándo se entregó de verdad; `null` mientras la fila está pendiente.
   IntColumn get fechaEntrega => integer().nullable().map(const FechaUtcConverter())();

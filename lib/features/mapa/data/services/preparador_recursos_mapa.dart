@@ -9,7 +9,8 @@ import 'package:path/path.dart' as p;
 /// Van adentro de la app para que el mapa offline no necesite red, pero MapLibre los lee con
 /// `file://`: no sabe abrir los assets de Flutter. Por eso se copian una vez a
 /// `<soporte>/mapa/<versión>/` (el almacenamiento interno: la capa nativa no puede leer el
-/// externo, `Android/data/…`). Subir [version] cuando cambia algo de `assets/mapa/`.
+/// externo, `Android/data/…`). Vienen del paquete `colportores_mapa` (lib-mapa, #673): subir
+/// [versionRecursosMapa] cuando el tag nuevo cambia algo de su `assets/mapa/`.
 class PreparadorRecursosMapa {
   PreparadorRecursosMapa({
     required this._directorioBase,
@@ -17,11 +18,12 @@ class PreparadorRecursosMapa {
     this.version = versionRecursosMapa,
   }) : _bundle = bundle ?? rootBundle;
 
-  /// Los glyphs y sprites de `@protomaps/basemaps` 5.7.2 que publica backend (#42). Sumar uno a la
-  /// versión cuando se cambian los archivos de `assets/mapa/`.
-  static const versionRecursosMapa = 'basemaps-5.7.2-2';
+  /// Los glyphs y sprites de lib-mapa v1.0.0 (los de `@protomaps/basemaps` 5.7.2). Cambiarla cuando
+  /// el tag nuevo de `colportores_mapa` cambia los archivos de su `assets/mapa/`.
+  static const versionRecursosMapa = 'lib-mapa-1.0.0';
 
-  static const _raizAssets = 'assets/mapa/';
+  /// Donde Flutter deja los assets del paquete `colportores_mapa` (declarados en su `pubspec.yaml`).
+  static const raizAssets = 'packages/colportores_mapa/assets/mapa/';
   static const _carpetas = ['glyphs/', 'sprites/'];
   static const _marcaListo = '.listo';
 
@@ -47,8 +49,8 @@ class PreparadorRecursosMapa {
 
     final manifiesto = await AssetManifest.loadFromAssetBundle(_bundle);
     for (final clave in manifiesto.listAssets()) {
-      if (!clave.startsWith(_raizAssets)) continue;
-      final relativa = clave.substring(_raizAssets.length);
+      if (!clave.startsWith(raizAssets)) continue;
+      final relativa = clave.substring(raizAssets.length);
       if (!_carpetas.any(relativa.startsWith)) continue;
       final datos = await _bundle.load(clave);
       final archivo = File(p.join(temporal.path, relativa));

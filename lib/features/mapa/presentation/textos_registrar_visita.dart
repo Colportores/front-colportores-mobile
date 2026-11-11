@@ -14,6 +14,10 @@ abstract final class TextosRegistrarVisita {
   static const entrevistaDada = 'Entrevista dada';
   static const cobranza = 'Cobranza';
 
+  /// «Vender» no está en el canvas de C·06: lo pide la decisión de Cristian del 04/11 («Vender desde el
+  /// mapa»), que manda sobre el artboard. Texto propuesto (mapa §2: texto/aviso).
+  static const vender = 'Vender';
+
   static const ayudaGuardaYVuelve = 'Guarda y vuelve al mapa';
   static const ayudaProgramar = 'Elegís día y franja';
   static const ayudaEntrevistaDada = 'Empieza a contar el tiempo';
@@ -23,6 +27,20 @@ abstract final class TextosRegistrarVisita {
   /// para cambiarlo.
   static String ayudaCobranza(String persona, int centavos) =>
       '$persona debe ${FormatoBaja.monto(centavos).replaceFirst(r'$U', r'$')}';
+
+  /// La ayuda de «Vender» cuando en la casa hay más de una persona entrevistada: no se elige sola, se
+  /// pregunta a quién en el paso siguiente. Texto propuesto (mapa §2: texto/aviso).
+  static const ayudaVenderVarias = 'Elegís a quién le vendés';
+
+  /// «Vender» cuando las personas entrevistadas se dieron de baja desde que se abrió «¿Qué pasó?»: no hay
+  /// a quién venderle. Dice qué pasó y qué hacer (mapa §2: texto/aviso; texto del issue front-colportores-mobile#669).
+  static const nadieParaVender =
+      'Ya no queda ninguna persona entrevistada en esta casa. Elegí otra opción.';
+
+  /// La ayuda de «Vender»: «Registrar la venta de Pedro Gómez».
+  static String ayudaVender(String persona) => persona.trim().isEmpty
+      ? 'Registrar la venta de la entrevista'
+      : 'Registrar la venta de ${persona.trim()}';
 
   // R·01 — el aviso «Guardado».
   static String guardado(String direccion, String resultado) =>
@@ -51,6 +69,11 @@ abstract final class TextosRegistrarVisita {
   /// «Registrar visita» sobre un edificio: el depto se elige antes (#452) y todavía no está.
   static const edificioSinDepto =
       'Todavía no se pueden registrar visitas en un edificio desde acá.';
+
+  /// «+ Agendar» sobre un edificio (hoja de la casa y selector de la pestaña Agenda): el depto se
+  /// elige antes (#452) y todavía no está.
+  static const edificioSinDeptoParaAgendar =
+      'Todavía no se puede agendar en un edificio desde acá.';
 
   /// El resultado se deshizo.
   static String seDeshizo(String direccion) => 'Se deshizo. $direccion vuelve a como estaba.';

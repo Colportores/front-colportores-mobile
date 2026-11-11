@@ -32,6 +32,7 @@ class _Archivo extends FakeArchive {
     required String watermark,
     DateTime? exportedAt,
     String? keyId,
+    String? firma,
   }) async {
     intentos++;
     if (frenar case final espera?) await espera.future;
@@ -42,6 +43,7 @@ class _Archivo extends FakeArchive {
       watermark: watermark,
       exportedAt: exportedAt,
       keyId: keyId,
+      firma: firma,
     );
   }
 }

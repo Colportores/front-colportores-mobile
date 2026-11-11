@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../datos/sync_queue_table.dart';
 import '../../features/agenda/data/datasources/agendas_table.dart';
+import '../../features/agenda/data/datasources/visita_misioneros_table.dart';
 import '../../features/agenda/data/datasources/visitas_table.dart';
 import '../../features/auth/data/datasources/sesion_usuario_table.dart';
 import '../../features/catalogo/data/datasources/colecciones_table.dart';
@@ -11,6 +12,8 @@ import '../../features/catalogo/data/datasources/precios_por_ciudad_table.dart';
 import '../../features/catalogo/data/datasources/producto_colecciones_table.dart';
 import '../../features/catalogo/data/datasources/productos_table.dart';
 import '../../features/cobranzas/data/datasources/cobranzas_table.dart';
+import '../../features/cuenta/data/datasources/deuda_casa_cache_table.dart';
+import '../../features/depositos/data/datasources/depositos_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
@@ -25,12 +28,16 @@ import '../../features/mapa/data/datasources/notas_table.dart';
 import '../../features/mapa/data/datasources/pares_duplicados_table.dart';
 import '../../features/mapa/data/datasources/personas_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
+import '../../features/mapa/data/datasources/uniones_locales_table.dart';
 import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
 import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
 import '../../features/stock/data/datasources/stocks_table.dart';
+import '../../features/tickets/data/datasources/tickets_table.dart';
 import '../../features/ventas/data/datasources/componentes_converter.dart';
+import '../../features/ventas/data/datasources/devoluciones_table.dart';
 import '../../features/ventas/data/datasources/entregas_table.dart';
+import '../../features/ventas/data/datasources/productos_devueltos_converter.dart';
 import '../../features/ventas/data/datasources/venta_items_table.dart';
 import '../../features/ventas/data/datasources/ventas_table.dart';
 import '../logging/app_logger.dart';
@@ -72,6 +79,7 @@ part 'app_database.g.dart';
     Notas,
     Agendas,
     Visitas,
+    VisitaMisioneros,
     HouseStatuses,
     NotificacionesHistorial,
     Productos,
@@ -88,6 +96,12 @@ part 'app_database.g.dart';
     VentaItems,
     Cobranzas,
     Entregas,
+    Devoluciones,
+    Depositos,
+    Tickets,
+    TicketFotosLocales,
+    DeudaCasaCaches,
+    UnionesLocales,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -131,10 +145,46 @@ class AppDatabase extends _$AppDatabase {
   ///   `numero_aprobacion`) y de la transferencia (`referencia_transferencia`, `banco_origen`), que
   ///   suben con el cobro (backend-supabase 0072, HU-COB-002 y HU-COB-003, #396).
   /// - 21: `entrega`, lo entregado de cada venta, una fila por producto, que sube (HU-VEN-002, #430).
+  /// - 22: `devolucion`, las devoluciones de una venta (qué libros vuelven y qué se hace con la plata de
+  ///   más), que sube (HU-VEN-004, #161; backend-supabase 0108, 0136 y 0142). Desde la 26 sin dinero.
+  /// - 23: `deposito`, el efectivo que el colportor depositó, con su destino, su concepto y su ticket,
+  ///   que sube (HU-CTA-004, #442).
+  /// - 24: `agenda` suma `venta_id` y `monto_previsto` (backend-supabase 0068): una cuota del plan de
+  ///   una venta es una cita de cobranza con su venta y su monto (HU-COB-004, #166).
+  /// - 25: `deposito` suma `validado_en`, `validado_por`, `rechazado_en` y `motivo_rechazo`, que baja el
+  ///   pull (backend-supabase#231): con ellas el teléfono sabe si el depósito está por validar,
+  ///   validado o rechazado (#596).
+  /// - 26: `devolucion` pierde `dinero_retenido` y `monto_reembolsado` (backend-supabase 0157, decisión
+  ///   de Cristian, 03/11, «Devol. saldo»): nunca queda plata a favor del cliente, así que la
+  ///   devolución ya no guarda dinero (#609).
+  /// - 27: `producto` suma `categoria` (backend-supabase 0149, «Categorías» de Cristian, 28/10): la
+  ///   etiqueta de cada producto en Precios, en lugar del `tipo` heredado (#561).
+  /// - 28: `ciudad` suma `departamento`, que el servidor ya manda en el pull (backend-supabase 0066):
+  ///   con él «Mapas offline» ofrece el mapa del departamento de la colportora (#619).
+  /// - 29: `deuda_casa_cache`, la última respuesta de la deuda con la casa editora con su hora, solo local:
+  ///   se ve sin conexión (HU-CTA-002, #441; backend-supabase 0164).
+  /// - 30: `ticket`, la foto y los datos del comprobante del cobro con tarjeta o del depósito, que sube
+  ///   y baja lo propio (HU-COB-007, #426); `ticket_foto_local`, la copia de la foto y cómo va su
+  ///   subida, solo del teléfono; y `cobranza.ticket_id`, el ticket del cobro.
+  /// - 31: `cobranza` pierde `numero_cuota` (backend-supabase 0156, decisión de Cristian, 03/11): el
+  ///   cobro ya no guarda qué número de cuota paga (#608).
+  /// - 32: `jornada` pierde `tipo_acompaniamiento` (backend-supabase 0169, decisión de Cristian, 04/11):
+  ///   ninguna pantalla lo pide; el acompañamiento queda con quién acompaña (#642).
+  /// - 33: la entrega diferida (HU-VEN-003, #433): `entrega.fecha_prevista` y, en `agenda`, el tipo
+  ///   `ENTREGA` con la entrega que agenda (`entrega_id`; `venta_id` ya estaba desde la 24)
+  ///   (backend-supabase 0068).
+  /// - 34: `visita` guarda las horas de la entrevista (`entrevista_entrada` y `entrevista_salida`, #466,
+  ///   decisión de Cristian, 23/10) y `visita_misionero`, los misioneros que la colportora dejó en una
+  ///   entrevista sin venta («Lo que dejaste», #608; backend-supabase 0160).
+  /// - 35: `sync_queue.op` acepta `marcar_como_duplicado`, el trabajo de la unión de duplicados del
+  ///   motor de sync (contrato-sync-engine §6.2, HU-UBI-006, #679).
+  /// - 36: `ubicacion_union_local`, qué movió cada unión de duplicados hecha en el teléfono, solo
+  ///   local: si el servidor rechaza su trabajo, la unión se deshace y el par queda separado
+  ///   (decisión de Cristian, 10/11, «Unión rech.»; HU-UBI-006, #679).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 21;
+  static const int versionEsquema = 36;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -357,6 +407,118 @@ class AppDatabase extends _$AppDatabase {
     from20To21: (m, esquema) async {
       await m.createTable(esquema.entrega);
       await m.createIndex(esquema.entregaVentaIdx);
+    },
+    // Solo crea la tabla de las devoluciones, vacía: nada de lo guardado cambia ni se encola al migrar.
+    from21To22: (m, esquema) async {
+      await m.createTable(esquema.devolucion);
+      await m.createIndex(esquema.devolucionVentaIdx);
+    },
+    // Solo crea la tabla de los depósitos, vacía: nada de lo guardado cambia ni se encola al migrar.
+    from22To23: (m, esquema) async {
+      await m.createTable(esquema.deposito);
+      await m.createIndex(esquema.depositoTicketIdx);
+    },
+    // Suma a `agenda` la venta de la que sale la cita y el monto previsto (una cuota del plan de una
+    // venta, HU-COB-004): vacíos, ninguna cita que ya estaba cambia ni se vuelve a encolar al migrar.
+    // Se reescribe la tabla porque suma el `CHECK` del monto previsto, y `alterTable` no recrea el
+    // índice nuevo.
+    from23To24: (m, esquema) async {
+      await m.alterTable(
+        TableMigration(
+          esquema.agenda,
+          newColumns: [esquema.agenda.ventaId, esquema.agenda.montoPrevisto],
+        ),
+      );
+      await m.createIndex(esquema.agendaVentaIdx);
+    },
+    // Suma a `deposito` las cuatro columnas que pone el servidor y ahora bajan por el pull (la
+    // validación y el rechazo con su motivo, backend-supabase#231): vacías, ningún depósito que ya
+    // estaba cambia ni se vuelve a encolar al migrar; el próximo pull las completa.
+    from24To25: (m, esquema) async {
+      await m.addColumn(esquema.deposito, esquema.deposito.validadoEn);
+      await m.addColumn(esquema.deposito, esquema.deposito.validadoPor);
+      await m.addColumn(esquema.deposito, esquema.deposito.rechazadoEn);
+      await m.addColumn(esquema.deposito, esquema.deposito.motivoRechazo);
+    },
+    // Saca de `devolucion` las dos columnas de dinero (`dinero_retenido` y `monto_reembolsado`): nunca
+    // queda plata a favor del cliente (backend-supabase 0157). Se reescribe la tabla (SQLite no quita
+    // un CHECK) y se conserva cada devolución con sus libros, su motivo, su fecha y su auditoría; lo
+    // que valían las dos columnas se pierde (datos simulados hasta diciembre) y nada se vuelve a
+    // encolar al migrar. `alterTable` vuelve a crear los índices que ya tenía la tabla.
+    from25To26: (m, esquema) async {
+      await m.alterTable(TableMigration(esquema.devolucion));
+    },
+    // Suma a `producto` la categoría que ahora baja el pull (backend-supabase 0149): vacía, ningún
+    // producto que ya estaba cambia. El servidor subió la versión de cada producto al cargar la
+    // categoría, así que el próximo pull la trae; hasta entonces el producto no se ofrece en Precios
+    // (no se deriva de `tipo`: decisión de Cristian, 28/10).
+    from26To27: (m, esquema) async {
+      await m.addColumn(esquema.producto, esquema.producto.categoria);
+    },
+    // Suma a `ciudad` el departamento que el servidor ya manda en el pull de catálogos (backend-supabase
+    // 0066) y el motor ignoraba: vacío, ninguna ciudad que ya estaba cambia. El servidor sube la versión
+    // de cada ciudad al cargarle el departamento, así que el próximo pull lo trae; hasta entonces
+    // «Mapas offline» no ofrece «Mi departamento» (#619).
+    from27To28: (m, esquema) async {
+      await m.addColumn(esquema.ciudad, esquema.ciudad.departamento);
+    },
+    // Solo crea la tabla de la deuda guardada, vacía: nada de lo guardado cambia. Hasta la primera
+    // lectura con conexión, la pantalla no tiene qué mostrar sin red.
+    from28To29: (m, esquema) async {
+      await m.createTable(esquema.deudaCasaCache);
+    },
+    // Crea las tablas de los tickets, vacías, y suma `cobranza.ticket_id` (vacío en los cobros que ya
+    // están): nada de lo guardado cambia ni se encola al migrar.
+    from29To30: (m, esquema) async {
+      await m.createTable(esquema.ticket);
+      await m.createTable(esquema.ticketFotoLocal);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.ticketId);
+    },
+    // Saca de `cobranza` la columna `numero_cuota` (backend-supabase 0156): el cobro ya no guarda qué
+    // número de cuota paga. Se reescribe la tabla y se conserva cada cobro con el resto de sus columnas
+    // (la venta, el monto, el medio, los datos de la tarjeta y de la transferencia, el ticket, la
+    // auditoría); lo que valía `numero_cuota` se pierde (datos simulados hasta diciembre) y nada se
+    // vuelve a encolar al migrar. `alterTable` vuelve a crear el índice `cobranza_venta_idx`.
+    from30To31: (m, esquema) async {
+      await m.alterTable(TableMigration(esquema.cobranza));
+    },
+    // Saca de `jornada` la columna `tipo_acompaniamiento` (backend-supabase 0169): ninguna pantalla la
+    // pide y el servidor ya no la tiene. Se reescribe la tabla y se conserva cada jornada con el resto
+    // de sus columnas (inicio, fin, quién acompaña, totales, auditoría); lo que valía la columna se
+    // pierde (nadie la escribía) y nada se vuelve a encolar al migrar. `alterTable` vuelve a crear el
+    // índice `jornada_colportor_idx` y deja los `CHECK`.
+    from31To32: (m, esquema) async {
+      await m.alterTable(TableMigration(esquema.jornada));
+    },
+    // Suma `entrega.fecha_prevista` (las filas que ya estaban quedan sin fecha acordada) y reescribe
+    // `agenda` (SQLite no cambia un `CHECK`): deja entrar el tipo `ENTREGA`, suma `entrega_id` (vacío
+    // en todas las citas que ya estaban) y conserva cada fila con el resto de sus columnas, entre ellas
+    // `venta_id` y `monto_previsto` de las cuotas del plan. Nada se vuelve a encolar al migrar.
+    // `alterTable` vuelve a crear los índices que `agenda` ya tenía.
+    from32To33: (m, esquema) async {
+      await m.addColumn(esquema.entrega, esquema.entrega.fechaPrevista);
+      await m.alterTable(TableMigration(esquema.agenda, newColumns: [esquema.agenda.entregaId]));
+    },
+    // Suma a `visita` las horas de la entrevista (las visitas que ya estaban quedan sin horas: no se
+    // inventan) y crea `visita_misionero` vacía, con su índice. Nada se vuelve a encolar al migrar.
+    from33To34: (m, esquema) async {
+      await m.addColumn(esquema.visita, esquema.visita.entrevistaEntrada);
+      await m.addColumn(esquema.visita, esquema.visita.entrevistaSalida);
+      await m.createTable(esquema.visitaMisionero);
+      await m.createIndex(esquema.visitaMisioneroVisitaIdx);
+    },
+    // Reescribe `sync_queue` (SQLite no cambia un `CHECK`) para que `op` acepte
+    // `marcar_como_duplicado`, la unión de duplicados como trabajo del motor (contrato-sync-engine
+    // §6.2). Conserva cada job con su estado, su lugar en la cola y su payload: nada se pierde ni se
+    // vuelve a encolar. `alterTable` vuelve a crear los índices que la tabla ya tenía.
+    from34To35: (m, esquema) async {
+      await m.alterTable(TableMigration(esquema.syncQueue));
+    },
+    // Solo crea la tabla de las uniones, vacía: nada de lo guardado cambia. Las uniones hechas antes
+    // de la 36 no guardaron qué movieron, así que si su trabajo vuelve rechazado no se deshacen (los
+    // datos son simulados hasta diciembre: no se migra nada).
+    from35To36: (m, esquema) async {
+      await m.createTable(esquema.ubicacionUnionLocal);
     },
   );
 }

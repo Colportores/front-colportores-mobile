@@ -42,6 +42,7 @@ class SyncOutcome {
     this.pulled = 0,
     this.skipped = false,
     this.pausedReason,
+    this.pushPausedUntil,
     this.failure,
   });
 
@@ -58,6 +59,12 @@ class SyncOutcome {
   /// (HU-SYNC-008). El ciclo no falló —lo pendiente subió— y el pull espera a
   /// que haya Wi-Fi, a un sync manual o a un evento de realtime.
   final String? pausedReason;
+
+  /// Hasta cuándo la subida está frenada por un `429` (§5.1): el servidor pidió
+  /// esperar y el motor no sube nada hasta esa hora. El ciclo no falló por eso
+  /// —la cola quedó en `PENDING` y el pull corrió—, pero este ciclo no subió.
+  /// Es solo memoria: si se cierra la app, la espera se pierde.
+  final DateTime? pushPausedUntil;
 
   /// La falla transitoria que lo cortó. Los jobs volvieron a `PENDING`.
   final TransportFailure? failure;
@@ -84,6 +91,8 @@ class SyncEngine {
     this.realtimeDebounce = const Duration(milliseconds: 300),
     this.criticalDebounce = const Duration(seconds: 2),
     this.inFlightLease = const Duration(minutes: 10),
+    this.maxRetryAfter = const Duration(seconds: 60),
+    this.defaultRetryAfter = const Duration(seconds: 5),
   }) : _specs = specs,
        _uuid = uuid ?? UuidV7(),
        _adapters = {for (final a in adapters) a.remoteName: a},
@@ -176,11 +185,27 @@ class SyncEngine {
   /// como el reclamo corre en cada ciclo, no hace falta reiniciar la app.
   final Duration inFlightLease;
 
+  /// Lo más que el motor frena la subida por un `429`, venga lo que venga en el
+  /// `Retry-After`: un encabezado de una hora dejaría al colportor sin respaldo
+  /// de sus ventas toda la jornada.
+  final Duration maxRetryAfter;
+
+  /// Cuánto frena la subida un `429` sin `Retry-After` (o con uno en cero): una
+  /// espera corta en vez de reintentar al instante contra un servidor que ya
+  /// dijo que no da abasto.
+  final Duration defaultRetryAfter;
+
   StreamSubscription<bool>? _conn;
   StreamSubscription<bool>? _wifiSub;
   StreamSubscription<String>? _realtimeSub;
   Timer? _realtimeTimer;
   Timer? _criticalTimer;
+
+  /// Despierta al motor cuando vence la espera de un `429`: lo que llegó
+  /// durante la espera (una venta, volver al frente) se descartó y no
+  /// vuelve a avisar, así que sin este timer quedaría `PENDING` hasta el
+  /// próximo trigger. Uno solo: cada espera nueva reemplaza al anterior.
+  Timer? _esperaTimer;
 
   /// La zona donde se construyó el motor, para programar sus timers.
   ///
@@ -221,6 +246,14 @@ class SyncEngine {
   /// Por qué el último ciclo dejó el pull esperando (HU-SYNC-008), o `null`.
   String? _pullEnPausa;
 
+  /// Hasta cuándo no se sube nada porque el backend contestó `429`, o `null`.
+  ///
+  /// Solo en memoria, a propósito: la cola no cambia (los jobs siguen en
+  /// `PENDING`) y reabrir la app empieza sin espera. Frena **toda** la subida y
+  /// no solo la entidad que rebotó: retener un alta y dejar salir lo que la
+  /// nombra termina en `23503` y en jobs `INVALID`. El pull sigue.
+  DateTime? _subidaFrenadaHasta;
+
   /// Desde cuándo el backend contesta `401`. Ver [SyncStatus.unauthorizedSince].
   DateTime? _sinSesionDesde;
 
@@ -256,6 +289,14 @@ class SyncEngine {
   ///
   /// Lanza [LocalOnlyViolationError] si [entity] es `local`, y
   /// [UnregisteredEntityError] si no tiene `SyncSpec`.
+  ///
+  /// [Op.marcarComoDuplicado] (la unión de duplicados, §6.2) lleva como
+  /// payload `{duplicada_id, conservada_id}` y no la fila: se encola siempre
+  /// aparte, detrás de lo que ya esperaba (las altas de A y de B incluidas), sin
+  /// versión esperada y sin fundirse con otra escritura ni absorber una en
+  /// espera. Su `rowPk` es la duplicada, para que la `sync_version` de B que
+  /// devuelve el servidor vuelva a la fila. Sin los dos ids lanza
+  /// [ArgumentError].
   Future<String> stage(
     String entity,
     Op op,
@@ -269,6 +310,16 @@ class SyncEngine {
     // guardar la venta que guardarla y no subirla nunca.
     _verificarVivo();
     _specs.assertStageable(entity);
+    final union = op == Op.marcarComoDuplicado;
+    if (union &&
+        (payload['duplicada_id'] is! String ||
+            payload['conservada_id'] is! String)) {
+      throw ArgumentError.value(
+        payload,
+        'payload',
+        'marcar_como_duplicado necesita duplicada_id y conservada_id',
+      );
+    }
 
     final ahora = _clock();
     final job = SyncJob(
@@ -276,14 +327,20 @@ class SyncEngine {
       entity: entity,
       op: op,
       payload: payload,
-      syncVersion: syncVersion,
+      syncVersion: union ? null : syncVersion,
       createdAt: ahora,
-      rowPk: payload[_specs.of(entity).pk]?.toString(),
+      rowPk: (union ? payload['duplicada_id'] : payload[_specs.of(entity).pk])
+          ?.toString(),
     );
+
+    // §6.2: la unión no es una escritura de la fila, así que no reemplaza ni
+    // se funde con nada. Lo que nombra (A y B) ya está antes en la cola; si
+    // alguna espera, `_sinLoQueEspera` la retiene detrás al mandar.
+    final seFunde = op != Op.insert && !union;
 
     // §2.2: si la fila tiene una escritura en espera, esta la reemplaza en vez
     // de encolarse aparte. Es como la app resuelve un conflicto (vista 10).
-    final absorbido = op == Op.insert ? null : await _absorber(job);
+    final absorbido = seFunde ? await _absorber(job) : null;
     if (absorbido != null) {
       await _emit();
       // Resolver un conflicto es lo que la colportora estaba esperando para
@@ -292,7 +349,7 @@ class SyncEngine {
       return absorbido;
     }
 
-    final fundido = op == Op.insert ? null : await _fundirEnPendiente(job);
+    final fundido = seFunde ? await _fundirEnPendiente(job) : null;
     if (fundido != null) {
       await _emit();
       if (_specs.of(entity).critical) _programarCritico();
@@ -337,9 +394,15 @@ class SyncEngine {
     // Todas las escrituras en espera de esta fila, de la más vieja a la más
     // nueva: un update que se mandó antes de que el alta chocara también quedó
     // esperándola, y fundirlo después de esta escritura la pisaría.
+    // La unión de duplicados (§6.2) no es una escritura de B: no se reemplaza
+    // ni se descarta con ella. Si espera porque nombra a B, vuelve a la cola
+    // con lo que cuelga de B.
     final deLaFila = [
       for (final q in enEspera)
-        if (q.job.entity == job.entity && pkDe(_specs, q.job) == pk) q,
+        if (q.job.entity == job.entity &&
+            q.job.op != Op.marcarComoDuplicado &&
+            pkDe(_specs, q.job) == pk)
+          q,
     ];
     if (deLaFila.isEmpty) return null;
 
@@ -397,7 +460,11 @@ class SyncEngine {
     final sinMandar = await _jobs.unsentFor(job.entity, pk);
     if (sinMandar.isEmpty) return null;
     final destino = sinMandar.last;
-    if (destino.state != JobState.pending || destino.job.op == Op.delete) {
+    // Tampoco en una unión de duplicados (§6.2): su payload no es la fila, y lo
+    // que se escribe de B después de unirla sale después.
+    if (destino.state != JobState.pending ||
+        destino.job.op == Op.delete ||
+        destino.job.op == Op.marcarComoDuplicado) {
       return null;
     }
     final fundido = {...destino.job.payload, ...job.payload};
@@ -577,7 +644,7 @@ class SyncEngine {
       adaptador.toSyncJson(row),
       clientOpId: clientOpId,
       // En un insert no hay versión previa que esperar (§5.4).
-      syncVersion: op == Op.insert ? null : adaptador.syncVersionOf(row),
+      syncVersion: op.esperaVersion ? adaptador.syncVersionOf(row) : null,
     );
   }
 
@@ -746,7 +813,30 @@ class SyncEngine {
   /// Precondición, del lado de la app: login en el dispositivo nuevo, sesiones
   /// del viejo revocadas y DB cifrada inicializada. El motor recibe la DB vacía
   /// y el JWT.
-  Future<RecoveryReport> recover() async {
+  ///
+  /// - [onProgress] recibe el paso en que va (el asistente de la vista 34).
+  /// - [cancel] corta la descarga del respaldo sin tocar la DB; ver
+  ///   [RecoveryCancelToken].
+  /// - [backup] es el servicio con el que se restaura, si no es el del motor:
+  ///   en un teléfono nuevo el respaldo está cifrado con la llave del teléfono
+  ///   viejo, que la persona recupera con su contraseña, y no es la que usa
+  ///   este motor para respaldar. Después del restore, el respaldo de este
+  ///   motor arranca de una base nueva.
+  /// - [keyId] limita el restore a la cadena de esa llave.
+  /// - [sources] restaura **varias cadenas juntas**, las de cada teléfono que
+  ///   la persona tuvo (contrato §7, «Varios respaldos de otros teléfonos»):
+  ///   cada una se baja con el servicio que tiene su llave, se fusionan por la
+  ///   fecha de cada fila en una sola operación, y el pull de la reconciliación
+  ///   parte del watermark de la cadena **más vieja**: tomar el más nuevo
+  ///   dejaría sin bajar lo que solo tenía la vieja. Si se pasa, [backup] y
+  ///   [keyId] se ignoran.
+  Future<RecoveryReport> recover({
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+    BackupService? backup,
+    String? keyId,
+    List<RecoverySource>? sources,
+  }) async {
     _verificarVivo();
     // Toma el mismo candado que los ciclos: si vuelve la red mientras el wizard
     // reconcilia, el trigger de conectividad no puede arrancar un pull en
@@ -757,7 +847,12 @@ class SyncEngine {
     final candado = Completer<SyncOutcome>();
     _running = candado.future;
     try {
-      return await _recuperar();
+      final fuentes = sources ??
+          [
+            if (backup ?? _backup case final servicio?)
+              RecoverySource(backup: servicio, keyId: keyId),
+          ];
+      return await _recuperar(onProgress, cancel, fuentes);
     } finally {
       _running = null;
       _correrPendiente();
@@ -767,11 +862,20 @@ class SyncEngine {
     }
   }
 
-  Future<RecoveryReport> _recuperar() async {
+  Future<RecoveryReport> _recuperar(
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+    List<RecoverySource> fuentes,
+  ) async {
     final ahora = _clock();
-    BackupEntry? punta;
+    var hayRestore = false;
+    var parcial = false;
+    var partesAplicadas = 0;
+    var partesTotales = 0;
+    final puntas = <BackupEntry>[];
     DateTime? restauradoAntes;
     var problema = '';
+    var cadenasSalteadas = 0;
 
     // Fase 1 — restore desde Drive.
     //
@@ -783,25 +887,86 @@ class SyncEngine {
     final yaRestaurado = await _store.watermarkOf(_scopeRecovery);
 
     if (yaRestaurado != null) {
-      punta = null;
       restauradoAntes = DateTime.tryParse(yaRestaurado);
-    } else if (_backup != null && await _backup.isAuthorized) {
-      punta = await _backup.restore();
-      if (punta == null) {
-        final estado = await _backup.verifyChain();
+      // Un reintento no repite el restore ni trae las fechas de las cadenas:
+      // cuántas se saltearon sale de la marca guardada junto a la de
+      // recuperación (una marca vieja, sin ella, cuenta cero).
+      final salteadas = await _store.watermarkOf(_scopeRecoverySalteadas);
+      cadenasSalteadas = int.tryParse(salteadas ?? '') ?? 0;
+    } else if (fuentes.isNotEmpty && await fuentes.first.backup.isAuthorized) {
+      // El avance suma las partes de todas las cadenas: el «12/15 partes».
+      var totalDelAvance = 0;
+      if (fuentes.every((f) => f.keyId != null)) {
+        for (final f in fuentes) {
+          for (final c in await f.backup.candidateChains()) {
+            if (c.keyId == f.keyId) totalDelAvance += c.parts;
+          }
+        }
+      }
+      final bajadas = <DownloadedChain>[];
+      var antes = 0;
+      for (final f in fuentes) {
+        final bajada = await f.backup.downloadChain(
+          keyId: f.keyId,
+          partsBefore: antes,
+          partsTotal: totalDelAvance > 0 ? totalDelAvance : null,
+          onProgress: onProgress,
+          cancel: cancel,
+          waitForNetwork: _esperarLaRed,
+        );
+        if (bajada == null) continue;
+        bajadas.add(bajada);
+        antes += bajada.outcome.total;
+      }
+      cadenasSalteadas = fuentes.length - bajadas.length;
+      if (bajadas.isEmpty) {
+        final estado = await fuentes.first.backup.verifyChain();
         problema = estado.problems.map((p) => p.name).join(', ');
       } else {
+        await fuentes.first.backup.applyChains(
+          bajadas,
+          onProgress: onProgress,
+          cancel: cancel,
+        );
+        hayRestore = true;
+        for (final b in bajadas) {
+          puntas.add(b.outcome.tip);
+          parcial = parcial || b.outcome.partial;
+          partesAplicadas += b.outcome.applied;
+          partesTotales += b.outcome.total;
+          if (b.outcome.problem.isNotEmpty && problema.isEmpty) {
+            problema = b.outcome.problem;
+          }
+        }
+        // Lo restaurado conserva su fecha de escritura: el respaldo de este
+        // motor parte de una base completa, no de un incremental que no lo vería.
+        _backup?.requestNewBase();
         // El watermark que tenía la DB al momento del backup: desde ahí
-        // arranca la reconciliación, no desde cero.
+        // arranca la reconciliación, no desde cero. Con varias cadenas, el de la
+        // más vieja: lo que solo tenía la vieja tiene que bajar también.
+        final masVieja = puntas.reduce(
+          (a, b) => b.createdAt.isBefore(a.createdAt) ? b : a,
+        );
+        final masNueva = puntas.reduce(
+          (a, b) => b.createdAt.isAfter(a.createdAt) ? b : a,
+        );
         await _store.applyDelta(
           const {},
           scope: _scopeMirror,
-          watermark: punta.watermark,
+          watermark: masVieja.watermark,
+        );
+        // Antes que la marca de recuperación: si el corte cae entre las dos,
+        // el reintento vuelve a restaurar (no hay marca) en vez de contar de
+        // menos.
+        await _store.applyDelta(
+          const {},
+          scope: _scopeRecoverySalteadas,
+          watermark: '$cadenasSalteadas',
         );
         await _store.applyDelta(
           const {},
           scope: _scopeRecovery,
-          watermark: punta.createdAt.toIso8601String(),
+          watermark: masNueva.createdAt.toIso8601String(),
         );
       }
     }
@@ -812,10 +977,16 @@ class SyncEngine {
     // `client_op_id` puede haber vencido (TTL 24 h) pero las PK son UUID v7
     // del dispositivo original, así que un insert repetido vuelve
     // `duplicate`, no una segunda venta.
-    final replay = punta == null ? null : await _pushPending();
+    onProgress?.call(const RecoveryProgress(RecoveryPhase.replaying));
+    // Con la subida frenada por un 429 no se reenvía ahora: la cola restaurada
+    // queda en PENDING y sale cuando venza la espera.
+    final replay = hayRestore && _subidaFrenada() == null
+        ? await _pushPending()
+        : null;
 
     // Fase 3 — reconciliación: lo que subió después del backup.
     final reconciliadas = <String, int>{};
+    onProgress?.call(const RecoveryProgress(RecoveryPhase.reconciling));
     await _pullInto(_scopeMirror, _specs.pushable, reconciliadas);
 
     // Fase 4 — catálogos: réplica fresca, no se restauran del backup.
@@ -825,20 +996,48 @@ class SyncEngine {
     _lastSuccessAt = _ultimoPull = _clock();
     await _anotarMeta(lastPullAt: _ultimoPull);
     await _emit();
+    onProgress?.call(const RecoveryProgress(RecoveryPhase.done));
 
     // En un reintento, la fecha sale de la marca: el reporte tiene que decir de
     // cuándo son los datos aunque el restore haya sido en el intento anterior.
-    final fechaDelBackup = punta?.createdAt ?? restauradoAntes;
+    final fechas = [for (final p in puntas) p.createdAt];
+    final fechaDelBackup = fechas.isEmpty
+        ? restauradoAntes
+        : fechas.reduce((a, b) => b.isAfter(a) ? b : a);
     return RecoveryReport(
       backupDate: fechaDelBackup,
+      backupDates: fechas,
       replayedJobs: replay?.pushed ?? 0,
       pulledEntities: reconciliadas,
       lostWindow: fechaDelBackup == null
           ? null
           : LostWindow(from: fechaDelBackup, to: ahora),
       chainProblem: problema,
+      partial: parcial,
+      partsRestored: partesAplicadas,
+      partsTotal: partesTotales,
+      skippedChains: cadenasSalteadas,
     );
   }
+
+  /// Espera a que vuelva la red, para que el restore siga con la parte donde
+  /// quedó. `false` si no vuelve en [_esperaMaximaDeRed]: ahí el restore falla y
+  /// la persona reintenta. Sin puerto de conectividad, no hay nada que esperar.
+  Future<bool> _esperarLaRed() async {
+    final red = _connectivity;
+    if (red == null) return true;
+    if (await red.isOnline) return true;
+    try {
+      await red.onlineChanges
+          .firstWhere((online) => online)
+          .timeout(_esperaMaximaDeRed);
+      return true;
+    } on TimeoutException {
+      return false;
+    }
+  }
+
+  static const _esperaMaximaDeRed = Duration(minutes: 10);
 
   /// Purga de `DONE` a los 7 días (§5.8).
   Future<int> purge({Duration retention = const Duration(days: 7)}) =>
@@ -848,6 +1047,7 @@ class SyncEngine {
     if (_disposed) return;
     _disposed = true;
     _criticalTimer?.cancel();
+    _esperaTimer?.cancel();
     _realtimeTimer?.cancel();
     await _realtimeSub?.cancel();
     await _realtimePort?.unsubscribe();
@@ -922,7 +1122,11 @@ class SyncEngine {
     // §5.6: el evento solo dice que algo cambió allá. Subir la cola por eso
     // convertiría cada cambio de precio del administrador en tráfico de subida
     // desde todos los celulares a la vez.
-    final subida = trigger == SyncTrigger.realtime
+    //
+    // Tras un 429 no se sube nada hasta que venza su Retry-After (§5.1), y el
+    // ciclo sigue con el pull.
+    final frenada = trigger == SyncTrigger.realtime ? null : _subidaFrenada();
+    final subida = trigger == SyncTrigger.realtime || frenada != null
         ? (pushed: 0, invalidated: 0, conflicts: 0, failure: null)
         : await _pushPending();
     if (subida.failure != null) {
@@ -933,6 +1137,7 @@ class SyncEngine {
         pushed: subida.pushed,
         invalidated: subida.invalidated,
         conflicts: subida.conflicts,
+        pushPausedUntil: _subidaFrenada(),
         failure: subida.failure,
       );
     }
@@ -949,6 +1154,7 @@ class SyncEngine {
         invalidated: subida.invalidated,
         conflicts: subida.conflicts,
         pausedReason: motivo,
+        pushPausedUntil: frenada,
       );
     }
 
@@ -956,6 +1162,9 @@ class SyncEngine {
     try {
       pulled = await _pull(_scopeReplica, _specs.pullable);
     } on TransportFailure catch (falla) {
+      // Un 429 del pull también pide esperar: lo que sube después va al mismo
+      // servidor.
+      _frenarSubidaSi429(falla);
       _anotarSesion(falla);
       await _emit();
       return SyncOutcome(
@@ -963,6 +1172,7 @@ class SyncEngine {
         pushed: subida.pushed,
         invalidated: subida.invalidated,
         conflicts: subida.conflicts,
+        pushPausedUntil: _subidaFrenada(),
         failure: falla,
       );
     }
@@ -978,6 +1188,66 @@ class SyncEngine {
       invalidated: subida.invalidated,
       conflicts: subida.conflicts,
       pulled: pulled,
+      pushPausedUntil: frenada,
+    );
+  }
+
+  /// Hasta cuándo sigue frenada la subida por un `429`, o `null` si no lo está.
+  /// Una espera vencida se descarta acá mismo, y también una que quedó más
+  /// lejos que [maxRetryAfter] (la hora del teléfono retrocedió: sin esto la
+  /// subida quedaría frenada horas).
+  DateTime? _subidaFrenada() {
+    final hasta = _subidaFrenadaHasta;
+    if (hasta == null) return null;
+    final ahora = _clock();
+    if (ahora.isBefore(hasta) && !hasta.isAfter(ahora.add(maxRetryAfter))) {
+      return hasta;
+    }
+    _subidaFrenadaHasta = null;
+    _esperaTimer?.cancel();
+    _esperaTimer = null;
+    return null;
+  }
+
+  /// Un `429` frena la subida hasta su `Retry-After`, con el tope de
+  /// [maxRetryAfter]; sin encabezado (o en cero) espera [defaultRetryAfter].
+  /// Cualquier otra falla se ignora acá. Si ya había una espera más larga, no
+  /// se acorta. Deja armado el timer que reanuda la subida al vencer.
+  void _frenarSubidaSi429(TransportFailure falla) {
+    if (falla.status != 429) return;
+    final pedido = falla.retryAfter;
+    final espera = pedido == null || pedido <= Duration.zero
+        ? defaultRetryAfter
+        : pedido;
+    final hasta = _clock().add(espera > maxRetryAfter ? maxRetryAfter : espera);
+    final actual = _subidaFrenadaHasta;
+    if (actual == null || hasta.isAfter(actual)) _subidaFrenadaHasta = hasta;
+    _armarReanudacion();
+  }
+
+  /// Programa un solo ciclo para cuando venza la espera. El ciclo sube lo que
+  /// haya `PENDING` (incluido lo que entró durante la espera); si el servidor
+  /// vuelve a contestar `429`, la espera nueva arma el siguiente timer, así
+  /// que hay a lo sumo un intento por cada `Retry-After` y nunca una ráfaga.
+  void _armarReanudacion() {
+    _esperaTimer?.cancel();
+    _esperaTimer = null;
+    final hasta = _subidaFrenadaHasta;
+    if (hasta == null || _disposed) return;
+    final falta = hasta.difference(_clock());
+    _esperaTimer = _zona.createTimer(
+      falta > Duration.zero ? falta : Duration.zero,
+      () {
+        _esperaTimer = null;
+        if (_disposed) return;
+        // Si el reloj todavía no llegó (se atrasó, o la espera se renovó),
+        // se vuelve a esperar lo que falta en vez de perder el aviso.
+        if (_subidaFrenada() != null) {
+          _armarReanudacion();
+          return;
+        }
+        unawaited(trigger(SyncTrigger.connectivity));
+      },
     );
   }
 
@@ -1132,7 +1402,9 @@ class SyncEngine {
             continue;
           }
           // Transitorio: vuelven a PENDING y el ciclo se corta acá. Lo que quedó
-          // sin intentar ya está en PENDING, así que sube al próximo trigger.
+          // sin intentar ya está en PENDING, así que sube al próximo trigger
+          // (con un 429, el primero que llegue después de su Retry-After).
+          _frenarSubidaSi429(falla);
           await _jobs.markPending(sinResolver);
           sinResolver.clear();
           return (
@@ -1243,7 +1515,7 @@ class SyncEngine {
 
   /// [lote] con la `sync_version` que el servidor devolvió en este mismo
   /// ciclo para cada fila que ya viajó (ver `versionVista` en
-  /// [_pushPending]). Las altas no esperan versión.
+  /// [_pushPending]). Las altas y la unión de duplicados no esperan versión.
   PushBatch _conVersionVista(
     PushBatch lote,
     Map<(String, String), int> versionVista,
@@ -1254,7 +1526,7 @@ class SyncEngine {
     for (final job in lote.jobs) {
       final pk = job.rowPk;
       final vista = pk == null ? null : versionVista[(job.entity, pk)];
-      if (job.op == Op.insert || vista == null || vista == job.syncVersion) {
+      if (!job.op.esperaVersion || vista == null || vista == job.syncVersion) {
         jobs.add(job);
       } else {
         jobs.add(job.copyWith(syncVersion: vista));
@@ -1427,6 +1699,11 @@ class SyncEngine {
   /// local, no en memoria: un `recover()` interrumpido se retoma aunque la app
   /// se haya cerrado en el medio.
   static const _scopeRecovery = 'recovery';
+
+  /// Cuántas cadenas del restore se saltearon por no tener una base usable. Se
+  /// guarda junto a [_scopeRecovery] para que el reintento tras un corte en la
+  /// fase 3 lo informe (#656).
+  static const _scopeRecoverySalteadas = 'recovery_skipped';
 
   List<String> _idsDe(PushBatch lote, Map<String, String> idPorOpId) => [
     for (final job in lote.jobs)

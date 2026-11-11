@@ -23,6 +23,9 @@ class Agenda extends Equatable {
     this.estado = EstadoAgenda.programada,
     required this.colportorId,
     this.visitaId,
+    this.ventaId,
+    this.montoPrevistoCentavos,
+    this.entregaId,
     required this.auditoria,
   }) : fechaProgramada = instanteMs(fechaProgramada);
 
@@ -58,9 +61,25 @@ class Agenda extends Equatable {
   /// FK a `visita.id`: se completa al registrar la visita que la cumple.
   final String? visitaId;
 
+  /// FK opcional a `venta.id`: la venta de la que sale la cita (backend-supabase 0068). Con
+  /// [montoPrevistoCentavos], la cita es una cuota del plan de esa venta (HU-COB-004).
+  final String? ventaId;
+
+  /// Lo que se espera cobrar en la cita, en centavos (`monto_previsto`, 0068): solo en una cita
+  /// `COBRANZA` con [ventaId], y mayor que cero.
+  final int? montoPrevistoCentavos;
+
+  /// FK opcional a `entrega.id`: la entrega que se agenda, solo en una cita `ENTREGA` (backend 0068,
+  /// HU-VEN-003). La entrega es una fila por producto: es la primera fila pendiente de [ventaId].
+  final String? entregaId;
+
   final Auditoria auditoria;
 
   bool get estaBorrada => auditoria.estaBorrada;
+
+  /// Es una cuota del plan de una venta: una cobranza con su venta y el monto que se espera cobrar.
+  bool get esCuota =>
+      tipo == TipoAgenda.cobranza && ventaId != null && montoPrevistoCentavos != null;
 
   /// Una agenda que sigue esperando su visita (la que pinta la casa de «entrevista programada»).
   bool get estaProgramada => estado == EstadoAgenda.programada && !estaBorrada;
@@ -78,6 +97,9 @@ class Agenda extends Equatable {
     estado,
     colportorId,
     visitaId,
+    ventaId,
+    montoPrevistoCentavos,
+    entregaId,
     auditoria,
   ];
 }

@@ -10,31 +10,42 @@ import '../../../auth/presentation/widgets/aviso_zona_banner.dart';
 import '../../../catalogo/presentation/formato_precios.dart' show TextosPrecios;
 import '../../../catalogo/presentation/pages/precios_page.dart';
 import '../../../configuracion/presentation/pages/configuracion_page.dart';
+import '../../../cuenta/presentation/pages/cuenta_page.dart';
 import '../../../jornada/presentation/pages/jornada_page.dart';
 import '../../../mapa/presentation/pages/lista_ubicaciones_page.dart';
 import '../../../mapa/presentation/pages/mapa_ubicaciones_page.dart';
 import '../../../mapa/presentation/pages/modificar_ubicacion_page.dart'
     show UbicacionExistenteElegida;
 import '../../../mapa/presentation/providers/mapa_ubicaciones_notifier.dart';
+import '../../../mapa/presentation/providers/ubicacion_colportor_provider.dart';
 import '../../../mapa/presentation/widgets/hoja_ubicacion.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagadas.dart';
 import '../../../notificaciones/presentation/widgets/campana_notificaciones.dart';
 import '../../../respaldo/presentation/widgets/aviso_sin_respaldo.dart';
 import '../../../tiles/presentation/widgets/hoja_sugerencia_mapa.dart';
+import '../../../ventas/presentation/formato_entrega_diferida.dart' show TextosEntregaDiferida;
+import '../../../ventas/presentation/pages/elegir_persona_para_vender_page.dart';
+import '../../../ventas/presentation/pages/entregas_pendientes_page.dart';
+import '../../../ventas/presentation/textos_elegir_persona.dart';
+import '../providers/navegacion_inicio_provider.dart';
 import '../widgets/barra_pestanas_inicio.dart';
 
 export '../widgets/barra_pestanas_inicio.dart' show PestanaInicio;
 
 /// Estructura de la app una vez con sesión: la marca, la campana de las notificaciones y el engranaje
-/// de Configuración arriba, la barra inferior Hoy · Mapa · Lista · Agenda · Ventas abajo, y en el
+/// de Configuración arriba, la barra inferior Hoy · Mapa · Lista · Agenda · Ventas · Cuenta abajo, y en el
 /// medio la pestaña elegida.
 ///
 /// "Hoy" es la jornada (HU-JOR-001/002), "Mapa" y "Lista" las ubicaciones del colportor sobre el mapa
-/// y en una lista (HU-UBI-003 y HU-UBI-002), "Agenda" las visitas de los próximos días (HU-VIS-002). Ventas todavía no tiene pantalla: queda con
+/// y en una lista (HU-UBI-003 y HU-UBI-002), "Agenda" las visitas de los próximos días (HU-VIS-002) y
+/// "Cuenta" la plata del colportor (HU-CTA-001). Ventas todavía no tiene pantalla: queda con
 /// [PestanaProvisoria] («Esta sección llega pronto.») hasta que llegue su HU. El atrás
 /// del sistema desde las pestañas vuelve a "Hoy", y desde
 /// "Hoy" cierra la app (decisión de Cristian, 29/09). Las pestañas se mantienen vivas al cambiar (`IndexedStack`): no se pierde lo que el
 /// colportor estaba haciendo en "Hoy", como la hora de inicio elegida.
+///
+/// La pestaña a la vista no vive acá sino en `navegacionInicioProvider` (#649): cualquier pantalla o
+/// flujo le puede pedir «ir a la casa» (llevarla al mapa principal) sin conocer esta pantalla.
 class InicioPage extends ConsumerStatefulWidget {
   const InicioPage({super.key, required this.sesion});
 
@@ -45,15 +56,36 @@ class InicioPage extends ConsumerStatefulWidget {
 }
 
 class _InicioPageState extends ConsumerState<InicioPage> {
-  PestanaInicio _actual = PestanaInicio.hoy;
+  @override
+  void initState() {
+    super.initState();
+    // La pestaña vive en `navegacionInicioProvider` (#649) y ese provider dura toda la sesión: una
+    // pantalla principal nueva arranca en «Hoy», como siempre.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(navegacionInicioProvider.notifier).reiniciar();
+    });
+  }
 
-  void _ir(PestanaInicio pestana) => setState(() => _actual = pestana);
+  /// La pestaña a la vista la guarda el shell (`navegacionInicioProvider`), no esta pantalla: así las
+  /// otras pestañas y los flujos le piden «llevame a esta casa en el mapa» (`irALaCasa`).
+  void _ir(PestanaInicio pestana) => ref.read(navegacionInicioProvider.notifier).ir(pestana);
+
+  /// «Activar GPS» de la Lista (#651): el permiso solo se pide desde el Mapa, así que lleva al
+  /// colportor ahí y es el Mapa quien lo activa; nunca sale un diálogo sobre la Lista. Si todavía
+  /// nadie pidió el GPS, al abrirse el Mapa lo lee y pide el permiso solo; si ya falló, «Activar GPS»
+  /// lo manda al permiso o a los ajustes que correspondan.
+  void _activarGpsEnElMapa() {
+    final gps = ref.read(ubicacionColportorProvider.notifier);
+    final yaPedido = ref.read(ubicacionColportorProvider).gps != EstadoGpsLista.sinPedir;
+    _ir(PestanaInicio.mapa);
+    if (yaPedido) unawaited(gps.activarGps());
+  }
 
   /// Evita abrir dos veces la hoja de una ubicación con dos toques seguidos en una fila de la Lista.
   var _abriendoUbicacion = false;
 
-  /// «›» de una fila de la Lista (HU-UBI-007): la hoja de la ubicación con sus deptos (vista 11), la
-  /// misma que abre «Detalle» en la vista previa del mapa. Si desde la edición el aviso de duplicado
+  /// «›» de una fila de edificio o negocio de la Lista (HU-UBI-007): la hoja de la ubicación con sus
+  /// deptos (vista 11). Una casa abre la hoja de la casa (vista 39, C·01). Si desde la edición el aviso de duplicado
   /// manda a otra ubicación, se abre la hoja de esa otra. Lo demás que pase en la edición (cambios,
   /// baja) la Lista lo ve sola al releer.
   Future<void> _abrirUbicacion(String ubicacionId, double? distanciaMetros) async {
@@ -97,6 +129,43 @@ class _InicioPageState extends ConsumerState<InicioPage> {
     }
   }
 
+  /// Evita abrir dos veces «¿A quién le vendés?» con dos toques seguidos en «+ Registrar venta».
+  var _abriendoVenta = false;
+
+  /// «+ Registrar venta» (HU-VEN-001, #546), desde la pestaña Ventas: elige a la persona y abre la
+  /// venta. Devuelve la pestaña elegida (si no hay personas, «Ir al mapa»), o `null` al terminar o
+  /// con «volver».
+  Future<void> _registrarVenta() async {
+    if (_abriendoVenta) return;
+    _abriendoVenta = true;
+    try {
+      final pestana = await Navigator.of(
+        context,
+      ).push(ElegirPersonaParaVenderPage.ruta(colportorId: widget.sesion.usuarioId));
+      if (pestana != null && mounted) _ir(pestana);
+    } finally {
+      _abriendoVenta = false;
+    }
+  }
+
+  /// Evita abrir dos veces «Entregas pendientes» con dos toques seguidos.
+  var _abriendoEntregas = false;
+
+  /// «Entregas pendientes» (vista 27, 27C·02, HU-VEN-003), desde la pestaña Ventas. Como «Precios»,
+  /// devuelve la pestaña elegida en su barra inferior, o `null` con «volver».
+  Future<void> _abrirEntregas() async {
+    if (_abriendoEntregas) return;
+    _abriendoEntregas = true;
+    try {
+      final pestana = await Navigator.of(
+        context,
+      ).push(EntregasPendientesPage.ruta(colportorId: widget.sesion.usuarioId));
+      if (pestana != null && mounted) _ir(pestana);
+    } finally {
+      _abriendoEntregas = false;
+    }
+  }
+
   /// Configuración devuelve la pestaña elegida en su barra inferior (vista 16), o `null` si se
   /// salió con "volver".
   Future<void> _abrirConfiguracion() async {
@@ -106,27 +175,28 @@ class _InicioPageState extends ConsumerState<InicioPage> {
 
   @override
   Widget build(BuildContext context) {
+    final actual = ref.watch(navegacionInicioProvider.select((n) => n.actual));
     // Con la vista previa del mapa abierta el atrás es de ella (la cierra, como su ✕): la pantalla
     // principal no vuelve a «Hoy». Flutter avisa a todos los `PopScope` de la ruta, así que no
     // alcanza con que el del mapa también atienda: esta pantalla tiene que saber, al construirse y
     // no al atender el atrás (el del mapa ya pudo haber cerrado la vista previa), que no le toca.
     final mapaConVistaPrevia =
-        _actual == PestanaInicio.mapa &&
+        actual == PestanaInicio.mapa &&
         ref.watch(
           mapaUbicacionesProvider(
             widget.sesion.usuarioId,
           ).select((estado) => estado.hayVistaPrevia),
         );
     return PopScope(
-      canPop: _actual == PestanaInicio.hoy,
+      canPop: actual == PestanaInicio.hoy,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && !mapaConVistaPrevia) _ir(PestanaInicio.hoy);
       },
-      child: _LectorTeclado(child: _scaffold(context)),
+      child: _LectorTeclado(child: _scaffold(context, actual)),
     );
   }
 
-  Widget _scaffold(BuildContext context) {
+  Widget _scaffold(BuildContext context, PestanaInicio actual) {
     final theme = Theme.of(context);
     final esquema = theme.colorScheme;
 
@@ -163,9 +233,9 @@ class _InicioPageState extends ConsumerState<InicioPage> {
               _AvisosDeZona(colportorId: widget.sesion.usuarioId),
               // Más de 7 días sin un respaldo exitoso (HU-SYNC-005): sin nada que avisar no ocupa
               // lugar. Solo en Hoy (decisión del 29/10); con el teclado abierto gana el campo.
-              if (_actual == PestanaInicio.hoy) const _AvisoSinRespaldo(),
+              if (actual == PestanaInicio.hoy) const _AvisoSinRespaldo(),
               // El aviso de las notificaciones apagadas (HU-NOT-001, 24A·03) es de Hoy.
-              if (_actual == PestanaInicio.hoy) const _AvisoNotificaciones(),
+              if (actual == PestanaInicio.hoy) const _AvisoNotificaciones(),
             ],
           ),
           // La sugerencia de bajar el mapa de la zona nueva (vista 35, 35-10, HU-SYNC-010): no dibuja
@@ -173,7 +243,7 @@ class _InicioPageState extends ConsumerState<InicioPage> {
           SugerenciaMapaZona(colportorId: widget.sesion.usuarioId),
           Expanded(
             child: IndexedStack(
-              index: _actual.index,
+              index: actual.index,
               children: [
                 JornadaPage(sesion: widget.sesion, onAbrirMapa: () => _ir(PestanaInicio.mapa)),
                 for (final pestana in PestanaInicio.values.skip(1))
@@ -183,12 +253,14 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                     PestanaInicio.mapa => MapaUbicacionesPage(
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
-                      activa: _actual == PestanaInicio.mapa,
+                      activa: actual == PestanaInicio.mapa,
                     ),
                     PestanaInicio.lista => ListaUbicacionesPage(
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
-                      activa: _actual == PestanaInicio.lista,
+                      activa: actual == PestanaInicio.lista,
+                      casaAbreSuHoja: true,
+                      alActivarGps: _activarGpsEnElMapa,
                       alAbrirUbicacion: (id, distancia) =>
                           unawaited(_abrirUbicacion(id, distancia)),
                     ),
@@ -196,13 +268,23 @@ class _InicioPageState extends ConsumerState<InicioPage> {
                     PestanaInicio.agenda => AgendaPage(
                       key: Key('pestana_${pestana.name}'),
                       colportorId: widget.sesion.usuarioId,
-                      activa: _actual == PestanaInicio.agenda,
+                      activa: actual == PestanaInicio.agenda,
                     ),
-                    // Ventas todavía no tiene su pantalla (vista 27): por ahora solo lleva a «Precios».
+                    // Mi Cuenta (HU-CTA-001, vista 33A): las cifras de la plata, con la diferencia contra
+                    // la semana pasada.
+                    PestanaInicio.cuenta => CuentaPage(
+                      key: Key('pestana_${pestana.name}'),
+                      colportorId: widget.sesion.usuarioId,
+                      activa: actual == PestanaInicio.cuenta,
+                    ),
+                    // Ventas todavía no tiene su pantalla: por ahora lleva a «Precios» (vista 26) y a
+                    // «Entregas pendientes» (vista 27, grupo C).
                     PestanaInicio.ventas => PestanaProvisoria(
                       key: Key('pestana_${pestana.name}'),
                       pestana: pestana,
+                      alRegistrarVenta: () => unawaited(_registrarVenta()),
                       alAbrirPrecios: () => unawaited(_abrirPrecios()),
+                      alAbrirEntregas: () => unawaited(_abrirEntregas()),
                     ),
                     _ => PestanaProvisoria(key: Key('pestana_${pestana.name}'), pestana: pestana),
                   },
@@ -211,7 +293,7 @@ class _InicioPageState extends ConsumerState<InicioPage> {
           ),
         ],
       ),
-      bottomNavigationBar: BarraPestanasInicio(seleccionada: _actual, onSeleccionar: _ir),
+      bottomNavigationBar: BarraPestanasInicio(seleccionada: actual, onSeleccionar: _ir),
     );
   }
 }
@@ -318,13 +400,26 @@ class _EstadoTeclado extends InheritedWidget {
 /// Pantalla de una pestaña cuya HU todavía no está: el ícono de la sección y «Esta sección llega
 /// pronto.», sin contenido inventado. Se reemplaza en el issue de cada HU.
 class PestanaProvisoria extends StatelessWidget {
-  const PestanaProvisoria({super.key, required this.pestana, this.alAbrirPrecios});
+  const PestanaProvisoria({
+    super.key,
+    required this.pestana,
+    this.alRegistrarVenta,
+    this.alAbrirPrecios,
+    this.alAbrirEntregas,
+  });
 
   final PestanaInicio pestana;
+
+  /// Solo Ventas: «+ Registrar venta» (vista 27, `00 Navegacion`: Ventas → 27A·01). Abre la lista para
+  /// elegir a la persona. `null`: sin botón.
+  final VoidCallback? alRegistrarVenta;
 
   /// Solo Ventas: abre la consulta de precios (vista 26, «Ventas → Precios»), que es lo único que
   /// tiene esa pestaña hasta que llegue su pantalla (vista 27). `null`: sin botón.
   final VoidCallback? alAbrirPrecios;
+
+  /// Solo Ventas: abre «Entregas pendientes» (vista 27, grupo C). `null`: sin botón.
+  final VoidCallback? alAbrirEntregas;
 
   @override
   Widget build(BuildContext context) {
@@ -333,7 +428,8 @@ class PestanaProvisoria extends StatelessWidget {
       label: pestana.etiqueta,
       container: true,
       child: Center(
-        child: Padding(
+        // Con Ventas lleva tres botones: con la letra grande en un teléfono chico no entran sin scroll.
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(26),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -350,12 +446,26 @@ class PestanaProvisoria extends StatelessWidget {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (alRegistrarVenta != null)
+                FilledButton(
+                  key: const Key('ventas_registrar'),
+                  onPressed: alRegistrarVenta,
+                  style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+                  child: const Text(TextosElegirPersona.registrarVenta),
+                ),
               if (alAbrirPrecios != null)
                 OutlinedButton(
                   key: const Key('ventas_precios'),
                   onPressed: alAbrirPrecios,
                   style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
                   child: const Text(TextosPrecios.titulo),
+                ),
+              if (alAbrirEntregas != null)
+                OutlinedButton(
+                  key: const Key('ventas_entregas'),
+                  onPressed: alAbrirEntregas,
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
+                  child: const Text(TextosEntregaDiferida.tituloPendientes),
                 ),
             ],
           ),

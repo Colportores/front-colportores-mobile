@@ -16,9 +16,12 @@ abstract final class TextosCerrarSesion {
       'Tus datos quedan guardados en este teléfono: vas a volver a verlos cuando inicies sesión.';
   static const errorCierre = 'No pudimos cerrar la sesión. Probá de nuevo.';
 
-  static String advertenciaPendientes(int n) =>
-      'Tenés $n operaciones sin sincronizar. Si cerrás sesión ahora, se subirán cuando vuelvas a '
-      'iniciar sesión.';
+  /// Con una sola, en singular, como en «Borrar datos locales» (HU-AUTH-006, #679).
+  static String advertenciaPendientes(int n) => n == 1
+      ? 'Tenés 1 operación sin sincronizar. Si cerrás sesión ahora, se subirá cuando vuelvas a '
+            'iniciar sesión.'
+      : 'Tenés $n operaciones sin sincronizar. Si cerrás sesión ahora, se subirán cuando vuelvas '
+            'a iniciar sesión.';
 }
 
 /// Abre la hoja de confirmación del cierre de sesión (vista 16, A02 a A06). [cerrar] hace el cierre

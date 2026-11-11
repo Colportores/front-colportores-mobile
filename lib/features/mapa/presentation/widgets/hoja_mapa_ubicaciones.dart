@@ -215,6 +215,7 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
                             // C·02: con la hoja a la mitad se ven las pestañas; más abajo, el resumen.
                             arriba: altura == AlturaHoja.mitad,
                             colportorId: widget.colportorId,
+                            alAbrirOtra: widget.alElegir,
                           )
                         : _ElegirDelPunto(
                             candidatas: candidatas,

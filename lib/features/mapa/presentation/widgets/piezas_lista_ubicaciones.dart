@@ -1,3 +1,4 @@
+import 'package:colportores_mapa/colportores_mapa.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
@@ -6,6 +7,7 @@ import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../formato_lista_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
+import '../mapa_base/marcador_estado.dart';
 
 /// Los colores de la lista (vista 05) que el tema no cubre. Los demás salen de `Theme.of(context)`.
 abstract final class ColoresLista {
@@ -15,9 +17,6 @@ abstract final class ColoresLista {
   static const verde = Color(0xFF1F6E3A);
   static const azul = Color(0xFF13407A);
 
-  /// La franja clara de «Entrega y pago»: 4,6:1 con el blanco del número (AA), un poco más oscura
-  /// que el #5C82B8 del canvas (3,9:1), y 2,2:1 contra el azul de fondo (decisión del 23/10, #467).
-  static const azulClaro = Color(0xFF4D76B1);
   static const rojo = Color(0xFFA8312A);
   static const azulFondo = Color(0xFFE6EEF8);
   static const grisBorde = Color(0xFFCFD6E1);
@@ -46,41 +45,29 @@ class InsigniaEstadoCasa extends StatelessWidget {
   Widget build(BuildContext context) {
     final esGrande = tamano >= 26;
     final glifo = FormatoListaUbicaciones.glifo(estado);
-    final forma = estado.esDeVenta
+    // Los colores y la forma son los del mapa: los tokens de lib-mapa (#673).
+    final token = VarianteMarcador.de(estado).token;
+    final forma = token.forma == FormaDeMarcador.cuadrado
         ? BorderRadius.circular(esGrande ? 8 : 5)
         : BorderRadius.circular(tamano);
-    final (Color fondo, Color tinta, Border? borde, Gradient? degradado) = switch (estado) {
-      EstadoCasa.sinVisita => (
-        Colors.white,
-        ColoresLista.grisEstado,
-        Border.all(color: ColoresLista.grisEstado, width: 2.5),
-        null,
-      ),
-      EstadoCasa.noContesto => (ColoresLista.grisEstado, Colors.white, null, null),
-      EstadoCasa.entrevistaAgendada => (ColoresLista.ambar, ColoresLista.tinta, null, null),
-      EstadoCasa.entrevistaHecha => (ColoresLista.verde, Colors.white, null, null),
-      EstadoCasa.ventaCompleta => (ColoresLista.verde, Colors.white, null, null),
-      EstadoCasa.cobranzaPendiente => (ColoresLista.azul, Colors.white, null, null),
-      EstadoCasa.entregaYPago => (
-        ColoresLista.azul,
-        Colors.white,
-        null,
-        // Franjas a 135°: 4 px de azul y 3 de azul claro (canvas, «Entrega y pago»).
-        LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment(-1 + 2 * (7 / _raiz2) / tamano, -1 + 2 * (7 / _raiz2) / tamano),
-          tileMode: TileMode.repeated,
-          colors: const [
-            ColoresLista.azul,
-            ColoresLista.azul,
-            ColoresLista.azulClaro,
-            ColoresLista.azulClaro,
-          ],
-          stops: const [0, 4 / 7, 4 / 7, 1],
-        ),
-      ),
-      EstadoCasa.rechazo => (ColoresLista.rojo, Colors.white, null, null),
-    };
+    final fondo = Color(token.relleno);
+    final tinta = Color(token.tinta);
+    final borde = token.borde == null ? null : Border.all(color: Color(token.borde!), width: 2.5);
+    final franjas = token.franjas;
+    // Franjas a 135° (canvas, «Entrega y pago»): 4 px del relleno y 3 de la clara, del token.
+    final periodo = franjas == null ? 0.0 : franjas.anchoOscura + franjas.anchoClara;
+    final degradado = franjas == null
+        ? null
+        : LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment(
+              -1 + 2 * (periodo / _raiz2) / tamano,
+              -1 + 2 * (periodo / _raiz2) / tamano,
+            ),
+            tileMode: TileMode.repeated,
+            colors: [fondo, fondo, Color(franjas.clara), Color(franjas.clara)],
+            stops: [0, franjas.anchoOscura / periodo, franjas.anchoOscura / periodo, 1],
+          );
     return Semantics(
       image: true,
       label: FormatoListaUbicaciones.estado(estado),

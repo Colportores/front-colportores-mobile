@@ -48,7 +48,7 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
         id: id,
         clientOpId: job.clientOpId,
         entity: job.entity,
-        op: job.op.name,
+        op: job.op.wireName,
         payload: jsonEncode(job.payload),
         syncVersion: Value(job.syncVersion),
         rowPk: Value(job.rowPk),
@@ -185,7 +185,10 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
                 (q) =>
                     q.entity.equals(entity) &
                     q.rowPk.equals(pk) &
-                    q.op.equals(Op.insert.name).not() &
+                    q.op.isIn([
+                      for (final op in Op.values)
+                        if (op.esperaVersion) op.wireName,
+                    ]) &
                     q.state.isIn(EstadoJob.sinAplicar),
               ))
               .write(SyncQueueCompanion(syncVersion: Value(version)));
@@ -302,7 +305,7 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
     job: SyncJob(
       clientOpId: f.clientOpId,
       entity: f.entity,
-      op: Op.values.byName(f.op),
+      op: Op.fromWireName(f.op),
       payload: (jsonDecode(f.payload) as Map<String, Object?>),
       syncVersion: f.syncVersion,
       createdAt: f.createdAt,

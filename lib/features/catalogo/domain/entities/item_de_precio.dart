@@ -34,24 +34,27 @@ final class PrecioDeProducto extends ItemDePrecio {
     required super.nombre,
     required super.centavos,
     required super.origen,
-    required this.tipo,
+    required this.categoriaDelProducto,
     this.esBonificable = false,
     this.esMisionero = false,
     this.codigoEditor,
   });
 
-  final TipoDeProducto tipo;
+  /// La categoría del producto (`producto.categoria`): la etiqueta de su fila en Precios.
+  final CategoriaDeProducto categoriaDelProducto;
+
+  /// Cuenta para la beca: el sí/no que va aparte de la categoría.
   final bool esBonificable;
   final bool esMisionero;
   final String? codigoEditor;
 
-  /// En qué pestaña de la vista 26 está: el ejemplar misionero va en «Misioneros» aunque su
-  /// `tipo` sea `LIBRO`.
-  CategoriaDePrecios get categoria {
-    if (esMisionero || tipo == TipoDeProducto.misionero) return CategoriaDePrecios.misioneros;
-    if (tipo == TipoDeProducto.revista) return CategoriaDePrecios.revistas;
-    return CategoriaDePrecios.libros;
-  }
+  /// En qué pestaña de la vista 26 está, por su categoría: «Misioneros» y «Revistas» tienen la suya y
+  /// el resto de lo que se vende (bonificables y espirituales) va en «Libros».
+  CategoriaDePrecios get categoria => switch (categoriaDelProducto) {
+    CategoriaDeProducto.misioneros => CategoriaDePrecios.misioneros,
+    CategoriaDeProducto.revistas => CategoriaDePrecios.revistas,
+    _ => CategoriaDePrecios.libros,
+  };
 
   @override
   List<Object?> get props => [
@@ -59,7 +62,7 @@ final class PrecioDeProducto extends ItemDePrecio {
     nombre,
     centavos,
     origen,
-    tipo,
+    categoriaDelProducto,
     esBonificable,
     esMisionero,
     codigoEditor,

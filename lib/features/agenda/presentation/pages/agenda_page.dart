@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../mapa/presentation/providers/hoja_casa_providers.dart'
     show ContextoDeVisita, registrarVisitaDesdeLaCasaProvider;
+import '../../domain/entities/cobranza_por_agendar.dart';
 import '../../domain/entities/filtros_agenda.dart';
 import '../../domain/entities/item_agenda.dart';
 import '../../domain/entities/tipo_agenda.dart';
@@ -12,6 +13,7 @@ import '../../domain/entities/vista_agenda.dart';
 import '../../domain/services/armador_agenda.dart';
 import '../formato_agenda.dart';
 import '../providers/consulta_agenda_providers.dart';
+import '../widgets/cobranzas_sin_fecha.dart';
 import '../widgets/hoja_estado_agenda.dart';
 import '../widgets/piezas_agenda.dart';
 
@@ -167,6 +169,7 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
     }
     final notificador = ref.read(filtrosAgendaProvider(widget.colportorId).notifier);
     final agendar = ref.watch(agendarDesdeLaAgendaProvider);
+    final agendarEnDia = ref.watch(agendarEnUnDiaDesdeLaAgendaProvider);
     final detalle = ref.watch(abrirDetalleDeAgendaProvider);
     final registrar = ref.watch(registrarVisitaDesdeLaCasaProvider);
 
@@ -174,6 +177,21 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
     // vez de seguir mostrando una lista que ya no se sabe si está al día.
     final conError = leida.hasError;
     final items = conError ? null : leida.value;
+
+    // 42B·01G: las cobranzas «Sin fecha», al final, con «Pendientes» y el tipo «Todas» o «Cobranzas».
+    // Si no se pueden leer, el grupo no aparece: la agenda se ve igual.
+    final conSinFecha =
+        filtros.estado == EstadoFiltroAgenda.pendientes &&
+        (filtros.tipo == null || filtros.tipo == TipoAgenda.cobranza);
+    final sinFecha = conSinFecha
+        ? ref.watch(cobranzasSinFechaProvider(widget.colportorId)).value ?? const []
+        : const <CobranzaPorAgendar>[];
+    final grupoSinFecha = <Widget>[
+      if (sinFecha.isNotEmpty)
+        SliverToBoxAdapter(
+          child: GrupoCobranzasSinFecha(colportorId: widget.colportorId, cobranzas: sinFecha),
+        ),
+    ];
 
     final List<Widget> cuerpo;
     if (conError) {
@@ -193,7 +211,10 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
       final vista = deCampania
           ? ArmadorAgenda.armarCampania(items, filtros, _ahora, limite: limite)
           : ArmadorAgenda.armar(items, filtros, _ahora);
-      if (vista.estaVacia) {
+      if (vista.estaVacia && grupoSinFecha.isNotEmpty) {
+        // Sin citas pero con cobranzas sin fecha: solo el grupo, sin el «Todavía no agendaste nada».
+        cuerpo = grupoSinFecha;
+      } else if (vista.estaVacia) {
         cuerpo = [
           SliverFillRemaining(
             hasScrollBody: false,
@@ -223,6 +244,9 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
             alAgendar: agendar == null || !filtros.esPorDefecto
                 ? null
                 : () => unawaited(_sola(agendar)),
+            alAgendarEnDia: agendar == null || agendarEnDia == null || !filtros.esPorDefecto
+                ? null
+                : (dia) => unawaited(_sola(() => agendarEnDia(dia))),
             alAbrirDetalle: detalle == null
                 ? null
                 : (item) => unawaited(_sola(() => detalle(item.agenda.id))),
@@ -232,6 +256,7 @@ class _AgendaPageState extends ConsumerState<AgendaPage> with WidgetsBindingObse
             registrando: _registrandoId != null,
             alVerMas: vista.hayMas ? () => _verMas(limite) : null,
           ),
+          ...grupoSinFecha,
         ];
       }
     }
@@ -308,6 +333,7 @@ class _Dias extends StatelessWidget {
     required this.vista,
     required this.ahora,
     required this.alAgendar,
+    required this.alAgendarEnDia,
     required this.alAbrirDetalle,
     required this.alRegistrar,
     required this.registrando,
@@ -317,6 +343,9 @@ class _Dias extends StatelessWidget {
   final VistaAgenda vista;
   final DateTime ahora;
   final VoidCallback? alAgendar;
+
+  /// «+ Agendar» del rótulo de un día futuro: ese día va al formulario. `null`: se usa [alAgendar].
+  final ValueChanged<DateTime>? alAgendarEnDia;
   final ValueChanged<ItemAgenda>? alAbrirDetalle;
   final ValueChanged<ItemAgenda>? alRegistrar;
 
@@ -359,7 +388,11 @@ class _Dias extends StatelessWidget {
                   ? FormatoAgenda.rotuloDelDia(entrada)
                   : FormatoAgenda.rotuloConConteo(entrada),
               // «+ Agendar» queda en el primer día de la lista (hoy, o el que siga), no en las atrasadas.
-              alAgendar: identical(entrada, vista.dias.first) ? alAgendar : null,
+              alAgendar: !identical(entrada, vista.dias.first)
+                  ? null
+                  : alAgendarEnDia != null && alAgendar != null && entrada.diasDesdeHoy > 0
+                  ? () => alAgendarEnDia!(entrada.dia)
+                  : alAgendar,
             );
           }
           final item = switch (entrada) {

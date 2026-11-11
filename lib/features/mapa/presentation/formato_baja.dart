@@ -21,9 +21,13 @@ abstract final class FormatoBaja {
   /// «2.ª cuota».
   static String cuota(int numero) => '$numero.ª cuota';
 
-  /// «$U 1.450 (2.ª cuota)».
-  static String cobranza(CobranzaPendiente cobranza) =>
-      '${monto(cobranza.montoCentavos)} (${cuota(cobranza.numeroCuota)})';
+  /// «$U 1.450 (2.ª cuota)»; sin plan de cuotas, solo «$U 1.450».
+  static String cobranza(CobranzaPendiente cobranza) {
+    final numero = cobranza.numeroCuota;
+    return numero == null
+        ? monto(cobranza.montoCentavos)
+        : '${monto(cobranza.montoCentavos)} (${cuota(numero)})';
+  }
 
   /// «12/09/2026», en hora local.
   static String fecha(DateTime momento) {

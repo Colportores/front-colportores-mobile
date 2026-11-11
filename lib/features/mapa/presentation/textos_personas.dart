@@ -14,6 +14,10 @@ abstract final class TextosPersonas {
   // Alta de persona (32A).
   static const altaRotulo = 'NUEVA PERSONA';
   static const altaTitulo = 'Nueva persona';
+
+  /// Bajo el título cuando el alta se abre para poder registrar una venta (entrevista sin nombre, #669).
+  static const altaParaVender =
+      'Para registrar la venta, anotá a quién se la hacés. Con el nombre alcanza.';
   static const privacidad = 'Estos datos solo viven en tu celular. Nunca se suben a la nube.';
 
   /// «No volver a mostrar» del aviso de privacidad (canvas, `Bloques` · banner «lock»; decisión de
@@ -45,6 +49,10 @@ abstract final class TextosPersonas {
 
   // Los clientes del depto (11·04).
   static const agregarCliente = '+ Agregar cliente';
+
+  /// «Editar» del encabezado (canvas 11·04): la edición del depto.
+  static const editar = 'Editar';
+
   static const sinTelefono = 'Sin teléfono';
   static const notaDePrivacidad =
       'Los datos de los clientes quedan solo en tu celular. Al coordinador le llega el estado de las '

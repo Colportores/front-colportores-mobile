@@ -528,9 +528,13 @@ void main() {
           .firstWhere((f) => tester.getCenter(f).dy > 640);
       await tester.tap(visible);
       await asentarHoja(tester);
+      // La fila abre la ficha del depto (11·04) y «Editar» la edición (#679).
+      await tester.tap(botonEditarDepto);
+      await asentarHoja(tester);
       await escribir(tester, campoPiso, '99');
       await tester.tap(botonGuardarDepto);
       await asentarHoja(tester);
+      await volverDeLaFicha(tester);
 
       final despues = tester.widget<CustomScrollView>(lista).controller!.offset;
       expect(despues, greaterThan(500), reason: 'la lista volvió al principio (offset $despues)');
@@ -575,6 +579,8 @@ void main() {
       await asentarHoja(tester);
 
       expect(hojaDepto, findsNothing);
+      // Guardar vuelve a la ficha del depto (#679); la lista está en la hoja, al volver.
+      await volverDeLaFicha(tester);
       expect(m.repo.espacios.firstWhere((e) => e.id == 'e-101').piso, '5');
       expect(find.text('PISO 5'), findsOneWidget);
     });
@@ -651,13 +657,13 @@ void main() {
       h.dispose();
     });
 
-    testWidgets('cada fila de la lista es un botón con «Depto N. Editar.» y acción de tocar', (
+    testWidgets('cada fila de la lista es un botón con «Depto N.» y acción de tocar', (
       tester,
     ) async {
       final h = tester.ensureSemantics();
       await llegarA(tester, EstadoV11.lista);
       final nodo = tester.getSemantics(filaDepto('e-101'));
-      expect(nodo.label, 'Depto 101. Editar.');
+      expect(nodo.label, 'Depto 101.');
       expect(nodo.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
       h.dispose();
     });

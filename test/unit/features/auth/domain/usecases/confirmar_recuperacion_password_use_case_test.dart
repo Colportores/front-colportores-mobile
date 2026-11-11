@@ -378,6 +378,25 @@ void main() {
       expect(recuperacion.llamadas, isEmpty);
     });
 
+    test(
+      'dada una contraseña de más de 72 bytes, lo dice en el campo y no llama al remoto (#296)',
+      () async {
+        for (final clave in ['Aa1${'x' * 70}', 'ñ' * 37, 'Aa1${'😀' * 18}']) {
+          expect(campos(await conPassword(clave)), {
+            'password': PoliticaPassword.demasiadoLarga,
+          }, reason: clave);
+        }
+        expect(recuperacion.llamadas, isEmpty);
+      },
+    );
+
+    test('dada una de exactamente 72 bytes, se actualiza', () async {
+      final r = await conPassword('Aa1${'x' * 69}');
+
+      expect(r, const Right<Failure, Unit>(unit));
+      expect(recuperacion.fijada, 'Aa1${'x' * 69}');
+    });
+
     test('dado que la repetida no coincide, lo dice en ese campo', () async {
       expect(campos(await conPassword('NuevaClave1', repetida: 'NuevaClave2')), {
         'repetida': 'Las contraseñas no coinciden',

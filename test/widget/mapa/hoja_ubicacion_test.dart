@@ -122,7 +122,7 @@ void main() {
         expect(find.text('Depto $n'), findsOneWidget);
       }
       expect(find.text('›'), findsNWidgets(6));
-      expect(find.bySemanticsLabel('Depto 101. Editar.'), findsOneWidget);
+      expect(find.bySemanticsLabel('Depto 101.'), findsOneWidget);
       semantica.dispose();
     });
 
@@ -187,12 +187,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('suspendida, tocar la fila de un depto no abre su edición y avisa', (tester) async {
+    testWidgets('suspendida, tocar la fila de un depto no abre su ficha y avisa', (tester) async {
       await _montarConCuenta(tester, EstadoCuenta.suspendida);
 
       await tester.tap(filaDepto('e-102'));
       await asentarHoja(tester);
 
+      expect(fichaDepto, findsNothing);
       expect(hojaDepto, findsNothing);
       _seVeElAviso(tester, TextosModuloBloqueado.suspendida);
     });
@@ -220,9 +221,8 @@ void main() {
 
       await tester.tap(filaDepto('e-102'));
       await asentarHoja(tester);
-      expect(hojaDepto, findsOneWidget);
-      Navigator.of(tester.element(hojaDepto)).pop();
-      await asentarHoja(tester);
+      expect(fichaDepto, findsOneWidget);
+      await volverDeLaFicha(tester);
 
       await tester.tap(botonEditarUbicacion);
       await asentarHoja(tester);
@@ -423,13 +423,18 @@ void main() {
       expect(find.textContaining('persona'), findsNothing);
     });
 
-    testWidgets('tocar un depto abre su edición, no una ficha de clientes', (tester) async {
+    testWidgets('tocar un depto abre su ficha (11·04) y la edición pasa a su «Editar» (#679)', (
+      tester,
+    ) async {
       await montarHoja(tester, espacios: _delCanvas, personas: {'e-101': 2});
 
-      await abrirEdicionDepto(tester, 'e-101');
+      await abrirFichaDepto(tester, 'e-101');
+      expect(fichaDepto, findsOneWidget);
+      expect(hojaDepto, findsNothing);
 
+      await tester.tap(botonEditarDepto);
+      await asentarHoja(tester);
       expect(find.text('Editar departamento'), findsOneWidget);
-      expect(find.textContaining('cliente'), findsNothing);
     });
   });
 

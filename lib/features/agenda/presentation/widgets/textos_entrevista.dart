@@ -41,7 +41,10 @@ abstract final class TextosEntrevista {
   static const duracion = 'Duración';
   static const hayVenta = '¿HUBO VENTA?';
   static const registrarVenta = 'Sí, registrar la venta';
-  static const guardarYVolver = 'No, guardar y volver al mapa';
+
+  /// «No» de R·06. Con misioneros en el catálogo lleva a «Lo que dejaste» y no guarda en ese toque
+  /// (decisión del 10/11 sobre 42B·08A: una sola salida «No»; el paso tiene «No dejé nada»).
+  static const guardarYVolver = 'No hubo venta';
 
   /// R·07: «No registramos el inicio. Tomamos la hora de tu visita anterior (14:10). Revisala.»
   static String sinInicio(String hora) =>
@@ -71,6 +74,32 @@ abstract final class TextosEntrevista {
 
   static const guardando = 'Guardando…';
 
+  // «Lo que dejaste» (vista 42, 42B·08, #608): el paso que sigue a «No hubo venta».
+  static const loQueDejasteTitulo = 'Lo que dejaste';
+
+  /// «Grecia 3305 · Rosa Díaz. A colaboración, sin precio.» (42B·08B).
+  static String loQueDejasteLugar(String lugar) =>
+      lugar.isEmpty ? 'A colaboración, sin precio.' : '$lugar. A colaboración, sin precio.';
+
+  static const loQueDejasteVacio = 'Sumá lo que dejaste o tocá «No dejé nada».';
+
+  /// «Dejás 3 misioneros. No es una venta: no lleva talonario ni monto.» (42B·08C).
+  static String dejas(int cuantos) =>
+      '${cuantos == 1 ? 'Dejás 1 misionero' : 'Dejás $cuantos misioneros'}. No es una venta: no '
+      'lleva talonario ni monto.';
+
+  static const guardarLoQueDejaste = 'Guardar';
+  static const noDejeNada = 'No dejé nada';
+
+  /// 42B·08E: «Entrevista guardada. Dejaste 3 misioneros.»
+  static String guardadaConMisioneros(int cuantos) =>
+      'Entrevista guardada. ${cuantos == 1 ? 'Dejaste 1 misionero' : 'Dejaste $cuantos misioneros'}.';
+
+  /// 42B·08F, sin conexión: «Entrevista y 3 misioneros guardados en tu celular. Se sincroniza…»
+  static String guardadaConMisionerosSinRed(int cuantos) =>
+      'Entrevista y ${cuantos == 1 ? '1 misionero guardados' : '$cuantos misioneros guardados'} en '
+      'tu celular. Se sincroniza cuando vuelva la conexión.';
+
   /// Propuesta: falla al guardar. Dice qué pasó y qué hacer; la entrevista no se pierde.
   static const noPudimosGuardar =
       'No pudimos guardar la entrevista. Probá de nuevo; no perdiste nada.';
@@ -80,6 +109,12 @@ abstract final class TextosEntrevista {
   static const sinLugar =
       'La casa de esta entrevista ya no está en tu teléfono, así que la entrevista se cerró sin '
       'guardar. Podés seguir.';
+
+  /// R·07 (sin inicio) con la casa ya fuera. No hay entrevista que cerrar: lo que no se
+  /// guardó es la visita. Dice qué pasó y qué hacer.
+  static const sinLugarSinInicio =
+      'La casa de esta entrevista ya no está en tu teléfono, así que no pudimos guardar la visita. '
+      'Cerrá esta hoja y volvé al mapa.';
 
   /// Propuesta: ya no hay entrevista (otro toque la terminó).
   static const yaNoHayEntrevista = 'Esta entrevista ya no está en curso.';
@@ -95,6 +130,15 @@ abstract final class TextosEntrevista {
   static String ventaNoGuardada(String persona) => persona.trim().isEmpty
       ? 'La venta no se guardó. La entrevista sigue en curso.'
       : 'La venta no se guardó. La entrevista con ${persona.trim()} sigue en curso.';
+
+  /// El botón del aviso «Ya tenés una entrevista en curso en …» de «¿Qué pasó?»: abre esa entrevista.
+  static const irALaEntrevista = 'Ir a la entrevista';
+
+  /// «Entrevista dada» con otra entrevista en curso en otra casa: no se empieza una segunda encima.
+  /// Propuesta (mapa §2: caso límite de UI).
+  static String yaHayUnaEnCurso(String direccion) => direccion.trim().isEmpty
+      ? 'Ya tenés una entrevista en curso en otra casa. Terminala antes de empezar otra.'
+      : 'Ya tenés una entrevista en curso en ${direccion.trim()}. Terminala antes de empezar otra.';
 
   /// Lo mismo cuando se vino de «Finalizar jornada»: la jornada no se cierra con una entrevista abierta.
   static String ventaNoGuardadaEnLaJornada(String persona) =>
@@ -147,6 +191,10 @@ abstract final class ClavesEntrevista {
   static const avisoError = Key('entrevista_aviso_error');
   static const registrarVenta = Key('entrevista_registrar_venta');
   static const guardarYVolver = Key('entrevista_guardar_y_volver');
+  static const loQueDejaste = Key('entrevista_lo_que_dejaste');
+  static const avisoLoQueDejaste = Key('entrevista_aviso_lo_que_dejaste');
+  static const guardarLoQueDejaste = Key('entrevista_guardar_lo_que_dejaste');
+  static const noDejeNada = Key('entrevista_no_deje_nada');
 
   static const avisoFijo = Key('entrevista_aviso_fijo');
 }

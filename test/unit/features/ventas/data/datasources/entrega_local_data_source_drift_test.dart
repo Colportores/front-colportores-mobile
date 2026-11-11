@@ -191,6 +191,7 @@ void main() {
         'venta_id',
         'producto_id',
         'cantidad',
+        'fecha_prevista',
         'fecha_entrega',
         'pendiente',
         'created_at',

@@ -3,16 +3,29 @@ import 'package:drift/drift.dart';
 import '../../../../core/database/app_database.dart';
 import '../../domain/services/reglas_de_entrega.dart';
 import '../models/venta_model.dart';
+import 'estado_de_devolucion.dart';
 
 /// Qué se vendió y qué se entregó de una venta, leído de las tablas locales: **la única definición**
 /// que usan la entrega inmediata (`EntregaLocalDataSourceDrift`, HU-VEN-002) y el color de la casa
 /// (`HouseStatusUpdaterDrift`, R-UB08), para que nunca cuenten cosas distintas.
 ///
-/// Cuenta lo vendido de los renglones vivos y lo entregado de las filas de `entrega` vivas y ya
-/// entregadas (`pendiente = 0`); una fila dada de baja o todavía pendiente no cuenta.
+/// Cuenta lo vendido de los renglones vivos **menos lo que volvió en devoluciones** (HU-VEN-004: un libro
+/// devuelto ya no hay que entregarlo) y lo entregado de las filas de `entrega` vivas y ya entregadas
+/// (`pendiente = 0`); una fila dada de baja o todavía pendiente no cuenta.
 abstract final class EstadoDeEntrega {
-  /// Lo vendido de [ventaId], por producto (ver [ReglasDeEntrega.cantidadesVendidas]).
+  /// Lo vendido de [ventaId], por producto (ver [ReglasDeEntrega.cantidadesVendidas]), sin lo que ya
+  /// volvió en devoluciones vivas: un producto devuelto del todo desaparece.
   static Future<Map<String, int>> vendidoDe(AppDatabase db, String ventaId) async {
+    final bruto = await _vendidoSinDevoluciones(db, ventaId);
+    final devuelto = (await EstadoDeDevolucion.resumenDe(db, ventaId)).librosPorProducto;
+    if (devuelto.isEmpty) return bruto;
+    return {
+      for (final MapEntry(:key, :value) in bruto.entries)
+        if (value > (devuelto[key] ?? 0)) key: value - (devuelto[key] ?? 0),
+    };
+  }
+
+  static Future<Map<String, int>> _vendidoSinDevoluciones(AppDatabase db, String ventaId) async {
     final filas =
         await (db.select(db.ventaItems)
               ..where((i) => i.ventaId.equals(ventaId) & i.deletedAt.isNull())

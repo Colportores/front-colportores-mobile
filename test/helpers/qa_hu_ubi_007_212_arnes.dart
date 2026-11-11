@@ -242,6 +242,13 @@ Future<void> tocar212(WidgetTester tester, Finder f) async {
   await drenar212(tester);
 }
 
+/// Abre la edición del depto [id] como el colportor: la fila abre su ficha (11·04) y «Editar» la
+/// edición (#679).
+Future<void> editarDepto212(WidgetTester tester, String id) async {
+  await tocar212(tester, find.byKey(ClavesHojaUbicacion.fila(id)));
+  await tocar212(tester, find.byKey(ClavesPersonasDelEspacio.editar));
+}
+
 /// Un test con el teléfono armado por [sembrar] y cerrado al terminar.
 void prueba212(
   String nombre,

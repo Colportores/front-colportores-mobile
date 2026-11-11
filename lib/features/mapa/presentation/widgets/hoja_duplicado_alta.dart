@@ -7,6 +7,7 @@ import '../../../tiles/domain/entities/paquete_tiles.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/value_objects/coordenadas.dart';
+import '../formato_lista_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
 import '../mapa_base/mapa_base.dart';
 import '../mapa_base/modelo_mapa_base.dart';
@@ -15,6 +16,8 @@ import '../providers/mapa_base_providers.dart';
 import 'hoja_alta.dart';
 import 'mapa_alta.dart';
 import 'piezas_alta.dart';
+import 'piezas_lista_ubicaciones.dart';
+import 'textos_posibles_duplicados.dart';
 
 /// Textos de la vista 04. Los literales de HU-UBI-001 («Reutilizar esta», «Crear igual»,
 /// «Cancelar», «Abrir la existente») van tal cual; el resto es la propuesta del canvas.
@@ -281,7 +284,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
         const SizedBox(height: 14),
         for (var i = 0; i < _candidatas.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
-          _TarjetaCandidata(
+          TarjetaCandidataDuplicado(
             candidata: _candidatas[i],
             letra: varias ? FormatoUbicaciones.rotuloCandidata(i) : null,
             ciudad: widget.nombresCiudad[_candidatas[i].ubicacion.ciudadId],
@@ -350,7 +353,7 @@ class _HojaDuplicadoAltaState extends State<HojaDuplicadoAlta> {
         const SizedBox(height: 10),
         Row(
           children: [
-            _Letra(FormatoUbicaciones.rotuloCandidata(0)),
+            LetraCandidata(FormatoUbicaciones.rotuloCandidata(0)),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -507,8 +510,8 @@ class _MotivoRapido extends StatelessWidget {
   }
 }
 
-class _Letra extends StatelessWidget {
-  const _Letra(this.letra);
+class LetraCandidata extends StatelessWidget {
+  const LetraCandidata(this.letra, {super.key});
 
   final String letra;
 
@@ -538,8 +541,9 @@ class _Letra extends StatelessWidget {
   }
 }
 
-class _TarjetaCandidata extends StatelessWidget {
-  const _TarjetaCandidata({
+class TarjetaCandidataDuplicado extends StatelessWidget {
+  const TarjetaCandidataDuplicado({
+    super.key,
     required this.candidata,
     required this.letra,
     required this.ciudad,
@@ -565,7 +569,16 @@ class _TarjetaCandidata extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final u = candidata.ubicacion;
-    final detalle = [FormatoUbicaciones.tipo(u.tipo), ?ciudad].join(' · ');
+    // Vista 04: «Casa · 2 espacios · Montevideo». Sin el conteo de espacios (quien armó la candidata no
+    // lo leyó) queda «Casa · Montevideo»: no se inventa un «sin espacios».
+    final espacios = candidata.cantidadEspacios;
+    final detalle = [
+      espacios == null
+          ? FormatoUbicaciones.tipo(u.tipo)
+          : TextosPosiblesDuplicados.resumen(u, espacios),
+      ?ciudad,
+    ].join(' · ');
+    final estado = candidata.estado;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -578,7 +591,7 @@ class _TarjetaCandidata extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (letra != null) ...[_Letra(letra!), const SizedBox(width: 10)],
+              if (letra != null) ...[LetraCandidata(letra!), const SizedBox(width: 10)],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -588,6 +601,22 @@ class _TarjetaCandidata extends StatelessWidget {
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 2),
+                    if (estado != null) ...[
+                      Row(
+                        children: [
+                          // El rótulo de abajo ya dice el estado: la insignia no se lee dos veces.
+                          ExcludeSemantics(child: InsigniaEstadoCasa(estado: estado, tamano: 16)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              FormatoListaUbicaciones.estado(estado),
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                    ],
                     Text(detalle, style: theme.textTheme.bodyMedium),
                     Text(
                       'Actualizada ${FormatoUbicaciones.hace(u.auditoria.updatedAt, ahora)}',

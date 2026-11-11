@@ -62,10 +62,13 @@ void main() {
     },
   );
 
-  test('el motor se suscribe a Realtime en producto y en los precios de la ciudad', () {
+  test('el motor se suscribe a Realtime en producto y en los dos precios', () {
     contenedor.read(motorSyncProvider);
 
-    expect(realtime.subscriptions.single, unorderedEquals(['producto', 'precio_por_ciudad']));
+    expect(
+      realtime.subscriptions.single,
+      unorderedEquals(['producto', 'precio_por_ciudad', 'precio_general']),
+    );
   });
 
   test('al arrancar la sesión baja el catálogo en segundo plano, con el precio general', () async {
@@ -76,6 +79,7 @@ void main() {
           'nombre': 'El Conflicto de los Siglos',
           'descripcion': null,
           'tipo': 'LIBRO',
+          'categoria': 'ESPIRITUALES',
           'es_bonificable': true,
           'es_misionero': false,
           'precio_base_compra': null,

@@ -31,6 +31,7 @@ enum Estado508 {
   sinResultados('23B·08 Cumplidas sin resultados'),
   sinResultadosTipo('23B·08 Cobranzas + No cumplidas sin resultados'),
   larga('Todas con textos larguísimos y edificio'),
+  otroAnio('Todas con filas de 2025 y 2024 (año en la fecha, delta r2)'),
   hoja('23B·04 hoja Estado abierta');
 
   const Estado508(this.rotulo);
@@ -108,6 +109,24 @@ List<ItemAgenda> itemsDe508(Estado508 e) {
           tipo: TipoAgenda.cobranza,
         ),
       ];
+    case Estado508.otroAnio:
+      return [
+        cerrada(0),
+        itemAgenda(
+          'a25',
+          DateTime(2025, 12, 30, 9),
+          estado: EstadoAgenda.cumplida,
+          nombre: 'Anual',
+        ),
+        itemAgenda(
+          'a24',
+          DateTime(2024, 1, 5, 18, 30),
+          estado: EstadoAgenda.noCumplida,
+          tipo: TipoAgenda.cobranza,
+          nombre: 'María de los Ángeles Fernández de la Cruz y Benítez',
+          apellido: 'Rodríguez-Sánchez Pereira',
+        ),
+      ];
     case Estado508.hoja:
       return [cerrada(0)];
   }
@@ -120,7 +139,7 @@ String? _estadoDe(Estado508 e) => switch (e) {
   Estado508.error ||
   Estado508.sinResultados ||
   Estado508.larga => 'Cumplidas',
-  Estado508.todasMezcla => 'Todas',
+  Estado508.todasMezcla || Estado508.otroAnio => 'Todas',
   Estado508.canceladas => 'Canceladas',
   Estado508.sinResultadosTipo => 'No cumplidas',
   _ => null,

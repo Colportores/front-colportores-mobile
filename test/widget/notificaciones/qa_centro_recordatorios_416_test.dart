@@ -176,8 +176,7 @@ void main() {
     }
   }
 
-  // skip: issue #416 (QA) — el rótulo del día («DOMINGO 25», 10 pt, #67758B sobre #FAFAF7) da 4,43:1 < 4,5:1.
-  // Es del centro de #481, no de este PR; se deja anotado porque lo que se guarda acá es lo que se lista.
+  // QA #416 — el rótulo del día («DOMINGO 25», 10 pt) cumple el contraste AA de 4,5:1.
   testWidgets('dado los recordatorios guardados, el rótulo de cada día del centro cumple el '
       'contraste AA (412x915)', (tester) async {
     final semantica = tester.ensureSemantics();
@@ -191,7 +190,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       await tester.runAsync(db.close);
     }
-  }, skip: true);
+  });
 
   prueba('dado el centro vacío, cuando la persona sale, la app vuelve y un recordatorio sonó, al '
       'volver a entrar aparece', (tester) async {

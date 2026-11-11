@@ -167,6 +167,59 @@ void main() {
     expect(venta.lineas.single.nombre, 'Producto');
   });
 
+  // 42B·08E (decisión del 10/11, P7 del PR #681): la visita en la que se dejaron misioneros dice
+  // cuántos («✦ 3 misioneros»); los borrados no cuentan y la lectura es reactiva.
+  group('misioneros dejados en la visita (42B·08E)', () {
+    Future<void> dejar(String id, String visita, int cantidad, {DateTime? borrado}) => db
+        .into(db.visitaMisioneros)
+        .insert(
+          VisitaMisionerosCompanion.insert(
+            id: id,
+            visitaId: visita,
+            productoId: 'mis-1',
+            cantidad: cantidad,
+            createdAt: t0,
+            updatedAt: t0,
+            deletedAt: Value(borrado),
+          ),
+        );
+
+    setUp(() async {
+      await sembrarPersona();
+      await sembrarProducto('mis-1', 'El camino a Cristo');
+    });
+
+    test('suma lo que se dejó en cada visita, sin lo borrado', () async {
+      await insertarVisita(db, visitaDe('vis-1', creada: DateTime.utc(2026, 10, 5, 14)));
+      await insertarVisita(db, visitaDe('vis-2', creada: DateTime.utc(2026, 10, 6, 14)));
+      await dejar('vm-1', 'vis-1', 2);
+      await dejar('vm-2', 'vis-1', 1);
+      await dejar('vm-3', 'vis-1', 5, borrado: t0);
+
+      final historial = (await fuente.observar('per-1').first)!.historial;
+      final porId = {for (final m in historial) m.id: m as VisitaEnFicha};
+
+      expect(porId['vis-1']!.misioneros, 3);
+      expect(porId['vis-2']!.misioneros, 0);
+    });
+
+    test('es reactiva: dejar un misionero vuelve a leer la visita', () async {
+      await insertarVisita(db, visitaDe('vis-1'));
+      final cuantos = <int>[];
+      final sub = fuente
+          .observar('per-1')
+          .listen((l) => cuantos.add((l!.historial.single as VisitaEnFicha).misioneros));
+      addTearDown(sub.cancel);
+
+      await pumpEventQueue();
+      await dejar('vm-1', 'vis-1', 3);
+      await pumpEventQueue();
+
+      expect(cuantos.first, 0);
+      expect(cuantos.last, 3);
+    });
+  });
+
   test('lo borrado (visitas, ventas y renglones) no aparece', () async {
     await sembrarPersona();
     await sembrarProducto('pro-1', 'Salud y Hogar');
@@ -278,6 +331,31 @@ void main() {
       )..where((u) => u.id.equals('ub-1'))).write(UbicacionesCompanion(deletedAt: Value(t0)));
       await pumpEventQueue();
       expect(lecturas, greaterThan(trasReactivar), reason: 'baja de la ubicación');
+    },
+  );
+
+  // #679: Drift reutiliza un stream vivo con el mismo SQL y las mismas variables, sin mirar
+  // `readsFrom`. Con otro `SELECT 1` vivo antes (el resumen de la cuenta de «Hoy», que no lee
+  // `personas`), la ficha no se volvía a leer al dar de baja a la persona.
+  test(
+    'con otra consulta de cambios viva antes, dar de baja a la persona vuelve a emitir',
+    () async {
+      await sembrarPersona();
+      final otra = db.customSelect('SELECT 1', readsFrom: {db.productos}).watch().listen((_) {});
+      addTearDown(otra.cancel);
+      await pumpEventQueue();
+      final bajas = <bool>[];
+      final sub = fuente.observar('per-1').listen((l) => bajas.add(l!.persona.estaBorrada));
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      await (db.update(
+        db.personas,
+      )..where((p) => p.id.equals('per-1'))).write(PersonasCompanion(deletedAt: Value(t0)));
+      await pumpEventQueue();
+
+      expect(bajas.first, isFalse);
+      expect(bajas.last, isTrue);
     },
   );
 

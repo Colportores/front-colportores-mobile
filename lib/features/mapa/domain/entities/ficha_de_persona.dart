@@ -10,13 +10,27 @@ import 'ubicacion.dart';
 
 /// Un renglón de un movimiento: un producto o una colección y cuántos («Nuestros Hijos × 1»).
 class LineaDeFicha extends Equatable {
-  const LineaDeFicha({required this.nombre, required this.cantidad});
+  const LineaDeFicha({required this.nombre, required this.cantidad, this.libros});
 
   final String nombre;
   final int cantidad;
 
+  /// Si el renglón es un combo (colección), los libros que trae **una** unidad (`venta_item.componentes`)
+  /// con su nombre y cuántos; `null` si es un producto suelto. Un libro que el catálogo ya no trae
+  /// lleva el nombre vacío: no se inventa.
+  final List<LineaDeFicha>? libros;
+
+  bool get esCombo => libros != null;
+
+  /// Cuántos libros son en total: un combo cuenta su cantidad por los libros de cada unidad (la misma
+  /// regla que cobranzas, decisión del 10/11, rev 1120). Un combo sin componentes cuenta una por unidad.
+  int get cuantosLibros {
+    final deUnaUnidad = libros?.fold<int>(0, (n, l) => n + l.cantidad) ?? 0;
+    return libros == null || deUnaUnidad == 0 ? cantidad : cantidad * deUnaUnidad;
+  }
+
   @override
-  List<Object?> get props => [nombre, cantidad];
+  List<Object?> get props => [nombre, cantidad, libros];
 }
 
 /// Una cosa que le pasó a la persona (vista 32B, «HISTORIAL»): una visita, una venta, una entrega o un
@@ -32,12 +46,21 @@ sealed class MovimientoDeFicha extends Equatable {
 
 /// Una visita (`visita`) con su resultado: «Entrevista hecha», «No contestó»…
 final class VisitaEnFicha extends MovimientoDeFicha {
-  const VisitaEnFicha({required super.id, required super.fecha, required this.resultado});
+  const VisitaEnFicha({
+    required super.id,
+    required super.fecha,
+    required this.resultado,
+    this.misioneros = 0,
+  });
 
   final TipoResultadoVisita resultado;
 
+  /// Cuántos misioneros se dejaron en esa visita sin venta («Lo que dejaste», 42B·08E): la fila dice
+  /// «✦ 3 misioneros». 0 si no se dejó ninguno.
+  final int misioneros;
+
   @override
-  List<Object?> get props => [id, fecha, resultado];
+  List<Object?> get props => [id, fecha, resultado, misioneros];
 }
 
 /// Una venta (`venta`) con lo que se vendió.
@@ -67,13 +90,18 @@ final class EntregaEnFicha extends MovimientoDeFicha {
     required super.fecha,
     required this.pendiente,
     required this.lineas,
+    this.ventaId,
   });
 
   final bool pendiente;
   final List<LineaDeFicha> lineas;
 
+  /// La venta de la que sale lo entregado (HU-VEN-005): con ella «Entregar», en una entrega pendiente,
+  /// abre el destino ya en esa venta, sin preguntar «¿Qué venta?». `null` si no se conoce.
+  final String? ventaId;
+
   @override
-  List<Object?> get props => [id, fecha, pendiente, lineas];
+  List<Object?> get props => [id, fecha, pendiente, lineas, ventaId];
 }
 
 /// Un cobro de una venta.

@@ -7,7 +7,6 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/item_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
-import 'package:colportores_mobile/features/agenda/presentation/providers/agenda_providers.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_ficha_persona.dart';
 import 'package:colportores_mobile/features/notificaciones/domain/entities/preferencias_recordatorios.dart';
@@ -16,8 +15,6 @@ import 'package:flutter/semantics.dart' show SemanticsAction;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/agenda_items_falsos.dart';
-import '../../helpers/agendar_visita_arnes.dart' show AgendaRepositorioQueAgenda;
-import '../../helpers/notificaciones_arnes.dart' show Telefono;
 import 'ficha_persona_arnes.dart';
 
 final _tarjeta = find.byKey(ClavesFicha.tarjetaProximaVisita);
@@ -44,7 +41,7 @@ ItemAgenda _entrevista({
 
 MundoFicha _mundo({List<ItemAgenda> visitas = const [], bool conHistorial = true}) {
   final mundo = MundoFicha(historial: conHistorial ? historialDelCanvas() : const []);
-  mundo.agendas.items = visitas;
+  mundo.consultaAgendas.items = visitas;
   mundo.personas.sembrar([clienteDePersonas('per-1', 'María', apellido: 'Pérez')]);
   return mundo;
 }
@@ -60,7 +57,9 @@ void main() {
         expect(find.text('PRÓXIMA VISITA'), findsOneWidget);
         expect(find.text('Entrevista · sáb 24/10 · 14:30'), findsOneWidget);
         expect(find.text('Primera tarde · te avisamos a las 14:00'), findsOneWidget);
-        expect(mundo.agendas.pedidosDeLaPersona, [(colportorId: 'col-1', personaId: 'per-1')]);
+        expect(mundo.consultaAgendas.pedidosDeLaPersona, [
+          (colportorId: 'col-1', personaId: 'per-1'),
+        ]);
         // Y la sección de las notas y el historial siguen donde estaban.
         expect(find.byKey(ClavesFicha.notas), findsOneWidget);
         expect(find.byKey(ClavesFicha.historial), findsOneWidget);
@@ -203,12 +202,12 @@ void main() {
         await montarFicha(tester, mundo);
         expect(_tarjeta, findsNothing);
 
-        mundo.agendas.emitir([_entrevista()]);
+        mundo.consultaAgendas.emitir([_entrevista()]);
         await asentar(tester);
         expect(_tarjeta, findsOneWidget);
         expect(find.text('Todavía no hay una visita agendada.'), findsNothing);
 
-        mundo.agendas.emitir(const []);
+        mundo.consultaAgendas.emitir(const []);
         await asentar(tester);
         expect(_tarjeta, findsNothing);
         expect(find.text('Todavía no hay una visita agendada.'), findsOneWidget);
@@ -258,7 +257,7 @@ void main() {
         historial: historialDelCanvas(),
         contexto: contextoBajaDesde22(),
       );
-      mundo.agendas.items = [_entrevista()];
+      mundo.consultaAgendas.items = [_entrevista()];
       await montarFicha(tester, mundo);
 
       expect(_tarjeta, findsOneWidget);
@@ -289,7 +288,7 @@ void main() {
 
   group('Leer la agenda', () {
     testWidgets('dada la agenda cargando, entonces la sección no ocupa lugar', (tester) async {
-      final mundo = _mundo(visitas: [_entrevista()])..agendas.congelada = true;
+      final mundo = _mundo(visitas: [_entrevista()])..consultaAgendas.congelada = true;
       await montarFicha(tester, mundo);
 
       expect(find.byKey(ClavesFicha.proximaVisita), findsNothing);
@@ -299,7 +298,8 @@ void main() {
     testWidgets('dada una falla al leer la agenda, entonces la ficha sigue y dice qué hacer', (
       tester,
     ) async {
-      final mundo = _mundo(visitas: [_entrevista()])..agendas.error = StateError('sin base');
+      final mundo = _mundo(visitas: [_entrevista()])
+        ..consultaAgendas.error = StateError('sin base');
       await montarFicha(tester, mundo);
 
       expect(find.byKey(ClavesFicha.errorProximaVisita), findsOneWidget);
@@ -307,7 +307,7 @@ void main() {
       // El resto de la ficha se ve igual.
       expect(find.byKey(ClavesFicha.historial), findsOneWidget);
 
-      mundo.agendas.error = null;
+      mundo.consultaAgendas.error = null;
       await tester.tap(find.text('Reintentar'));
       await asentar(tester);
       expect(find.byKey(ClavesFicha.errorProximaVisita), findsNothing);
@@ -319,7 +319,7 @@ void main() {
       await montarFicha(tester, mundo);
       expect(_tarjeta, findsOneWidget);
 
-      mundo.agendas.emitirError(StateError('se cayó'));
+      mundo.consultaAgendas.emitirError(StateError('se cayó'));
       await asentar(tester);
 
       expect(find.byKey(ClavesFicha.errorProximaVisita), findsOneWidget);
@@ -419,20 +419,12 @@ void main() {
   });
 
   group('Agendar desde la ficha', () {
-    late AgendaRepositorioQueAgenda repo;
-    late Telefono telefono;
-
+    late MundoFicha ultimo;
     MundoFicha conAgendar({List<ItemAgenda> visitas = const []}) {
-      repo = AgendaRepositorioQueAgenda();
-      telefono = Telefono()..recordatorios.permisoConcedido = true;
-      var n = 0;
-      return _mundo(visitas: visitas)
-        ..extra = [
-          agendaRepositoryProvider.overrideWithValue(repo),
-          generadorIdVisitaProvider.overrideWithValue(() => 'id-${++n}'),
-          relojVisitaProvider.overrideWithValue(() => ahoraFicha),
-          ...telefono.overrides,
-        ];
+      // La agenda y el teléfono con los que el arnés abre «Agendar visita» son los del mundo.
+      ultimo = _mundo(visitas: visitas);
+      ultimo.telefono.recordatorios.permisoConcedido = true;
+      return ultimo;
     }
 
     testWidgets('dado «+ Agendar», cuando se agenda, entonces vuelve a la ficha con la tarjeta', (
@@ -450,7 +442,7 @@ void main() {
       await tester.tap(find.text('Agendar'));
       await asentar(tester);
 
-      final recibida = repo.recibidas.single.agenda;
+      final recibida = ultimo.agendas.recibidas.single.agenda;
       expect(recibida.espacioId, 'esp-1');
       expect(recibida.espacioPersonaId, 'ep-per-1');
       expect(recibida.tipo, TipoAgenda.entrevista);
@@ -461,7 +453,7 @@ void main() {
       expect(find.text('Agendada. La casa queda como «Entrevista agendada».'), findsOneWidget);
 
       // Y la tarjeta aparece cuando la agenda se lee de nuevo.
-      mundo.agendas.emitir([
+      mundo.consultaAgendas.emitir([
         _entrevista(id: recibida.id, cuando: DateTime(2026, 10, 23, 10), slot: 'mid_morning'),
       ]);
       await asentar(tester);
@@ -481,7 +473,7 @@ void main() {
       await tester.tap(find.byTooltip('Cerrar'));
       await asentar(tester);
 
-      expect(repo.recibidas, isEmpty);
+      expect(ultimo.agendas.recibidas, isEmpty);
       expect(find.text('Agendar visita'), findsNothing);
       expect(find.byKey(ClavesFicha.proximaVisita), findsOneWidget);
       expect(find.text('Agendada. La casa queda como «Entrevista agendada».'), findsNothing);
@@ -514,7 +506,7 @@ void main() {
       (tester) async {
         final mundo = conAgendar();
         await montarFicha(tester, mundo);
-        repo.fallas.add(const FailureInesperado());
+        ultimo.agendas.fallas.add(const FailureInesperado());
 
         await tester.tap(_agendar);
         await asentar(tester);
@@ -528,18 +520,18 @@ void main() {
         await tester.tap(find.text('Reintentar'));
         await asentar(tester);
         expect(find.text('Agendar visita'), findsNothing);
-        expect(repo.cuantasQuedaron, 1);
+        expect(ultimo.agendas.cuantasQuedaron, 1);
       },
     );
 
     testWidgets(
       'dada una persona que ya no está en ese depto, entonces avisa y se puede volver a intentar',
       (tester) async {
-        final mundo = conAgendar();
         // Sin el vínculo de la persona con el depto no hay de qué colgar la agenda.
         final sinVinculo = MundoFicha(historial: historialDelCanvas())
-          ..extra = mundo.extra
-          ..agendas.items = const [];
+          ..telefono.recordatorios.permisoConcedido = true
+          ..consultaAgendas.items = const [];
+        ultimo = sinVinculo;
         await montarFicha(tester, sinVinculo);
 
         await tester.tap(_agendar);
@@ -547,7 +539,7 @@ void main() {
 
         expect(find.text('No pudimos abrir esa pantalla. Probá de nuevo.'), findsOneWidget);
         expect(find.text('Agendar visita'), findsNothing);
-        expect(repo.recibidas, isEmpty);
+        expect(ultimo.agendas.recibidas, isEmpty);
 
         sinVinculo.personas.sembrar([clienteDePersonas('per-1', 'María', apellido: 'Pérez')]);
         await tester.tap(_agendar);
