@@ -7,11 +7,13 @@ import 'package:colportores_mobile/features/ventas/presentation/formato_venta.da
 import 'package:colportores_mobile/features/ventas/presentation/pages/asi_quedo_la_venta_page.dart';
 import 'package:colportores_mobile/features/ventas/presentation/pages/cuando_cobrar_page.dart';
 import 'package:colportores_mobile/features/ventas/presentation/providers/ventas_providers.dart';
+import 'package:colportores_mobile/features/ventas/presentation/widgets/piezas_entrega.dart'
+    show FilaDeEntrega;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/entrega_diferida_ui_falsos.dart' show diferidaPara;
-import '../../helpers/entrega_falsos.dart' show EntornoDeEntrega;
+import '../../helpers/entrega_falsos.dart' show EntornoDeEntrega, entregaDe;
 import '../../helpers/qa_vista39_venta_428_arnes.dart';
 import '../../helpers/venta_ui_falsos.dart';
 
@@ -132,5 +134,82 @@ void main() {
 
     expect(find.byKey(ClavesCierreDeVenta.tarjetaEntrega), findsNothing);
     expect(entrega.entregas.diferidas, isEmpty);
+  });
+
+  /// 27A·14 «Entregar ahora» y 27B·01 registrada con algo que queda pendiente: una entrega parcial.
+  Future<void> entregarUnaParte(WidgetTester tester) async {
+    entrega.entregas.pendientesAlRegistrar = [
+      entregaDe('e-resto', 'p-resto', pendiente: true, ventaId: 'v-1'),
+    ];
+    await tocar(tester, find.text(TextosVenta.entregarAhora));
+    await tocar(tester, find.text(TextosVenta.continuar));
+    await tester.pumpAndSettle();
+    expect(find.byType(FilaDeEntrega), findsWidgets);
+    await tocar(tester, find.byKey(const Key('venta_cta')));
+    await tester.pumpAndSettle();
+  }
+
+  group(
+    'tras una entrega parcial se pide la fecha de lo que quedó (decisión del 10/11, P2 de #687)',
+    () {
+      testWidgets('27C·01 se abre antes de «¿Cuándo volvés a cobrar?» y el cierre la muestra', (
+        tester,
+      ) async {
+        await hastaVentaRegistrada(tester);
+        await entregarUnaParte(tester);
+
+        expect(entrega.entregas.recibidas, hasLength(1));
+        expect(find.byKey(_paginaOtroDia), findsOneWidget);
+        expect(find.byKey(ClavesCuandoCobrar.pagina), findsNothing);
+        await elegirFechaYGuardar(tester);
+
+        expect(entrega.entregas.diferidas, hasLength(1));
+        expect(find.byKey(ClavesCuandoCobrar.pagina), findsOneWidget);
+        await tocar(tester, find.byKey(ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha)));
+        await tocar(tester, find.byKey(ClavesCuandoCobrar.guardar));
+        await tester.pumpAndSettle();
+
+        expect(find.text(TextosCierreDeVenta.entregadaEnParte), findsOneWidget);
+        expect(find.byKey(ClavesCierreDeVenta.tarjetaEntrega), findsOneWidget);
+      });
+
+      testWidgets('«atrás» en 27C·01 deja lo que quedó sin fecha y sigue a la pregunta', (
+        tester,
+      ) async {
+        await hastaVentaRegistrada(tester);
+        await entregarUnaParte(tester);
+
+        await tocar(tester, find.byKey(const Key('venta_atras')));
+        await tester.pumpAndSettle();
+
+        expect(entrega.entregas.diferidas, isEmpty);
+        expect(find.byKey(ClavesCuandoCobrar.pagina), findsOneWidget);
+      });
+    },
+  );
+
+  testWidgets('con la entrega ya agendada y el cobro cancelado, «¿Y ahora?» no vuelve a ofrecer '
+      '«Entregar ahora» y el cierre no miente (revisión de #687)', (tester) async {
+    await hastaVentaRegistrada(tester);
+    await tocar(tester, find.text(TextosVenta.entregarOtroDia));
+    await tocar(tester, find.text(TextosVenta.cobrarAhora));
+    await tocar(tester, find.text(TextosVenta.continuar));
+    await tester.pumpAndSettle();
+    await elegirFechaYGuardar(tester);
+
+    // El cobro devuelve «no cobré»: vuelve a 27A·14.
+    expect(find.byKey(const Key('venta_registrada_pagina')), findsOneWidget);
+    expect(find.text(TextosVenta.entregarAhora), findsNothing);
+    expect(find.text(TextosVenta.entregarOtroDia), findsNothing);
+
+    await tocar(tester, find.byKey(const Key('venta_terminar')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(_paginaOtroDia), findsNothing);
+    await tocar(tester, find.byKey(ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha)));
+    await tocar(tester, find.byKey(ClavesCuandoCobrar.guardar));
+    await tester.pumpAndSettle();
+
+    expect(entrega.entregas.recibidas, isEmpty);
+    expect(find.byKey(ClavesCierreDeVenta.tarjetaEntrega), findsOneWidget);
   });
 }

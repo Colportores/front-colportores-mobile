@@ -129,6 +129,31 @@ void main() {
 
       expect(find.text('Esa entrega ya estaba marcada como entregada.'), findsOneWidget);
     });
+
+    testWidgets(
+      'con todo lo pendiente devuelto lo dice: no «ya estaba entregada» (revisión #687)',
+      (tester) async {
+        final e = EntornoDeEntrega();
+        e.entregas.respuestaDeCumplir = const EntregaCumplida(
+          entregas: [],
+          entregadas: [],
+          citaCumplida: true,
+          todoDevuelto: true,
+        );
+        await _montar(tester, entorno: e);
+
+        await _tocarEntregadoHoy(tester);
+
+        expect(
+          find.text(
+            'No quedaba nada por entregar: lo pendiente se devolvió. La visita de entrega quedó '
+            'cerrada.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Esa entrega ya estaba marcada como entregada.'), findsNothing);
+      },
+    );
   });
 
   group('casos límite', () {

@@ -292,6 +292,31 @@ final class EntregaLocalDataSourceDrift {
       for (final fila in previas)
         if (neto.containsKey(fila.id) && (entregaIds == null || entregaIds.contains(fila.id))) fila,
     ];
+    if (aEntregar.isEmpty && neto.isEmpty && previas.any((f) => f.pendiente)) {
+      // Hay filas pendientes pero todo lo que tenían se devolvió sin entregarse: no hay nada que
+      // entregar y no es «ya estaba entregada». La visita de la entrega ya no hace falta: su cita se
+      // cierra (CUMPLIDA, como cuando no queda nada pendiente) para que no quede programada para
+      // siempre. Las filas no se tocan (decisión del 30/10, «Devol. s/ent»).
+      var cita = await _citaViva(ventaId);
+      if (cita != null) {
+        cita = await _escribirCita(
+          cita.id,
+          AgendasCompanion(
+            estado: Value(EstadoAgenda.cumplida.codigo),
+            updatedAt: Value(instanteMs(ahora)),
+          ),
+        );
+      }
+      return EntregaCumplida(
+        entregas: previas,
+        entregadas: const [],
+        cita: cita,
+        citaCumplida: cita != null,
+        direccion: espacioId == null ? '' : await _direccionDe(espacioId),
+        colorDeLaCasa: espacioId == null ? null : await _colorDelEspacio(espacioId),
+        todoDevuelto: true,
+      );
+    }
     if (aEntregar.isEmpty) {
       // Sin nada pendiente que se haya pedido entregar: ya estaba entregado (un segundo toque o un
       // reintento), con ids o sin ellos. «Marcar de nuevo lo hecho» no es un error (QA #433, P2).

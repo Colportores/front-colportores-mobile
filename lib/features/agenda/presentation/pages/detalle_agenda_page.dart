@@ -155,7 +155,9 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
           .call(CumplirEntregaParams(ventaId: ventaId));
       aviso = hecho.fold(
         (_) => null,
-        (r) => r.entrega.yaEstaba
+        (r) => r.entrega.todoDevuelto
+            ? TextosEntregaDiferida.nadaQueEntregarDevuelto
+            : r.entrega.yaEstaba
             ? TextosEntregaDiferida.yaEstabaEntregada
             : TextosEntregaDiferida.entregaMarcada,
       );

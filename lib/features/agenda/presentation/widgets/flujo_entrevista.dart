@@ -803,7 +803,9 @@ abstract final class FlujoEntrevista {
                 contextoFirme,
                 guardada: guardada,
                 nombre: cliente.nombre,
-                conEntregarAhora: entrega == EntregaDelCierre.otroDia,
+                // Con la entrega ya agendada (27C·01) el grupo ENTREGA no vuelve: entregarla ahora
+                // dejaría una «Entrega agendada» de algo entregado (revisión de #687).
+                conEntregarAhora: entrega == EntregaDelCierre.otroDia && diferida == null,
                 conEntregarOtroDia: entrega == EntregaDelCierre.otroDia && diferida == null,
                 conCobro: cobrar != null,
               )
@@ -818,6 +820,10 @@ abstract final class FlujoEntrevista {
             entrega = registrada.quedaPendiente
                 ? EntregaDelCierre.parcial
                 : EntregaDelCierre.completa;
+            // Lo que se había dejado para otro día se acaba de entregar (su cita ya se cumplió): el
+            // cierre no muestra una «Entrega agendada» de algo entregado. Si quedó algo, se pregunta
+            // de nuevo para cuándo (abajo).
+            diferida = null;
           }
         }
         // «Entregar otro día» (27C·01): la fecha de la entrega. Volver sin guardarla vuelve a «¿Y
@@ -844,10 +850,11 @@ abstract final class FlujoEntrevista {
         }
         break;
       }
-      // Sin entregar nada y sin fecha de entrega todavía, la app la pide antes del cierre (42B·01F:
-      // cobrada sin entregar; 01G: «Terminar sin entregar ni cobrar»). Volver sin elegir la deja sin
-      // fecha: la venta sigue debiendo la entrega en la ficha de la persona.
-      if (entrega == EntregaDelCierre.otroDia && diferida == null && contextoFirme.mounted) {
+      // Sin entregar todo y sin fecha de entrega todavía, la app la pide antes del cierre y antes de
+      // «¿Cuándo volvés a cobrar?» (42B·01F: cobrada sin entregar; 01G: «Terminar sin entregar ni
+      // cobrar»; y tras una entrega parcial, para lo que quedó: decisión del 10/11, P2 de #687).
+      // Volver sin elegir la deja sin fecha: lo que falta sigue en «Entregas pendientes».
+      if (entrega != EntregaDelCierre.completa && diferida == null && contextoFirme.mounted) {
         diferida = await _entregarOtroDia(
           contextoFirme,
           guardada: guardada,

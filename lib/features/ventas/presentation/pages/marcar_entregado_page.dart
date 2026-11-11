@@ -132,7 +132,9 @@ class _MarcarEntregadoPageState extends ConsumerState<MarcarEntregadoPage> {
       ..showSnackBar(
         SnackBar(
           content: Text(
-            resultado.entrega.yaEstaba
+            resultado.entrega.todoDevuelto
+                ? TextosEntregaDiferida.nadaQueEntregarDevuelto
+                : resultado.entrega.yaEstaba
                 ? TextosEntregaDiferida.yaEstabaEntregada
                 : resultado.entrega.quedaPendiente
                 ? TextosEntregaDiferida.entregaMarcadaQuedaAlgo

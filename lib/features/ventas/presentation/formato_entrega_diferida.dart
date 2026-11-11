@@ -44,6 +44,11 @@ abstract final class TextosEntregaDiferida {
   static const entregaMarcada = 'Entrega marcada.';
   static const entregaMarcadaQuedaAlgo = 'Entrega marcada. Lo que falta sigue pendiente.';
   static const yaEstabaEntregada = 'Esa entrega ya estaba marcada como entregada.';
+
+  /// «Entregado hoy» de una entrega cuyo pendiente se devolvió entero sin entregarse: no se entregó
+  /// nada y la cita se cerró.
+  static const nadaQueEntregarDevuelto =
+      'No quedaba nada por entregar: lo pendiente se devolvió. La visita de entrega quedó cerrada.';
   static const entregadoHoy = 'Entregado hoy';
   static const marcando = 'Marcando la entrega';
 

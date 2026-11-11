@@ -637,6 +637,39 @@ void main() {
       expect(filas.last.cantidad, 1);
     });
 
+    test(
+      'con todo lo pendiente devuelto, «Entregado hoy» no dice «ya estaba» y cierra la cita',
+      () async {
+        await vender();
+        await diferir();
+        await devolver();
+        await (db
+            .into(db.devoluciones)
+            .insert(
+              DevolucionesCompanion.insert(
+                id: 'dev-2',
+                ventaId: 'v-1',
+                productosDevueltos: DevolucionModel.productosAJson([
+                  const ProductoDevuelto(productoId: 'prod-1', ventaItemId: 'i-v-1-1', cantidad: 1),
+                ]),
+                fechaDevolucion: ahora,
+                createdAt: ahora,
+                updatedAt: ahora,
+              ),
+            ));
+
+        final hecho = await local.cumplir('v-1', ahora: sabado, idDeLaCita: 'c-x');
+
+        expect(hecho.todoDevuelto, isTrue);
+        expect(hecho.yaEstaba, isFalse);
+        expect(hecho.entregadas, isEmpty);
+        expect(hecho.citaCumplida, isTrue);
+        expect((await citas()).single.estado, 'CUMPLIDA');
+        // Las filas no se tocan: siguen pendientes, sin fecha de entrega.
+        expect((await entregas()).every((f) => f.pendiente && f.fechaEntrega == null), isTrue);
+      },
+    );
+
     test('marcar a mano una fila devuelta no la entrega: ya no había nada que entregar', () async {
       await vender();
       await diferir();

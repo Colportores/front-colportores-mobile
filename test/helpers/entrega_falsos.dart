@@ -110,6 +110,10 @@ class EntregasEnMemoria implements EntregaRepository {
   /// Si no es `null`, [registrarEntrega] se queda esperando.
   Completer<void>? compuerta;
 
+  /// Filas que [registrarEntrega] suma como pendientes a lo que recibe: así se prueba una entrega
+  /// parcial aunque la venta tenga una sola fila para tildar.
+  List<Entrega> pendientesAlRegistrar = const [];
+
   /// El color con que responde [registrarEntrega].
   ColorHouseStatus? colorDeLaCasa = ColorHouseStatus.cobranzaPendiente;
 
@@ -225,8 +229,9 @@ class EntregasEnMemoria implements EntregaRepository {
         EntregaRegistrada(entregas: existentes, colorDeLaCasa: colorDeLaCasa, yaEstaba: true),
       );
     }
-    guardadas[ventaId] = filas;
-    return Right(EntregaRegistrada(entregas: filas, colorDeLaCasa: colorDeLaCasa));
+    final todas = [...filas, ...pendientesAlRegistrar];
+    guardadas[ventaId] = todas;
+    return Right(EntregaRegistrada(entregas: todas, colorDeLaCasa: colorDeLaCasa));
   }
 
   @override

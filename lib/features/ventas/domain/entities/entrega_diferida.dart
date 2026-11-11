@@ -59,6 +59,7 @@ final class EntregaCumplida extends Equatable {
     this.direccion = '',
     this.colorDeLaCasa,
     this.yaEstaba = false,
+    this.todoDevuelto = false,
   });
 
   /// Todas las filas vivas de la venta, como quedaron.
@@ -86,6 +87,11 @@ final class EntregaCumplida extends Equatable {
   /// Lo pedido ya estaba entregado (un doble toque o un reintento): no se escribió nada de nuevo.
   final bool yaEstaba;
 
+  /// No quedaba nada por entregar porque lo pendiente se devolvió sin entregarse (decisión del 30/10,
+  /// «Devol. s/ent»): no se entregó nada, las filas siguen como estaban y la cita de la entrega se
+  /// cerró ([citaCumplida]) para que no quede programada para siempre.
+  final bool todoDevuelto;
+
   /// Quedó algo por entregar.
   bool get quedaPendiente => entregas.any((e) => e.pendiente);
 
@@ -103,5 +109,6 @@ final class EntregaCumplida extends Equatable {
     direccion,
     colorDeLaCasa,
     yaEstaba,
+    todoDevuelto,
   ];
 }
