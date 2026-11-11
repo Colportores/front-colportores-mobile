@@ -433,14 +433,29 @@ void main() {
       expect(nube.pedidos, isEmpty);
     });
 
-    test('el almacén seguro no se deja leer: no sube nada, no lanza y la DB queda cerrada', () async {
+    test('el almacén seguro no se deja leer: pide reintentar, no sube nada, no lanza y la DB queda '
+        'cerrada', () async {
       drive.almacen.alLeer = true;
 
       final desenlace = await unaNoche();
 
-      // Hoy la sesión ilegible cuenta como «sin sesión» y no se reintenta (ver la pregunta P1 del QA).
-      expect(desenlace, DesenlaceNocturno.terminado);
+      // «No pude leer el almacén» no es «sin sesión» (decisión del 04/11, QA P1 de #583; #691): un
+      // iPhone reiniciado y sin desbloquear vuelve a probar con la espera creciente del sistema, sin
+      // esperar a la noche siguiente.
+      expect(desenlace, DesenlaceNocturno.reintentar);
       expect(nube.pedidos, isEmpty);
+      expect(helper.abierta, isFalse);
+    });
+
+    test('el almacén vuelve a leerse en el reintento: esa vez sí respalda', () async {
+      drive.almacen.alLeer = true;
+      expect(await unaNoche(), DesenlaceNocturno.reintentar);
+
+      drive.almacen.alLeer = false;
+      final desenlace = await unaNoche();
+
+      expect(desenlace, DesenlaceNocturno.terminado);
+      expect(nube.archivos, isNotEmpty, reason: 'el reintento sube el respaldo');
       expect(helper.abierta, isFalse);
     });
   });
@@ -493,7 +508,8 @@ void main() {
       'la conexión de la noche espera el candado de la app en vez de fallar',
       skip:
           'QA #583: con busy_timeout=5000 la escritura de la noche igual falla en ~70 ms con '
-          '«database is locked» si la app tiene una escritura abierta',
+          '«database is locked» si la app tiene una escritura abierta (vigente: se volvió a '
+          'correr el 11/11 en #691 con --run-skipped y falló a los 74 ms, journal_mode=delete)',
       () async {
         final deLaApp = DatabaseHelper(
           directorio: () async => directorio,
