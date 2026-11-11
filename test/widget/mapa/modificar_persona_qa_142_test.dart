@@ -134,8 +134,9 @@ void main() {
         (_telefono412, 1.0),
         (_telefono412, 2.0),
       ]) {
-        // QA #142: con el aviso de error fijo abajo, al 200 % en 360×640 el formulario queda en una
-        // ventana de ~150 px y «No volver a mostrar» se mide como 260×13 (guía de toque).
+        // QA #142 (hallazgo 1, arreglado por la decisión P1 del 11/11): con el aviso de error fijo
+        // abajo, al 200 % en 360×640 el formulario quedaba en una ventana de ~150 px y «No volver a
+        // mostrar» se medía como 260×13 (guía de toque).
         final documentaHallazgo =
             estado == _Estado.errorAlGuardar && tamano == _telefono360 && escala == 2.0;
         testWidgets('${documentaHallazgo ? 'QA #142: ' : ''}${estado.rotulo} · '
@@ -151,14 +152,14 @@ void main() {
           await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
           await expectLater(tester, meetsGuideline(textContrastGuideline));
           handle.dispose();
-        }, skip: documentaHallazgo);
+        });
       }
     }
   });
 
   group('QA #483 · el error de guardado con el teclado abierto', () {
     for (final escala in [1.0, 2.0]) {
-      // QA #142: al 200 % el aviso fijo + el botón no entran sobre el teclado (RenderFlex overflowed).
+      // QA #142 (hallazgo 1): al 200 % el aviso fijo + el botón no entraban sobre el teclado.
       testWidgets(
         '${escala == 2.0 ? 'QA #142: ' : ''}360×640 · ${(escala * 100).toInt()} % · aviso rojo y '
         '«Reintentar» a la vista, sin overflow',
@@ -176,7 +177,6 @@ void main() {
           expect(boton.bottom, lessThanOrEqualTo(640 - 280 + 0.5), reason: 'sobre el teclado');
           expect(boton.top, greaterThanOrEqualTo(0));
         },
-        skip: escala == 2.0,
       );
     }
 
@@ -195,7 +195,7 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(_boton('Reintentar'), findsOneWidget);
-    }, skip: true);
+    });
   });
 
   group('QA #483 · lector de pantalla y foco', () {
@@ -451,9 +451,8 @@ void main() {
         expect(find.textContaining('Su espacio está dado de baja'), findsNothing);
         expect(_boton('Reintentar'), findsNothing);
       },
-      // skip: QA #142: al guardar una persona dada de baja el aviso dice «Su espacio está dado de
-      // baja» (causa equivocada) y deja «Reintentar», que repite el error.
-      skip: true,
+      // QA #142 (hallazgo 2): el aviso decía «Su espacio está dado de baja» (causa equivocada) y
+      // dejaba «Reintentar», que repetía el error. Ahora se relee a la persona.
     );
   });
 }
