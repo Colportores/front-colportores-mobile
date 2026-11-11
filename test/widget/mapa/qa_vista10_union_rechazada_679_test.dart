@@ -23,9 +23,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/duplicados_falsos.dart';
 import '../../helpers/qa_vista10_arnes.dart';
 
-/// `--dart-define=QA_HALLAZGOS=true` corre también los tests de los hallazgos (los que llevan `skip`).
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 const _parItalia = 'ub-a|ub-b';
 const _parArtigas = 'ub-c|ub-d';
 
@@ -260,7 +257,6 @@ void main() {
         await tester.pumpWidget(const SizedBox());
         await tester.pump(const Duration(seconds: 10));
       },
-      skip: !_verHallazgos, // QA #679: el aviso que aparece con la vista abierta no es región viva
     );
   });
 
