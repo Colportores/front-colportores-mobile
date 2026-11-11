@@ -118,7 +118,10 @@ void main() {
       await tester.tap(find.byKey(const Key('login_enviar')));
       await tester.pumpAndSettle();
 
-      expect(find.text('El email no es válido'), findsOneWidget);
+      expect(
+        find.text('El email no es válido. Revisá que esté completo, como nombre@correo.com.'),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('login_error_general')), findsNothing);
     });
 
