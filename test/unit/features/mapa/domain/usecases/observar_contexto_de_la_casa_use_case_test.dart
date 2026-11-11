@@ -261,6 +261,25 @@ void main() {
     expect(emitidos.single.personas, isEmpty);
   });
 
+  test('una casa con más de un espacio activo no elige ninguno: es como un edificio sin depto '
+      '(P1 de 452-qa-261111-1635)', () async {
+    final otro = Espacio(
+      id: 'esp-2',
+      ubicacionId: 'ub-1',
+      numeroDepto: null,
+      piso: null,
+      auditoria: auditoriaPersonas(),
+    );
+    espacios.respuesta = Right([espacio, otro]);
+    final (emitidos, _) = await escuchar(TipoUbicacion.casa);
+    notas.controlador.add(null);
+    await pumpEventQueue();
+
+    expect(emitidos.single.espacioId, isNull);
+    expect(emitidos.single.personas, isEmpty);
+    expect(personas.controladores, isEmpty);
+  });
+
   test('un saldo que no se puede leer no frena nada: la persona queda sin saldo', () async {
     saldos.falla = StateError('sin ventas');
     final (emitidos, errores) = await escuchar(TipoUbicacion.casa);

@@ -84,6 +84,9 @@ final class _Montaje {
   Stream<Map<String, ResumenDelDepto>> Function() resumen = () => Stream.value(_resumenDelCanvas);
 
   final atras = ValueNotifier<VoidCallback?>(null);
+
+  /// Si es `true`, el contexto de un depto no se puede leer.
+  var contextoDelDeptoFalla = false;
 }
 
 Future<_Montaje> _montar(
@@ -127,6 +130,9 @@ Future<_Montaje> _montar(
         contextoDeLaCasaProvider.overrideWith((ref, clave) {
           m.lecturas.add(clave);
           final espacioId = clave.espacioId;
+          if (m.contextoDelDeptoFalla && espacioId != null) {
+            return Stream<ContextoDeLaCasa>.error(const FailureDatosLocalesIlegibles());
+          }
           return Stream.value(
             espacioId == null
                 ? const ContextoDeLaCasa()
@@ -673,6 +679,88 @@ void main() {
       await _montar(tester);
 
       expect(tester.getSize(_fila(_d1A)).height, greaterThanOrEqualTo(54));
+    });
+  });
+
+  group('casa con más de un espacio activo (P1 de 452-qa-261111-1635)', () {
+    testWidgets('se muestra como un edificio (C·09), sin «+ Agregar depto», y cada espacio se abre '
+        'como una casa', (tester) async {
+      final m = await _montar(
+        tester,
+        tipo: TipoUbicacion.casa,
+        espacios: [espacioDe('e-a', 'A', orden: 1), espacioDe('e-b', 'B', orden: 2)],
+      );
+
+      expect(find.byKey(ClavesDeptosDeLaCasa.fila('e-a')), findsOneWidget);
+      expect(find.byKey(ClavesDeptosDeLaCasa.fila('e-b')), findsOneWidget);
+      expect(_registrar, findsNothing);
+      expect(_agregar, findsNothing);
+      // La hoja no tomó un espacio por el colportor.
+      expect(m.lecturas.where((c) => c.espacioId != null), isEmpty);
+
+      await tester.tap(find.byKey(ClavesDeptosDeLaCasa.fila('e-b')));
+      await _asentar(tester);
+      await tester.tap(_registrar);
+      await _asentar(tester);
+      expect(m.visitas.single.espacioId, 'e-b');
+
+      await tester.tap(_volver);
+      await _asentar(tester);
+      expect(find.byKey(ClavesDeptosDeLaCasa.fila('e-a')), findsOneWidget);
+    });
+
+    testWidgets('con un solo espacio sigue siendo la hoja de una casa', (tester) async {
+      await _montar(tester, tipo: TipoUbicacion.casa, espacios: [espacioDe('e-a', null, orden: 1)]);
+
+      expect(find.byKey(ClavesDeptosDeLaCasa.fila('e-a')), findsNothing);
+      expect(_registrar, findsOneWidget);
+    });
+  });
+
+  group('los avisos dicen el lugar (P2 de 452-qa-261111-1635)', () {
+    test('textos: casa como el canvas; edificio, negocio y depto con su nombre', () {
+      expect(
+        TextosEstadosHojaCasa.dadaDeBajaDe(TipoUbicacion.casa),
+        TextosEstadosHojaCasa.dadaDeBaja,
+      );
+      expect(
+        TextosEstadosHojaCasa.dadaDeBajaDe(TipoUbicacion.edificio),
+        'Este edificio está dado de baja: podés ver lo que pasó, pero no registrar nada.',
+      );
+      expect(
+        TextosEstadosHojaCasa.dadaDeBajaDe(TipoUbicacion.negocio),
+        'Este negocio está dado de baja: podés ver lo que pasó, pero no registrar nada.',
+      );
+      expect(
+        TextosEstadosHojaCasa.errorAlLeerDe(TextosEstadosHojaCasa.esteLugar(TipoUbicacion.casa)),
+        TextosEstadosHojaCasa.errorAlLeer,
+      );
+      expect(
+        TextosEstadosHojaCasa.errorAlLeerDe(TextosEstadosHojaCasa.esteDepto),
+        'No pudimos leer este depto en tu teléfono.',
+      );
+    });
+
+    testWidgets('el edificio dado de baja dice «Este edificio», también en su depto', (
+      tester,
+    ) async {
+      await _montar(tester, baja: _ahora.subtract(const Duration(days: 2)));
+      final texto = TextosEstadosHojaCasa.dadaDeBajaDe(TipoUbicacion.edificio);
+      expect(find.text(texto), findsOneWidget);
+      expect(find.text(TextosEstadosHojaCasa.dadaDeBaja), findsNothing);
+
+      await tester.tap(_fila(_d3B));
+      await _asentar(tester);
+      expect(find.text(texto), findsOneWidget);
+    });
+
+    testWidgets('el depto que no se puede leer dice «este depto»', (tester) async {
+      await _montar(tester, antes: (m) => m.contextoDelDeptoFalla = true);
+      await tester.tap(_fila(_d3B));
+      await _asentar(tester);
+
+      expect(find.text('No pudimos leer este depto en tu teléfono.'), findsOneWidget);
+      expect(find.text(TextosEstadosHojaCasa.errorAlLeer), findsNothing);
     });
   });
 

@@ -16,7 +16,9 @@ import '../services/saldos_de_personas.dart';
 /// espacio, las personas, lo que debe cada una, cuándo fue su última entrevista y la nota más
 /// reciente.
 ///
-/// - Una casa tiene un solo espacio (el que crea el alta): ese es el contexto. Un **edificio** no: el
+/// - Una casa tiene un solo espacio (el que crea el alta): ese es el contexto. Si tiene más de uno
+///   activo (un pull que llegó antes de que la unión la pasara a edificio) no se elige ninguno: es como
+///   un edificio sin depto elegido. Un **edificio** no: el
 ///   contexto es siempre el depto (39, «Reglas comunes») y sin uno elegido no hay espacio ni personas.
 ///   Un **negocio** es como un edificio en toda la app (decisión de Cristian, 09/11, «Negocio mapa»):
 ///   también elige su espacio (C·09) aunque tenga uno solo.
@@ -168,7 +170,9 @@ final class ObservarContextoDeLaCasaUseCase {
         if (elegido == null && tipo == TipoUbicacion.casa) {
           final lectura = await _espacios.listar(ubicacionId);
           final lista = lectura.fold<List<Espacio>>((falla) => throw falla, (todos) => todos);
-          if (lista.isNotEmpty) elegido = lista.first.id;
+          // Más de un espacio activo: la hoja la muestra como un edificio y el contexto es el depto que
+          // se elija; no se toma uno por el colportor (P1 de `452-qa-261111-1635`).
+          if (lista.length == 1) elegido = lista.single.id;
         }
         if (cancelado) return;
         final id = elegido;

@@ -190,11 +190,18 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
     super.dispose();
   }
 
-  /// Un edificio o un negocio: la hoja muestra sus deptos y cada depto es como una casa.
+  /// Un edificio o un negocio: la hoja muestra sus deptos y cada depto es como una casa. Una casa con
+  /// más de un espacio activo (un pull que llegó antes de que la unión la pasara a edificio) también:
+  /// la app no elige por el colportor (P1 de `452-qa-261111-1635`, regla del 25/10 en #452). No cambia
+  /// nada de lo guardado.
   bool get _conDeptos => switch (widget.item.ubicacion.tipo) {
     TipoUbicacion.edificio || TipoUbicacion.negocio => true,
-    TipoUbicacion.casa => false,
+    TipoUbicacion.casa => _casaConVariosEspacios,
   };
+
+  /// La casa tiene más de un espacio activo (mientras no se sabe, no).
+  bool get _casaConVariosEspacios =>
+      (ref.watch(espaciosDeUbicacionProvider(widget.item.ubicacion.id)).value?.length ?? 0) > 1;
 
   /// En qué paso está la lista de deptos.
   PasoDeptos get _paso {
@@ -395,6 +402,9 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
             ),
       error: (_, _) => AvisoHojaCasa.errorAlLeer(
         alReintentar: () => ref.invalidate(contextoDeLaCasaProvider(clave)),
+        lugar: depto != null
+            ? TextosEstadosHojaCasa.esteDepto
+            : TextosEstadosHojaCasa.esteLugar(ubicacion.tipo),
       ),
       loading: () => const CargandoHojaCasa(),
     );
@@ -451,7 +461,8 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
         mainAxisSize: MainAxisSize.min,
         spacing: 10,
         children: [
-          if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: widget.alReactivar),
+          if (item.esBaja)
+            AvisoHojaCasa.dadaDeBaja(alReactivar: widget.alReactivar, tipo: ubicacion.tipo),
           if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
           if (_falla != null)
             AvisoAlta(key: _claveFalla, color: ColoresAlta.rojo, glyph: '!', texto: _falla!),
@@ -532,6 +543,9 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
   VoidCallback? _agregarDepto() {
     final colportorId = widget.colportorId;
     if (colportorId == null || widget.item.esBaja) return null;
+    // Una casa con varios espacios se muestra como un edificio, pero no se le suman deptos: eso cambiaría
+    // lo guardado (P1 de `452-qa-261111-1635`).
+    if (widget.item.ubicacion.tipo == TipoUbicacion.casa) return null;
     return () => _correr(() async {
       if (frenaPorCuentaRestringida(context, ref)) return;
       final ubicacionId = widget.item.ubicacion.id;
@@ -917,7 +931,8 @@ class _Resumen extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: 10,
       children: [
-        if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar),
+        if (item.esBaja)
+          AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar, tipo: item.ubicacion.tipo),
         if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
         if (colportorId != null && !item.esBaja)
           AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
@@ -1031,7 +1046,8 @@ class _Arriba extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: 10,
       children: [
-        if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar),
+        if (item.esBaja)
+          AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar, tipo: item.ubicacion.tipo),
         if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
         if (colportorId != null && !item.esBaja)
           AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
@@ -1137,7 +1153,8 @@ class _ResumenDelDepto extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: 10,
       children: [
-        if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar),
+        if (item.esBaja)
+          AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar, tipo: item.ubicacion.tipo),
         if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
         if (colportorId != null && !item.esBaja)
           AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
