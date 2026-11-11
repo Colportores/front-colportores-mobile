@@ -51,7 +51,8 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     with _$UbicacionLocalDataSourceDriftMixin
     implements UbicacionLocalDataSource, EspacioLocalDataSource {
   /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10). El trabajo
-  /// «marcar como duplicado» entra por [_marcarDuplicado]: sin motor de sync (#178), falla.
+  /// «marcar como duplicado» entra por [_marcarDuplicado] (en la app, `EncoladorMarcarDuplicadoMotor`);
+  /// sin motor de sync, falla.
   /// [estadoDeLasCasas] recalcula el color de las dos casas al unirlas (R-UB08); sin él se usa el
   /// de siempre (`HouseStatusUpdaterDrift`, con este mismo encolador).
   UbicacionLocalDataSourceDrift(

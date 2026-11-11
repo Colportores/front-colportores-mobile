@@ -160,6 +160,26 @@ void main() {
       expect(b.alta.gps, EstadoGps.conLectura);
     });
 
+    // #679: el diálogo del permiso pausa y reanuda la app; ese regreso no es el de los ajustes.
+    test(
+      'la app vuelve al frente con «Activar GPS» en curso: no lee ni pide el permiso encimado',
+      () async {
+        final gps = GpsFalso(_sinPermiso())..bloqueoActivacion = Completer<void>();
+        final b = _Banco(gps: gps);
+        await b.ubicacion.alAbrirPestana();
+        await _esperar();
+
+        final activando = b.ubicacion.activarGps();
+        await _esperar();
+        await b.ubicacion.reintentarGpsSiHaceFalta();
+        expect(gps.lecturas, 1, reason: 'el diálogo sigue abierto: nada encimado');
+
+        gps.bloqueoActivacion!.complete();
+        await activando;
+        expect(gps.lecturas, 2, reason: 'la lectura de «Activar GPS», una sola');
+      },
+    );
+
     test('«Activar GPS» tocado dos veces seguidas abre un solo diálogo', () async {
       final gps = GpsFalso(_sinPermiso());
       final b = _Banco(gps: gps);

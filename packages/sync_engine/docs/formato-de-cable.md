@@ -73,8 +73,13 @@ de cerrar la sesión de uno perdido sin cerrar todas.
 } }
 ```
 
-`op` es `insert` | `update` | `delete`. `sync_version` es `null` en los insert y
-la versión esperada en los demás (§5.4).
+`op` es `insert` | `update` | `delete` | `marcar_como_duplicado`. `sync_version`
+es `null` en los insert y la versión esperada en los `update` y `delete` (§5.4).
+
+`marcar_como_duplicado` es la unión de duplicados (contrato §6.2): `entity` es
+`ubicacion`, el `payload` es `{"duplicada_id", "conservada_id"}` y el job **no
+lleva** `sync_version`. `accepted` y `duplicate` traen la `sync_version` de la
+duplicada, que el motor le devuelve a esa fila.
 
 Topes: **500 jobs y 1 MB** por lote. El MB se mide sobre `jobs` como texto de
 `jsonb`, que pone un espacio después de cada `:` y cada `,`, así que pesa un poco

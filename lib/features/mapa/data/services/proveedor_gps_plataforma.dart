@@ -27,6 +27,18 @@ final class ProveedorGpsPlataforma implements ProveedorGps, SeguidorGps, Activad
 
   final AppLogger _log;
 
+  /// El último pedido del permiso contestó «negado para siempre». En Android, mirar el permiso
+  /// nunca lo dice (siempre da `denegado`): sin recordarlo, cada lectura lo volvería a pedir, el
+  /// sistema contestaría sin mostrar nada y, con «Activar GPS» recién tocado, la app taparía los
+  /// ajustes que se acababan de abrir (#679). Lo borra un permiso concedido o un pedido nuevo.
+  var _negadoParaSiempre = false;
+
+  Future<PermisoUbicacion> _pedirPermiso() async {
+    final permiso = await _plataforma.pedirPermiso();
+    _negadoParaSiempre = permiso == PermisoUbicacion.denegadoParaSiempre;
+    return permiso;
+  }
+
   @override
   Future<Either<Failure, LecturaGps>> posicionActual() async {
     try {
@@ -34,7 +46,10 @@ final class ProveedorGpsPlataforma implements ProveedorGps, SeguidorGps, Activad
         return const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.servicioApagado));
       }
       var permiso = await _plataforma.permiso();
-      if (permiso == PermisoUbicacion.denegado) permiso = await _plataforma.pedirPermiso();
+      if (permiso == PermisoUbicacion.concedido) _negadoParaSiempre = false;
+      if (permiso == PermisoUbicacion.denegado && !_negadoParaSiempre) {
+        permiso = await _pedirPermiso();
+      }
       if (permiso != PermisoUbicacion.concedido) {
         return const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.permisoDenegado));
       }
@@ -80,8 +95,10 @@ final class ProveedorGpsPlataforma implements ProveedorGps, SeguidorGps, Activad
         case MotivoSinGps.servicioApagado:
           await _plataforma.abrirAjustesUbicacion();
         case MotivoSinGps.permisoDenegado:
+          // «Activar GPS» es un toque explícito: pregunta de nuevo aunque la última respuesta haya
+          // sido «para siempre» (el colportor pudo cambiarlo a «preguntar cada vez»).
           var permiso = await _plataforma.permiso();
-          if (permiso == PermisoUbicacion.denegado) permiso = await _plataforma.pedirPermiso();
+          if (permiso == PermisoUbicacion.denegado) permiso = await _pedirPermiso();
           if (permiso == PermisoUbicacion.denegadoParaSiempre) {
             await _plataforma.abrirAjustesApp();
           }

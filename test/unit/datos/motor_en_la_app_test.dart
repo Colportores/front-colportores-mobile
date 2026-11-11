@@ -2,10 +2,14 @@
 // app escriben en la DB Drift y encolan por `EncoladorSyncMotor`, el motor sube por un servidor
 // falso que compara `sync_version` como el de verdad (§5.4), y lo que vuelve entra por
 // `DriftLocalStore`.
+import 'dart:convert';
+
 import 'package:colportores_mobile/catalogo.dart';
 import 'package:colportores_mobile/core/database/app_database.dart';
+import 'package:colportores_mobile/core/sync/sync_providers.dart' show motorSyncProvider;
 import 'package:colportores_mobile/datos/drift_job_store.dart';
 import 'package:colportores_mobile/datos/drift_local_store.dart';
+import 'package:colportores_mobile/datos/encolador_marcar_duplicado_motor.dart';
 import 'package:colportores_mobile/datos/encolador_sync_motor.dart';
 import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source_drift.dart';
@@ -13,9 +17,12 @@ import 'package:colportores_mobile/features/jornada/data/models/jornada_model.da
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
+import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_engine/sync_engine.dart';
 import 'package:sync_engine/testing.dart';
@@ -120,6 +127,81 @@ void main() {
 
     expect((await cola()).pending, 2, reason: 'solo los dos jobs del alta que sí se guardó');
     expect(await ubicaciones.obtener('ub-2'), isNull);
+  });
+
+  group('unir duplicados (HU-UBI-006, contrato §6.2, #679)', () {
+    const b = 'ub-0000000000000000000000000002';
+
+    UbicacionLocalDataSourceDrift conElTrabajo() => UbicacionLocalDataSourceDrift(
+      db,
+      encolador: EncoladorSyncMotor(motor),
+      marcarDuplicado: EncoladorMarcarDuplicadoMotor(motor),
+    );
+
+    Future<List<SyncQueueFila>> trabajosDeUnion() =>
+        (db.select(db.syncQueue)..where((q) => q.op.equals('marcar_como_duplicado'))).get();
+
+    test('la unión encola el trabajo en su transacción, sin versión, y sube: B queda de baja en el '
+        'servidor y su versión vuelve al teléfono', () async {
+      final ubicaciones = conElTrabajo();
+      await ubicaciones.insertar(_ubicacion);
+      await ubicaciones.insertar(
+        UbicacionModel.fromJson({..._ubicacion.toJson(), 'id': b, 'numero': '1236'}),
+      );
+      await motor.syncNow();
+
+      final union = await ubicaciones.unirDuplicada(_ubi, b, ahora: DateTime.utc(2026, 10, 16, 13));
+
+      expect(union.escribio, isTrue);
+      final [trabajo] = await trabajosDeUnion();
+      expect(trabajo.state, 'PENDING');
+      expect(trabajo.entity, 'ubicacion');
+      expect(trabajo.rowPk, b);
+      expect(trabajo.syncVersion, isNull);
+      expect(jsonDecode(trabajo.payload), {'duplicada_id': b, 'conservada_id': _ubi});
+
+      final resultado = await motor.syncNow();
+
+      expect(resultado.ok, isTrue);
+      expect(resultado.invalidated, 0);
+      expect(servidor.rowsOf('ubicacion').map((f) => f['id']), [_ubi]);
+      expect((await trabajosDeUnion()).single.state, 'DONE');
+      final local = (await ubicaciones.obtener(b))!;
+      expect(local.auditoria.estaBorrada, isTrue);
+      expect(local.auditoria.syncVersion, 2, reason: 'la del alta (1) y la de la unión (2)');
+    });
+
+    test('si la unión se revierte, su trabajo también', () async {
+      final ubicaciones = conElTrabajo();
+      await ubicaciones.insertar(_ubicacion);
+      await ubicaciones.insertar(
+        UbicacionModel.fromJson({..._ubicacion.toJson(), 'id': b, 'numero': '1236'}),
+      );
+
+      await expectLater(
+        db.transaction(() async {
+          await ubicaciones.unirDuplicada(_ubi, b, ahora: DateTime.utc(2026, 10, 16, 13));
+          throw StateError('algo falló después de unir');
+        }),
+        throwsStateError,
+      );
+
+      expect(await trabajosDeUnion(), isEmpty);
+      expect((await ubicaciones.obtener(b))!.auditoria.estaBorrada, isFalse);
+    });
+
+    test('el provider usa el motor cuando hay uno, y sin motor el que falla', () {
+      final conMotor = ProviderContainer(overrides: [motorSyncProvider.overrideWithValue(motor)]);
+      addTearDown(conMotor.dispose);
+      final sinMotor = ProviderContainer(overrides: [motorSyncProvider.overrideWithValue(null)]);
+      addTearDown(sinMotor.dispose);
+
+      expect(conMotor.read(encoladorMarcarDuplicadoProvider), isA<EncoladorMarcarDuplicadoMotor>());
+      expect(
+        sinMotor.read(encoladorMarcarDuplicadoProvider),
+        isA<EncoladorMarcarDuplicadoSinMotor>(),
+      );
+    });
   });
 
   test('modificar dos veces una ubicación que ya subió no choca con su propia versión', () async {

@@ -72,7 +72,7 @@ final class CuotasLocalDataSourceDrift {
   /// El plan de [ventaId] cada vez que cambia la venta, sus cobros, sus citas o lo que se vendió.
   Stream<PlanDeCuotas?> observarPlan(String ventaId) => _db
       .customSelect(
-        'SELECT 1',
+        'SELECT 1 AS cambio_de_las_cuotas',
         readsFrom: {
           _db.ventas,
           _db.cobranzas,

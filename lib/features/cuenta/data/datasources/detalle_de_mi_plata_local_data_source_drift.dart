@@ -42,7 +42,7 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
 
   /// El detalle del colportor [colportorId], de nuevo cada vez que cambia algo que lo afecta.
   Stream<DetalleDeMiPlata> observar(String colportorId) => _db
-      .customSelect('SELECT 1', readsFrom: _tablas)
+      .customSelect('SELECT 1 AS cambio_de_mi_plata', readsFrom: _tablas)
       .watch()
       .asyncMap((_) => leer(colportorId))
       .distinct();

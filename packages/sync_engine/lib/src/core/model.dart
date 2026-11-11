@@ -5,7 +5,40 @@
 // lib/src/adapters/ (R-A1).
 
 /// Qué le pasó a una fila en la DB local (§3, `engine.stage`).
-enum Op { insert, update, delete }
+///
+/// [wireName] es como viaja en el cable (`op` del job, §6.1) y como se guarda
+/// en la cola persistida.
+enum Op {
+  insert('insert'),
+  update('update'),
+  delete('delete'),
+
+  /// La unión de duplicados (§6.2, HU-UBI-006): **no es un upsert** sino un
+  /// trabajo que el servidor aplica como `marcar_como_duplicado(B, A)`. Su
+  /// payload es `{duplicada_id, conservada_id}`, sin la fila; no espera
+  /// `sync_version` y no se funde con otras escrituras (`SyncEngine.stage`).
+  /// Su `rowPk` es la duplicada (B): la `sync_version` que devuelven
+  /// `accepted` y `duplicate` es la de B.
+  marcarComoDuplicado('marcar_como_duplicado');
+
+  const Op(this.wireName);
+
+  /// El nombre en el cable (§6.1, §6.2).
+  final String wireName;
+
+  /// Si el job viaja con la `sync_version` esperada de la fila (§5.4): un
+  /// `update` o un `delete`. Un alta no tiene versión previa, y la unión de
+  /// duplicados no compara versiones (§6.2).
+  bool get esperaVersion => this == Op.update || this == Op.delete;
+
+  /// El [Op] de un [wireName]. Lanza [FormatException] si no es ninguno.
+  static Op fromWireName(String valor) {
+    for (final op in Op.values) {
+      if (op.wireName == valor) return op;
+    }
+    throw FormatException('op inválida: $valor');
+  }
+}
 
 /// Estados de un job en `sync_queue` (§5.1). **Sin retry counter**: un error
 /// transitorio deja el job en [pending] y se reintenta indefinidamente al
@@ -66,7 +99,8 @@ class SyncJob {
   /// Lo que devolvió `toSyncJson()`. Incluye la PK.
   final Map<String, Object?> payload;
 
-  /// Versión esperada de la fila (§5.4). `null` en [Op.insert].
+  /// Versión esperada de la fila (§5.4). `null` en [Op.insert] y en
+  /// [Op.marcarComoDuplicado].
   /// Si el servidor tiene una más nueva: 409 → LWW.
   final int? syncVersion;
 

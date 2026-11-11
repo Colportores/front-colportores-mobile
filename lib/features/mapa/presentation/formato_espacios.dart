@@ -89,8 +89,9 @@ abstract final class TextosEspacios {
   static String _deLaLista(Espacio espacio) =>
       espacio.sinNumero ? 'este depto sin número' : 'el ${depto(espacio).toLowerCase()}';
 
-  /// Lo que dice el lector de pantalla de una fila de la lista.
-  static String filaSemantica(Espacio espacio) => '${depto(espacio)}. Editar.';
+  /// Lo que dice el lector de pantalla de una fila de la lista (un botón: abre la ficha del depto,
+  /// 11·04; la edición está en su «Editar», #679).
+  static String filaSemantica(Espacio espacio) => '${depto(espacio)}.';
 
   // Los dados de baja y «Reactivar» (#473, seguimiento de #211). Siguen los textos de la vista 09·03 y
   // 09·04 («Reactivar», «… reactivada. Vuelve a aparecer en el mapa.», «Deshacer»), dichos para un

@@ -6,6 +6,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/mapa/presentation/pages/personas_del_espacio_page.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_depto.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_ubicacion.dart';
 import 'package:flutter/material.dart';
@@ -429,9 +430,8 @@ void main() {
       expect(avisoRepetido, findsNothing);
     });
 
-    testWidgets('«Ver depto 102 ›» cierra la hoja y deja a la vista y señalado ese depto', (
-      tester,
-    ) async {
+    testWidgets('«Ver depto 102 ›» cierra la hoja, abre la ficha de ese depto (11·04, #679) y, al '
+        'volver, lo deja a la vista y señalado', (tester) async {
       final m = await montarHoja(tester, espacios: _delCanvas, tamano: const Size(390, 1400));
       await abrirAltaDepto(tester);
       await escribir(tester, campoNumero, '102');
@@ -442,6 +442,10 @@ void main() {
       await asentarHoja(tester);
 
       expect(hojaDepto, findsNothing);
+      expect(fichaDepto, findsOneWidget);
+      expect(tester.widget<PersonasDelEspacioPage>(fichaDepto).espacioId, 'e-102');
+      await volverDeLaFicha(tester);
+
       expect(hojaUbicacion, findsOneWidget);
       expect(m.repo.espacios, hasLength(3));
       final fila = tester.widget<Material>(
@@ -467,6 +471,9 @@ void main() {
       await asentarHoja(tester);
 
       await tester.tap(enlaceVerRepetido);
+      await asentarHoja(tester);
+      expect(tester.widget<PersonasDelEspacioPage>(fichaDepto).espacioId, 'e-190');
+      await tester.tap(find.byTooltip('Volver'));
       await asentarHoja(tester, 30);
 
       expect(filaDepto('e-190'), findsOneWidget);
@@ -716,6 +723,8 @@ void main() {
       await asentarHoja(tester);
 
       expect(hojaDepto, findsNothing);
+      // Guardar vuelve a la ficha del depto (#679); la lista está en la hoja, al volver.
+      await volverDeLaFicha(tester);
       final guardado = m.repo.espacios.firstWhere((e) => e.id == 'e-102');
       expect(guardado.numeroDepto, '302');
       expect(guardado.piso, '3');
@@ -822,15 +831,42 @@ void main() {
       expect(m.repo.espacios.firstWhere((e) => e.id == 'e-102').numeroDepto, '150');
     });
 
-    testWidgets('doble toque en una fila: la hoja de edición se abre una sola vez', (tester) async {
+    testWidgets('doble toque en una fila: la ficha del depto se abre una sola vez (#679)', (
+      tester,
+    ) async {
       await montarHoja(tester, espacios: _delCanvas);
 
       await tester.tap(filaDepto('e-101'));
       await tester.tap(filaDepto('e-102'), warnIfMissed: false);
       await asentarHoja(tester);
 
+      expect(fichaDepto, findsOneWidget);
+      expect(tester.widget<PersonasDelEspacioPage>(fichaDepto).espacioId, 'e-101');
+      await tester.tap(botonEditarDepto);
+      await asentarHoja(tester);
       expect(hojaDepto, findsOneWidget);
       expect(textoDe(tester, campoNumero), '101');
+    });
+
+    testWidgets('doble toque en «Editar» de la ficha: la edición se abre una sola vez (#679)', (
+      tester,
+    ) async {
+      await montarHoja(tester, espacios: _delCanvas);
+      await abrirFichaDepto(tester, 'e-101');
+
+      await tester.tap(botonEditarDepto);
+      await tester.tap(botonEditarDepto, warnIfMissed: false);
+      await asentarHoja(tester);
+
+      expect(hojaDepto, findsOneWidget);
+      Navigator.of(tester.element(hojaDepto)).pop();
+      await asentarHoja(tester);
+      expect(hojaDepto, findsNothing);
+      expect(fichaDepto, findsOneWidget, reason: 'cerrar la edición vuelve a la ficha');
+      // Nada quedó trabado: «Editar» vuelve a abrir la edición.
+      await tester.tap(botonEditarDepto);
+      await asentarHoja(tester);
+      expect(hojaDepto, findsOneWidget);
     });
   });
 

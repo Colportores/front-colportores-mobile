@@ -289,6 +289,14 @@ class SyncEngine {
   ///
   /// Lanza [LocalOnlyViolationError] si [entity] es `local`, y
   /// [UnregisteredEntityError] si no tiene `SyncSpec`.
+  ///
+  /// [Op.marcarComoDuplicado] (la unión de duplicados, §6.2) lleva como
+  /// payload `{duplicada_id, conservada_id}` y no la fila: se encola siempre
+  /// aparte, detrás de lo que ya esperaba (las altas de A y de B incluidas), sin
+  /// versión esperada y sin fundirse con otra escritura ni absorber una en
+  /// espera. Su `rowPk` es la duplicada, para que la `sync_version` de B que
+  /// devuelve el servidor vuelva a la fila. Sin los dos ids lanza
+  /// [ArgumentError].
   Future<String> stage(
     String entity,
     Op op,
@@ -302,6 +310,16 @@ class SyncEngine {
     // guardar la venta que guardarla y no subirla nunca.
     _verificarVivo();
     _specs.assertStageable(entity);
+    final union = op == Op.marcarComoDuplicado;
+    if (union &&
+        (payload['duplicada_id'] is! String ||
+            payload['conservada_id'] is! String)) {
+      throw ArgumentError.value(
+        payload,
+        'payload',
+        'marcar_como_duplicado necesita duplicada_id y conservada_id',
+      );
+    }
 
     final ahora = _clock();
     final job = SyncJob(
@@ -309,14 +327,20 @@ class SyncEngine {
       entity: entity,
       op: op,
       payload: payload,
-      syncVersion: syncVersion,
+      syncVersion: union ? null : syncVersion,
       createdAt: ahora,
-      rowPk: payload[_specs.of(entity).pk]?.toString(),
+      rowPk: (union ? payload['duplicada_id'] : payload[_specs.of(entity).pk])
+          ?.toString(),
     );
+
+    // §6.2: la unión no es una escritura de la fila, así que no reemplaza ni
+    // se funde con nada. Lo que nombra (A y B) ya está antes en la cola; si
+    // alguna espera, `_sinLoQueEspera` la retiene detrás al mandar.
+    final seFunde = op != Op.insert && !union;
 
     // §2.2: si la fila tiene una escritura en espera, esta la reemplaza en vez
     // de encolarse aparte. Es como la app resuelve un conflicto (vista 10).
-    final absorbido = op == Op.insert ? null : await _absorber(job);
+    final absorbido = seFunde ? await _absorber(job) : null;
     if (absorbido != null) {
       await _emit();
       // Resolver un conflicto es lo que la colportora estaba esperando para
@@ -325,7 +349,7 @@ class SyncEngine {
       return absorbido;
     }
 
-    final fundido = op == Op.insert ? null : await _fundirEnPendiente(job);
+    final fundido = seFunde ? await _fundirEnPendiente(job) : null;
     if (fundido != null) {
       await _emit();
       if (_specs.of(entity).critical) _programarCritico();
@@ -370,9 +394,15 @@ class SyncEngine {
     // Todas las escrituras en espera de esta fila, de la más vieja a la más
     // nueva: un update que se mandó antes de que el alta chocara también quedó
     // esperándola, y fundirlo después de esta escritura la pisaría.
+    // La unión de duplicados (§6.2) no es una escritura de B: no se reemplaza
+    // ni se descarta con ella. Si espera porque nombra a B, vuelve a la cola
+    // con lo que cuelga de B.
     final deLaFila = [
       for (final q in enEspera)
-        if (q.job.entity == job.entity && pkDe(_specs, q.job) == pk) q,
+        if (q.job.entity == job.entity &&
+            q.job.op != Op.marcarComoDuplicado &&
+            pkDe(_specs, q.job) == pk)
+          q,
     ];
     if (deLaFila.isEmpty) return null;
 
@@ -430,7 +460,11 @@ class SyncEngine {
     final sinMandar = await _jobs.unsentFor(job.entity, pk);
     if (sinMandar.isEmpty) return null;
     final destino = sinMandar.last;
-    if (destino.state != JobState.pending || destino.job.op == Op.delete) {
+    // Tampoco en una unión de duplicados (§6.2): su payload no es la fila, y lo
+    // que se escribe de B después de unirla sale después.
+    if (destino.state != JobState.pending ||
+        destino.job.op == Op.delete ||
+        destino.job.op == Op.marcarComoDuplicado) {
       return null;
     }
     final fundido = {...destino.job.payload, ...job.payload};
@@ -610,7 +644,7 @@ class SyncEngine {
       adaptador.toSyncJson(row),
       clientOpId: clientOpId,
       // En un insert no hay versión previa que esperar (§5.4).
-      syncVersion: op == Op.insert ? null : adaptador.syncVersionOf(row),
+      syncVersion: op.esperaVersion ? adaptador.syncVersionOf(row) : null,
     );
   }
 
@@ -1481,7 +1515,7 @@ class SyncEngine {
 
   /// [lote] con la `sync_version` que el servidor devolvió en este mismo
   /// ciclo para cada fila que ya viajó (ver `versionVista` en
-  /// [_pushPending]). Las altas no esperan versión.
+  /// [_pushPending]). Las altas y la unión de duplicados no esperan versión.
   PushBatch _conVersionVista(
     PushBatch lote,
     Map<(String, String), int> versionVista,
@@ -1492,7 +1526,7 @@ class SyncEngine {
     for (final job in lote.jobs) {
       final pk = job.rowPk;
       final vista = pk == null ? null : versionVista[(job.entity, pk)];
-      if (job.op == Op.insert || vista == null || vista == job.syncVersion) {
+      if (!job.op.esperaVersion || vista == null || vista == job.syncVersion) {
         jobs.add(job);
       } else {
         jobs.add(job.copyWith(syncVersion: vista));

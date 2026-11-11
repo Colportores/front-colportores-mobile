@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../../../datos/encolador_marcar_duplicado_motor.dart';
 import '../../data/datasources/campanias_del_colportor_local_data_source.dart';
 import '../../data/datasources/ubicacion_local_data_source_drift.dart';
 import '../../data/datasources/zona_local_data_source.dart';
@@ -36,12 +37,16 @@ export '../../../../core/sync/sync_providers.dart' show encoladorSyncProvider;
 // Cableado del alta de ubicación (HU-UBI-001, vistas 03 y 04). Presentation conoce domain; data se
 // inyecta acá. Todo lo que todavía no tiene fuente real (inscripciones, motor de sync) usa un `...SinFuente` que no inventa datos: ver `fuentes_sin_adaptador_ubicaciones`.
 
-/// El job «marcar como duplicado» del motor de sync (#178, RPC 0026). Hasta que llegue,
-/// [EncoladorMarcarDuplicadoSinMotor]: unir dos ubicaciones falla y no cambia nada, en vez de dejar la
-/// unión hecha en el teléfono sin avisarle nunca al servidor.
-final encoladorMarcarDuplicadoProvider = Provider<EncoladorMarcarDuplicado>(
-  (ref) => const EncoladorMarcarDuplicadoSinMotor(),
-);
+/// El trabajo «marcar como duplicado» del motor de sync (contrato-sync-engine §6.2, RPC 0026), como
+/// [encoladorSyncProvider] hace con las filas. Sin DB abierta no hay motor:
+/// [EncoladorMarcarDuplicadoSinMotor] falla y unir dos ubicaciones no cambia nada, en vez de dejar
+/// la unión hecha en el teléfono sin avisarle nunca al servidor.
+final encoladorMarcarDuplicadoProvider = Provider<EncoladorMarcarDuplicado>((ref) {
+  final motor = ref.watch(motorSyncProvider);
+  return motor == null
+      ? const EncoladorMarcarDuplicadoSinMotor()
+      : EncoladorMarcarDuplicadoMotor(motor);
+});
 
 /// La DB local abierta (`dbLocalProvider`). Sin DB abierta no hay dónde guardar: lanza, y quien lo
 /// lee lo traduce a una falla.
