@@ -60,7 +60,7 @@ void main() {
           expect(find.descendant(of: chip407(tipo), matching: find.text(texto)), findsOne);
           expect(find.descendant(of: chip407(tipo), matching: find.text(cuenta)), findsOne);
         }
-        await tocarAsa(tester);
+
         expect(find.byKey(ClavesAgendados.atrasados), findsOne);
         expect(find.text('ATRASADOS'), findsOne);
         expect(find.text('HOY'), findsOne);
@@ -82,7 +82,6 @@ void main() {
       (tester) async {
         await montarAgendados(tester);
         await abrirAgendados(tester);
-        await tocarAsa(tester);
 
         expect(filaDice('atr', 'Ayer'), isTrue);
         expect(filaDice('atr', 'Rivera 3920'), isTrue);
@@ -112,7 +111,6 @@ void main() {
         planes: {...planesDelCanvas(), 'v-michigan': planDe('v-michigan', cobrado: 290000)},
       );
       await abrirAgendados(tester);
-      await tocarAsa(tester);
 
       expect(filaDice('entrega', 'Entrega pendiente'), isTrue);
       expect(find.text('Entrega y pago'), findsNothing);
@@ -123,7 +121,6 @@ void main() {
     ) async {
       await montarAgendados(tester, planes: const {});
       await abrirAgendados(tester);
-      await tocarAsa(tester);
 
       expect(filaDice('cuota', 'Cobranza'), isTrue);
       expect(filaDice('atr', 'Cobranza atrasada'), isTrue);
@@ -184,9 +181,8 @@ void main() {
     testWidgets('el chip de tipo filtra la lista y lo que el mapa deja vivo', (tester) async {
       final m = await montarAgendados(tester);
       await abrirAgendados(tester);
-      await tocarAsa(tester);
 
-      await tester.tap(chip407(TipoAgenda.cobranza));
+      await tocarChip(tester, TipoAgenda.cobranza);
       await asentarLista(tester);
 
       expect(fila407('atr'), findsOne);
@@ -234,7 +230,6 @@ void main() {
         'aunque se toque dos veces', (tester) async {
       final m = await montarAgendados(tester, items: const [], conAgendar: true);
       await abrirAgendados(tester);
-      await tocarAsa(tester);
 
       expect(find.byKey(ClavesAgendados.vacia), findsOne);
       expect(find.text('No tenés visitas en los próximos 7 días'), findsOne);
@@ -254,7 +249,6 @@ void main() {
     testWidgets('vacía sin destino de «+ Agendar»: el texto, sin botón', (tester) async {
       await montarAgendados(tester, items: const []);
       await abrirAgendados(tester);
-      await tocarAsa(tester);
 
       expect(find.byKey(ClavesAgendados.vacia), findsOne);
       expect(find.text('+ Agendar'), findsNothing);
@@ -270,9 +264,8 @@ void main() {
         ],
       );
       await abrirAgendados(tester);
-      await tocarAsa(tester);
 
-      await tester.tap(chip407(TipoAgenda.entrega));
+      await tocarChip(tester, TipoAgenda.entrega);
       await asentarLista(tester);
       expect(find.byKey(ClavesAgendados.sinResultados), findsOne);
       expect(find.text('Ninguna agenda con estos filtros'), findsOne);
@@ -335,7 +328,6 @@ void main() {
     ) async {
       final m = await montarAgendados(tester);
       await abrirAgendados(tester);
-      await tocarAsa(tester);
       expect(punto(m.mapa.mapa, 'u-1250').atenuado, isTrue);
 
       m.consulta.emitir([
@@ -458,7 +450,7 @@ void main() {
       expect(filaDice('cuota', '40${_m}m'), isTrue);
 
       // Minimizar y volver a abrir: se mide desde donde está ahora (140 m).
-      await tocarAsa(tester, 2);
+      await tocarAsa(tester);
       await tester.tap(pestanaAgendados);
       await asentarLista(tester);
       expect(filaDice('cuota', '140${_m}m'), isTrue);
@@ -480,12 +472,68 @@ void main() {
     });
   });
 
+  group('decisiones del 11/11 (QA de #704)', () {
+    testWidgets('P2 · «Agendados» sube la hoja a la mitad; «Cercanía», minimizada, a un tercio', (
+      tester,
+    ) async {
+      await montarAgendados(tester, tamano: const Size(360, 640));
+      final minimizada = altoHoja(tester);
+
+      await abrirAgendados(tester);
+      final mitad = altoHoja(tester);
+      expect(mitad, greaterThan(minimizada));
+      // Desde la mitad el asa vuelve a la minimizada (a un tercio subiría a la mitad).
+      await tocarAsa(tester);
+      expect(altoHoja(tester), minimizada);
+
+      await tester.tap(find.byKey(ClavesMapaUbicaciones.pestanaCercania));
+      await asentarLista(tester);
+      final tercio = altoHoja(tester);
+      expect(tercio, greaterThan(minimizada));
+      expect(tercio, lessThan(mitad));
+
+      // Ya a un tercio, «Agendados» la sube a la mitad.
+      await tester.tap(pestanaAgendados);
+      await asentarLista(tester);
+      expect(altoHoja(tester), mitad);
+    });
+
+    testWidgets(
+      'P1 · los chips van en una sola fila que se desplaza y el elegido queda a la vista',
+      (tester) async {
+        await montarAgendados(tester, tamano: const Size(360, 640));
+        await abrirAgendados(tester);
+
+        final tops = {
+          for (final tipo in [null, ...TipoAgenda.values])
+            tester.getCenter(chip407(tipo)).dy.round(),
+        };
+        expect(tops, hasLength(1), reason: 'los cuatro chips en un mismo renglón');
+
+        await tocarChip(tester, TipoAgenda.entrega);
+        await asentarLista(tester);
+        final rect = tester.getRect(chip407(TipoAgenda.entrega));
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(360));
+        expect(fila407('entrega'), findsOne);
+
+        // Al volver a la hoja con «Entregas» elegido, el chip sigue a la vista.
+        await tester.tap(find.byKey(ClavesMapaUbicaciones.pestanaCercania));
+        await asentarLista(tester);
+        await tester.tap(pestanaAgendados);
+        await asentarLista(tester);
+        expect(tester.getRect(chip407(TipoAgenda.entrega)).right, lessThanOrEqualTo(360));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
   group('volver atrás y reentrar', () {
     testWidgets('el chip elegido se conserva al pasar por «Cercanía» y al cambiar de pestaña de la '
         'app', (tester) async {
       final m = await montarAgendados(tester);
       await abrirAgendados(tester);
-      await tester.tap(chip407(TipoAgenda.entrevista));
+      await tocarChip(tester, TipoAgenda.entrevista);
       await asentarLista(tester);
 
       await tester.tap(find.byKey(ClavesMapaUbicaciones.pestanaCercania));
@@ -521,12 +569,13 @@ void main() {
       await montarAgendados(tester);
       await abrirAgendados(tester);
 
+      // «Cobranzas» y enseguida «Todos», sin dejar correr un cuadro: gana el último.
       await tester.tap(chip407(TipoAgenda.cobranza));
-      await tester.tap(chip407(TipoAgenda.entrega));
+      await tester.tap(chip407(null));
       await asentarLista(tester);
 
       expect(fila407('entrega'), findsOne);
-      expect(fila407('cuota'), findsNothing);
+      expect(fila407('cuota'), findsOne);
     });
   });
 
@@ -546,16 +595,8 @@ void main() {
         ],
       );
       await abrirAgendados(tester);
-      await tocarAsa(tester);
 
-      await tester.scrollUntilVisible(
-        fila407('v59'),
-        300,
-        scrollable: find.descendant(
-          of: find.byKey(ClavesAgendados.lista),
-          matching: find.byType(Scrollable),
-        ),
-      );
+      await tester.scrollUntilVisible(fila407('v59'), 300, scrollable: listaDeAgendados);
       expect(fila407('v59'), findsOne);
       expect(tester.takeException(), isNull);
     });
@@ -578,7 +619,6 @@ void main() {
         ],
       );
       await abrirAgendados(tester);
-      await tocarAsa(tester);
       await verFila(tester, 'larga');
 
       expect(fila407('larga'), findsOne);
@@ -590,16 +630,12 @@ void main() {
           'pestañas, los chips y las filas entran sin desbordar', (tester) async {
         await montarAgendados(tester, escala: 2, tamano: tamano);
         await abrirAgendados(tester);
-        await tocarAsa(tester);
         expect(tester.takeException(), isNull);
 
         expect(chip407(TipoAgenda.entrega), findsOne);
         // El chip mide al menos 48 dp de alto (objetivo táctil).
         expect(tester.getSize(chip407(TipoAgenda.cobranza)).height, greaterThanOrEqualTo(48));
-        final lista = find.descendant(
-          of: find.byKey(ClavesAgendados.lista),
-          matching: find.byType(Scrollable),
-        );
+        final lista = listaDeAgendados;
         await tester.scrollUntilVisible(fila407('manana'), 200, scrollable: lista);
         expect(fila407('manana'), findsOne);
         expect(tester.takeException(), isNull);
@@ -616,7 +652,6 @@ void main() {
         ],
       );
       await abrirAgendados(tester);
-      await tocarAsa(tester);
 
       expect(find.byType(HojaMapaUbicaciones), findsOne);
       expect(altoHoja(tester), lessThanOrEqualTo(844 * .7));

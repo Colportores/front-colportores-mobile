@@ -2,11 +2,13 @@
 // (360x640 y 412x915, texto a 1,0 y a 2,0, con las fuentes reales), sus estados, las pestañas con el
 // texto grande y los casos límite que los tests del implementador (pantalla de 390x2000) no miran.
 //
-// Los que documentan un hallazgo (H1 a H4) van con `skip` salvo con `--dart-define=QA_HALLAZGOS=true`:
-//  · H1: con el texto a 2,0 «Reintentar» del error al leer queda bajo el pliegue de la hoja a un tercio.
-//  · H2: en el estado vacío «+ Agendar» queda bajo el pliegue de la hoja a un tercio.
-//  · H3: los chips bajan a 2 renglones (el canvas los dibuja en una fila) y a 360x640 a un tercio no se
-//    ve ninguna visita.
+// Los que documentan un hallazgo abierto (H4 y H5, menores) van con `skip` salvo con
+// `--dart-define=QA_HALLAZGOS=true`. H1 a H3 quedaron resueltos por las decisiones del 11/11 (P1 y P2
+// del QA de #704: «Agendados» sube la hoja a la mitad y los chips van en una fila que se desplaza de
+// costado) y corren siempre:
+//  · H1: con el texto a 2,0 «Reintentar» del error al leer está a la vista al abrir la hoja.
+//  · H2: en el estado vacío «+ Agendar» está a la vista al abrir la hoja.
+//  · H3: los chips van en una fila y a 360x640 se ve al menos una visita al abrir la hoja.
 //  · H5: a 360x640 con el texto a 2,0 la columna de la fila queda en ~100 dp y parte «Cobranza»,
 //    «Entrevista», «Comercio», «Michigan» y «Mataojo» a mitad de palabra.
 //  · H4: con el texto a 3,0 «Agendados» se parte en dos renglones a mitad de palabra.
@@ -56,7 +58,6 @@ void main() {
           await cargarFuentes704(tester);
           await montarAgendados(tester, tamano: tamano, escala: escala);
           await abrirAgendados(tester);
-          await tocarAsa(tester);
 
           final partidos = <String>[];
           for (final id in ['atr', 'cuota', 'entrevista', 'entrega', 'manana']) {
@@ -103,11 +104,7 @@ void main() {
         testWidgets('error al leer: «Reintentar» se alcanza, se toca y vuelve a leer · '
             '$nombreTamano · texto $escala', (tester) async {
           await cargarFuentes704(tester);
-          final m = await escenas704['Agendados error al leer a un tercio']!(
-            tester,
-            tamano,
-            escala,
-          );
+          final m = await escenas704['Agendados error al leer al abrirla']!(tester, tamano, escala);
 
           final reintentar = find.text('Reintentar');
           expect(reintentar, findsOneWidget);
@@ -124,7 +121,7 @@ void main() {
         testWidgets('vacía: «+ Agendar» se alcanza y se toca una sola vez · $nombreTamano · '
             'texto $escala', (tester) async {
           await cargarFuentes704(tester);
-          final m = await escenas704['Agendados vacia a un tercio']!(tester, tamano, escala);
+          final m = await escenas704['Agendados vacia al abrirla']!(tester, tamano, escala);
 
           expect(find.text('No tenés visitas en los próximos 7 días'), findsOneWidget);
           final agendar = find.text('+ Agendar');
@@ -146,10 +143,9 @@ void main() {
             items: [agendado('e1', dia407(10), ubicacionId: 'u-italia')],
           );
           await abrirAgendados(tester);
-          await tocarAsa(tester);
           await tester.ensureVisible(chip407(TipoAgenda.entrega));
           await tester.pump();
-          await tester.tap(chip407(TipoAgenda.entrega));
+          await tocarChip(tester, TipoAgenda.entrega);
           await asentarLista(tester);
 
           final limpiar = find.text('Limpiar filtros');
@@ -165,27 +161,30 @@ void main() {
 
     // — Hallazgos: lo que la colportora ve sin desplazar la hoja a la altura a la que la deja la app. —
     for (final (nombreTamano, escala) in [('360x640', 2.0)]) {
-      testWidgets('H1 · error al leer: «Reintentar» está a la vista a un tercio · $nombreTamano · '
-          'texto $escala', (tester) async {
-        await cargarFuentes704(tester);
-        final tamano = tamanos704[nombreTamano]!;
-        await escenas704['Agendados error al leer a un tercio']!(tester, tamano, escala);
+      testWidgets(
+        'H1 · error al leer: «Reintentar» está a la vista al abrir la hoja · $nombreTamano · '
+        'texto $escala',
+        (tester) async {
+          await cargarFuentes704(tester);
+          final tamano = tamanos704[nombreTamano]!;
+          await escenas704['Agendados error al leer al abrirla']!(tester, tamano, escala);
 
-        final reintentar = find.text('Reintentar');
-        expect(
-          enLaHoja(tester, reintentar, tamano),
-          isTrue,
-          reason: 'Reintentar en ${tester.getRect(reintentar)}, hoja en ${tester.getRect(hoja)}',
-        );
-      }, skip: _skipH);
+          final reintentar = find.text('Reintentar');
+          expect(
+            enLaHoja(tester, reintentar, tamano),
+            isTrue,
+            reason: 'Reintentar en ${tester.getRect(reintentar)}, hoja en ${tester.getRect(hoja)}',
+          );
+        },
+      );
     }
 
-    testWidgets('H2 · vacía: «+ Agendar» está a la vista a un tercio · 412x915 · texto 1,0', (
+    testWidgets('H2 · vacía: «+ Agendar» está a la vista al abrir la hoja · 412x915 · texto 1,0', (
       tester,
     ) async {
       await cargarFuentes704(tester);
       final tamano = tamanos704['412x915']!;
-      await escenas704['Agendados vacia a un tercio']!(tester, tamano, 1);
+      await escenas704['Agendados vacia al abrirla']!(tester, tamano, 1);
 
       final agendar = find.text('+ Agendar');
       expect(
@@ -193,13 +192,13 @@ void main() {
         isTrue,
         reason: '+ Agendar en ${tester.getRect(agendar)}, hoja en ${tester.getRect(hoja)}',
       );
-    }, skip: _skipH);
+    });
 
-    testWidgets('H3 · a un tercio con el teléfono chico se ve al menos una visita · 360x640 · '
+    testWidgets('H3 · al abrir la hoja en el teléfono chico se ve al menos una visita · 360x640 · '
         'texto 1,0', (tester) async {
       await cargarFuentes704(tester);
       final tamano = tamanos704['360x640']!;
-      await escenas704['06C·03 Agendados a un tercio']!(tester, tamano, 1);
+      await escenas704['06C·03 Agendados al abrirla']!(tester, tamano, 1);
 
       final h = tester.getRect(hoja);
       final filas = filasDeAgendados.evaluate().where((e) {
@@ -207,7 +206,7 @@ void main() {
         return r.top >= h.top && r.bottom <= h.bottom + 0.5;
       });
       expect(filas, isNotEmpty, reason: 'solo se ven las pestañas y los chips');
-    }, skip: _skipH);
+    });
 
     testWidgets(
       'H5 · en las filas ninguna palabra se parte a mitad de palabra · 360x640 · texto 2,0',
@@ -215,7 +214,6 @@ void main() {
         await cargarFuentes704(tester);
         await montarAgendados(tester, tamano: tamanos704['360x640']!, escala: 2);
         await abrirAgendados(tester);
-        await tocarAsa(tester);
 
         final partidos = <String>[];
         for (final id in ['atr', 'cuota', 'entrevista', 'entrega', 'manana']) {
@@ -266,7 +264,6 @@ void main() {
         items: [...agendaDelCanvas(), sinCasa],
       );
       await abrirAgendados(tester);
-      await tocarAsa(tester);
 
       expect(tester.takeException(), isNull);
       await verFila(tester, 'sin-casa');
@@ -292,7 +289,6 @@ void main() {
         items: muchas,
       );
       await abrirAgendados(tester);
-      await tocarAsa(tester);
       await tester.pump();
 
       expect(find.byKey(ClavesAgendados.lista), findsOne);
@@ -300,10 +296,7 @@ void main() {
         fila407('m59'),
         400,
         maxScrolls: 400,
-        scrollable: find.descendant(
-          of: find.byKey(ClavesAgendados.lista),
-          matching: find.byType(Scrollable),
-        ),
+        scrollable: listaDeAgendados,
       );
       await tester.pump();
       await tester.tap(fila407('m59'));
@@ -323,7 +316,6 @@ void main() {
         ],
       );
       await abrirAgendados(tester);
-      await tocarAsa(tester);
 
       await verFila(tester, 'lejos');
       expect(find.descendant(of: fila407('lejos'), matching: find.textContaining('km')), findsOne);

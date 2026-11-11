@@ -24,6 +24,7 @@ abstract final class ClavesAgendados {
   static const vacia = Key('mapa_agendados_vacia');
   static const sinResultados = Key('mapa_agendados_sin_resultados');
   static const atrasados = Key('mapa_agendados_atrasados');
+  static const chips = Key('mapa_agendados_chips');
   static Key chip(TipoAgenda? tipo) => Key('mapa_agendados_chip_${tipo?.name ?? 'todos'}');
   static Key dia(DateTime dia) => Key('mapa_agendados_dia_${dia.millisecondsSinceEpoch}');
   static Key fila(String agendaId) => Key('mapa_agendados_fila_$agendaId');
@@ -194,38 +195,75 @@ abstract final class _Colores {
   static const separador = Color(0xFFEDEBE4);
 }
 
-/// «Todos 6», «$ Cobranzas 3», «◷ Entrevistas 2» y «⇢ Entregas 1». Bajan de renglón si no entran (con
-/// el texto grande).
-class _Chips extends StatelessWidget {
+/// «Todos 6», «$ Cobranzas 3», «◷ Entrevistas 2» y «⇢ Entregas 1».
+class _Chips extends StatefulWidget {
   const _Chips({required this.cuentas, required this.elegido, required this.alElegir});
 
   final CuentasAgendados cuentas;
   final TipoAgenda? elegido;
   final ValueChanged<TipoAgenda?> alElegir;
 
+  static const tipos = [null, TipoAgenda.cobranza, TipoAgenda.entrevista, TipoAgenda.entrega];
+
+  @override
+  State<_Chips> createState() => _ChipsState();
+}
+
+/// Los chips van en una sola fila que se desplaza de costado, como el canvas (el último asoma por el
+/// borde), y el elegido siempre queda a la vista (decisión del orquestador del 11/11, P1 del QA de
+/// #704). Con el texto grande la fila crece en alto y sigue siendo una.
+class _ChipsState extends State<_Chips> {
+  final _claves = {for (final tipo in _Chips.tipos) tipo: GlobalKey()};
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.elegido != null) _mostrarElegido(animar: false);
+  }
+
+  @override
+  void didUpdateWidget(_Chips anterior) {
+    super.didUpdateWidget(anterior);
+    if (anterior.elegido != widget.elegido) _mostrarElegido(animar: true);
+  }
+
+  /// Después del cuadro, lleva el chip elegido a la vista dentro de la fila.
+  void _mostrarElegido({required bool animar}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _claves[widget.elegido]?.currentContext;
+      if (!mounted || contexto == null) return;
+      unawaited(
+        Scrollable.ensureVisible(
+          contexto,
+          alignment: .5,
+          duration: animar ? const Duration(milliseconds: 200) : Duration.zero,
+        ),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Semantics(
       container: true,
       label: TextosAgendados.filtrarPorTipo,
-      child: Padding(
+      child: SingleChildScrollView(
+        key: ClavesAgendados.chips,
+        scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(20, 2, 20, 6),
-        child: Wrap(
+        child: Row(
           spacing: 8,
-          runSpacing: 4,
           children: [
-            for (final tipo in const [
-              null,
-              TipoAgenda.cobranza,
-              TipoAgenda.entrevista,
-              TipoAgenda.entrega,
-            ])
-              _Chip(
-                key: ClavesAgendados.chip(tipo),
-                tipo: tipo,
-                cuenta: tipo == null ? cuentas.todas : cuentas.de(tipo),
-                elegido: tipo == elegido,
-                alPresionar: () => alElegir(tipo),
+            for (final tipo in _Chips.tipos)
+              KeyedSubtree(
+                key: _claves[tipo],
+                child: _Chip(
+                  key: ClavesAgendados.chip(tipo),
+                  tipo: tipo,
+                  cuenta: tipo == null ? widget.cuentas.todas : widget.cuentas.de(tipo),
+                  elegido: tipo == widget.elegido,
+                  alPresionar: () => widget.alElegir(tipo),
+                ),
               ),
           ],
         ),
@@ -279,15 +317,13 @@ class _Chip extends StatelessWidget {
                 children: [
                   if (tipo != null)
                     InsigniaEstadoCasa(estado: FormatoAgendados.estadoDe(tipo), tamano: 18),
-                  Flexible(
-                    child: Text(
-                      FormatoAgendados.chip(tipo),
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: elegido ? Colors.white : _Colores.navy,
-                      ),
+                  Text(
+                    FormatoAgendados.chip(tipo),
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: elegido ? Colors.white : _Colores.navy,
                     ),
                   ),
                   Text(

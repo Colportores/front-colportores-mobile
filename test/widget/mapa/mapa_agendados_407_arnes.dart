@@ -249,13 +249,26 @@ Future<MontajeAgendados> montarAgendados(
 }
 
 final pestanaAgendados = find.byKey(ClavesAgendados.pestana);
+
+/// El desplazamiento vertical de la lista de la hoja (el primero: adentro está también la fila de
+/// chips, que se desplaza de costado).
+final listaDeAgendados = find
+    .descendant(of: find.byKey(ClavesAgendados.lista), matching: find.byType(Scrollable))
+    .first;
 Finder chip407(TipoAgenda? tipo) => find.byKey(ClavesAgendados.chip(tipo));
 Finder fila407(String id) => find.byKey(ClavesAgendados.fila(id));
 
-/// Toca «Agendados» y deja correr la hoja.
+/// Toca «Agendados» (la hoja sube a la mitad) y deja correr la hoja.
 Future<void> abrirAgendados(WidgetTester tester) async {
   await tester.tap(pestanaAgendados);
   await asentarLista(tester, 8);
+}
+
+/// Lleva el chip [tipo] a la vista (la fila de chips se desplaza de costado) y lo toca.
+Future<void> tocarChip(WidgetTester tester, TipoAgenda? tipo) async {
+  await tester.ensureVisible(chip407(tipo));
+  await tester.pump();
+  await tester.tap(chip407(tipo));
 }
 
 /// Lleva la fila [id] a la vista (la lista de la hoja se desplaza) y la toca.
@@ -266,14 +279,8 @@ Future<void> tocarFila(WidgetTester tester, String id) async {
 }
 
 /// Desplaza la lista de la hoja hasta que la fila [id] esté construida y a la vista.
-Future<void> verFila(WidgetTester tester, String id) => tester.scrollUntilVisible(
-  fila407(id),
-  120,
-  scrollable: find.descendant(
-    of: find.byKey(ClavesAgendados.lista),
-    matching: find.byType(Scrollable),
-  ),
-);
+Future<void> verFila(WidgetTester tester, String id) =>
+    tester.scrollUntilVisible(fila407(id), 120, scrollable: listaDeAgendados);
 
 /// El texto que se ve dentro de la fila [id].
 bool filaDice(String id, String texto) =>

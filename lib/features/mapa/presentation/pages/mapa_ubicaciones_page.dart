@@ -932,11 +932,16 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
         .whenData((items) => ArmadorAgendados.armar(items, tipo, ahora));
   }
 
-  /// Elegir una pestaña con la hoja minimizada la sube a un tercio: si no, la lista no se ve (como
-  /// tocar una fila o un marcador).
+  /// «Agendados» sube la hoja a la mitad, como la dibuja el artboard («Hoja a 1/2 · Agendados»): a
+  /// un tercio, en un teléfono chico, el error o el vacío quedaban con su acción bajo el pliegue.
+  /// «Cercanía», con la hoja minimizada, la sube a un tercio, como tocar una fila o un marcador
+  /// (decisión del orquestador del 11/11, P2 del QA de #704).
   void _elegirPestana(PestanaHojaMapa pestana) {
     ref.read(hojaDelMapaProvider(widget.colportorId).notifier).elegirPestana(pestana);
-    if (_altura == AlturaHoja.minimizada) setState(() => _altura = AlturaHoja.tercio);
+    final nueva = pestana == PestanaHojaMapa.agendados
+        ? AlturaHoja.mitad
+        : (_altura == AlturaHoja.minimizada ? AlturaHoja.tercio : _altura);
+    if (nueva != _altura) setState(() => _altura = nueva);
   }
 
   @override

@@ -73,7 +73,7 @@ final escenas704 = <String, Escena704>{
     await tocarAsa(t);
     return m;
   },
-  '06C·03 Agendados a un tercio': (t, tam, e) async {
+  '06C·03 Agendados al abrirla': (t, tam, e) async {
     final m = await montarAgendados(t, tamano: tam, escala: e);
     await abrirAgendados(t);
     return m;
@@ -81,18 +81,16 @@ final escenas704 = <String, Escena704>{
   '06C·03 Agendados a la mitad': (t, tam, e) async {
     final m = await montarAgendados(t, tamano: tam, escala: e);
     await abrirAgendados(t);
-    await tocarAsa(t);
     return m;
   },
   'Agendados a la mitad con el chip Entrevistas': (t, tam, e) async {
     final m = await montarAgendados(t, tamano: tam, escala: e);
     await abrirAgendados(t);
-    await tocarAsa(t);
-    await t.tap(chip407(TipoAgenda.entrevista));
+    await tocarChip(t, TipoAgenda.entrevista);
     await asentarLista(t);
     return m;
   },
-  'Agendados vacia a un tercio': (t, tam, e) async {
+  'Agendados vacia al abrirla': (t, tam, e) async {
     final m = await montarAgendados(t, tamano: tam, escala: e, items: [], conAgendar: true);
     await abrirAgendados(t);
     return m;
@@ -105,18 +103,17 @@ final escenas704 = <String, Escena704>{
       items: [agendado('e1', dia407(10), ubicacionId: 'u-italia')],
     );
     await abrirAgendados(t);
-    await tocarAsa(t);
-    await t.tap(chip407(TipoAgenda.entrega));
+    await tocarChip(t, TipoAgenda.entrega);
     await asentarLista(t);
     return m;
   },
-  'Agendados error al leer a un tercio': (t, tam, e) async {
+  'Agendados error al leer al abrirla': (t, tam, e) async {
     final consulta = ConsultaAgendaFalsa(agendaDelCanvas())..error = Exception('db');
     final m = await montarAgendados(t, tamano: tam, escala: e, consulta: consulta);
     await abrirAgendados(t);
     return m;
   },
-  'Agendados cargando a un tercio': (t, tam, e) async {
+  'Agendados cargando al abrirla': (t, tam, e) async {
     final consulta = ConsultaAgendaFalsa(agendaDelCanvas())..congelada = true;
     final m = await montarAgendados(t, tamano: tam, escala: e, consulta: consulta);
     await abrirAgendados(t);
