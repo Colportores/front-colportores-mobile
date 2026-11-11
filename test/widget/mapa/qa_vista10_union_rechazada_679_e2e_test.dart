@@ -348,9 +348,6 @@ void main() {
           findsOneWidget,
         );
       },
-      skip:
-          'QA #679: con la pantalla abierta desde antes de la unión, el par sigue oculto '
-          '(UnionesPendientesState.ocultas) y el aviso no sale hasta salir y volver a entrar',
     );
 
     prueba(

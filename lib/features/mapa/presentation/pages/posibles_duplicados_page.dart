@@ -237,6 +237,18 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
       }
     });
 
+    // Un par unido con la pantalla abierta queda oculto; si el servidor rechaza la unión, el teléfono
+    // la deshace y el par vuelve con su aviso: se suelta sin salir y volver a entrar (#679).
+    ref.listen(paresParaRevisarProvider(widget.colportorId), (_, lectura) {
+      final rechazadas = {
+        for (final p in lectura.value ?? const <ParaRevisar>[])
+          if (p.rechazoDeUnion != null) p.par.clave,
+      };
+      if (rechazadas.isNotEmpty) {
+        ref.read(unionesPendientesProvider.notifier).soltarRechazadas(rechazadas);
+      }
+    });
+
     final ruta = ModalRoute.of(context);
     _seguirCobertura(ruta != null && !ruta.isCurrent);
 
