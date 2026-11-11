@@ -4,9 +4,9 @@ import '../push_remotas.dart';
 
 /// [PushRemotas] en memoria.
 ///
-/// **No es código de producción.** Es el default de la app mientras no esté `firebase_messaging` (no
-/// recibe nada hasta que alguien llame a [llegaConLaAppAbierta], [seTocaConLaAppEnSegundoPlano] o
-/// [abrirLaAppConElToque]) y el de los tests.
+/// **No es código de producción.** Es el de los tests y el default de la app cuando Firebase no
+/// arranca (no recibe nada hasta que alguien llame a [llegaConLaAppAbierta],
+/// [seTocaConLaAppEnSegundoPlano] o [abrirLaAppConElToque]).
 final class PushRemotasEnMemoria implements PushRemotas {
   PushRemotasEnMemoria({this._abrioLaApp});
 

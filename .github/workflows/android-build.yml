@@ -195,6 +195,41 @@ jobs:
           { echo "sufijo=${SUFIJO}"; echo "nombre=${NOMBRE}"; } >> "$GITHUB_OUTPUT"
           echo "applicationId: com.colportores.colportores_mobile${SUFIJO} · nombre: ${NOMBRE:-(el de siempre)}"
 
+      # Push remotas (HU-NOT-003, #614): si google-services.json no tiene el applicationId que se compila,
+      # app/build.gradle.kts no aplica el plugin de Google Services y la app sale sin push. Producción
+      # (exigir-entorno) no puede salir así; staging avisa y sigue (decisión del 11/11, P2 de #614).
+      - name: Firebase (la app en google-services.json)
+        env:
+          ENTORNO: ${{ inputs.environment }}
+          EXIGIR_ENTORNO: ${{ inputs.exigir-entorno }}
+          APP_ID: com.colportores.colportores_mobile${{ steps.identidad.outputs.sufijo }}
+        run: |
+          if python3 - "$APP_ID" android/app/google-services.json <<'PY'
+          import json, sys
+          app, ruta = sys.argv[1], sys.argv[2]
+          try:
+              with open(ruta, encoding="utf-8") as f:
+                  clientes = json.load(f).get("client") or []
+          except (OSError, ValueError, AttributeError):
+              sys.exit(1)
+          ids = {
+              ((c.get("client_info") or {}).get("android_client_info") or {}).get("package_name")
+              for c in clientes
+              if isinstance(c, dict)
+          }
+          sys.exit(0 if app in ids else 1)
+          PY
+          then
+            echo "Firebase: google-services.json tiene la app ${APP_ID}."
+          else
+            mensaje="android/app/google-services.json no tiene la app ${APP_ID}: la app saldría sin push remotas. Hay que registrarla en el proyecto de Firebase y sumar su cliente a ese archivo."
+            if [ "$EXIGIR_ENTORNO" = true ]; then
+              echo "::error title=Build ${ENTORNO}::${mensaje}"
+              exit 1
+            fi
+            echo "::warning title=Build ${ENTORNO}::${mensaje}"
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
