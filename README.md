@@ -111,6 +111,13 @@ flutter run --dart-define=SUPABASE_URL=https://xxx.supabase.co --dart-define=SUP
 - La sesión la persiste `supabase_flutter` (SharedPreferences por default). Pasarla a `flutter_secure_storage` (`Supabase.initialize(authOptions: FlutterAuthClientOptions(localStorage: …))`) está pendiente de decisión (ADR-006).
 - Umbrales de cobertura (`scripts/coverage_check.sh`): total ≥ 70%, dominio ≥ 90%.
 
+### Plataformas mínimas y push remotas (Firebase)
+
+- **Android 10+ e iOS 15+.** iOS subió de 13 a 15 por `firebase_core` 5 / `firebase_messaging` 17 (push remotas, HU-NOT-003, ADR-014): decisión de Cristian del 11/11 en #614. El mínimo de iOS está en `IPHONEOS_DEPLOYMENT_TARGET` de `ios/Runner.xcodeproj` (no hay Podfile: los plugins van por Swift Package Manager); no se bajan versiones de Firebase para sostener iOS viejos.
+- Android: `android/app/google-services.json` (proyecto Firebase `colportores-66b3b`). El plugin de Google Services se aplica solo si el archivo tiene el applicationId del build (`app/build.gradle.kts`); si no, el build avisa y la app arranca sin push. En producción (`exigir-entorno`) `android-build.yml` falla si falta la app.
+- iOS: falta `GoogleService-Info.plist` y la clave de APNs en Firebase; sin el plist, Firebase no arranca y la app sigue sin push.
+- Con la app cerrada o en segundo plano, el sistema muestra el título fijo del servidor en el canal de Android `avisos_campania` («Avisos de tu campaña»); la app arma el texto completo al tocar o al abrir.
+
 ## CI
 
 `ci.yml` (push a `develop`/`staging`/`production`; PR contra esas y contra `feature/**`): `build_runner`, `dart format --set-exit-if-changed`, `dart analyze --fatal-infos` (incluye las reglas de Riverpod del plugin `riverpod_lint`), `flutter test --coverage` con umbrales, y el smoke test de proveedores de Supabase Auth (omitido si no hay variables). No compila el APK: eso (y la validación de que el hook de SQLCipher resuelve los binarios de Android) pasó a `staging.yml`, ver «Despliegue»; para la demo se corre a mano desde `develop`. La versión de Flutter de CI y de `dockerfile.dev` se suben juntas.

@@ -50,6 +50,8 @@ dependencies:
   drift: 2.34.0             # DB local (ADR-009); cifrada con SQLCipher (ADR-006) — fijo: ver nota arriba
   drift_flutter: ^0.3.1     # driftDatabase(): archivo, isolate de fondo y temp dir de sqlite en Android
   equatable: ^2.1.0
+  firebase_core: ^5.1.0       # push remotas (HU-NOT-003, ADR-014): solo FCM, sin Analytics ni Crashlytics
+  firebase_messaging: ^17.0.1  # pide iOS 15: mínimo de la app (decisión de Cristian, 11/11, #614)
   flutter:
     sdk: flutter
   flutter_image_compress: ^2.5.1  # achica la foto del ticket a JPEG (S42); decisión de Cristian del 03/11 en #169
