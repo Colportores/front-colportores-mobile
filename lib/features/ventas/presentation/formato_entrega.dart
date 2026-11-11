@@ -27,8 +27,8 @@ abstract final class TextosEntrega {
   static const elegiUnProducto = 'Elegí al menos un producto para entregar.';
   static const pendiente = 'Pendiente';
   static const casaEntregaYCobranzaPendientes =
-      'La casa sigue como «Entrega y cobranza pendientes» hasta que entregues lo que falta y el '
-      'saldo llegue a cero.';
+      'La casa sigue como «Entrega y pago» hasta que entregues lo que falta y el saldo llegue a '
+      'cero.';
   static const casaEntregaPendiente =
       'Lo que falta queda pendiente para otro día. La casa se actualiza cuando lo entregues.';
 
