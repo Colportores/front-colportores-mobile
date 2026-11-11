@@ -10,6 +10,8 @@ import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart';
 import '../../domain/entities/motivo_expiracion.dart';
+import '../../domain/services/validador_email.dart';
+import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../providers/auth_providers.dart';
 import '../providers/aviso_sesion_notifier.dart';
 import '../providers/reingreso_sesion_notifier.dart';
@@ -26,6 +28,11 @@ import 'registro_page.dart';
 /// Sin lógica de negocio: valida por [Failure] que devuelve el notifier y muestra los mensajes
 /// por campo o un banner general. Todo lo visual sale de `Theme.of(context)` — el tema
 /// (`temaClaro`, ver `core/theme/`) decide colores, tipografía y forma.
+///
+/// Los avisos de los campos no esperan a «Entrar» (#700): al salir de un campo con algo escrito
+/// que no pasa, el aviso aparece ahí mismo, y mientras se corrige se va actualizando. La regla y el
+/// texto son los del caso de uso ([IniciarSesionUseCase.avisoDelEmail] y
+/// [IniciarSesionUseCase.avisoDeLaPassword]); «Entrar» sigue validando todo antes de mandar nada.
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
@@ -47,6 +54,13 @@ bool _sinSenal(AsyncValue<TipoConexion> conexion) => switch (conexion) {
 class _LoginPageState extends ConsumerState<LoginPage> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _focoEmail = FocusNode();
+  final _focoPassword = FocusNode();
+
+  /// Lo último que se vio escrito en cada campo: los controladores también avisan cuando solo se
+  /// mueve el cursor, y eso no cambia ningún aviso.
+  String _emailVisto = '';
+  String _passwordVista = '';
   Map<String, String> _erroresCampo = const {};
   String? _errorGeneral;
   bool _enviando = false;
@@ -82,6 +96,55 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     } else {
       unawaited(_precargarUltimoCorreo());
     }
+    _emailVisto = _email.text;
+    _email.addListener(_alCambiarEmail);
+    _password.addListener(_alCambiarPassword);
+    _focoEmail.addListener(_alCambiarFocoEmail);
+    _focoPassword.addListener(_alCambiarFocoPassword);
+  }
+
+  /// Al salir del correo con algo escrito que no pasa, el campo lo dice sin esperar a «Entrar»
+  /// (#700). Vacío no avisa: todavía no se intentó nada, y «Ingresá tu email» lo dice «Entrar».
+  void _alCambiarFocoEmail() {
+    if (_focoEmail.hasFocus || ValidadorEmail.normalizar(_email.text).isEmpty) return;
+    _avisarEn('email', IniciarSesionUseCase.avisoDelEmail(_email.text));
+  }
+
+  /// Lo mismo que [_alCambiarFocoEmail], con la contraseña (el mínimo de caracteres).
+  void _alCambiarFocoPassword() {
+    if (_focoPassword.hasFocus || _password.text.isEmpty) return;
+    _avisarEn('password', IniciarSesionUseCase.avisoDeLaPassword(_password.text));
+  }
+
+  /// Pone [aviso] en [campo]. Con `null` no saca el que hubiera: puede ser lo que contestó el
+  /// servidor sobre lo que sigue escrito; ese se va al corregir ([_actualizarAviso]).
+  void _avisarEn(String campo, String? aviso) {
+    if (!mounted || aviso == null || _erroresCampo[campo] == aviso) return;
+    setState(() => _erroresCampo = {..._erroresCampo, campo: aviso});
+  }
+
+  void _alCambiarEmail() {
+    if (_email.text == _emailVisto) return;
+    _emailVisto = _email.text;
+    _actualizarAviso('email', IniciarSesionUseCase.avisoDelEmail(_email.text));
+  }
+
+  void _alCambiarPassword() {
+    if (_password.text == _passwordVista) return;
+    _passwordVista = _password.text;
+    _actualizarAviso('password', IniciarSesionUseCase.avisoDeLaPassword(_password.text));
+  }
+
+  /// Un campo que ya avisaba algo se revisa con cada cambio: el aviso hablaba de lo que estaba
+  /// escrito antes, así que se va apenas lo nuevo pasa (o cambia por el que corresponde). Un campo
+  /// sin aviso no se toca mientras se escribe: avisa al salir de él o al tocar «Entrar».
+  void _actualizarAviso(String campo, String? aviso) {
+    if (!mounted || !_erroresCampo.containsKey(campo) || _erroresCampo[campo] == aviso) return;
+    setState(() {
+      final errores = Map<String, String>.of(_erroresCampo)..remove(campo);
+      if (aviso != null) errores[campo] = aviso;
+      _erroresCampo = errores;
+    });
   }
 
   /// Sin «Sesión vencida» de por medio, el correo de la última cuenta puede seguir guardado: la app
@@ -97,6 +160,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   void dispose() {
+    _focoEmail
+      ..removeListener(_alCambiarFocoEmail)
+      ..dispose();
+    _focoPassword
+      ..removeListener(_alCambiarFocoPassword)
+      ..dispose();
     _email.dispose();
     _password.dispose();
     super.dispose();
@@ -311,6 +380,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         etiqueta: 'CORREO',
                         textoAyuda: 'lucia.silva@correo.com',
                         controller: _email,
+                        focusNode: _focoEmail,
                         keyboardType: TextInputType.emailAddress,
                         autofillHints: const [AutofillHints.email],
                         textInputAction: TextInputAction.next,
@@ -324,6 +394,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         etiqueta: 'CONTRASEÑA',
                         textoAyuda: '••••••••',
                         controller: _password,
+                        focusNode: _focoPassword,
                         esContrasena: true,
                         autofillHints: const [AutofillHints.password],
                         textInputAction: TextInputAction.done,
@@ -559,6 +630,7 @@ class _CampoLogin extends StatefulWidget {
     required this.etiqueta,
     required this.textoAyuda,
     required this.controller,
+    this.focusNode,
     this.fieldKey,
     this.esContrasena = false,
     this.errorText,
@@ -572,6 +644,9 @@ class _CampoLogin extends StatefulWidget {
   final String etiqueta;
   final String textoAyuda;
   final TextEditingController controller;
+
+  /// El foco del campo, de la pantalla: con él sabe cuándo se sale del campo para avisar (#700).
+  final FocusNode? focusNode;
   final Key? fieldKey;
   final bool esContrasena;
   final String? errorText;
@@ -603,7 +678,12 @@ class _CampoLoginState extends State<_CampoLogin> {
         TextField(
           key: widget.fieldKey,
           controller: widget.controller,
+          focusNode: widget.focusNode,
           obscureText: widget.esContrasena && !_mostrarTexto,
+          // Ni el correo ni la contraseña son texto para corregir, y la contraseña a la vista
+          // («Mostrar contraseña») no tiene que quedar en las sugerencias del teclado.
+          autocorrect: false,
+          enableSuggestions: !widget.esContrasena,
           keyboardType: widget.keyboardType,
           autofillHints: widget.autofillHints,
           textInputAction: widget.textInputAction,
