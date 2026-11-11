@@ -209,6 +209,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.1"
+  colportores_mapa:
+    dependency: "direct main"
+    description:
+      path: dart
+      ref: "v1.0.0"
+      resolved-ref: f2632aaf32afafabbc5222d8b9fc1941c23a50d2
+      url: "https://github.com/Colportores/lib-mapa.git"
+    source: git
+    version: "1.0.0"
   connectivity_plus:
     dependency: "direct main"
     description:

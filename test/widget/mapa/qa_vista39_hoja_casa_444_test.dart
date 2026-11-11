@@ -664,7 +664,7 @@ void main() {
               tamano: t,
               escala: s,
             );
-            m.mapa.moverPorGesto(CamaraMapa(centro: puntoItalia, zoom: MapaAlta.zoomMaximo));
+            m.mapa.moverPorGesto(const CamaraMapa(centro: puntoItalia, zoom: MapaAlta.zoomMaximo));
             m.mapa.tocarPunto('u-1');
             await asentarLista(tester);
 

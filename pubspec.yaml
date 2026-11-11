@@ -36,6 +36,14 @@ dependencies:
   app_links: ^7.2.1          # deep link propio de verificación de email (#84) — antes transitiva
                               # vía supabase_flutter, ahora también uso directo en AuthRemoteDataSourceSupabase
   characters: ^1.4.1        # largo de la contraseña en caracteres visibles (PoliticaPassword) — antes transitiva
+  # El mapa compartido (ADR-019, #673): tokens, contraste y el estilo con sus glyphs y sprites, por tag
+  # de lib-mapa (decisión de Cristian del 09/11, «Usar lib-mapa»: se actualiza cambiando el número; nada
+  # en pub.dev). El estilo sigue viajando con la app (ADR-011): son assets del paquete.
+  colportores_mapa:
+    git:
+      url: https://github.com/Colportores/lib-mapa.git
+      ref: v1.0.0
+      path: dart
   connectivity_plus: ^7.3.1
   crypto: ^3.0.7
   dartz: ^0.10.1            # Either<Failure, T> (convenciones §4.3)
@@ -84,16 +92,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # Estilo, glyphs y sprites del mapa (copia de lo que publica backend-supabase#42, ver
-  # assets/mapa/NOTICE.md). Los glyphs y sprites se copian al almacenamiento interno al abrir el
-  # mapa (`PreparadorRecursosMapa`): MapLibre los lee con `file://`.
-  assets:
-    - assets/mapa/estilo/
-    - assets/mapa/glyphs/NotoSans-Regular/
-    - assets/mapa/glyphs/NotoSans-Medium/
-    - assets/mapa/glyphs/NotoSans-Italic/
-    - assets/mapa/glyphs/OFL.txt
-    - assets/mapa/sprites/
+  # El estilo, los glyphs y los sprites del mapa no se declaran acá: son assets de `colportores_mapa`
+  # (lib-mapa), que la app lee como `packages/colportores_mapa/assets/mapa/…` (ver assets/mapa/NOTICE.md).
+  # Los glyphs y sprites se copian al almacenamiento interno al abrir el mapa
+  # (`PreparadorRecursosMapa`): MapLibre los lee con `file://`.
 
   # Offline-first: nada de `google_fonts` con fetch en runtime. Empaquetadas desde el repo oficial
   # https://github.com/google/fonts (licencia OFL, ver assets/fonts/*-OFL.txt). Las tres familias

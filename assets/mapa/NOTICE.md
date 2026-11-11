@@ -1,57 +1,37 @@
 # Estilo, glyphs y sprites del mapa
 
-Esta carpeta es una copia de lo que publica backend-supabase#42 (PR #73, mergeado; cabeza `7938609b`, `tiles/`): el estilo
-`estilo/colportores.json` (generado por `tiles/src/estilo.mjs` con la paleta del canvas), los glyphs
-y los sprites. Van adentro de la app para que el mapa offline no necesite red. Cuando backend cambia
-algo, se vuelve a copiar y se sube `PreparadorRecursosMapa.versionRecursosMapa`. El estilo trae
-`pmtiles://REEMPLAZAR` y URLs de glyphs y sprites de relleno: la app los reemplaza al abrir el mapa
-(`ConstructorEstiloMapa`).
+Desde #673 la app ya no guarda una copia a mano del estilo: el estilo, los glyphs y los sprites
+vienen del paquete `colportores_mapa` de [lib-mapa](https://github.com/Colportores/lib-mapa)
+(ADR-019), que `pubspec.yaml` toma como dependencia git con el tag de la release (`ref: v1.0.0`,
+`path: dart`; decisión de Cristian del 09/11, «Usar lib-mapa»). Siguen viajando **dentro de la app**
+(ADR-011): son assets del paquete y Flutter los empaqueta como
+`packages/colportores_mapa/assets/mapa/…`, así que el mapa offline no necesita red.
 
-En el bucket `mapas` de backend los glyphs y sprites se publican tal cual, bajo `estilo/glyphs/` y
-`estilo/sprites/` (ver `docs/mapas-tiles.md` de backend-supabase). Salen de
-[protomaps/basemaps-assets](https://github.com/protomaps/basemaps-assets), fijado al commit
-`028c18f713baecad011301ff7a69acc39bcc2ae7` (31/10/2025), la misma familia de assets que usa
-`@protomaps/basemaps` 5.7.2, el paquete que arma las capas del estilo.
+- `estilo/colportores.json`: el estilo único del mapa (el mismo que usa el panel), con
+  `pmtiles://REEMPLAZAR` y URLs de glyphs y sprites de relleno que la app reemplaza al abrir el mapa
+  (`ConstructorEstiloMapa`). Trae los números de puerta de OSM desde z16 (`address_label`, lib-mapa#3).
+- `glyphs/` y `sprites/`: se copian al almacenamiento interno la primera vez que se abre el mapa
+  (`PreparadorRecursosMapa`), porque MapLibre los lee con `file://`.
+- Los tokens (colores y formas de los estados de casa, paleta y contraste de las zonas, zooms y
+  atribución) salen del mismo paquete (`package:colportores_mapa/colportores_mapa.dart`).
 
-## Glyphs (`glyphs/`)
+## Cómo se actualiza
 
-- Fuente: Noto Sans (Regular, Medium e Italic), convertida a PBF con
-  [font-maker](https://github.com/maplibre/font-maker).
-- Licencia: SIL Open Font License 1.1, en `glyphs/OFL.txt`.
-- Las carpetas se llaman `NotoSans-Regular`, `NotoSans-Medium` y `NotoSans-Italic` (el original lleva
-  espacios: «Noto Sans Regular»). El estilo usa esos nombres, y así ninguna ruta del bucket lleva espacios.
-- Solo los rangos que necesita un mapa en español: `0-255` (latín básico y Latin-1: tildes, ñ, ¿, ¡),
-  `256-511` (latín extendido) y `8192-8447` (puntuación general: comillas, rayas, puntos suspensivos).
-  Un nombre en otro alfabeto no se dibuja: el pedido de su rango da 404 y el texto sale sin esos caracteres.
+1. Se sube el `ref` de `colportores_mapa` en `pubspec.yaml` al tag nuevo de lib-mapa.
+2. Si cambió algo de `assets/mapa/` del paquete (estilo, glyphs o sprites), se sube
+   `PreparadorRecursosMapa.versionRecursosMapa` (así cada teléfono vuelve a copiar los glyphs y sprites).
+3. Las capturas del estilo a z16, z17 y z18 son las de referencia de lib-mapa
+   (`pruebas/visual/referencia/`, skill `capturas-mapa`).
 
-## Sprites (`sprites/`)
+## Licencias
 
-- Hoja `grayscale` (v4), a 1x y 2x, con su índice JSON: flechas de calles de un solo sentido, escudos de
-  ruta y las marcas de capital y de localidad. No trae los íconos de los puntos de interés, por eso el
-  estilo no dibuja esa capa (ver `paleta.json`, `sin_capas`).
-- Licencia: derivados de [tangrams/icons](https://github.com/tangrams/icons), MIT:
+Los avisos completos viajan con el paquete, en `assets/mapa/NOTICE.md` y `assets/mapa/NOTICE-assets.md`
+de lib-mapa (en la caché de pub, `colportores_mapa/assets/mapa/`):
 
-  > The MIT License (MIT)
-  >
-  > Copyright (c) 2017 Mapzen
-  >
-  > Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-  > associated documentation files (the "Software"), to deal in the Software without restriction,
-  > including without limitation the rights to use, copy, modify, merge, publish, distribute,
-  > sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
-  > furnished to do so, subject to the following conditions:
-  >
-  > The above copyright notice and this permission notice shall be included in all copies or
-  > substantial portions of the Software.
-  >
-  > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
-  > NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-  > NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-  > DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
-  > OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-## Los datos del mapa
-
-No están acá: son los PMTiles que se cortan de los builds de [Protomaps](https://protomaps.com/), con
-datos de OpenStreetMap (© OpenStreetMap contributors, ODbL 1.0). La atribución viaja en el estilo
-(`sources.protomaps.attribution`) y en el catálogo (`fuente`).
+- **Glyphs**: Noto Sans (Regular, Medium e Italic), SIL Open Font License 1.1 (`glyphs/OFL.txt`).
+- **Sprites**: hoja `grayscale` de [protomaps/basemaps-assets](https://github.com/protomaps/basemaps-assets),
+  derivada de [tangrams/icons](https://github.com/tangrams/icons), MIT (© 2017 Mapzen).
+- **Datos del mapa**: no están acá. Son los PMTiles que se cortan de los builds de
+  [Protomaps](https://protomaps.com/), con datos de OpenStreetMap (© OpenStreetMap contributors,
+  ODbL 1.0), y se bajan del bucket por ciudad. La atribución («© OpenStreetMap») la dibuja `MapaBase`
+  con el token `TokensMapa.atribucionCorto` de la librería.

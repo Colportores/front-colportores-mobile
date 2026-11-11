@@ -1,3 +1,4 @@
+import 'package:colportores_mapa/colportores_mapa.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/painting.dart';
 
@@ -50,56 +51,35 @@ final class ZonaMapa extends Equatable {
   List<Object?> get props => [id, rotulo, poligonos, color, propia, puntoRotulo];
 }
 
-/// El color de las zonas sobre el mapa.
+/// El color de las zonas sobre el mapa. La regla y los números son los de lib-mapa (#673):
+/// [TokensMapa.zonaSinColor], [TokensMapa.contrasteBordes] y [ContrasteMapa.bordeDeZona].
 abstract final class ColoresZona {
-  /// Si el coordinador no eligió color: el azul primario de la app.
-  static const porDefecto = Color(0xFF13407A);
+  /// Si el coordinador no eligió color: el valor del móvil del token, el azul primario de la app.
+  /// El panel usa otro gris hasta la decisión de UX de front-coordinadores-web#148
+  /// ([ValorPendiente.pendiente]); cuando se decida, llega como valor único con un tag nuevo.
+  static final porDefecto = Color(TokensMapa.zonaSinColor.movil);
 
   /// Lo peor que puede quedar detrás de un borde: el fondo liso (`ColoresMapa.fondo`, un test
-  /// comprueba que sea el mismo) y el verde de los parques del estilo (`tiles/paleta.json`). El
-  /// borde tiene que verse con ≥ 3:1 sobre los dos (WCAG 1.4.11).
-  static const fondoLiso = Color(0xFFF6F5F0);
-  static const _fondos = [fondoLiso, Color(0xFFDDE8D3)];
+  /// comprueba que sea el mismo) y el verde de los parques del estilo. El borde tiene que verse con
+  /// ≥ 3:1 sobre los dos (WCAG 1.4.11). Son los de [TokensMapa.contrasteFondosDelMapa].
+  static final fondoLiso = Color(TokensMapa.contrasteFondosDelMapa.first);
 
   /// El contraste mínimo de un borde que se tiene que ver para entender el mapa (WCAG 1.4.11).
-  static const contrasteMinimo = 3.0;
+  static const contrasteMinimo = TokensMapa.contrasteBordes;
 
   static final _hex = RegExp(r'^#([0-9A-Fa-f]{6})$');
 
   /// El color del borde de una zona con [hex] (`#RRGGBB` o `null`): el elegido por el coordinador y,
   /// si no alcanza [contrasteMinimo] sobre el mapa (un amarillo, un celeste), el mismo tono
-  /// oscurecido hasta que alcance.
+  /// oscurecido hasta que alcance ([ContrasteMapa.bordeDeZona], la misma regla que el panel).
   static Color borde(String? hex) {
     final coincidencia = hex == null ? null : _hex.firstMatch(hex);
-    var color = coincidencia == null
-        ? porDefecto
-        : Color(0xFF000000 | int.parse(coincidencia.group(1)!, radix: 16));
-    for (var i = 0; i < 40 && contraste(color) < contrasteMinimo; i++) {
-      color = _aOchoBits(Color.lerp(color, const Color(0xFF000000), .08)!);
-    }
-    return color;
+    final elegido = coincidencia == null
+        ? porDefecto.toARGB32()
+        : 0xFF000000 | int.parse(coincidencia.group(1)!, radix: 16);
+    return Color(ContrasteMapa.bordeDeZona(elegido));
   }
 
-  /// El color con cada canal en un entero de 8 bits: lo que el estilo del mapa escribe en hex y lo
-  /// que se ve, así el contraste que se mide es el del color que se dibuja.
-  static Color _aOchoBits(Color color) => Color.fromARGB(
-    255,
-    (color.r * 255).round(),
-    (color.g * 255).round(),
-    (color.b * 255).round(),
-  );
-
-  /// El menor contraste de [color] contra los fondos del mapa.
-  static double contraste(Color color) {
-    final claro = color.computeLuminance();
-    var peor = double.infinity;
-    for (final fondo in _fondos) {
-      final otro = fondo.computeLuminance();
-      final mayor = claro > otro ? claro : otro;
-      final menor = claro > otro ? otro : claro;
-      final razon = (mayor + .05) / (menor + .05);
-      if (razon < peor) peor = razon;
-    }
-    return peor;
-  }
+  /// El menor contraste de [color] contra los fondos del mapa ([ContrasteMapa.sobreElMapa]).
+  static double contraste(Color color) => ContrasteMapa.sobreElMapa(color.toARGB32());
 }

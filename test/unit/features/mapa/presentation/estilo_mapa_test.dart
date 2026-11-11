@@ -1,7 +1,6 @@
 // El estilo MapLibre que se arma a partir del de backend (#286): es JSON puro, se prueba sin la
 // vista nativa.
 import 'dart:convert';
-import 'dart:io';
 import 'dart:ui' show Color;
 
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
@@ -12,6 +11,8 @@ import 'package:colportores_mobile/features/mapa/presentation/mapa_base/marcador
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/marcador_estado.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../../helpers/assets_de_lib_mapa.dart';
 
 const _montevideo = Coordenadas(lat: -34.88761, lon: -56.13024);
 const _recursos = '/data/user/0/uy.colportores/files/mapa/basemaps-5.7.2-1';
@@ -45,7 +46,7 @@ void main() {
   late Map<String, dynamic> base;
 
   setUpAll(() {
-    estiloBase = File('assets/mapa/estilo/colportores.json').readAsStringSync();
+    estiloBase = estiloDeLibMapa();
     base = jsonDecode(estiloBase) as Map<String, dynamic>;
   });
 
@@ -94,14 +95,14 @@ void main() {
       for (final fuente in fuentes) {
         for (final rango in ['0-255', '256-511', '8192-8447']) {
           expect(
-            File('assets/mapa/glyphs/$fuente/$rango.pbf').existsSync(),
+            archivoDeLibMapa('glyphs/$fuente/$rango.pbf').existsSync(),
             isTrue,
             reason: '$fuente/$rango.pbf',
           );
         }
       }
       for (final archivo in ['grayscale.json', 'grayscale.png', 'grayscale@2x.json']) {
-        expect(File('assets/mapa/sprites/$archivo').existsSync(), isTrue, reason: archivo);
+        expect(archivoDeLibMapa('sprites/$archivo').existsSync(), isTrue, reason: archivo);
       }
     });
   });
@@ -279,7 +280,7 @@ void main() {
         final fuentes = (c['layout'] as Map<String, dynamic>?)?['text-font'] as List<dynamic>?;
         if (fuentes == null) continue;
         for (final fuente in fuentes) {
-          expect(Directory('assets/mapa/glyphs/$fuente').existsSync(), isTrue);
+          expect(carpetaDeLibMapa('glyphs/$fuente').existsSync(), isTrue);
         }
       }
     });
@@ -617,9 +618,10 @@ void main() {
         expect(layout['icon-image'], ['get', 'imagen']);
         // La punta de abajo de la imagen cae sobre la ubicación.
         expect(layout['icon-anchor'], 'bottom');
-        // Ninguna se esconde ni esconde a otra: son pocas y todas tienen que verse.
+        // Ninguna se esconde: son pocas y todas tienen que verse. Ocupan su lugar (#673): el número de
+        // puerta de OSM que queda debajo se esconde (decisión P4 de lib-mapa).
         expect(layout['icon-allow-overlap'], isTrue);
-        expect(layout['icon-ignore-placement'], isTrue);
+        expect(layout['icon-ignore-placement'], isFalse);
         expect(layout.containsKey('text-field'), isFalse, reason: 'el número va en la imagen');
       });
 
