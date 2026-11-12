@@ -921,10 +921,14 @@ final class _Reparto {
   /// Por id de cita, la fecha (ms) de su grupo; una cita sin grupo no figura.
   final Map<String, int?> _fechaDe;
 
-  /// Las filas pendientes de [filas] que son de [cita]; vacío si la cita no tiene grupo.
+  /// Las filas pendientes de [filas] que son de [cita]: las de su grupo y, si no tiene grupo porque
+  /// otra cita de la venta está a la misma hora (se movió a esa hora en la Agenda), las de esa hora:
+  /// es la misma visita, así que «Entregado hoy» de cualquiera de las dos entrega esos libros y las
+  /// cierra a las dos (revisión y QA de #709). Vacío si no hay nada pendiente para ella.
   List<Entrega> filasDe(Agenda cita, List<Entrega> filas) {
-    if (!_fechaDe.containsKey(cita.id)) return const [];
-    final fecha = _fechaDe[cita.id];
+    final fecha = _fechaDe.containsKey(cita.id)
+        ? _fechaDe[cita.id]
+        : cita.fechaProgramada.millisecondsSinceEpoch;
     return [
       for (final e in filas)
         if (e.pendiente && _ms(e.fechaPrevista) == fecha) e,

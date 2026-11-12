@@ -21,8 +21,6 @@ import '../../../../../helpers/campo_falsos.dart';
 import '../../../../../helpers/logger_mudo.dart';
 import '../../../../../helpers/venta_falsos.dart';
 
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   late AppDatabase db;
@@ -135,29 +133,25 @@ void main() {
       },
     );
 
-    test(
-      'entregar esa visita cierra las DOS citas: ninguna queda programada sin libros',
-      () async {
-        final (:antes, despues: _) = await dosCitas();
-        await moverCita('a-2', antes);
-        final unica = (await entregas.observarPendientes().first).single;
+    test('entregar esa visita cierra las DOS citas: ninguna queda programada sin libros', () async {
+      final (:antes, despues: _) = await dosCitas();
+      await moverCita('a-2', antes);
+      final unica = (await entregas.observarPendientes().first).single;
 
-        final hecho = await entregas.cumplir(
-          'v-39',
-          ahora: t1,
-          idDeLaCita: 'x',
-          agendaId: unica.agendaId,
-        );
+      final hecho = await entregas.cumplir(
+        'v-39',
+        ahora: t1,
+        idDeLaCita: 'x',
+        agendaId: unica.agendaId,
+      );
 
-        expect([for (final e in hecho.entregadas) e.id], ['e-1', 'e-2']);
-        expect(
-          await citasVivasDeEntrega(),
-          isEmpty,
-          reason: 'toda la venta quedó entregada: no puede quedar una cita de entrega programada',
-        );
-      },
-      skip: _conHallazgos ? null : 'QA #706: cita fantasma al mover una cita a la hora de la otra',
-    );
+      expect([for (final e in hecho.entregadas) e.id], ['e-1', 'e-2']);
+      expect(
+        await citasVivasDeEntrega(),
+        isEmpty,
+        reason: 'toda la venta quedó entregada: no puede quedar una cita de entrega programada',
+      );
+    });
 
     test(
       '«Entregado hoy» sobre la cita que quedó sin libros la cierra (no queda sin salida)',
@@ -170,7 +164,6 @@ void main() {
 
         expect(await citasVivasDeEntrega(), isEmpty);
       },
-      skip: _conHallazgos ? null : 'QA #706: cita fantasma al mover una cita a la hora de la otra',
     );
 
     test('«Entregar ahora» todo con las dos citas a la misma hora las cierra', () async {
