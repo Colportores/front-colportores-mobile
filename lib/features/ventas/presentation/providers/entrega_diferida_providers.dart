@@ -244,8 +244,6 @@ class MarcarNotifier extends Notifier<MarcarState> {
   /// La entrega que se marca: una venta puede tener una por cada grupo de libros diferido.
   final CualEntrega cual;
 
-  String get ventaId => cual.ventaId;
-
   @override
   MarcarState build() => const MarcarState();
 
@@ -284,7 +282,7 @@ class MarcarNotifier extends Notifier<MarcarState> {
           .read(cumplirEntregaUseCaseProvider)
           .call(
             CumplirEntregaParams(
-              ventaId: ventaId,
+              ventaId: cual.ventaId,
               entregaIds: aEntregar,
               nuevaFecha: queda ? s.nuevaFecha : null,
             ),
