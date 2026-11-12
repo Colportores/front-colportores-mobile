@@ -36,10 +36,16 @@ final class SumarALaVentaUseCase implements UseCase<VentaQueCrecio, SumaALaVenta
   final DateTime Function() _ahora;
 
   /// El motivo nuevo no entra junto al que la venta ya tenía: le quedan [quedan] caracteres para lo
-  /// nuevo. Texto a confirmar (mapa §2: texto).
-  static String motivoNoEntra(int quedan) => quedan == 1
-      ? 'Con el motivo que ya tiene la venta, para lo nuevo te queda 1 carácter: acortalo.'
-      : 'Con el motivo que ya tiene la venta, para lo nuevo te quedan $quedan caracteres: acortalo.';
+  /// nuevo. Con 0, el viejo ya ocupa todo y la salida es volver al monto calculado (decisión del
+  /// orquestador del 11/11 por el mapa de decisiones, P1 de #706: nunca un callejón sin salida).
+  static String motivoNoEntra(int quedan) => switch (quedan) {
+    <= 0 =>
+      'El motivo que ya tiene la venta ocupa los 500 caracteres y no entra otro. Para guardar, '
+          'tocá «Volver al monto calculado».',
+    1 => 'Con el motivo que ya tiene la venta, para lo nuevo te queda 1 carácter: acortalo.',
+    _ =>
+      'Con el motivo que ya tiene la venta, para lo nuevo te quedan $quedan caracteres: acortalo.',
+  };
 
   @override
   Future<Either<Failure, VentaQueCrecio>> call(SumaALaVenta s) async {

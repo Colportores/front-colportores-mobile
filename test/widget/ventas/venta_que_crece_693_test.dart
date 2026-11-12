@@ -250,6 +250,32 @@ void main() {
       },
     );
 
+    testWidgets(
+      'con el motivo viejo en 500 dice la salida: «Volver al monto calculado» suma (P1)',
+      (tester) async {
+        final venta = conMotivo('v' * 500);
+        final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta]));
+        await montarNuevaVenta(tester, e, creceSobre: venta);
+        await _sumarSaludYHogar(tester);
+
+        await tocar(tester, find.byKey(const Key('venta_cambiar_monto')));
+        await escribir(tester, _campo('venta_monto'), '1.500');
+        await escribir(tester, _campo('venta_motivo'), 'x');
+
+        final aviso = SumarALaVentaUseCase.motivoNoEntra(0);
+        expect(aviso, contains('Volver al monto calculado'));
+        expect(find.text(aviso), findsWidgets);
+        expect(_habilitado(tester), isFalse);
+
+        await verVisible(tester, find.byKey(const Key('venta_usar_calculado')));
+        await tocar(tester, find.byKey(const Key('venta_usar_calculado')));
+        expect(find.text(aviso), findsNothing);
+        expect(_habilitado(tester), isTrue);
+        await tocar(tester, _cta);
+        expect(e.crece.sumas.single.motivo, isNull);
+      },
+    );
+
     testWidgets('con el monto calculado el motivo viejo queda como estaba', (tester) async {
       final venta = conMotivo('redondeo');
       final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta]));

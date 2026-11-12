@@ -320,6 +320,13 @@ void main() {
         SumarALaVentaUseCase.motivoNoEntra(0),
       );
       expect(repo.llamadas, isEmpty);
+      // Decisión del 11/11 (P1 de #706): con 0 no dice «te quedan 0», dice la salida.
+      expect(
+        SumarALaVentaUseCase.motivoNoEntra(0),
+        'El motivo que ya tiene la venta ocupa los 500 caracteres y no entra otro. Para guardar, '
+        'tocá «Volver al monto calculado».',
+      );
+      expect(SumarALaVentaUseCase.motivoNoEntra(1), contains('te queda 1 carácter'));
     });
 
     test('al monto calculado no pide motivo aunque la venta ya tenga uno', () async {
