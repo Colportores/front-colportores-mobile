@@ -14,6 +14,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/contexto_notas_
 import 'package:colportores_mobile/features/mapa/domain/entities/motivo_rechazo_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/modificar_persona_use_case.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/modificar_persona_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -426,6 +427,309 @@ void main() {
           expect(texto, isNot(contains(dato)), reason: '${c.runtimeType}.toString() → $texto');
         }
       }
+    });
+  });
+
+  group('QA #483 · segunda vuelta · 360×640 · 200 % · teclado abierto', () {
+    const teclado = FakeViewPadding(bottom: 280);
+
+    Future<void> abrirTeclado(WidgetTester tester) async {
+      tester.view.viewInsets = teclado;
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    /// Todo botón de la pantalla mide al menos 48×48 (la guía de Flutter no sirve con el teclado: un
+    /// campo medio tapado por la ventana del scroll se mide como una franja de 13 px, aunque se pueda
+    /// tocar y desplazar).
+    Future<void> objetivos(WidgetTester tester) async {
+      for (final tipo in [FilledButton, TextButton, IconButton]) {
+        for (final e in find.byType(tipo).evaluate()) {
+          final tam = (e.renderObject! as RenderBox).size;
+          expect(tam.height, greaterThanOrEqualTo(48), reason: '$tipo mide $tam');
+          expect(tam.width, greaterThanOrEqualTo(48), reason: '$tipo mide $tam');
+        }
+      }
+    }
+
+    final scroll = find
+        .byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down)
+        .first;
+
+    /// Se ve entero o, si es más alto que la ventana, se ve su comienzo arriba de todo.
+    bool seVeEntero(WidgetTester tester, Finder finder) {
+      final ventana = tester.getRect(scroll);
+      final rect = tester.getRect(finder);
+      if (rect.height > ventana.height) return (rect.top - ventana.top).abs() < 0.5;
+      return rect.top >= ventana.top - 0.5 && rect.bottom <= ventana.bottom + 0.5;
+    }
+
+    Finder aviso(String texto) =>
+        find.ancestor(of: find.textContaining(texto), matching: find.byType(AvisoAlta));
+
+    testWidgets(
+      'error al guardar: el aviso se ve, los botones miden 48 px arriba y abajo del scroll y '
+      '«Reintentar» queda sobre el teclado',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        final repo = PersonaRepositorioFalso()
+          ..resultadosModificar.add(const FailureInesperado(causa: 'x'));
+        await montarEdicion(tester, repo: repo, tamano: _telefono360, escala: 2);
+        await _escribir(tester, _telefono, '099 000 111');
+        await abrirTeclado(tester); // el teclado sigue abierto cuando falla el guardado
+        await tester.ensureVisible(_boton(_guardar));
+        await tester.tap(_boton(_guardar));
+        await asentar(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(seVeEntero(tester, aviso(_noPudimos)), isTrue);
+        await objetivos(tester);
+        await tester.drag(scroll, const Offset(0, -2000));
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        await objetivos(tester);
+        final reintentar = tester.getRect(_boton('Reintentar'));
+        expect(reintentar.bottom, lessThanOrEqualTo(640 - 280 + 0.5));
+        expect(reintentar.height, greaterThanOrEqualTo(48));
+        handle.dispose();
+      },
+    );
+
+    testWidgets('«¿Es otra persona?»: se llega al aviso y a «Dar de baja y crear nueva», con '
+        'botones de 48 px, sin overflow y con «Guardar igual» sobre el teclado', (tester) async {
+      final handle = tester.ensureSemantics();
+      await montarEdicion(tester, tamano: _telefono360, escala: 2);
+      await abrirTeclado(tester); // se escribe con el teclado abierto
+      await _escribir(tester, _nombre, 'Roberto');
+      await _escribir(tester, _apellido, 'Suárez'); // acá aparece el aviso
+      await asentar(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(seVeEntero(tester, aviso('Si es otra persona')), isTrue);
+      await objetivos(tester);
+      await tester.ensureVisible(find.text('Dar de baja y crear nueva'));
+      await tester.pump();
+      await objetivos(tester);
+      expect(tester.getRect(_boton(_guardarIgual)).bottom, lessThanOrEqualTo(640 - 280 + 0.5));
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
+
+    testWidgets('«Guardar igual» que falla: conviven el aviso rojo y el ámbar, sin overflow, y '
+        '«Reintentar» guarda una sola vez', (tester) async {
+      final handle = tester.ensureSemantics();
+      final repo = PersonaRepositorioFalso()
+        ..resultadosModificar.add(const FailureInesperado(causa: 'x'));
+      final resultado = await montarEdicion(tester, repo: repo, tamano: _telefono360, escala: 2);
+      await _cambioTotal(tester);
+      await abrirTeclado(tester);
+
+      await tester.ensureVisible(_boton(_guardarIgual));
+      await tester.tap(_boton(_guardarIgual));
+      await asentar(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(find.text(_noPudimos), findsOneWidget);
+      expect(find.text('Dar de baja y crear nueva'), findsOneWidget);
+      expect(seVeEntero(tester, aviso(_noPudimos)), isTrue);
+      await objetivos(tester);
+      await tester.ensureVisible(find.text('Dar de baja y crear nueva'));
+      await tester.pump();
+      await objetivos(tester);
+      expect(find.text('Roberto'), findsOneWidget, reason: 'lo escrito sigue ahí');
+
+      await tester.ensureVisible(_boton('Reintentar'));
+      await tester.tap(_boton('Reintentar'));
+      await asentar(tester);
+
+      expect(repo.editadas, hasLength(2));
+      expect(resultado.cierres, 1);
+      expect(resultado.resultado, isA<PersonaEditada>());
+      handle.dispose();
+    });
+
+    testWidgets('solo lectura: el aviso largo, «Volver» y la ✕ miden 48 px y no desbordan', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _llegarA(tester, _Estado.soloLectura, escala: 2);
+      await abrirTeclado(tester);
+
+      expect(tester.takeException(), isNull);
+      await objetivos(tester);
+      await tester.ensureVisible(find.text('Volver'));
+      await tester.pump();
+      await objetivos(tester);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
+  });
+
+  group('QA #483 · segunda vuelta · la persona cambia mientras se edita', () {
+    const bajaDesde = '22/10';
+
+    /// Abre la edición con el teléfono tipeado y un guardado que la persistencia va a rechazar por la
+    /// persona (el cambio de la persona lo hace cada test antes de tocar «Guardar cambios»).
+    Future<ResultadoEdicion> abrirYTipear(
+      WidgetTester tester,
+      PersonaRepositorioFalso repo, {
+      double escala = 1,
+      bool conTeclado = false,
+    }) async {
+      repo.resultadosModificar.add(
+        FailureValidacion(campos: {'persona': MotivoRechazoPersona.personaSoloLectura.mensaje}),
+      );
+      final resultado = await montarEdicion(
+        tester,
+        repo: repo,
+        tamano: _telefono360,
+        escala: escala,
+      );
+      await _escribir(tester, _telefono, '099 000 111');
+      if (conTeclado) {
+        tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+        addTearDown(tester.view.resetViewInsets);
+      }
+      return resultado;
+    }
+
+    Future<void> guardar(WidgetTester tester) async {
+      await tester.ensureVisible(_boton(_guardar));
+      await tester.tap(_boton(_guardar));
+      await asentar(tester);
+    }
+
+    final deBaja = contextoDeEdicion(
+      causa: CausaSoloLectura.personaDeBaja,
+      bajaDesde: DateTime.utc(2026, 10, 22, 15),
+    );
+
+    testWidgets('dada de baja: la pantalla cambia al aviso de la causa real, sin formulario ni '
+        '«Reintentar», y «Volver» cierra sin escribir', (tester) async {
+      final repo = PersonaRepositorioFalso();
+      final resultado = await abrirYTipear(tester, repo);
+      repo.contextos['per-1'] = deBaja; // se da de baja entre que se abre la edición y se guarda
+      await guardar(tester);
+
+      expect(
+        find.text('María está de baja desde el $bajaDesde. Sus datos no se pueden editar.'),
+        findsOneWidget,
+      );
+      expect(find.byType(TextField), findsNothing);
+      expect(_boton('Reintentar'), findsNothing);
+      expect(_boton(_guardar), findsNothing);
+      expect(find.textContaining('Su espacio está dado de baja'), findsNothing);
+
+      await tester.tap(find.text('Volver'));
+      await asentar(tester);
+
+      expect(resultado.cierres, 1);
+      expect(resultado.resultado, isNull);
+      expect(repo.editadas, hasLength(1), reason: 'solo el intento que se rechazó');
+    });
+
+    testWidgets('dada de baja, 200 % con teclado: el aviso de la causa real se lee y «Volver» se '
+        'alcanza, sin overflow', (tester) async {
+      final handle = tester.ensureSemantics();
+      final repo = PersonaRepositorioFalso();
+      await abrirYTipear(tester, repo, escala: 2, conTeclado: true);
+      repo.contextos['per-1'] = deBaja;
+      await guardar(tester);
+
+      expect(tester.takeException(), isNull);
+      final nodo = tester.getSemantics(find.textContaining('Sus datos no se pueden editar.'));
+      expect(nodo.flagsCollection.isLiveRegion, isTrue);
+      await tester.ensureVisible(find.text('Volver'));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      handle.dispose();
+    });
+
+    testWidgets('borrada: la pantalla dice que la persona ya no está y «Volver» cierra', (
+      tester,
+    ) async {
+      final repo = PersonaRepositorioFalso();
+      final resultado = await abrirYTipear(tester, repo);
+      repo.contextos.clear();
+      await guardar(tester);
+
+      expect(find.text('La persona ya no está en tu teléfono. Volvé atrás.'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      expect(_boton('Reintentar'), findsNothing);
+
+      await tester.tap(find.text('Volver'));
+      await asentar(tester);
+
+      expect(resultado.cierres, 1);
+      expect(resultado.resultado, isNull);
+    });
+
+    testWidgets('si la relectura de la persona también falla: queda el aviso rojo con lo escrito y '
+        '«Reintentar» guarda', (tester) async {
+      final repo = PersonaRepositorioFalso();
+      final resultado = await abrirYTipear(tester, repo);
+      repo.fallaAlLeerParaEditar = const FailureInesperado(causa: 'x');
+      await guardar(tester);
+
+      expect(find.text(MotivoRechazoPersona.personaSoloLectura.mensaje), findsOneWidget);
+      expect(find.text('099 000 111'), findsOneWidget, reason: 'lo escrito sigue ahí');
+      await tester.tap(_boton('Reintentar'));
+      await asentar(tester);
+
+      expect(repo.editadas, hasLength(2));
+      expect(resultado.resultado, isA<PersonaEditada>());
+    });
+  });
+
+  group('QA #483 · segunda vuelta · acciones superpuestas tras una falla', () {
+    testWidgets('dos toques seguidos en «Reintentar» guardan una sola vez y, si el reintento '
+        'también falla, todo vuelve a estar habilitado', (tester) async {
+      final repo = PersonaRepositorioFalso()
+        ..resultadosModificar.addAll(const [
+          FailureInesperado(causa: 'x'),
+          FailureInesperado(causa: 'y'),
+        ]);
+      await montarEdicion(tester, repo: repo);
+      await _escribir(tester, _telefono, '099 000 111');
+      await _tocar(tester, _guardar);
+      expect(repo.editadas, hasLength(1));
+
+      repo.compuertaModificar = Completer<void>();
+      await tester.tap(_boton('Reintentar'));
+      await tester.pump();
+      await tester.tap(find.text('Guardando…'), warnIfMissed: false);
+      await tester.pump();
+      expect(repo.editadas, hasLength(2), reason: 'el segundo toque no guarda otra vez');
+      expect(find.text(_noPudimos), findsNothing, reason: 'el aviso viejo se va mientras guarda');
+
+      repo.compuertaModificar!.complete();
+      await asentar(tester);
+
+      expect(repo.editadas, hasLength(2));
+      expect(find.text(_noPudimos), findsOneWidget);
+      expect(_boton('Reintentar'), findsOneWidget);
+      expect(tester.widget<IconButton>(find.byType(IconButton)).onPressed, isNotNull);
+      expect(tester.widget<TextField>(_campo(_telefono)).readOnly, isFalse);
+    });
+
+    testWidgets('después de una falla, vaciar el nombre y «Reintentar» avisa, no guarda y conserva '
+        'el aviso rojo y lo escrito', (tester) async {
+      final repo = PersonaRepositorioFalso()
+        ..resultadosModificar.add(const FailureInesperado(causa: 'x'));
+      await montarEdicion(tester, repo: repo);
+      await _escribir(tester, _telefono, '099 000 111');
+      await _tocar(tester, _guardar);
+
+      await _escribir(tester, _nombre, '   ');
+      await _tocar(tester, 'Reintentar');
+
+      expect(find.text('El nombre no puede quedar vacío.'), findsOneWidget);
+      expect(repo.editadas, hasLength(1));
+      expect(find.text('099 000 111'), findsOneWidget);
+      expect(tester.widget<TextField>(_campo(_nombre)).focusNode!.hasFocus, isTrue);
     });
   });
 
