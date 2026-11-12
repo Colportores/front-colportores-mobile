@@ -69,10 +69,10 @@ final class FaltaElPunto extends PropuestaCiudad {
 /// Puerto: las ciudades que el alta de ubicación necesita (vista 03, «Montevideo detectada»,
 /// «de tu zona», «Cambiar»). Todas son **de la campaña del colportor**.
 ///
-/// La fuente real sale del teléfono, sin red: la réplica local del catálogo de ciudades (el nombre),
-/// las campañas del colportor, sus zonas y los centros de las ciudades. Hasta que esa réplica exista
-/// (front-colportores-mobile#274) no hay implementación de producción: `CiudadesParaAltaSinFuente`
-/// devuelve [FailureCiudadesNoDisponibles].
+/// La fuente real sale del teléfono, sin red: la réplica local del catálogo de ciudades (el nombre y
+/// el centro), las campañas del colportor y sus zonas. La implementa `CiudadesParaAltaLocal`
+/// (front-colportores-mobile#274); mientras el teléfono no bajó ese catálogo devuelve
+/// [FailureCiudadesNoDisponibles].
 ///
 /// Una `Left` quiere decir «no se pudo leer»; [CampaniaSinCiudades] y la lista vacía, «se leyó y la
 /// campaña no tiene ciudades». Una fuente que no sabe **nunca** contesta lo segundo.

@@ -1,32 +1,55 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/database/fecha_utc_converter.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/sync/encolador_sync.dart';
+import '../../../../datos/sync_queue_table.dart' show EstadoJob;
+import '../../../agenda/data/datasources/agenda_local_data_source_drift.dart';
+import '../../../agenda/data/models/agenda_model.dart';
+import '../../../agenda/data/models/visita_model.dart';
+import '../../../agenda/domain/entities/estado_agenda.dart';
+import '../../../agenda/domain/entities/tipo_agenda.dart';
+import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
+import '../../domain/entities/espacio.dart';
 import '../../domain/entities/espacios_activos.dart';
+import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/marcador_mapa.dart';
 import '../../domain/entities/motivo_baja.dart';
 import '../../domain/entities/motivo_rechazo_espacio.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
 import '../../domain/services/encolador_marcar_duplicado.dart';
+import '../../domain/services/house_status_updater.dart';
 import '../../domain/value_objects/area_mapa.dart';
 import '../models/espacio_model.dart';
+import '../models/espacio_persona_model.dart';
+import '../models/movimientos_de_union.dart';
 import '../models/ubicacion_model.dart';
 import '../services/fuentes_sin_adaptador_ubicaciones.dart' show EncoladorMarcarDuplicadoSinMotor;
+import '../services/house_status_updater_drift.dart';
 import 'audit_log_table.dart';
 import 'espacio_local_data_source.dart';
 import 'espacios_table.dart';
+import 'house_status_table.dart';
+import 'notas_table.dart' show TipoObjetivoNota;
+import 'persona_local_data_source_drift.dart' show PersonaLocalDataSourceDrift;
 import 'ubicacion_local_data_source.dart';
 import 'ubicaciones_table.dart';
+import 'uniones_locales_table.dart';
 
 part 'ubicacion_local_data_source_drift.g.dart';
 
 typedef _Motivo = MotivoRechazoEspacio;
+
+/// Una fila que la unión deshecha devolvió a B: su entidad del cloud, su `id` y, si hay, la columna
+/// que la unión le había cambiado ([campo]) con el valor que la ponía del lado de A ([ladoA]).
+typedef _FilaRevertida = ({String entidad, String id, String? campo, String? ladoA});
 
 /// [UbicacionLocalDataSource] sobre las tablas `ubicacion` ([Ubicaciones]) y `espacio`
 /// ([Espacios]) de la DB cifrada.
@@ -34,20 +57,36 @@ typedef _Motivo = MotivoRechazoEspacio;
 /// Es el DAO de las dos tablas (`@DriftAccessor`) y traduce modelos ↔ filas, como
 /// `JornadaLocalDataSourceDrift`. El sync entra por [EncoladorSync], dentro de la misma
 /// transacción que la escritura (contrato-sync-engine §3).
-@DriftAccessor(tables: [Ubicaciones, Espacios, AuditLogLocal])
+@DriftAccessor(tables: [Ubicaciones, Espacios, AuditLogLocal, HouseStatuses])
 final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     with _$UbicacionLocalDataSourceDriftMixin
     implements UbicacionLocalDataSource, EspacioLocalDataSource {
   /// [_encolador] se pasa como `encolador:` (parámetro nombrado privado, Dart ≥ 3.10). El trabajo
-  /// «marcar como duplicado» entra por [_marcarDuplicado]: sin motor de sync (#178), falla.
+  /// «marcar como duplicado» entra por [_marcarDuplicado] (en la app, `EncoladorMarcarDuplicadoMotor`);
+  /// sin motor de sync, falla.
+  /// [estadoDeLasCasas] recalcula el color de las dos casas al unirlas (R-UB08); sin él se usa el
+  /// de siempre (`HouseStatusUpdaterDrift`, con este mismo encolador).
   UbicacionLocalDataSourceDrift(
     super.attachedDatabase, {
     required this._encolador,
     this._marcarDuplicado = const EncoladorMarcarDuplicadoSinMotor(),
-  });
+    HouseStatusUpdater? estadoDeLasCasas,
+    DateTime Function()? ahora,
+  }) : _estadoInyectado = estadoDeLasCasas,
+       _ahora = ahora ?? DateTime.now;
 
   final EncoladorSync _encolador;
   final EncoladorMarcarDuplicado _marcarDuplicado;
+  final HouseStatusUpdater? _estadoInyectado;
+
+  /// El reloj de «la próxima entrevista» de la lista: solo cuenta la que todavía no pasó.
+  final DateTime Function() _ahora;
+
+  late final HouseStatusUpdater _estadoDeLasCasas =
+      _estadoInyectado ?? HouseStatusUpdaterDrift(attachedDatabase, encolador: _encolador);
+
+  /// El `op` del trabajo de la unión en `sync_queue` (contrato-sync-engine §6.2).
+  static const _opMarcarComoDuplicado = 'marcar_como_duplicado';
 
   /// Metros por grado de latitud (y de longitud en el ecuador).
   static const _metrosPorGrado = 111320.0;
@@ -60,6 +99,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     UbicacionModel ubicacion, {
     EspacioModel? espacio,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) => transaction(() async {
     final existente = await (select(
       ubicaciones,
@@ -77,6 +117,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       await into(espacios).insert(_aFilaEspacio(espacio));
       await _encolador.encolar('espacio', OperacionSync.insert, espacio.toJson());
     }
+    await _guardarJustificacion(ubicacion.id, justificacion, ubicacion.auditoria.updatedAt);
     return (ubicacion: ubicacion, yaEstaba: false);
   });
 
@@ -119,21 +160,31 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
+    EspacioModel? espacioSiNoTiene,
+    String? justificacion,
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(nueva.id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
     if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
+    // Reactivar al guardar: una baja por unión de duplicados no se reactiva (HU-UBI-005).
+    if (nueva.auditoria.deletedAt == null) {
+      final union = await _unionDe(fila);
+      if (union != null) throw union;
+    }
 
     // S17: para quedar con un solo espacio (de edificio a casa o negocio, de negocio a casa) tiene
     // que haber un depto como mucho; ese depto pasa a ser el espacio de la casa o del negocio y
-    // pierde el número. Los de baja no cuentan.
+    // pierde el número. Los de baja no cuentan. Sin ninguno, una casa recibe su espacio default
+    // (S13, decisión de Cristian 21/10 «Casa vacía»).
     EspacioFila? deptoConNumero;
+    var creaEspacio = false;
     if (reduceAUnEspacio) {
       final activos = await (select(
         espacios,
       )..where((e) => e.ubicacionId.equals(nueva.id) & e.deletedAt.isNull())).get();
       if (activos.length > 1) throw UbicacionConEspaciosException(activos.length);
       deptoConNumero = activos.where((e) => e.numeroDepto != null).firstOrNull;
+      creaEspacio = activos.isEmpty && espacioSiNoTiene != null;
     }
 
     if (duplicados != null) {
@@ -167,8 +218,33 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
         ),
       );
     }
+    if (creaEspacio) {
+      await into(espacios).insert(_aFilaEspacio(espacioSiNoTiene!));
+      await _encolador.encolar('espacio', OperacionSync.insert, espacioSiNoTiene.toJson());
+    }
+    await _guardarJustificacion(guardada.id, justificacion, guardada.auditoria.updatedAt);
     return guardada;
   });
+
+  /// La justificación de «Crear igual» (HU-UBI-001, #282) en la auditoría local, dentro de la
+  /// transacción que escribe la ubicación. Sin texto (o en blanco) no escribe nada. Nunca entra a
+  /// la cola de sync ni a una columna de `ubicacion`.
+  Future<void> _guardarJustificacion(
+    String ubicacionId,
+    String? justificacion,
+    DateTime cuando,
+  ) async {
+    final texto = justificacion?.trim();
+    if (texto == null || texto.isEmpty) return;
+    await into(auditLogLocal).insert(
+      AuditLogLocalCompanion.insert(
+        evento: EventoAuditoriaLocal.ubicacionCrearIgual,
+        uuid: ubicacionId,
+        motivo: Value(texto),
+        creadoEn: cuando,
+      ),
+    );
+  }
 
   @override
   Future<({UbicacionModel ubicacion, bool escribio})> cambiarBaja(
@@ -178,6 +254,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     required DateTime? deletedAt,
     String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   }) => transaction(() async {
     final fila = await (select(ubicaciones)..where((u) => u.id.equals(id))).getSingleOrNull();
     if (fila == null) throw const UbicacionInexistenteException();
@@ -194,6 +271,16 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       return (ubicacion: _aModelo(fila), escribio: false);
     }
     if (fila.updatedAt != instanteMs(baseUpdatedAt)) throw const UbicacionCambioException();
+    if (deletedAt == null) await _exigirReactivable(fila, duplicados);
+
+    // Las entrevistas agendadas de la casa se cancelan con la baja, en la misma transacción (decisión
+    // de Cristian, 21/10): no se borra nada y siguen canceladas si se reactiva. Va ANTES de escribir
+    // `deleted_at`: el recálculo del color no mira una ubicación ya dada de baja, y así la fila de
+    // `house_status` deja de pintar «Entrevista programada» (R-UB08). Con [conservadaId] (unión de
+    // duplicados) no se tocan: `unirDuplicada` las pasa a la que se conserva.
+    if (deletedAt != null && conservadaId == null) {
+      await _cancelarEntrevistasDe(id, updatedAt, colportorId: fila.createdBy ?? '');
+    }
 
     await (update(ubicaciones)..where((u) => u.id.equals(id))).write(
       UbicacionesCompanion(updatedAt: Value(updatedAt), deletedAt: Value(deletedAt)),
@@ -220,6 +307,111 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     return (ubicacion: guardada, escribio: true);
   });
 
+  /// Pasa a `CANCELADA` las entrevistas `PROGRAMADA` de [ubicacionId], las encola como `update` y, si
+  /// cambió alguna, recalcula el color de la casa (como la cancelación normal, R-UB08). Las cobranzas
+  /// (cuotas) no se tocan: una ubicación con ventas no se puede dar de baja. Hay que llamarla con la
+  /// ubicación todavía viva: el recálculo no hace nada sobre una que ya tiene `deleted_at`.
+  Future<void> _cancelarEntrevistasDe(
+    String ubicacionId,
+    DateTime cuando, {
+    required String colportorId,
+  }) async {
+    final delLugar = selectOnly(espacios)
+      ..addColumns([espacios.id])
+      ..where(espacios.ubicacionId.equals(ubicacionId));
+    final agendas = attachedDatabase.agendas;
+    final aCancelar =
+        await (select(agendas)..where(
+              (a) =>
+                  a.espacioId.isInQuery(delLugar) &
+                  a.tipo.equals(TipoAgenda.entrevista.codigo) &
+                  a.estado.equals(EstadoAgenda.programada.codigo) &
+                  a.deletedAt.isNull(),
+            ))
+            .get();
+    for (final fila in aCancelar) {
+      await (update(agendas)..where((a) => a.id.equals(fila.id))).write(
+        AgendasCompanion(estado: Value(EstadoAgenda.cancelada.codigo), updatedAt: Value(cuando)),
+      );
+      final guardada = await (select(agendas)..where((a) => a.id.equals(fila.id))).getSingle();
+      await _encolador.encolar(
+        'agenda',
+        OperacionSync.update,
+        AgendaModel.fromEntity(AgendaLocalDataSourceDrift.desdeFila(guardada)).toJson(),
+      );
+    }
+    if (aCancelar.isNotEmpty) {
+      await _estadoDeLasCasas.recalcular(ubicacionId, ahora: cuando, colportorId: colportorId);
+    }
+  }
+
+  /// El motivo `duplicado_de_<A>` de la baja vigente de [fila] si nació de unir duplicados
+  /// (HU-UBI-006), o `null` si no: su evento `ubicacion_baja` en la auditoría local, con la misma marca
+  /// que `deleted_at`. Una baja que llegó del servidor, sin fila local, no se reconoce (no se inventa
+  /// un motivo). El prefijo se compara en Dart y no con `LIKE`: el `_` del patrón es un comodín y
+  /// «duplicado de la casa» (texto libre de «Otro») pasaría por una unión.
+  Future<String?> _motivoDeUnion(UbicacionFila fila) async {
+    final marca = fila.deletedAt;
+    if (marca == null) return null;
+    final motivos =
+        await (select(auditLogLocal)..where(
+              (a) =>
+                  a.evento.equals(EventoAuditoriaLocal.ubicacionBaja) &
+                  a.uuid.equals(fila.id) &
+                  a.creadoEn.equalsValue(marca),
+            ))
+            .map((a) => a.motivo)
+            .get();
+    return motivos.where(MotivosBaja.esUnion).firstOrNull;
+  }
+
+  /// La excepción a lanzar si la baja vigente de [fila] nació de unir duplicados (HU-UBI-006), o
+  /// `null` si no (la excepción lleva la `A` de `duplicado_de_<A>`, ver [_conservadaFinal]).
+  Future<ReactivacionDeUnionException?> _unionDe(UbicacionFila fila) async {
+    final union = await _motivoDeUnion(fila);
+    if (union == null) return null;
+    return ReactivacionDeUnionException(
+      conservadaId: await _conservadaFinal(MotivosBaja.conservadaDe(union)),
+    );
+  }
+
+  /// Hasta cuántas uniones seguidas se siguen para dar con la ubicación que quedó (B se unió a A y A
+  /// a C: B termina en C). Más allá, o con un ciclo, no se ofrece ninguna.
+  static const _maximoSaltosDeUnion = 8;
+
+  /// La ubicación a la que apunta la cadena de uniones que empieza en [primera]: la primera activa
+  /// que encuentra siguiendo el `duplicado_de_<A>` de cada baja por unión. Si la cadena se corta (la
+  /// ubicación no existe o está de baja por otro motivo), se pasa de largo, o se cierra en un ciclo,
+  /// devuelve la última que alcanzó (de baja o inexistente): el repositorio solo ofrece abrir una
+  /// activa. `null` si [primera] es `null`.
+  Future<String?> _conservadaFinal(String? primera) async {
+    var actual = primera;
+    final vistas = <String>{};
+    while (actual != null && vistas.length < _maximoSaltosDeUnion && vistas.add(actual)) {
+      final fila = await _ubicacionPorId(actual);
+      if (fila == null || fila.deletedAt == null) return actual;
+      final siguiente = MotivosBaja.conservadaDe(await _motivoDeUnion(fila));
+      if (siguiente == null) return actual;
+      actual = siguiente;
+    }
+    return actual;
+  }
+
+  /// Lo que se exige antes de reactivar la baja [fila] (HU-UBI-005, «Reactivar»), dentro de la
+  /// transacción: que no sea una unión de duplicados ([ReactivacionDeUnionException]) y, si llega
+  /// [duplicados], que ninguna activa choque con ella ([UbicacionDuplicadaException]; con el criterio
+  /// de `alSeguirIgual`, solo D1: la misma dirección a menos de 100 m).
+  Future<void> _exigirReactivable(
+    UbicacionFila fila,
+    CriterioDuplicadoUbicacion? duplicados,
+  ) async {
+    final union = await _unionDe(fila);
+    if (union != null) throw union;
+    if (duplicados == null) return;
+    final candidatas = await _candidatas(_aModelo(fila), duplicados);
+    if (candidatas.isNotEmpty) throw UbicacionDuplicadaException(candidatas);
+  }
+
   /// Los espacios sin baja de [ubicacionId], del más viejo al más nuevo (el orden de la RPC 0026).
   Future<List<EspacioFila>> _espaciosActivosEnOrden(String ubicacionId) =>
       (select(espacios)
@@ -240,6 +432,10 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   ///   que el trabajo) y el trabajo «marcar como duplicado». No se encolan los espacios movidos ni
   ///   el tombstone de B: los aplica el servidor al correr el trabajo (su forma y qué más viaja es
   ///   del motor de sync).
+  /// - **Qué movió** (`ubicacion_union_local`, con el `id` del trabajo): los `id` de los espacios
+  ///   pasados y fundidos, de lo que colgaba de los fundidos, de las alternativas y de las notas, si
+  ///   dio de baja a B y si A pasó a edificio. Con eso `UnionesRechazadasDrift` la deshace si el
+  ///   servidor rechaza el trabajo (decisión de Cristian, 10/11, «Unión rech.»; #679).
   ///
   /// B ya de baja y sin espacios activos: no hace nada ([UnionLocal.escribio] `false`).
   @override
@@ -281,25 +477,27 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       }
     }
 
-    var pasados = 0;
-    var fundidos = 0;
+    final pasados = <String>[];
+    final fundidos = <EspacioFundido>[];
     for (final e in deB) {
       if (unePorUnico && esUnico(e) && unicoDeA != null) {
+        // Lo que colgaba del espacio de B (sus personas, visitas y agendas) pasa al único de A
+        // antes de dar de baja el de B: no se borra ni se deja huérfano nada.
+        fundidos.add(await _pasarLoQueCuelgaDe(e.id, a: unicoDeA, instante: instante));
         await (update(espacios)..where((x) => x.id.equals(e.id))).write(
           EspaciosCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
         );
-        fundidos++;
       } else {
         await (update(espacios)..where((x) => x.id.equals(e.id))).write(
           EspaciosCompanion(ubicacionId: Value(conservadaId), updatedAt: Value(instante)),
         );
-        pasados++;
+        pasados.add(e.id);
         if (unePorUnico && unicoDeA == null && esUnico(e)) unicoDeA = e.id;
       }
     }
 
     // "Unir tipos": una casa que queda con más de un espacio pasa a edificio sola.
-    final pasoAEdificio = tipoA == TipoUbicacion.casa && deA.length + pasados > 1;
+    final pasoAEdificio = tipoA == TipoUbicacion.casa && deA.length + pasados.length > 1;
     if (pasoAEdificio) {
       await (update(ubicaciones)..where((u) => u.id.equals(conservadaId))).write(
         UbicacionesCompanion(
@@ -309,7 +507,19 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       );
     }
 
+    // Quien hace la unión es el dueño de las casas: el `created_by` de una fila de `house_status`
+    // nueva. Las casas del par son suyas (el scan compara solo las propias).
+    final colportorId = conservada.createdBy ?? duplicada.createdBy ?? '';
+    final alternativas = await _reapuntarAlternativas(
+      duplicadaId,
+      a: conservadaId,
+      instante: instante,
+    );
+    final notas = await _pasarNotasDelLugar(duplicadaId, a: conservadaId, instante: instante);
     if (duplicada.deletedAt == null) {
+      // Ya sin espacios activos ni nada colgado: su fila de `house_status` se da de baja con B
+      // (el recálculo de una ubicación viva sin eventos), antes de marcar la baja.
+      await _estadoDeLasCasas.recalcular(duplicadaId, ahora: ahora, colportorId: colportorId);
       await (update(ubicaciones)..where((u) => u.id.equals(duplicadaId))).write(
         UbicacionesCompanion(updatedAt: Value(instante), deletedAt: Value(instante)),
       );
@@ -329,17 +539,525 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       final guardada = await _ubicacionPorId(conservadaId);
       await _encolador.encolar('ubicacion', OperacionSync.update, _aModelo(guardada!).toJson());
     }
-    await _marcarDuplicado.encolarMarcarDuplicado(
+    // El color de A se recalcula con todo lo que ahora cuelga de ella (lo suyo y lo de B), con la
+    // prioridad de siempre y en la misma transacción (R-UB08, ADR-003).
+    await _estadoDeLasCasas.recalcular(conservadaId, ahora: ahora, colportorId: colportorId);
+    final trabajoId = await _marcarDuplicado.encolarMarcarDuplicado(
       duplicadaId: duplicadaId,
       conservadaId: conservadaId,
     );
-    return (
-      escribio: true,
+    final movimientos = MovimientosDeUnion(
       espaciosPasados: pasados,
       espaciosFundidos: fundidos,
+      agendasAlternativas: alternativas.agendas,
+      vinculosAlternativos: alternativas.vinculos,
+      notasDelLugar: notas,
+      duplicadaDadaDeBaja: duplicada.deletedAt == null,
+      conservadaPasoAEdificio: pasoAEdificio,
+    );
+    await into(attachedDatabase.unionesLocales).insert(
+      UnionesLocalesCompanion.insert(
+        trabajoId: trabajoId,
+        conservadaId: conservadaId,
+        duplicadaId: duplicadaId,
+        unidaEn: instante,
+        movimientos: movimientos.codificar(),
+      ),
+    );
+    return (
+      escribio: true,
+      espaciosPasados: pasados.length,
+      espaciosFundidos: fundidos.length,
       conservadaPasoAEdificio: pasoAEdificio,
     );
   });
+
+  /// Las uniones hechas en el teléfono cuyo trabajo «marcar como duplicado» volvió rechazado
+  /// (`INVALID`) y todavía no se deshicieron, de la más nueva a la más vieja: con uniones encadenadas
+  /// (B a A y después A a C) primero vuelve lo de la última, así lo que trajo la primera está otra vez
+  /// donde lo dejó.
+  Selectable<({UnionLocalFila union, String codigo})> _rechazadasSinDeshacer() {
+    final uniones = attachedDatabase.unionesLocales;
+    final cola = attachedDatabase.syncQueue;
+    final consulta = select(uniones).join([innerJoin(cola, cola.id.equalsExp(uniones.trabajoId))])
+      ..where(
+        uniones.estado.equals(EstadoUnionLocal.aplicada) &
+            cola.state.equals(EstadoJob.invalid) &
+            cola.op.equals(_opMarcarComoDuplicado),
+      )
+      ..orderBy([OrderingTerm.desc(uniones.unidaEn), OrderingTerm.desc(uniones.trabajoId)]);
+    return consulta.map(
+      (fila) => (union: fila.readTable(uniones), codigo: fila.readTable(cola).code),
+    );
+  }
+
+  /// Cuántas uniones hay para deshacer ([deshacerUnionesRechazadas]), reactivo: emite de nuevo cuando
+  /// cambia la cola de sync (un trabajo que vuelve `INVALID`) o se une o deshace un par.
+  Stream<int> observarUnionesPorDeshacer() =>
+      _rechazadasSinDeshacer().watch().map((filas) => filas.length).distinct();
+
+  /// HU-UBI-006, «el servidor rechaza el trabajo» (decisión de Cristian, 10/11, «Unión rech.»: «queda
+  /// separado en el teléfono»; #679). Deshace en el teléfono cada unión cuyo trabajo volvió `INVALID`
+  /// (`UB003`, `UB004`, `42501`, `CG001` o cualquier otro código), cada una en su transacción, **sin
+  /// borrar nada**, con lo que guardó al unir (`MovimientosDeUnion`):
+  ///
+  /// - los espacios que pasaron enteros vuelven a B;
+  /// - los únicos fundidos se reactivan y vuelve a ellos lo que colgaba (vínculos, visitas, agendas),
+  ///   y también la visita o la entrevista que se le hizo después de unir a una persona que vuelve
+  ///   («Visita unión», decisión de Cristian, 11/11, #696);
+  /// - las alternativas (`agenda.ubicacion_alt_id`, `espacio_persona.ubicacion_cobranza_alt_id`) y las
+  ///   notas del lugar vuelven a nombrar a B;
+  /// - B se reactiva si la unión la había dado de baja, y su marca `duplicado_de_<A>` deja de contar
+  ///   (el evento `ubicacion_union_deshecha` en la auditoría local; ver [observarListaDelColportor]);
+  /// - A vuelve a casa si pasó a edificio por la unión y no le quedó más de un espacio (lo creado
+  ///   después en A queda donde se creó), y se encola su `update`;
+  /// - se recalcula el color de las dos (`house_status`).
+  ///
+  /// Cada fila vuelve solo si sigue donde la dejó la unión: lo que se movió después (por ejemplo, otra
+  /// unión de A con una C) se queda donde está y se cuenta en `sinVolver`. De lo que se revierte se
+  /// encola el tipo de A y solo las filas que se editaron después de unir («Edic. unión», #696; ver
+  /// [_reenviarLoEditado]): el servidor rechazó el trabajo, así que nunca aplicó la unión y tiene lo
+  /// demás como estaba. El trabajo sigue `INVALID` (HU-UBI-006: «queda `invalid` y no se
+  /// reintenta»); la unión queda `DESHECHA` con su código, que es lo que pone el aviso del par en
+  /// «Posibles duplicados». Llamarla de nuevo no hace nada de más.
+  Future<List<UnionDeshecha>> deshacerUnionesRechazadas({required DateTime ahora}) async {
+    final hechas = <UnionDeshecha>[];
+    for (final (:union, :codigo) in await _rechazadasSinDeshacer().get()) {
+      final deshecha = await transaction(() async {
+        // Dentro de la transacción se vuelve a mirar: otra llamada pudo haberla deshecho ya.
+        final vigente = await (select(
+          attachedDatabase.unionesLocales,
+        )..where((u) => u.trabajoId.equals(union.trabajoId))).getSingleOrNull();
+        if (vigente == null || vigente.estado != EstadoUnionLocal.aplicada) return null;
+        return _deshacer(vigente, codigo: codigo, instante: instanteMs(ahora), ahora: ahora);
+      });
+      if (deshecha != null) hechas.add(deshecha);
+    }
+    return hechas;
+  }
+
+  Future<UnionDeshecha> _deshacer(
+    UnionLocalFila union, {
+    required String codigo,
+    required DateTime instante,
+    required DateTime ahora,
+  }) async {
+    final db = attachedDatabase;
+    final a = union.conservadaId;
+    final b = union.duplicadaId;
+    final m = MovimientosDeUnion.decodificar(union.movimientos);
+    var esperadas = 0;
+    var vueltas = 0;
+    // Lo que vuelve a B y sube (las notas del lugar son solo locales): para reenviar lo que se editó
+    // después de la unión (#696).
+    final revertidas = <_FilaRevertida>[];
+    void anotar(String entidad, List<String> ids, {String? campo, String? ladoA}) =>
+        revertidas
+          ..addAll([for (final id in ids) (entidad: entidad, id: id, campo: campo, ladoA: ladoA)]);
+
+    if (m.espaciosPasados.isNotEmpty) {
+      esperadas += m.espaciosPasados.length;
+      final volvieron = await _volver(
+        espacios,
+        espacios.id,
+        espacios.id.isIn(m.espaciosPasados) & espacios.ubicacionId.equals(a),
+        EspaciosCompanion(ubicacionId: Value(b), updatedAt: Value(instante)),
+      );
+      vueltas += volvieron.length;
+      anotar('espacio', volvieron, campo: 'ubicacion_id', ladoA: a);
+    }
+    for (final f in m.espaciosFundidos) {
+      esperadas++;
+      final reactivado = await _volver(
+        espacios,
+        espacios.id,
+        espacios.id.equals(f.espacioId) & espacios.deletedAt.isNotNull(),
+        EspaciosCompanion(deletedAt: const Value(null), updatedAt: Value(instante)),
+      );
+      vueltas += reactivado.length;
+      anotar('espacio', reactivado);
+      final vinculos = f.vinculos.isEmpty
+          ? const <String>[]
+          : await _volver(
+              db.espacioPersonas,
+              db.espacioPersonas.id,
+              db.espacioPersonas.id.isIn(f.vinculos) &
+                  db.espacioPersonas.espacioId.equals(f.unicoDeA),
+              EspacioPersonasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)),
+            );
+      esperadas += f.vinculos.length;
+      vueltas += vinculos.length;
+      anotar('espacio_persona', vinculos, campo: 'espacio_id', ladoA: f.unicoDeA);
+      if (f.visitas.isNotEmpty) {
+        esperadas += f.visitas.length;
+        final visitas = await _volver(
+          db.visitas,
+          db.visitas.id,
+          db.visitas.id.isIn(f.visitas) & db.visitas.espacioId.equals(f.unicoDeA),
+          VisitasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)),
+        );
+        vueltas += visitas.length;
+        anotar('visita', visitas, campo: 'espacio_id', ladoA: f.unicoDeA);
+      }
+      if (f.agendas.isNotEmpty) {
+        esperadas += f.agendas.length;
+        final agendas = await _volver(
+          db.agendas,
+          db.agendas.id,
+          db.agendas.id.isIn(f.agendas) & db.agendas.espacioId.equals(f.unicoDeA),
+          AgendasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)),
+        );
+        vueltas += agendas.length;
+        anotar('agenda', agendas, campo: 'espacio_id', ladoA: f.unicoDeA);
+      }
+      // «Visita unión» (decisión de Cristian, 11/11, #696): la visita o la entrevista que se le hizo
+      // después de unir a una persona que vuelve a B se va con ella, como sus ventas. Son las que
+      // siguen en el único de A con un vínculo que acaba de volver (las de antes de la unión ya
+      // volvieron arriba). No se cuentan en `sinVolver`: se encuentran acá, así que siempre vuelven.
+      if (vinculos.isNotEmpty) {
+        anotar(
+          'visita',
+          await _volver(
+            db.visitas,
+            db.visitas.id,
+            db.visitas.espacioId.equals(f.unicoDeA) & db.visitas.espacioPersonaId.isIn(vinculos),
+            VisitasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)),
+          ),
+          campo: 'espacio_id',
+          ladoA: f.unicoDeA,
+        );
+        anotar(
+          'agenda',
+          await _volver(
+            db.agendas,
+            db.agendas.id,
+            db.agendas.espacioId.equals(f.unicoDeA) & db.agendas.espacioPersonaId.isIn(vinculos),
+            AgendasCompanion(espacioId: Value(f.espacioId), updatedAt: Value(instante)),
+          ),
+          campo: 'espacio_id',
+          ladoA: f.unicoDeA,
+        );
+      }
+    }
+    if (m.agendasAlternativas.isNotEmpty) {
+      esperadas += m.agendasAlternativas.length;
+      final agendas = await _volver(
+        db.agendas,
+        db.agendas.id,
+        db.agendas.id.isIn(m.agendasAlternativas) & db.agendas.ubicacionAltId.equals(a),
+        AgendasCompanion(ubicacionAltId: Value(b), updatedAt: Value(instante)),
+      );
+      vueltas += agendas.length;
+      anotar('agenda', agendas, campo: 'ubicacion_alt_id', ladoA: a);
+    }
+    if (m.vinculosAlternativos.isNotEmpty) {
+      esperadas += m.vinculosAlternativos.length;
+      final vinculos = await _volver(
+        db.espacioPersonas,
+        db.espacioPersonas.id,
+        db.espacioPersonas.id.isIn(m.vinculosAlternativos) &
+            db.espacioPersonas.ubicacionCobranzaAltId.equals(a),
+        EspacioPersonasCompanion(ubicacionCobranzaAltId: Value(b), updatedAt: Value(instante)),
+      );
+      vueltas += vinculos.length;
+      anotar('espacio_persona', vinculos, campo: 'ubicacion_cobranza_alt_id', ladoA: a);
+    }
+    if (m.notasDelLugar.isNotEmpty) {
+      esperadas += m.notasDelLugar.length;
+      vueltas +=
+          await (db.update(db.notas)..where(
+                (x) =>
+                    x.id.isIn(m.notasDelLugar) &
+                    x.targetType.equals(TipoObjetivoNota.ubicacion) &
+                    x.targetId.equals(a),
+              ))
+              .write(NotasCompanion(targetId: Value(b), updatedAt: Value(instante)));
+    }
+
+    // B vuelve solo si sigue con la baja que le puso esta unión (la marca es su `deleted_at`).
+    var bReactivada = false;
+    final filaB = await _ubicacionPorId(b);
+    if (m.duplicadaDadaDeBaja) {
+      esperadas++;
+      final marca = filaB?.deletedAt;
+      if (marca != null && marca.isAtSameMomentAs(union.unidaEn)) {
+        await (update(ubicaciones)..where((u) => u.id.equals(b))).write(
+          UbicacionesCompanion(updatedAt: Value(instante), deletedAt: const Value(null)),
+        );
+        // La marca `duplicado_de_<A>` deja de contar: la Lista toma el último de estos eventos.
+        await into(auditLogLocal).insert(
+          AuditLogLocalCompanion.insert(
+            evento: EventoAuditoriaLocal.ubicacionUnionDeshecha,
+            uuid: b,
+            motivo: Value(codigo.isEmpty ? null : codigo),
+            creadoEn: instante,
+          ),
+        );
+        bReactivada = true;
+        vueltas++;
+      }
+    }
+
+    // A vuelve a casa si pasó a edificio por la unión y ya no tiene más de un espacio con número:
+    // lo que se creó después en A queda ahí, y entonces A sigue edificio. Si A ya no está (otra unión
+    // o una baja posterior), su tipo no se toca.
+    var aACasa = false;
+    final filaA = await _ubicacionPorId(a);
+    if (m.conservadaPasoAEdificio &&
+        filaA != null &&
+        filaA.deletedAt == null &&
+        UbicacionModel.tipoDesdeCodigo(filaA.tipo) == TipoUbicacion.edificio) {
+      esperadas++;
+      final activos = await _espaciosActivosEnOrden(a);
+      final conNumero = activos.where(
+        (e) => e.numeroDepto != null && e.numeroDepto!.trim().isNotEmpty,
+      );
+      if (activos.length <= 1 && conNumero.isEmpty) {
+        await (update(ubicaciones)..where((u) => u.id.equals(a))).write(
+          UbicacionesCompanion(
+            tipo: Value(UbicacionModel.codigoDeTipo(TipoUbicacion.casa)),
+            updatedAt: Value(instante),
+          ),
+        );
+        final guardada = await _ubicacionPorId(a);
+        await _encolador.encolar('ubicacion', OperacionSync.update, _aModelo(guardada!).toJson());
+        aACasa = true;
+        vueltas++;
+      }
+    }
+
+    await _reenviarLoEditado(revertidas, unidaEn: union.unidaEn);
+
+    final colportorId = filaA?.createdBy ?? filaB?.createdBy ?? '';
+    // Las dos con lo que les quedó, con la prioridad de siempre (R-UB08). Sobre una de baja no hace
+    // nada.
+    await _estadoDeLasCasas.recalcular(a, ahora: ahora, colportorId: colportorId);
+    await _estadoDeLasCasas.recalcular(b, ahora: ahora, colportorId: colportorId);
+
+    await (update(
+      attachedDatabase.unionesLocales,
+    )..where((u) => u.trabajoId.equals(union.trabajoId))).write(
+      UnionesLocalesCompanion(
+        estado: const Value(EstadoUnionLocal.deshecha),
+        codigoRechazo: Value(codigo),
+        deshechaEn: Value(instante),
+      ),
+    );
+    return UnionDeshecha(
+      conservadaId: a,
+      duplicadaId: b,
+      codigo: codigo,
+      duplicadaReactivada: bReactivada,
+      conservadaVolvioACasa: aACasa,
+      sinVolver: esperadas - vueltas,
+    );
+  }
+
+  /// Escribe [cambios] en las filas de [tabla] que cumplen [donde] y devuelve sus `id` ([columnaId]),
+  /// en orden: lo que de verdad volvió, para contarlo y para saber qué reenviar.
+  Future<List<String>> _volver<T extends Table, D>(
+    TableInfo<T, D> tabla,
+    GeneratedColumn<String> columnaId,
+    Expression<bool> donde,
+    Insertable<D> cambios,
+  ) async {
+    final ids = await _ids(tabla, columnaId, donde);
+    if (ids.isNotEmpty) {
+      await (attachedDatabase.update(tabla)..where((_) => columnaId.isIn(ids))).write(cambios);
+    }
+    return ids;
+  }
+
+  /// En qué orden se reenvían las filas que volvieron: primero lo que las otras nombran.
+  static const _ordenDeReenvio = ['espacio', 'espacio_persona', 'visita', 'agenda'];
+
+  /// «Edic. unión» (decisión de Cristian, 11/11, #696): de las filas que la unión deshecha devolvió a B
+  /// ([revertidas]), encola un `update`, con la fila como quedó (ya en B), de cada una que tuvo un
+  /// trabajo encolado después de la unión. Ese trabajo subió (o va a subir) la fila del lado de A, y
+  /// el servidor, que rechazó la unión, la tiene ahí: sin el reenvío, el servidor y el teléfono no
+  /// coinciden. Las que nadie tocó no se reenvían: el servidor las tiene en B.
+  ///
+  /// «Después de la unión» es un trabajo de la fila con `created_at` posterior a [unidaEn], o uno cuyo
+  /// payload la nombra del lado de A (el `campo` de la fila revertida con el valor de A): una escritura
+  /// posterior a la unión que el motor fundió en un trabajo de antes todavía sin mandar conserva el
+  /// `created_at` viejo, pero lleva el lado de A, que antes de unir la fila no podía tener. Un trabajo
+  /// `INVALID` no cuenta: nunca llegó al servidor. El trabajo «marcar como duplicado» tampoco.
+  Future<void> _reenviarLoEditado(
+    List<_FilaRevertida> revertidas, {
+    required DateTime unidaEn,
+  }) async {
+    if (revertidas.isEmpty) return;
+    final cola = attachedDatabase.syncQueue;
+    for (final entidad in _ordenDeReenvio) {
+      final deEsta = [
+        for (final r in revertidas)
+          if (r.entidad == entidad) r,
+      ];
+      if (deEsta.isEmpty) continue;
+      final ids = {for (final r in deEsta) r.id};
+      final trabajos =
+          await (select(cola)..where(
+                (q) =>
+                    q.entity.equals(entidad) &
+                    q.rowPk.isIn(ids) &
+                    q.op.equals(_opMarcarComoDuplicado).not() &
+                    q.state.equals(EstadoJob.invalid).not(),
+              ))
+              .get();
+      final tocadas = <String>{};
+      for (final t in trabajos) {
+        if (t.createdAt.isAfter(unidaEn) || _nombraElLadoA(t, deEsta)) tocadas.add(t.rowPk!);
+      }
+      for (final id in ids) {
+        if (tocadas.contains(id)) await _reencolar(entidad, id);
+      }
+    }
+  }
+
+  /// Si el payload de [trabajo] pone alguna de [revertidas] (de su fila) del lado de A.
+  static bool _nombraElLadoA(SyncQueueFila trabajo, List<_FilaRevertida> revertidas) {
+    Map<String, Object?>? payload;
+    for (final r in revertidas) {
+      if (r.id != trabajo.rowPk || r.campo == null) continue;
+      payload ??= _payloadDe(trabajo);
+      if (payload[r.campo] == r.ladoA) return true;
+    }
+    return false;
+  }
+
+  static Map<String, Object?> _payloadDe(SyncQueueFila trabajo) {
+    final valor = jsonDecode(trabajo.payload);
+    return valor is Map ? valor.cast<String, Object?>() : const {};
+  }
+
+  /// Encola el `update` de la fila [id] de [entidad] con la fila entera, como está ahora.
+  Future<void> _reencolar(String entidad, String id) async {
+    final db = attachedDatabase;
+    final Map<String, Object?> payload = switch (entidad) {
+      'espacio' => _aModeloEspacio((await _espacioPorId(id))!).toJson(),
+      'espacio_persona' => EspacioPersonaModel.fromEntity(
+        PersonaLocalDataSourceDrift.vinculoDesdeFila(
+          await (db.select(db.espacioPersonas)..where((x) => x.id.equals(id))).getSingle(),
+        ),
+      ).toJson(),
+      'visita' => VisitaModel.fromEntity(
+        AgendaLocalDataSourceDrift.visitaDesdeFila(
+          await (db.select(db.visitas)..where((x) => x.id.equals(id))).getSingle(),
+        ),
+      ).toJson(),
+      'agenda' => AgendaModel.fromEntity(
+        AgendaLocalDataSourceDrift.desdeFila(
+          await (db.select(db.agendas)..where((x) => x.id.equals(id))).getSingle(),
+        ),
+      ).toJson(),
+      _ => throw ArgumentError.value(entidad, 'entidad'),
+    };
+    await _encolador.encolar(entidad, OperacionSync.update, payload);
+  }
+
+  /// Las notas del lugar de [deB] (`nota` con `target_type = UBICACION`) pasan al lugar [a], también
+  /// las dadas de baja: la hoja de A muestra las de las dos y nada se pierde. Cuelgan de la
+  /// ubicación y no del espacio, así que pasan aunque el único de B no se funda. Son solo locales
+  /// (`SyncSpec.local`): no hay nada que encolar. Devuelve los `id` de las notas que pasó.
+  Future<List<String>> _pasarNotasDelLugar(
+    String deB, {
+    required String a,
+    required DateTime instante,
+  }) async {
+    final db = attachedDatabase;
+    final ids = await _ids(
+      db.notas,
+      db.notas.id,
+      db.notas.targetType.equals(TipoObjetivoNota.ubicacion) & db.notas.targetId.equals(deB),
+    );
+    if (ids.isEmpty) return ids;
+    await (db.update(db.notas)..where((x) => x.id.isIn(ids))).write(
+      NotasCompanion(targetId: Value(a), updatedAt: Value(instante)),
+    );
+    return ids;
+  }
+
+  /// Los `id` ([columnaId]) de las filas de [tabla] que cumplen [donde], en orden.
+  Future<List<String>> _ids(
+    TableInfo<Table, Object?> tabla,
+    GeneratedColumn<String> columnaId,
+    Expression<bool> donde,
+  ) async {
+    final consulta = attachedDatabase.selectOnly(tabla)
+      ..addColumns([columnaId])
+      ..where(donde)
+      ..orderBy([OrderingTerm.asc(columnaId)]);
+    return [for (final fila in await consulta.get()) fila.read(columnaId)!];
+  }
+
+  /// Lo que nombraba a la ubicación [deB] como casa alternativa (`agenda.ubicacion_alt_id` y
+  /// `espacio_persona.ubicacion_cobranza_alt_id`) pasa a nombrar a [a]: B queda de baja y una
+  /// referencia a ella no llevaría a ningún lado (HU-UBI-006, «Venta ajena»: el servidor hace lo
+  /// mismo con las suyas). Sin encolar por fila, como el resto de la unión. Devuelve los `id` de lo
+  /// que reapuntó.
+  Future<({List<String> agendas, List<String> vinculos})> _reapuntarAlternativas(
+    String deB, {
+    required String a,
+    required DateTime instante,
+  }) async {
+    final db = attachedDatabase;
+    final agendas = await _ids(db.agendas, db.agendas.id, db.agendas.ubicacionAltId.equals(deB));
+    final vinculos = await _ids(
+      db.espacioPersonas,
+      db.espacioPersonas.id,
+      db.espacioPersonas.ubicacionCobranzaAltId.equals(deB),
+    );
+    if (agendas.isNotEmpty) {
+      await (db.update(db.agendas)..where((x) => x.id.isIn(agendas))).write(
+        AgendasCompanion(ubicacionAltId: Value(a), updatedAt: Value(instante)),
+      );
+    }
+    if (vinculos.isNotEmpty) {
+      await (db.update(db.espacioPersonas)..where((x) => x.id.isIn(vinculos))).write(
+        EspacioPersonasCompanion(ubicacionCobranzaAltId: Value(a), updatedAt: Value(instante)),
+      );
+    }
+    return (agendas: agendas, vinculos: vinculos);
+  }
+
+  /// Repunta al espacio [a] lo que colgaba del espacio fundido [deB]: los vínculos con sus
+  /// personas, las visitas y las agendas (también las dadas de baja: el historial se conserva).
+  /// Las filas siguen con su vínculo y su persona; solo cambia el espacio al que pertenecen. No se
+  /// encola nada por fila: el servidor repite la unión cuando le llega el trabajo «marcar como
+  /// duplicado» (HU-UBI-006), como con los espacios que pasan enteros. Las ventas, las entregas y
+  /// los cobros cuelgan del vínculo (`venta.espacio_persona_id`), que se pasa entero: se mudan de
+  /// espacio con él sin tocar ninguna fila suya (#208 P4). Quien llama recalcula después el color de A
+  /// en la misma transacción. Devuelve qué pasó (los `id`), para poder deshacerlo (#679).
+  Future<EspacioFundido> _pasarLoQueCuelgaDe(
+    String deB, {
+    required String a,
+    required DateTime instante,
+  }) async {
+    final db = attachedDatabase;
+    final vinculos = await _ids(
+      db.espacioPersonas,
+      db.espacioPersonas.id,
+      db.espacioPersonas.espacioId.equals(deB),
+    );
+    final visitas = await _ids(db.visitas, db.visitas.id, db.visitas.espacioId.equals(deB));
+    final agendas = await _ids(db.agendas, db.agendas.id, db.agendas.espacioId.equals(deB));
+    await (db.update(db.espacioPersonas)..where((x) => x.espacioId.equals(deB))).write(
+      EspacioPersonasCompanion(espacioId: Value(a), updatedAt: Value(instante)),
+    );
+    await (db.update(db.visitas)..where((x) => x.espacioId.equals(deB))).write(
+      VisitasCompanion(espacioId: Value(a), updatedAt: Value(instante)),
+    );
+    await (db.update(db.agendas)..where((x) => x.espacioId.equals(deB))).write(
+      AgendasCompanion(espacioId: Value(a), updatedAt: Value(instante)),
+    );
+    return EspacioFundido(
+      espacioId: deB,
+      unicoDeA: a,
+      vinculos: vinculos,
+      visitas: visitas,
+      agendas: agendas,
+    );
+  }
 
   @override
   Stream<List<UbicacionModel>> observarDelColportor({
@@ -358,25 +1076,53 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     required String colportorId,
     bool incluirBajas = false,
   }) {
-    // `distinct`: el segundo JOIN (la auditoría) puede repetir la fila de cada espacio.
+    // `distinct`: el JOIN de las agendas puede repetir la fila de cada espacio.
     final cantidad = espacios.id.count(distinct: true);
-    // El motivo de la baja vigente: el evento de esta ubicación con la misma marca que su `deleted_at`.
-    // Una baja anterior ya reactivada, o una que vino del sync, no tiene la misma marca: sin motivo.
-    final motivo = auditLogLocal.motivo.max();
+    // El motivo de la baja: el ÚLTIMO evento `ubicacion_baja` de esta ubicación (por `creado_en`), no el
+    // que coincide con su `deleted_at` al instante: el servidor pone su propio `deleted_at` y el pull
+    // lo traerá de vuelta (#181), y el motivo no tiene que desaparecer de la Lista (decisión del
+    // 04/11, P1). Solo si la ubicación está de baja: una reactivada no tiene motivo. Una unión que se
+    // deshizo después (`ubicacion_union_deshecha`, #679) cierra su baja: si es el último evento, la
+    // baja de ahora no tiene motivo guardado y la marca `duplicado_de_<A>` ya no cuenta.
+    const motivo = CustomExpression<String>(
+      'CASE WHEN ubicacion.deleted_at IS NULL THEN NULL ELSE ('
+      "SELECT CASE WHEN a.evento = '${EventoAuditoriaLocal.ubicacionBaja}' THEN a.motivo END "
+      'FROM audit_log a '
+      "WHERE a.evento IN ('${EventoAuditoriaLocal.ubicacionBaja}', "
+      "'${EventoAuditoriaLocal.ubicacionUnionDeshecha}') AND a.uuid = ubicacion.id "
+      'ORDER BY a.creado_en DESC, a.id DESC LIMIT 1) END',
+    );
+    // La próxima entrevista agendada (#491): la `PROGRAMADA` de tipo `ENTREVISTA` más cercana de este
+    // colportor que todavía no pasó, en cualquier espacio sin baja de la ubicación. Al estar en la
+    // consulta, agendar, cancelar o registrar una visita hace que el stream emita de nuevo.
+    final agendas = attachedDatabase.agendas;
+    final proxima = agendas.fechaProgramada.min();
+    final desde = const FechaUtcConverter().toSql(_ahora());
     final consulta =
         select(ubicaciones).join([
             leftOuterJoin(
               espacios,
               espacios.ubicacionId.equalsExp(ubicaciones.id) & espacios.deletedAt.isNull(),
             ),
+            // El color vigente de la casa: una fila por ubicación, y la dada de baja (la casa volvió
+            // a «Sin visita») no cuenta. Al estar en la consulta, un cambio de `house_status` hace
+            // que el stream emita de nuevo.
             leftOuterJoin(
-              auditLogLocal,
-              auditLogLocal.evento.equals(EventoAuditoriaLocal.ubicacionBaja) &
-                  auditLogLocal.uuid.equalsExp(ubicaciones.id) &
-                  auditLogLocal.creadoEn.equalsExp(ubicaciones.deletedAt),
+              houseStatuses,
+              houseStatuses.ubicacionId.equalsExp(ubicaciones.id) &
+                  houseStatuses.deletedAt.isNull(),
+            ),
+            leftOuterJoin(
+              agendas,
+              agendas.espacioId.equalsExp(espacios.id) &
+                  agendas.colportorId.equals(colportorId) &
+                  agendas.estado.equals(EstadoAgenda.programada.codigo) &
+                  agendas.tipo.equals(TipoAgenda.entrevista.codigo) &
+                  agendas.deletedAt.isNull() &
+                  agendas.fechaProgramada.isBiggerOrEqualValue(desde),
             ),
           ])
-          ..addColumns([cantidad, motivo])
+          ..addColumns([cantidad, motivo, proxima])
           ..where(ubicaciones.createdBy.equals(colportorId))
           ..groupBy([ubicaciones.id]);
     if (!incluirBajas) consulta.where(ubicaciones.deletedAt.isNull());
@@ -386,11 +1132,19 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
           (
             ubicacion: _aModelo(fila.readTable(ubicaciones)),
             cantidadEspacios: fila.read(cantidad) ?? 0,
+            color: _colorDe(fila.readTableOrNull(houseStatuses)),
             motivoBaja: fila.read(motivo),
+            proximaEntrevista: _fechaDe(fila.read(proxima)),
           ),
       ],
     );
   }
+
+  static DateTime? _fechaDe(int? ms) => ms == null ? null : const FechaUtcConverter().fromSql(ms);
+
+  /// El color de la fila de `house_status`, o `null` si la ubicación no tiene (es «Sin visita»).
+  static ColorHouseStatus? _colorDe(HouseStatusFila? fila) =>
+      fila == null ? null : ColorHouseStatus.desdeCodigo(fila.color);
 
   @override
   Stream<List<MarcadorMapa>> observarMarcadoresEnArea({
@@ -486,9 +1240,36 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
         return u.deletedAt.isNull() & u.id.equals(centro.id).not() & (cerca | mismaDireccion);
       });
     final filas = await consulta.get();
-    return criterio.candidatas(centro.toEntity(), [
+    final candidatas = criterio.candidatas(centro.toEntity(), [
       for (final fila in filas) _aModelo(fila).toEntity(),
     ]);
+    return candidatas.isEmpty ? candidatas : _conResumen(candidatas);
+  }
+
+  /// Le suma a cada candidata lo que la tarjeta de la vista 04 muestra de su casa (#273): el estado de
+  /// visita, que sale de `house_status` (sin fila vigente es «Sin visita», ADR-003), y cuántos
+  /// espacios sin baja tiene. Es el mismo criterio que la lista (`observarListaDelColportor`).
+  Future<List<CandidataDuplicado>> _conResumen(List<CandidataDuplicado> candidatas) async {
+    final ids = [for (final c in candidatas) c.ubicacion.id];
+    final cantidad = espacios.id.count();
+    final conteo = selectOnly(espacios)
+      ..addColumns([espacios.ubicacionId, cantidad])
+      ..where(espacios.ubicacionId.isIn(ids) & espacios.deletedAt.isNull())
+      ..groupBy([espacios.ubicacionId]);
+    final espaciosPorId = {
+      for (final f in await conteo.get()) f.read(espacios.ubicacionId)!: f.read(cantidad) ?? 0,
+    };
+    final colores = await (select(
+      houseStatuses,
+    )..where((h) => h.ubicacionId.isIn(ids) & h.deletedAt.isNull())).get();
+    final colorPorId = {for (final h in colores) h.ubicacionId: _colorDe(h)};
+    return [
+      for (final c in candidatas)
+        c.conResumen(
+          estado: EstadoCasa.desdeColor(colorPorId[c.ubicacion.id]),
+          cantidadEspacios: espaciosPorId[c.ubicacion.id] ?? 0,
+        ),
+    ];
   }
 
   static UbicacionesCompanion _aFila(UbicacionModel u) => UbicacionesCompanion.insert(
@@ -512,7 +1293,6 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     ubicacionId: e.ubicacionId,
     numeroDepto: Value(e.numeroDepto),
     piso: Value(e.piso),
-    descripcion: Value(e.descripcion),
     createdAt: e.auditoria.createdAt,
     updatedAt: e.auditoria.updatedAt,
     createdBy: Value(e.auditoria.createdBy),
@@ -553,19 +1333,28 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   });
 
   @override
-  Future<EspacioModel> actualizarNumeroDepto(
+  Future<EspacioModel> actualizarEspacio(
     String id, {
     required String numeroDepto,
+    String? piso,
     required DateTime ahora,
   }) => transaction(() async {
     final fila = await _espacioActivoOLanzar(id);
     await _exigirUbicacionGestionable(fila.ubicacionId, exigirActiva: false);
-    if (fila.numeroDepto == numeroDepto) return _aModeloEspacio(fila);
+    if (fila.numeroDepto == numeroDepto && fila.piso == piso) return _aModeloEspacio(fila);
 
-    await _exigirSinDuplicado(fila.ubicacionId, numeroDepto, excluirId: id);
+    // Solo un número nuevo se compara con los demás: cambiar el piso de un depto que ya estaba no
+    // tiene que fallar por un repetido que venía de antes (por ejemplo, de otro teléfono).
+    if (_claveDepto(fila.numeroDepto) != _claveDepto(numeroDepto)) {
+      await _exigirSinDuplicado(fila.ubicacionId, numeroDepto, excluirId: id);
+    }
     return _escribirEspacio(
       id,
-      EspaciosCompanion(numeroDepto: Value(numeroDepto), updatedAt: Value(instanteMs(ahora))),
+      EspaciosCompanion(
+        numeroDepto: Value(numeroDepto),
+        piso: Value(piso),
+        updatedAt: Value(instanteMs(ahora)),
+      ),
     );
   });
 
@@ -649,8 +1438,8 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     }
   }
 
-  /// Lanza si otro espacio activo de la ubicación tiene el mismo número (sin espacios en los
-  /// bordes ni distinción de mayúsculas). Un número `null` no se compara.
+  /// Lanza si otro espacio activo de la ubicación tiene el mismo número (sin espacios ni distinción
+  /// de mayúsculas: «3B» y «3 b» son el mismo). Un número `null` no se compara.
   Future<void> _exigirSinDuplicado(
     String ubicacionId,
     String? numeroDepto, {
@@ -666,10 +1455,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     }
   }
 
-  static String? _claveDepto(String? numeroDepto) {
-    final limpio = numeroDepto?.trim().toLowerCase();
-    return limpio == null || limpio.isEmpty ? null : limpio;
-  }
+  static String? _claveDepto(String? numeroDepto) => Espacio.claveDeNumero(numeroDepto);
 
   /// Aplica [cambios] a [id], lee la fila resultante y encola su `update` con la fila entera.
   Future<EspacioModel> _escribirEspacio(String id, EspaciosCompanion cambios) async {
@@ -684,7 +1470,6 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     ubicacionId: fila.ubicacionId,
     numeroDepto: fila.numeroDepto,
     piso: fila.piso,
-    descripcion: fila.descripcion,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,

@@ -6,7 +6,6 @@ import 'dart:io';
 
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/archivo_envoltorio_dek.dart';
-import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
 import 'package:colportores_mobile/core/secure_storage/secure_storage_providers.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/estado_cuenta_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/estado_cuenta_remote_data_source.dart';
@@ -21,6 +20,7 @@ import 'package:colportores_mobile/features/auth/presentation/providers/sesion_n
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../../../helpers/almacen_que_se_traba.dart';
 import '../../../../../helpers/db_local_repository_en_memoria.dart';
 
 /// Un servidor que contesta cuando el test lo decide, pedido por pedido.
@@ -39,13 +39,13 @@ const _clave = ClaveSegura.estadoCuenta;
 
 void main() {
   late Directory directorio;
-  late AlmacenSeguroEnMemoria almacen;
+  late AlmacenQueSeTraba almacen;
   late _ServidorManual servidor;
   late ProviderContainer container;
 
   setUp(() async {
     directorio = await Directory.systemTemp.createTemp('estado_cuenta_319_');
-    almacen = AlmacenSeguroEnMemoria();
+    almacen = AlmacenQueSeTraba();
     servidor = _ServidorManual();
     container = ProviderContainer(
       overrides: [
@@ -186,6 +186,73 @@ void main() {
 
       expect(await actualizar, isNull);
       expect(container.read(estadoCuentaProvider).value, EstadoCuenta.pendienteAsignacion);
+    });
+  });
+
+  group('el borrado de datos locales a mitad de camino (#350)', () {
+    test('dado que ya se borró el estado de cuenta y falta borrar el resto, cuando llega la '
+        'respuesta de la consulta en vuelo, no lo vuelve a escribir', () async {
+      final ana = await entrar('ana@example.com');
+      await arrancarLaConsulta();
+      expect(servidor.pedidos, hasLength(1));
+      await almacen.escribir(_clave, 'recordado-antes');
+      almacen.trabarEnBorrar(ClaveSegura.relojSesion);
+      final borrado = container.read(custodiaClaveDbProvider).olvidarDatosDelUsuario();
+      await almacen.llegoAlTrabado;
+      expect(almacen.contenido.containsKey(_clave), isFalse, reason: 'ya se borró; el resto sigue');
+
+      servidor.pedidos.single.complete(EstadoCuenta.activa);
+      await pumpEventQueue();
+
+      expect(almacen.contenido.containsKey(_clave), isFalse, reason: 'el borrado no terminó');
+      expect(container.read(cuentaRepositoryProvider).ultimaConsultaExitosa(ana), isNull);
+      almacen.soltar();
+      await borrado;
+      expect(almacen.contenido.containsKey(_clave), isFalse);
+    });
+
+    test('dado que el borrado recién empezó, cuando llega la respuesta de la consulta en vuelo, '
+        'no pisa el estado que está por borrarse', () async {
+      await entrar('ana@example.com');
+      await arrancarLaConsulta();
+      await almacen.escribir(_clave, 'recordado-antes');
+      almacen.trabarEnBorrar(ClaveSegura.dbInicializada);
+      final borrado = container.read(custodiaClaveDbProvider).olvidarDatosDelUsuario();
+      await almacen.llegoAlTrabado;
+
+      servidor.pedidos.single.complete(EstadoCuenta.activa);
+      await pumpEventQueue();
+
+      expect(almacen.contenido[_clave], 'recordado-antes');
+      almacen.soltar();
+      await borrado;
+      expect(almacen.contenido.containsKey(_clave), isFalse);
+    });
+
+    test('dado un borrado que terminó sin cerrar la sesión y «Actualizar» esperando, la respuesta '
+        'se muestra pero no queda recordada ni cuenta como revisión', () async {
+      // El caso raro de #350: el cierre de sesión que sigue al borrado falla y la persona sigue
+      // adentro. Hoy el estado nuevo vive en pantalla y no en el almacén; el test lo fija.
+      final ana = await entrar('ana@example.com');
+      await arrancarLaConsulta();
+      servidor.pedidos[0].complete(EstadoCuenta.pendienteAsignacion);
+      await pumpEventQueue();
+      final repositorio = container.read(cuentaRepositoryProvider);
+      final ultimaRevision = repositorio.ultimaConsultaExitosa(ana);
+      expect(ultimaRevision, isNotNull);
+      expect(almacen.contenido[_clave], '$ana:pendienteAsignacion');
+      final actualizar = container.read(estadoCuentaProvider.notifier).refrescar();
+      await pumpEventQueue();
+      expect(servidor.pedidos, hasLength(2));
+
+      await container.read(custodiaClaveDbProvider).olvidarDatosDelUsuario();
+      expect(container.read(sesionProvider).value?.usuarioId, ana, reason: 'sigue adentro');
+      servidor.pedidos[1].complete(EstadoCuenta.activa);
+
+      expect(await actualizar, isNull);
+      expect(container.read(estadoCuentaProvider).value, EstadoCuenta.activa);
+      expect(almacen.contenido.containsKey(_clave), isFalse);
+      expect(repositorio.ultimaConsultaExitosa(ana), ultimaRevision);
     });
   });
 

@@ -68,6 +68,12 @@ class SyncStatus {
     this.blocked = 0,
     this.waiting = 0,
     this.lastSuccessAt,
+    this.lastPushAt,
+    this.lastPullAt,
+    this.lastBackupAt,
+    this.lastPushNetwork,
+    this.pullPausedReason,
+    this.dataSaver = false,
     this.unauthorizedSince,
   });
 
@@ -87,7 +93,37 @@ class SyncStatus {
   /// Retenidos porque nombran una fila [blocked]. Ver [JobState.waiting].
   final int waiting;
 
+  /// Cuándo terminó el último ciclo completo (subió lo pendiente **y** bajó el
+  /// delta). Un ciclo con el pull en pausa por el ahorro de datos no cuenta.
   final DateTime? lastSuccessAt;
+
+  /// La última vez que el servidor confirmó una escritura del colportor
+  /// (HU-SYNC-007: «última fecha de push exitoso»). Sobrevive a reiniciar la
+  /// app mientras ese job siga en la cola (los `DONE` se compactan a los 7 días).
+  final DateTime? lastPushAt;
+
+  /// La última vez que se bajó el delta con éxito (HU-SYNC-007). Se guarda en
+  /// el teléfono ([SyncMetaPort]): sobrevive a cerrar la app y a reiniciar el
+  /// celular. `null` solo si todavía no hubo ninguna (instalación nueva).
+  final DateTime? lastPullAt;
+
+  /// El último backup que terminó bien (HU-SYNC-007). Se guarda en el teléfono
+  /// como [lastPullAt]. `null` solo si todavía no hubo ninguno.
+  final DateTime? lastBackupAt;
+
+  /// Con qué red salió el último envío ([lastPushAt]): Wi-Fi o datos móviles.
+  /// La vista de estado lo dibuja como «· por datos». `null` si no se sabe: un
+  /// envío anterior a que el motor lo anotara, o un motor sin puerto de
+  /// conectividad. Nunca se inventa un Wi-Fi.
+  final SyncNetwork? lastPushNetwork;
+
+  /// Por qué el último ciclo no bajó el delta, o `null` si lo bajó. Hoy es
+  /// [kDataSaverOnMobile]: el ahorro de datos está activo y no hay Wi-Fi
+  /// (HU-SYNC-008). Lo limpia el próximo pull que corre.
+  final String? pullPausedReason;
+
+  /// El ahorro de datos está activo (HU-SYNC-008).
+  final bool dataSaver;
 
   /// Desde cuándo el servidor viene contestando `401`, o null si la sesión
   /// funciona.
@@ -107,7 +143,111 @@ class SyncStatus {
   @override
   String toString() => 'SyncStatus(pending: $pending, inFlight: $inFlight, '
       'invalid: $invalid, blocked: $blocked, waiting: $waiting, '
-      'lastSuccessAt: $lastSuccessAt'
+      'lastSuccessAt: $lastSuccessAt, lastPushAt: $lastPushAt, '
+      'lastPullAt: $lastPullAt'
+      '${lastPushNetwork == null ? '' : ', red del envío: ${lastPushNetwork!.name}'}'
+      '${pullPausedReason == null ? '' : ', pull en pausa: $pullPausedReason'}'
       '${unauthorizedSince == null ? '' : ', sin sesión desde '
           '$unauthorizedSince'})';
+}
+
+/// Con qué red salió un envío (HU-SYNC-007, canvas 25-08).
+enum SyncNetwork {
+  wifi,
+
+  /// Datos móviles.
+  mobile;
+
+  /// Cómo se guarda en [SyncMetaPort].
+  String get wire => name;
+
+  /// Lo contrario de [wire]; `null` si el valor no es de este motor.
+  static SyncNetwork? fromWire(String? valor) {
+    for (final red in values) {
+      if (red.name == valor) return red;
+    }
+    return null;
+  }
+}
+
+/// Lo que el motor se acuerda entre una apertura de la app y la siguiente
+/// (HU-SYNC-007): las fechas de la última bajada y del último respaldo, y el
+/// último envío con la red por la que salió.
+///
+/// Es de **solo sumar** (regla R1): cada campo `null` es «todavía no hubo» y
+/// nunca borra uno guardado.
+class SyncMeta {
+  const SyncMeta({
+    this.lastPullAt,
+    this.lastBackupAt,
+    this.lastPushAt,
+    this.lastPushNetwork,
+  });
+
+  final DateTime? lastPullAt;
+  final DateTime? lastBackupAt;
+  final DateTime? lastPushAt;
+  final SyncNetwork? lastPushNetwork;
+
+  @override
+  String toString() =>
+      'SyncMeta(lastPullAt: $lastPullAt, lastBackupAt: $lastBackupAt, '
+      'lastPushAt: $lastPushAt, lastPushNetwork: $lastPushNetwork)';
+}
+
+/// El motivo con el que un ciclo deja el pull esperando por el ahorro de datos
+/// (HU-SYNC-008): el modo está activo y el teléfono solo tiene datos móviles.
+const kDataSaverOnMobile = 'data_saver_on_mobile';
+
+/// Una operación que el servidor rechazó, lista para mostrar en «Ver detalle»
+/// (HU-SYNC-007): qué tabla, cuándo, de qué tipo y por qué.
+///
+/// A propósito **no lleva el payload**: la fila puede tener datos personales
+/// (una dirección, una nota) y la pantalla solo necesita saber de qué se trata.
+/// Quien necesite la fila entera usa `SyncEngine.errorQueue`.
+class FailedOperation {
+  const FailedOperation({
+    required this.jobId,
+    required this.entity,
+    required this.op,
+    required this.createdAt,
+    required this.code,
+    required this.lastError,
+  });
+
+  /// El id que acepta `SyncEngine.requeue`.
+  final String jobId;
+
+  /// La tabla (nombre remoto).
+  final String entity;
+
+  final Op op;
+  final DateTime createdAt;
+
+  /// El código con el que el servidor la rechazó.
+  final String code;
+
+  /// El mensaje del servidor, sin datos personales (ver [sanitizarError]).
+  final String lastError;
+}
+
+/// Saca de un mensaje de error lo que podría ser un dato del colportor o de un
+/// cliente: el servidor devuelve cosas como `Key (email)=(a@b.com) already
+/// exists` o `invalid input syntax for type date: "Juan Pérez"`.
+///
+/// Es de mejor esfuerzo y a propósito agresivo: se pierde precisión del
+/// mensaje, no se filtra un valor. El `code` sigue siendo exacto. Lo que queda
+/// no pasa de [largoMaximo] caracteres.
+String sanitizarError(String mensaje, {int largoMaximo = 200}) {
+  var s = mensaje
+      // `Key (campo)=(valor)`: el valor va entre paréntesis.
+      .replaceAll(RegExp(r'\([^)]*\)'), '(…)')
+      // `...type date: "valor"` o `value: 'x'`.
+      .replaceAll(RegExp(r':\s*("[^"]*"|' "'[^']*'" r')'), ': «…»')
+      // Un correo suelto.
+      .replaceAll(RegExp(r'\S+@\S+'), '…')
+      // Teléfonos, documentos, ids largos de dígitos.
+      .replaceAll(RegExp(r'\d{6,}'), '…');
+  if (s.length > largoMaximo) s = '${s.substring(0, largoMaximo)}…';
+  return s;
 }

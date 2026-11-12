@@ -825,6 +825,34 @@ void main() {
       },
     );
 
+    // El reloj adelantado que se corrigió casi nunca es un mes: una hora de más o un segundo. Todo
+    // adelanto se lleva a hoy, no solo el de más de un día.
+    for (final adelanto in const [
+      Duration(seconds: 1),
+      Duration(hours: 3),
+      Duration(hours: 23, minutes: 59, seconds: 59),
+    ]) {
+      test('dado que la anotación está adelantada $adelanto, se retoma y se vuelve a anotar con la '
+          'fecha de hoy', () async {
+        await repositorio.anotarDescargaPendiente(anotada(paquete, cuando: desde.add(adelanto)));
+        servidor.retenerDespuesDe = 2000;
+        final app = abrirApp();
+
+        await app.retomarPendientes();
+        await dejarCorrer();
+
+        expect(servidor.pedidos, [0]);
+        final corregida = repositorio.pendientes.single;
+        expect(corregida, anotada(paquete, cuando: desde));
+        expect(corregida.vencida(desde.add(DescargaPendiente.vigencia)), isTrue);
+        expect(
+          corregida.vencida(desde.add(DescargaPendiente.vigencia - const Duration(seconds: 1))),
+          isFalse,
+        );
+        await app.pausar(paquete.id);
+      });
+    }
+
     test('dado que la que pausó el colportor tiene fecha futura, tampoco se retoma pero se '
         'corrige la fecha', () async {
       final futura = desde.add(const Duration(days: 30));
@@ -977,6 +1005,148 @@ void main() {
         paquete,
       );
       expect(app.paqueteEnMarchaQueCubre(const AmbitoTrabajo(ciudadId: 'c-1')), ciudad);
+    });
+
+    // Dos descargas anotadas del mismo lugar: la zona (la de nivel más chico) y la ciudad. Lo que
+    // baja manda sobre lo que falló al retomar: una falla de una no puede tapar a la otra, que
+    // sigue bajando, ni habilitar «Descargar mapa» mientras el mapa se descarga.
+    group('dos pendientes del mismo lugar', () {
+      const lugar = AmbitoTrabajo(zonaId: 'z-1', ciudadId: 'c-1');
+      final bytesCiudad = bytesDePrueba(3000, semilla: 9);
+      final paqueteCiudad = paqueteDe(
+        bytesCiudad,
+        id: 'ciudad-mvd',
+        nivel: NivelCobertura.ciudad,
+        ambitoId: 'c-1',
+      );
+
+      setUp(() => servidor.archivos[paqueteCiudad.origen] = bytesCiudad);
+
+      /// Anota las dos en el orden pedido y abre la app: con la señal bien, cada una arranca.
+      Future<DescargadorPaquetesTiles> abrirConLasDos({required bool ciudadPrimero}) async {
+        final dos = [paquete, paqueteCiudad];
+        for (final cual in ciudadPrimero ? dos.reversed : dos) {
+          await repositorio.anotarDescargaPendiente(anotada(cual));
+        }
+        final app = abrirApp();
+        await app.retomarPendientes();
+        await dejarCorrer();
+        return app;
+      }
+
+      for (final ciudadPrimero in [false, true]) {
+        final orden = ciudadPrimero ? 'ciudad y zona' : 'zona y ciudad';
+
+        test('dado que la de zona falló al retomar y la de ciudad sigue bajando ($orden), elige '
+            'la que baja', () async {
+          servidor.archivos.remove(paquete.origen);
+          servidor.soloEnOrigen = paqueteCiudad.origen;
+          servidor.retenerDespuesDe = 1000;
+
+          final app = await abrirConLasDos(ciudadPrimero: ciudadPrimero);
+
+          expect(app.estadoDe(paquete.id), isA<DescargaFallida>());
+          expect(app.estaDescargando(paqueteCiudad.id), isTrue);
+          expect(app.paqueteEnMarchaQueCubre(lugar), paqueteCiudad);
+          await app.pausar(paqueteCiudad.id);
+        });
+
+        test('dado que la de ciudad falló al retomar y la de zona sigue bajando ($orden), elige '
+            'la que baja', () async {
+          servidor.archivos.remove(paqueteCiudad.origen);
+          servidor.soloEnOrigen = paquete.origen;
+          servidor.retenerDespuesDe = 1000;
+
+          final app = await abrirConLasDos(ciudadPrimero: ciudadPrimero);
+
+          expect(app.estadoDe(paqueteCiudad.id), isA<DescargaFallida>());
+          expect(app.estaDescargando(paquete.id), isTrue);
+          expect(app.paqueteEnMarchaQueCubre(lugar), paquete);
+          await app.pausar(paquete.id);
+        });
+
+        test('dado que las dos quedaron en cola sin señal ($orden), elige la de nivel más chico, '
+            'sea cual sea el orden en que se retomaron', () async {
+          conectividad.tipo = TipoConexion.sinConexion;
+
+          final app = await abrirConLasDos(ciudadPrimero: ciudadPrimero);
+
+          expect(app.estadoDe(paquete.id), isA<DescargaPausada>());
+          expect(app.estadoDe(paqueteCiudad.id), isA<DescargaPausada>());
+          expect(app.paqueteEnMarchaQueCubre(lugar), paquete);
+        });
+
+        test('dado que las dos fallaron al retomar ($orden), elige la de nivel más chico: la '
+            'tarjeta muestra una sola falla', () async {
+          servidor.archivos.remove(paquete.origen);
+          servidor.archivos.remove(paqueteCiudad.origen);
+
+          final app = await abrirConLasDos(ciudadPrimero: ciudadPrimero);
+
+          expect(app.estadoDe(paquete.id), isA<DescargaFallida>());
+          expect(app.estadoDe(paqueteCiudad.id), isA<DescargaFallida>());
+          expect(app.paqueteEnMarchaQueCubre(lugar), paquete);
+        });
+      }
+
+      // Quien se entera de una falla cuando ocurre (la tarjeta ya abierta) aplica la misma
+      // prioridad: la falla de una no se muestra mientras otra del lugar sigue en marcha.
+      test('dado que la de zona falló y la de ciudad sigue bajando, hay otra en marcha para la '
+          'zona fallada pero no para la que baja', () async {
+        servidor.archivos.remove(paquete.origen);
+        servidor.soloEnOrigen = paqueteCiudad.origen;
+        servidor.retenerDespuesDe = 1000;
+        final app = await abrirConLasDos(ciudadPrimero: false);
+
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paquete.id), isTrue);
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paqueteCiudad.id), isFalse);
+        expect(
+          app.hayOtraEnMarchaQueCubre(
+            const AmbitoTrabajo(zonaId: 'z-9', ciudadId: 'c-9'),
+            salvoId: paquete.id,
+          ),
+          isFalse,
+          reason: 'la que baja es de otro lugar',
+        );
+
+        await app.pausar(paqueteCiudad.id);
+
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paquete.id), isFalse);
+      });
+
+      test('dado que la de ciudad espera la conexión, cuenta como otra en marcha para la zona '
+          'fallada', () async {
+        servidor.archivos.remove(paquete.origen);
+        await repositorio.anotarDescargaPendiente(anotada(paquete));
+        final app = abrirApp();
+        await app.retomarPendientes();
+        await terminar(app, paquete);
+        conectividad.tipo = TipoConexion.sinConexion;
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paquete.id), isFalse);
+
+        await app.descargar(paqueteCiudad, esperarConexion: true);
+        await dejarCorrer();
+
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paquete.id), isTrue);
+        expect(app.hayOtraEnMarchaQueCubre(lugar, salvoId: paqueteCiudad.id), isFalse);
+      });
+
+      test('dado que la de zona falló al retomar y la de ciudad quedó en cola sin señal, elige '
+          'la que está en cola: se descarga sola', () async {
+        servidor.archivos.remove(paquete.origen);
+        await repositorio.anotarDescargaPendiente(anotada(paquete));
+        final app = abrirApp();
+        await app.retomarPendientes();
+        await terminar(app, paquete);
+        conectividad.tipo = TipoConexion.sinConexion;
+
+        await app.descargar(paqueteCiudad, esperarConexion: true);
+        await dejarCorrer();
+
+        expect(app.estadoDe(paquete.id), isA<DescargaFallida>());
+        expect(app.estadoDe(paqueteCiudad.id), isA<DescargaPausada>());
+        expect(app.paqueteEnMarchaQueCubre(lugar), paqueteCiudad);
+      });
     });
   });
 }

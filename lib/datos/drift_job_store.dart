@@ -48,7 +48,7 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
         id: id,
         clientOpId: job.clientOpId,
         entity: job.entity,
-        op: job.op.name,
+        op: job.op.wireName,
         payload: jsonEncode(job.payload),
         syncVersion: Value(job.syncVersion),
         rowPk: Value(job.rowPk),
@@ -148,6 +148,14 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
   }
 
   @override
+  Future<List<QueuedJob>> listPending() async {
+    final filas = await (_enOrden(
+      select(syncQueue),
+    )..where((q) => q.state.equals(EstadoJob.pending))).get();
+    return filas.map(_aJob).toList();
+  }
+
+  @override
   Future<void> replacePayload(String jobId, Map<String, Object?> payload) async {
     final cambiadas =
         await (update(syncQueue)
@@ -196,7 +204,10 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
                 (q) =>
                     q.entity.equals(entity) &
                     q.rowPk.equals(pk) &
-                    q.op.equals(Op.insert.name).not() &
+                    q.op.isIn([
+                      for (final op in Op.values)
+                        if (op.esperaVersion) op.wireName,
+                    ]) &
                     q.state.isIn(EstadoJob.sinAplicar),
               ))
               .write(SyncQueueCompanion(syncVersion: Value(version)));
@@ -214,17 +225,17 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
     var base = at.millisecondsSinceEpoch;
     if (maximo != null && maximo >= base) base = maximo + 1;
     for (final (i, id) in jobIds.indexed) {
-      await (update(syncQueue)
-            ..where((q) => q.id.equals(id) & q.state.isIn([EstadoJob.blocked, EstadoJob.waiting])))
-          .write(
-            SyncQueueCompanion(
-              state: const Value(EstadoJob.pending),
-              code: const Value(''),
-              message: const Value(''),
-              dependsOn: const Value(null),
-              createdAt: Value(DateTime.fromMillisecondsSinceEpoch(base + i, isUtc: true)),
-            ),
-          );
+      await (update(
+        syncQueue,
+      )..where((q) => q.id.equals(id) & q.state.isIn(EstadoJob.sinMandar))).write(
+        SyncQueueCompanion(
+          state: const Value(EstadoJob.pending),
+          code: const Value(''),
+          message: const Value(''),
+          dependsOn: const Value(null),
+          createdAt: Value(DateTime.fromMillisecondsSinceEpoch(base + i, isUtc: true)),
+        ),
+      );
     }
   });
 
@@ -259,12 +270,21 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
               ..groupBy([syncQueue.state]))
             .get();
     final por = {for (final f in filas) f.read(syncQueue.state)!: f.read(cantidad) ?? 0};
+    // El último envío confirmado (HU-SYNC-007): el `DONE` más nuevo. Los `DONE` se
+    // compactan a los 7 días (§5.8), y sin ninguno no hay fecha que mostrar.
+    final ultimo =
+        await (select(syncQueue)
+              ..where((q) => q.state.equals(EstadoJob.done) & q.doneAt.isNotNull())
+              ..orderBy([(q) => OrderingTerm.desc(q.doneAt)])
+              ..limit(1))
+            .getSingleOrNull();
     return SyncStatus(
       pending: por[EstadoJob.pending] ?? 0,
       inFlight: por[EstadoJob.inFlight] ?? 0,
       invalid: por[EstadoJob.invalid] ?? 0,
       blocked: por[EstadoJob.blocked] ?? 0,
       waiting: por[EstadoJob.waiting] ?? 0,
+      lastPushAt: ultimo?.doneAt,
     );
   }
 
@@ -304,7 +324,7 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
     job: SyncJob(
       clientOpId: f.clientOpId,
       entity: f.entity,
-      op: Op.values.byName(f.op),
+      op: Op.fromWireName(f.op),
       payload: (jsonDecode(f.payload) as Map<String, Object?>),
       syncVersion: f.syncVersion,
       createdAt: f.createdAt,

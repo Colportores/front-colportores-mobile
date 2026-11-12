@@ -1,0 +1,47 @@
+import '../../../mapa/data/models/auditoria_json.dart';
+import '../../domain/entities/visita.dart';
+
+/// DTO de [Visita]: la entidad más su payload de sync. [toJson] usa los nombres de columna de
+/// `public.visita` (`backend-supabase`, migraciones 0001 y 0069) y las fechas en ISO-8601 UTC: es la fila
+/// entera, lo que se encola. Un test fija la lista exacta de claves contra las columnas de la tabla
+/// local.
+final class VisitaModel extends Visita {
+  VisitaModel({
+    required super.id,
+    required super.espacioId,
+    super.espacioPersonaId,
+    required super.fecha,
+    required super.tipoResultado,
+    required super.colportorId,
+    super.jornadaId,
+    super.entrevistaEntrada,
+    super.entrevistaSalida,
+    required super.auditoria,
+  });
+
+  factory VisitaModel.fromEntity(Visita visita) => VisitaModel(
+    id: visita.id,
+    espacioId: visita.espacioId,
+    espacioPersonaId: visita.espacioPersonaId,
+    fecha: visita.fecha,
+    tipoResultado: visita.tipoResultado,
+    colportorId: visita.colportorId,
+    jornadaId: visita.jornadaId,
+    entrevistaEntrada: visita.entrevistaEntrada,
+    entrevistaSalida: visita.entrevistaSalida,
+    auditoria: visita.auditoria,
+  );
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'espacio_id': espacioId,
+    'espacio_persona_id': espacioPersonaId,
+    'fecha': fecha.toIso8601String(),
+    'tipo_resultado': tipoResultado.codigo,
+    'colportor_id': colportorId,
+    'jornada_id': jornadaId,
+    'entrevista_entrada': entrevistaEntrada?.toIso8601String(),
+    'entrevista_salida': entrevistaSalida?.toIso8601String(),
+    ...auditoriaAJson(auditoria),
+  };
+}

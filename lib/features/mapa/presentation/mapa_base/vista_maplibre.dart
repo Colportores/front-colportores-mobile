@@ -7,10 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 
 import '../../../../core/logging/app_logger.dart';
+import '../../domain/services/proyeccion_mercator.dart';
 import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import 'estilo_mapa.dart';
 import 'marcador_cercano.dart';
+import 'marcador_estado.dart';
 import 'modelo_mapa_base.dart';
 import 'recursos_mapa_providers.dart';
 import 'seleccion_toque.dart';
@@ -43,9 +45,10 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
   Object? _claveEstilo;
   var _avisoError = false;
 
-  /// Las etiquetas de «cerca tuyo» (`MarcadorCercano`) que ya están registradas en el estilo que se
-  /// ve, y las que no se pudieron registrar (no se vuelve a intentar hasta que el estilo se recargue:
-  /// esos puntos se dibujan con el círculo de respaldo). Recargar el estilo las pierde.
+  /// Las imágenes de los puntos (las etiquetas de «cerca tuyo» de `MarcadorCercano` y las insignias
+  /// y cuadrados de estado de `MarcadorEstado`) que ya están registradas en el estilo que se ve, y
+  /// las que no se pudieron registrar (no se vuelve a intentar hasta que el estilo se recargue: esos
+  /// puntos se dibujan con el círculo de respaldo). Recargar el estilo las pierde.
   final _etiquetas = <String>{};
   final _etiquetasFallidas = <String>{};
   var _generacionEstilo = 0;
@@ -62,6 +65,7 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     if (!listEquals(config.puntos, antes.puntos)) unawaited(_empujarPuntos());
     if (config.precision != antes.precision) unawaited(_empujarPrecision());
     if (config.cercania != antes.cercania) unawaited(_empujarCercania());
+    if (!listEquals(config.zonas, antes.zonas)) unawaited(_empujarZonas());
   }
 
   /// El estilo no cambia mientras no cambie lo que lo define: cambiarlo recarga la vista entera.
@@ -93,14 +97,15 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     final numero = ++_secuenciaPuntos;
     final puntos = widget.config.puntos;
     try {
-      await _registrarEtiquetas(controlador, puntos);
+      await _registrarImagenes(controlador, puntos);
       if (!mounted || numero != _secuenciaPuntos) return;
-      // Los dos juntos: un punto que cambia de estilo (el que se toca, el que queda cerca del GPS)
-      // pasa de una fuente a la otra, y entre un empujón y el otro se vería dos veces o ninguna.
+      // Los dos juntos: un punto que cambia de estilo (el que se toca, el que queda cerca del GPS,
+      // el que pasa a cuadrado al acercar) pasa de una fuente a la otra, y entre un empujón y el otro
+      // se vería dos veces o ninguna.
       await Future.wait([
         controlador.setGeoJsonSource(
           ConstructorEstiloMapa.fuentePuntos,
-          ConstructorEstiloMapa.coleccionPuntos(puntos),
+          ConstructorEstiloMapa.coleccionPuntos(puntos, imagenes: {..._etiquetas}),
         ),
         controlador.setGeoJsonSource(
           ConstructorEstiloMapa.fuentePuntosLibres,
@@ -112,10 +117,12 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     }
   }
 
-  /// Pinta y registra en el estilo la etiqueta de cada punto «cerca tuyo» que todavía no la tiene
-  /// (una por número de puerta: son pocas). Una que falla no frena a las demás ni a los puntos: ese
-  /// punto se dibuja con el círculo de respaldo.
-  Future<void> _registrarEtiquetas(
+  /// Pinta y registra en el estilo la imagen que cada punto necesita y todavía no tiene: la etiqueta
+  /// de «cerca tuyo» (una por número de puerta y estado: son pocas), la insignia de estado de lejos
+  /// y el cuadrado de estado de cerca (una por estado: nueve como mucho) y el aro del cuadrado
+  /// seleccionado. Una que falla no frena a las demás ni a los puntos: ese punto se dibuja con el
+  /// círculo de respaldo.
+  Future<void> _registrarImagenes(
     ml.MapLibreMapController controlador,
     List<PuntoMapa> puntos,
   ) async {
@@ -123,13 +130,31 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
       densidad: MediaQuery.devicePixelRatioOf(context),
     );
     final generacion = _generacionEstilo;
+    final pendientes = <String, Future<Uint8List> Function()>{};
     for (final punto in puntos) {
       final etiqueta = punto.etiqueta;
-      if (punto.estilo != EstiloPunto.cercano || etiqueta == null) continue;
-      final nombre = MarcadorCercano.nombre(etiqueta);
+      final variante = punto.variante;
+      switch (punto.estilo) {
+        case EstiloPunto.cercano when etiqueta != null:
+          pendientes[MarcadorCercano.nombre(etiqueta, variante)] = () =>
+              MarcadorCercano.dibujar(etiqueta, escala: escala, variante: variante);
+        case EstiloPunto.conEstado when variante != null:
+          pendientes[MarcadorEstado.nombreInsignia(variante)] = () =>
+              MarcadorEstado.dibujarInsignia(variante, escala: escala);
+        case EstiloPunto.cuadrado || EstiloPunto.cuadradoSeleccionado when variante != null:
+          pendientes[MarcadorEstado.nombreCuadrado(variante)] = () =>
+              MarcadorEstado.dibujarCuadrado(variante, escala: escala);
+          if (punto.estilo == EstiloPunto.cuadradoSeleccionado) {
+            pendientes[MarcadorEstado.nombreAro] = () => MarcadorEstado.dibujarAro(escala: escala);
+          }
+        default:
+          break;
+      }
+    }
+    for (final MapEntry(key: nombre, value: dibujar) in pendientes.entries) {
       if (_etiquetas.contains(nombre) || _etiquetasFallidas.contains(nombre)) continue;
       try {
-        final imagen = await MarcadorCercano.dibujar(etiqueta, escala: escala);
+        final imagen = await dibujar();
         await controlador.addImage(nombre, imagen);
         // Si el estilo se recargó mientras tanto, la imagen quedó en el viejo.
         if (generacion == _generacionEstilo) _etiquetas.add(nombre);
@@ -138,7 +163,7 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
         AppLogger.instance.error(
           _modulo,
           'etiqueta',
-          'No se pudo registrar la etiqueta de un punto cercano',
+          'No se pudo registrar la imagen de un punto',
           {},
           e,
           s,
@@ -157,6 +182,28 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
       );
     } on Object catch (e, s) {
       AppLogger.instance.error(_modulo, 'precision', 'No se pudo actualizar el radio', {}, e, s);
+    }
+  }
+
+  /// Las zonas y sus nombres (#511): dos fuentes que se actualizan juntas, para que una zona y su
+  /// nombre no se vean en cuadros distintos.
+  Future<void> _empujarZonas() async {
+    final controlador = _controlador;
+    if (controlador == null || !_estiloListo) return;
+    final zonas = widget.config.zonas;
+    try {
+      await Future.wait([
+        controlador.setGeoJsonSource(
+          ConstructorEstiloMapa.fuenteZonas,
+          ConstructorEstiloMapa.coleccionZonas(zonas),
+        ),
+        controlador.setGeoJsonSource(
+          ConstructorEstiloMapa.fuenteZonasRotulos,
+          ConstructorEstiloMapa.coleccionRotulosDeZonas(zonas),
+        ),
+      ]);
+    } on Object catch (e, s) {
+      AppLogger.instance.error(_modulo, 'zonas', 'No se pudieron actualizar las zonas', {}, e, s);
     }
   }
 
@@ -183,11 +230,13 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     unawaited(_empujarPuntos());
     unawaited(_empujarPrecision());
     unawaited(_empujarCercania());
+    unawaited(_empujarZonas());
   }
 
   CamaraMapa _aCamara(ml.CameraPosition posicion) => CamaraMapa(
     centro: Coordenadas(lat: posicion.target.latitude, lon: posicion.target.longitude),
     zoom: posicion.zoom,
+    rumbo: posicion.bearing,
   );
 
   void _alQuedarQuieta() {
@@ -204,6 +253,11 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
 
   /// El punto o grupo más cercano al toque dentro de un área de 48 dp (el objetivo táctil mínimo),
   /// o `null` si no hay ninguno. Las coordenadas del toque son las de la vista nativa.
+  ///
+  /// Con casas dibujadas como cuadrados (vista 39, M·02) el toque elige la más cercana **dentro de
+  /// 44 dp** del dedo (decisión de Cristian del 23/10, «Números casas»): un cuadrado mide 40 y no se
+  /// tapan entre sí, así que tocar en el hueco entre dos elige la más cerca, y tocar lejos de todas
+  /// no elige ninguna.
   Future<Object?> _elementoTocado(
     ml.MapLibreMapController controlador,
     math.Point<double> punto,
@@ -211,12 +265,23 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
     double unidadesPorDp,
     List<String> capas,
   ) async {
+    final cuadrados = widget.config.hayCuadrados;
     final hallados = await controlador.queryRenderedFeaturesInRect(
-      SeleccionToque.area(punto, unidadesPorDp: unidadesPorDp),
+      cuadrados
+          ? SeleccionToque.areaDeCuadrados(punto, unidadesPorDp: unidadesPorDp)
+          : SeleccionToque.area(punto, unidadesPorDp: unidadesPorDp),
       capas,
       null,
     );
-    return SeleccionToque.masCercano(hallados, toque);
+    double? maximoMetros;
+    if (cuadrados) {
+      final zoom = controlador.cameraPosition?.zoom;
+      if (zoom != null) {
+        maximoMetros =
+            SeleccionToque.radioDeCuadradosDp * ProyeccionMercator.metrosPorPixel(toque.lat, zoom);
+      }
+    }
+    return SeleccionToque.masCercano(hallados, toque, maximoMetros: maximoMetros);
   }
 
   Future<void> _alTocar(math.Point<double> punto, ml.LatLng coordenadas) async {
@@ -377,7 +442,13 @@ class _PuertoMapLibre implements PuertoVistaMapa {
   @override
   Future<void> moverCamara(CamaraMapa camara) async {
     await _controlador.moveCamera(
-      ml.CameraUpdate.newLatLngZoom(ml.LatLng(camara.centro.lat, camara.centro.lon), camara.zoom),
+      ml.CameraUpdate.newCameraPosition(
+        ml.CameraPosition(
+          target: ml.LatLng(camara.centro.lat, camara.centro.lon),
+          zoom: camara.zoom,
+          bearing: camara.rumbo,
+        ),
+      ),
     );
   }
 }

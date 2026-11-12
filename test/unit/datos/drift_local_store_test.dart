@@ -7,6 +7,9 @@ import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/datos/drift_job_store.dart';
 import 'package:colportores_mobile/datos/drift_local_store.dart';
+import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local_data_source_drift.dart';
+import 'package:colportores_mobile/features/agenda/data/models/agenda_model.dart';
+import 'package:colportores_mobile/features/agenda/data/models/visita_model.dart';
 import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/zona_local_data_source.dart';
@@ -19,6 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_engine/port_contracts.dart';
 import 'package:sync_engine/sync_engine.dart';
 
+import '../../helpers/campo_falsos.dart';
 import '../../helpers/logger_mudo.dart';
 
 const _ubicacion = {
@@ -45,7 +49,6 @@ const _jornada = {
   'inicio': '2026-10-16T08:00:00.000Z',
   'fin': null,
   'acompaniante_id': null,
-  'tipo_acompaniamiento': null,
   'total_visitas': 7,
   'total_ventas': 2,
   'created_at': '2026-10-16T08:00:00.000Z',
@@ -106,6 +109,157 @@ void main() {
       final dao = JornadaLocalDataSourceDrift(db, encolador: EncoladorSyncEnMemoria());
       final activa = await dao.obtenerActiva('col-1');
       expect(activa!.toJson(), _jornada);
+    });
+
+    test(
+      'agenda: el booleano es_estricta entra como 0/1 y vuelve como bool, con sus fechas',
+      () async {
+        final fila = {
+          'id': 'age-1',
+          'espacio_id': 'esp-1',
+          'espacio_persona_id': 'ep-1',
+          'tipo': 'ENTREVISTA',
+          'fecha_programada': '2026-10-25T14:00:00.000Z',
+          'slot_codigo': 'mid_morning',
+          'es_estricta': true,
+          'ubicacion_alt_id': null,
+          'estado': 'PROGRAMADA',
+          'colportor_id': 'col-1',
+          'visita_id': null,
+          'venta_id': null,
+          'monto_previsto': null,
+          'entrega_id': null,
+          'created_at': '2026-10-23T13:45:10.123Z',
+          'updated_at': '2026-10-23T13:45:10.123Z',
+          'created_by': 'col-1',
+          'deleted_at': null,
+          'sync_version': 2,
+        };
+
+        await store.applyDelta(
+          {
+            'agenda': [fila],
+          },
+          scope: 'mirror',
+          watermark: 'w1',
+        );
+
+        final dao = AgendaLocalDataSourceDrift(
+          db,
+          encolador: EncoladorSyncEnMemoria(),
+          estadoDeLasCasas: HouseStatusUpdaterEspia(),
+        );
+        final leida = await dao.obtenerAgenda('age-1');
+        expect(AgendaModel.fromEntity(leida!).toJson(), fila);
+        expect(leida.esEstricta, isTrue);
+      },
+    );
+
+    test('visita y house_status', () async {
+      final visita = {
+        'id': 'vis-1',
+        'espacio_id': 'esp-1',
+        'espacio_persona_id': 'ep-1',
+        'fecha': '2026-10-23T13:45:10.123Z',
+        'tipo_resultado': 'ENTREVISTA',
+        'colportor_id': 'col-1',
+        'jornada_id': null,
+        // Las horas de la entrevista (#466): vuelven tal cual.
+        'entrevista_entrada': '2026-10-23T13:20:00.000Z',
+        'entrevista_salida': '2026-10-23T13:45:00.000Z',
+        'created_at': '2026-10-23T13:45:10.123Z',
+        'updated_at': '2026-10-23T13:45:10.123Z',
+        'created_by': 'col-1',
+        'deleted_at': null,
+        'sync_version': 1,
+      };
+      final casa = {
+        'ubicacion_id': 'ub-1',
+        'lat': -34.9,
+        'lon': -56.16,
+        'tipo_ubicacion': 'CASA',
+        'color': 'RECHAZO',
+        'prioridad': 7,
+        'created_at': '2026-10-23T13:45:10.123Z',
+        'updated_at': '2026-10-23T13:45:10.123Z',
+        'created_by': 'col-1',
+        'deleted_at': null,
+        'sync_version': 1,
+      };
+
+      await store.applyDelta(
+        {
+          'visita': [visita],
+          'house_status': [casa],
+        },
+        scope: 'mirror',
+        watermark: 'w1',
+      );
+
+      final dao = AgendaLocalDataSourceDrift(
+        db,
+        encolador: EncoladorSyncEnMemoria(),
+        estadoDeLasCasas: HouseStatusUpdaterEspia(),
+      );
+      expect(VisitaModel.fromEntity((await dao.obtenerVisita('vis-1'))!).toJson(), visita);
+      final fila = await db.select(db.houseStatuses).getSingle();
+      expect(
+        [fila.ubicacionId, fila.color, fila.prioridad, fila.tipoUbicacion],
+        ['ub-1', 'RECHAZO', 7, 'CASA'],
+      );
+    });
+
+    test('una fila dada de baja (deleted_at en texto ISO) se aplica: la fecha nullable también '
+        'se convierte', () async {
+      final casa = {
+        'ubicacion_id': 'ub-1',
+        'lat': -34.9,
+        'lon': -56.16,
+        'tipo_ubicacion': 'CASA',
+        'color': 'ENTREVISTA_PROGRAMADA',
+        'prioridad': 3,
+        'created_at': '2026-10-23T13:45:10.123Z',
+        'updated_at': '2026-10-23T13:50:00.000Z',
+        'created_by': 'col-1',
+        'deleted_at': '2026-10-23T13:50:00.000Z',
+        'sync_version': 2,
+      };
+
+      await store.applyDelta(
+        {
+          'house_status': [casa],
+        },
+        scope: 'mirror',
+        watermark: null,
+      );
+
+      final fila = await db.select(db.houseStatuses).getSingle();
+      expect(fila.deletedAt, DateTime.utc(2026, 10, 23, 13, 50));
+      expect(fila.syncVersion, 2);
+    });
+
+    test('la server_row de una baja pisa una fila viva de otra tabla con deleted_at', () async {
+      await store.applyDelta(
+        {
+          'ubicacion': [_ubicacion],
+        },
+        scope: 'mirror',
+        watermark: 'w1',
+      );
+
+      await store.applyDelta(
+        {
+          'ubicacion': [
+            {..._ubicacion, 'deleted_at': '2026-10-17T09:00:00.000Z', 'sync_version': 5},
+          ],
+        },
+        scope: 'mirror',
+        watermark: null,
+      );
+
+      final fila = await db.select(db.ubicaciones).getSingle();
+      expect(fila.deletedAt, DateTime.utc(2026, 10, 17, 9));
+      expect(fila.syncVersion, 5);
     });
 
     test('el mapa de la campaña: campania_ciudad, zona con su GeoJSON y vértices', () async {
@@ -282,61 +436,6 @@ void main() {
     expect(() => registroDeLaApp(db.allTables.map((t) => t.actualTableName)), returnsNormally);
   });
 
-  group('réplicas del catálogo', () {
-    test('booleanos, enteros y fechas de calendario llegan con su tipo', () async {
-      await store.applyDelta(
-        {
-          'producto': [
-            {
-              'id': 'pro-1',
-              'nombre': 'El Deseado de todas las gentes',
-              'descripcion': null,
-              'tipo': 'LIBRO',
-              'es_bonificable': true,
-              'es_misionero': false,
-              'precio_base_compra': 450,
-              'casa_editora': 'ACES',
-              'imagen_url': null,
-              'created_at': '2026-10-16T12:00:00.000Z',
-              'updated_at': '2026-10-16T12:00:00.000Z',
-              'created_by': null,
-              'deleted_at': null,
-              'sync_version': 2,
-              'xmin_w': '99',
-            },
-          ],
-          'precio_por_ciudad': [
-            {
-              'id': 'pre-1',
-              'campania_ciudad_id': 'cc-1',
-              'producto_id': 'pro-1',
-              'coleccion_id': null,
-              'precio_venta': 1200,
-              'valido_desde': '2026-12-01',
-              'valido_hasta': null,
-              'created_at': '2026-10-16T12:00:00.000Z',
-              'updated_at': '2026-10-16T12:00:00.000Z',
-              'created_by': null,
-              'deleted_at': null,
-              'sync_version': 1,
-            },
-          ],
-        },
-        scope: 'replica',
-        watermark: 'w1',
-      );
-
-      final producto = await db.select(db.replicaProductos).getSingle();
-      expect(producto.esBonificable, isTrue);
-      expect(producto.esMisionero, isFalse);
-      expect(producto.precioBaseCompra, 450);
-      expect(producto.createdAt, DateTime.utc(2026, 10, 16, 12));
-      final precio = await db.select(db.replicaPreciosPorCiudad).getSingle();
-      expect(precio.validoDesde, '2026-12-01');
-      expect(precio.precioVenta, 1200);
-    });
-  });
-
   group('fuera del área (§2.1): se marca, nunca se borra', () {
     Map<String, Object?> ubi(String id) => {..._ubicacion, 'id': id};
 
@@ -414,7 +513,7 @@ void main() {
           'ubicacion': [ubi('u9')],
         },
         scope: 'mirror',
-        watermark: '',
+        watermark: null,
       );
 
       await store.applyDelta(
@@ -429,5 +528,65 @@ void main() {
       expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
       expect(await db.select(db.ubicaciones).get(), hasLength(5));
     });
+
+    test('house_status se marca por su clave, ubicacion_id', () async {
+      Map<String, Object?> casa(String id) => {
+        'ubicacion_id': id,
+        'lat': -34.9,
+        'lon': -56.16,
+        'tipo_ubicacion': 'CASA',
+        'color': 'RECHAZO',
+        'prioridad': 7,
+        'created_at': '2026-10-23T13:45:10.123Z',
+        'updated_at': '2026-10-23T13:50:00.000Z',
+        'created_by': 'col-1',
+        'deleted_at': null,
+        'sync_version': 1,
+      };
+      await store.applyDelta(
+        {
+          'house_status': [casa('ub-1'), casa('ub-2')],
+        },
+        scope: 'mirror',
+        watermark: 'w0',
+      );
+
+      await store.applyDelta(
+        {
+          'house_status': [casa('ub-2')],
+        },
+        scope: 'mirror',
+        watermark: 'w1',
+        notices: const PullNotices(areaReset: {'house_status'}),
+      );
+
+      expect(await store.observarFueraDelArea('house_status').first, {'ub-1'});
+      expect(await db.select(db.houseStatuses).get(), hasLength(2), reason: 'nada se borra');
+    });
+
+    test(
+      'un pull sin avisos ni filas nuevas igual cierra la descarga que quedó a medias',
+      () async {
+        await tener(['u1', 'u2']);
+        await store.applyDelta(
+          {
+            'ubicacion': [ubi('u2')],
+          },
+          scope: 'replica',
+          watermark: 'r1',
+          notices: const PullNotices(areaReset: {'ubicacion'}, complete: false),
+        );
+
+        // La última página llega vacía: es la que dice que la descarga terminó.
+        await store.applyDelta(
+          const {},
+          scope: 'replica',
+          watermark: 'r2',
+          notices: const PullNotices(),
+        );
+
+        expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+      },
+    );
   });
 }

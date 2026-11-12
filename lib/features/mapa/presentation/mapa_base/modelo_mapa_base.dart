@@ -4,6 +4,8 @@ import 'package:flutter/widgets.dart';
 import '../../domain/services/fuente_mapa.dart';
 import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
+import 'marcador_estado.dart' show VarianteMarcador;
+import 'zonas_mapa.dart';
 
 /// Colores del mapa que no salen del tema: los del canvas de Claude Design (los mismos del estilo
 /// de backend, `tiles/paleta.json`) y los de los puntos.
@@ -43,12 +45,28 @@ enum EstiloPunto {
 
   /// La ubicación que el colportor tocó y cuya vista previa está abierta (vista 06): el marcador
   /// con un aro doble, blanco y azul, por encima de los demás. Nunca se agrupa.
-  seleccionado;
+  seleccionado,
+
+  /// Una casa que ya tiene un estado distinto de «Sin visita» (vista 39, M·01), de lejos: la
+  /// insignia del estado, con su color y su símbolo. Se agrupa con las que tiene cerca.
+  /// Lleva [PuntoMapa.variante].
+  conEstado,
+
+  /// Una casa acercada (vista 39, M·02): el cuadrado de 40 dp con el color del estado, el símbolo
+  /// chico y el número de puerta en dos renglones. Lleva [PuntoMapa.variante] y [PuntoMapa.etiqueta].
+  /// Nunca se agrupa: se usa solo cuando entran todos los cuadrados sin taparse.
+  cuadrado,
+
+  /// El cuadrado de la casa que el colportor tocó: el mismo cuadrado con el aro doble por debajo.
+  cuadradoSeleccionado;
 
   /// Va en la fuente de puntos que no se agrupa: el punto del GPS, el de la ubicación nueva, el que
   /// se tocó y los que están al lado del GPS tienen que verse siempre tal cual, no absorbidos por el
   /// grupo de las ubicaciones que tienen cerca.
-  bool get sinAgrupar => this != contexto && this != candidata;
+  bool get sinAgrupar => this != contexto && this != candidata && this != conEstado;
+
+  /// Es un cuadrado de M·02 (el acercado de la vista 39).
+  bool get esCuadrado => this == cuadrado || this == cuadradoSeleccionado;
 }
 
 /// Un marcador del mapa. Se dibuja como capa del estilo (no como widget): no hay un widget por
@@ -60,6 +78,8 @@ final class PuntoMapa extends Equatable {
     this.estilo = EstiloPunto.contexto,
     this.letra,
     this.etiqueta,
+    this.variante,
+    this.atenuado = false,
   });
 
   /// Identifica al punto cuando el colportor lo toca (`MapaBase.alTocarPunto`).
@@ -70,11 +90,21 @@ final class PuntoMapa extends Equatable {
   /// El texto de adentro del círculo, de [EstiloPunto.candidata]: «A», «B»…
   final String? letra;
 
-  /// El texto de [EstiloPunto.cercano] y [EstiloPunto.seleccionado]: el número de puerta.
+  /// El texto de [EstiloPunto.cercano], [EstiloPunto.seleccionado] y los cuadrados: el número de
+  /// puerta.
   final String? etiqueta;
 
+  /// El estado de la casa (vista 39): su color y su símbolo. Lo piden [EstiloPunto.conEstado] y los
+  /// cuadrados; el cercano y el seleccionado lo usan si lo tienen y, sin él, se dibujan como «Sin
+  /// visita».
+  final VarianteMarcador? variante;
+
+  /// Se dibuja tenue (canvas 06C·03, opacidad .3): con la hoja «Agendados» del mapa, las casas que no
+  /// tienen una visita agendada. Un grupo se ve tenue si todas las casas que junta lo están.
+  final bool atenuado;
+
   @override
-  List<Object?> get props => [id, coordenadas, estilo, letra, etiqueta];
+  List<Object?> get props => [id, coordenadas, estilo, letra, etiqueta, variante, atenuado];
 }
 
 /// El radio de precisión del GPS: un círculo en metros alrededor de [centro].
@@ -132,6 +162,7 @@ final class ConfigVistaMapa extends Equatable {
     required this.precision,
     required this.cercania,
     required this.puntosTocables,
+    this.zonas = const [],
   });
 
   final FuenteMapa fuente;
@@ -158,6 +189,13 @@ final class ConfigVistaMapa extends Equatable {
   /// Quien usa el mapa quiere saber qué punto se tocó.
   final bool puntosTocables;
 
+  /// Las zonas que se dibujan por debajo de los puntos (#511). No responden al toque.
+  final List<ZonaMapa> zonas;
+
+  /// Hay casas dibujadas como cuadrados de 40 dp (vista 39, M·02): el toque elige la más cercana
+  /// dentro de 44 dp, en vez del área de 48 dp de los puntos.
+  bool get hayCuadrados => puntos.any((p) => p.estilo.esCuadrado);
+
   @override
   List<Object?> get props => [
     fuente,
@@ -173,6 +211,7 @@ final class ConfigVistaMapa extends Equatable {
     precision,
     cercania,
     puntosTocables,
+    zonas,
   ];
 }
 

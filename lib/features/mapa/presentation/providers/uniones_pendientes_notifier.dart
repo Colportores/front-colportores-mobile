@@ -9,13 +9,15 @@ import '../../domain/usecases/duplicados_ubicacion_use_cases.dart';
 import 'duplicados_providers.dart';
 
 /// Una unión que el colportor pidió con «Conservar A y unir» y todavía no se hizo: espera sus 8 s de
-/// «Deshacer». **No cambia nada** en la base local ni en la cola de sync hasta que se cumplen.
+/// «Deshacer» (o, con un lector de pantalla, a que se cierre el aviso). **No cambia nada** en la base
+/// local ni en la cola de sync hasta que se cumple.
 final class UnionPendiente extends Equatable {
   const UnionPendiente({
     required this.clavePar,
     required this.conservarId,
     required this.duplicadaId,
     required this.direccion,
+    this.esperaElCierre = false,
   });
 
   /// `ParDuplicado.clave`: identifica el par sin importar cuál se conserva.
@@ -30,8 +32,19 @@ final class UnionPendiente extends Equatable {
   /// de las dos tiene (los avisos tienen su frase para ese caso).
   final String direccion;
 
+  /// Con un lector de pantalla encendido (WCAG 2.2.1, decisión de Cristian 21/10, «Deshacer AA»): los
+  /// 8 s no corren, porque con el lector «Deshacer» puede no llegar a tiempo. La unión se hace cuando
+  /// la colportora cierra el aviso ([UnionesPendientesNotifier.confirmarPendiente]), sale de la
+  /// pantalla o une otro par; «Deshacer» sigue cancelándola. Sin lector es `false`: 8 s, como siempre.
+  final bool esperaElCierre;
+
   @override
-  List<Object?> get props => [clavePar, conservarId, duplicadaId, direccion];
+  List<Object?> get props => [clavePar, conservarId, duplicadaId, direccion, esperaElCierre];
+
+  /// [props] lleva la dirección y los ids de las ubicaciones: `EquatableConfig.stringify` arranca en
+  /// `true` en debug, así que sin esto `toString()` los volcaría (convenciones §7.5, sin PII en logs).
+  @override
+  bool? get stringify => false;
 }
 
 /// Una unión que se intentó hacer y no se pudo, con el motivo.
@@ -47,6 +60,10 @@ final class FallaUnion extends Equatable {
 
   @override
   List<Object?> get props => [union, falla];
+
+  /// Lleva la unión (dirección e ids): ver [UnionPendiente.stringify].
+  @override
+  bool? get stringify => false;
 }
 
 /// Lo que la pantalla de «Posibles duplicados» tiene que saber de las uniones en marcha.
@@ -98,6 +115,10 @@ final class UnionesPendientesState extends Equatable {
 
   @override
   List<Object?> get props => [pendiente, ocultas, duplicadasEnCurso, fallas];
+
+  /// Lleva ids de ubicaciones y uniones con dirección: ver [UnionPendiente.stringify].
+  @override
+  bool? get stringify => false;
 }
 
 /// Las uniones que fallaron cuando la pantalla de «Posibles duplicados» ya no estaba (la colportora
@@ -159,6 +180,9 @@ final avisoUnionFallidaProvider = Provider.autoDispose.family<List<FallaUnion>, 
 /// - **Unir otro par** hace definitiva la anterior en ese momento, y los 8 s corren para el nuevo.
 /// - **Pasados los 8 s**, o al salir de la pantalla (se descarta el notificador), la unión es
 ///   definitiva: una sola transacción local (`UnirDuplicadosUseCase`).
+/// - **Con lector de pantalla** ([UnionPendiente.esperaElCierre]) no hay 8 s: la unión es definitiva
+///   cuando se cierra el aviso ([confirmarPendiente]), al salir de la pantalla o al unir otro par.
+///   «Deshacer» cancela igual. El resto no cambia (nada se escribe mientras espera).
 /// - Si la app se cierra de golpe en los 8 s, no se hizo nada (todo está en memoria).
 /// - Las uniones definitivas corren de a una y en el orden en que se pidieron.
 /// - Si una falla, no cambia nada, el par vuelve a la lista y [UnionesPendientesState.fallas] dice
@@ -185,6 +209,10 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
   /// que una unión pedida después reemplazó: si uno de estos vuelve a fallar, no deja su falla.
   final _reintentosEnVuelo = <UnionPendiente>{};
   final _reintentosReemplazados = <UnionPendiente>{};
+
+  /// Las uniones que se escribieron bien mientras la pantalla seguía abierta, por par: su par queda
+  /// oculto hasta que el servidor la rechace y vuelva ([soltarRechazadas]).
+  final _hechas = <String, UnionPendiente>{};
 
   @override
   UnionesPendientesState build() {
@@ -216,7 +244,15 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
       duplicadasEnCurso: {...state.duplicadasEnCurso, union.duplicadaId},
       fallas: _fallasQueSiguenCon(union),
     );
-    _reloj = Timer(_plazo, _alCumplirse);
+    // Con lector no corre ningún reloj: la pantalla llama a [confirmarPendiente] al cerrarse el aviso.
+    _reloj = union.esperaElCierre ? null : Timer(_plazo, _alCumplirse);
+  }
+
+  /// El aviso de [union] se cerró (con un lector de pantalla no se cierra solo): si sigue siendo la
+  /// que espera, se hace ya. Si ya se hizo, se deshizo o la reemplazó otra, no pasa nada.
+  void confirmarPendiente(UnionPendiente union) {
+    if (!identical(_pendiente, union)) return;
+    _alCumplirse();
   }
 
   /// Las fallas que se quedan cuando se pide [nueva]: las que ya estaban, menos las que [nueva]
@@ -304,6 +340,22 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
     );
   }
 
+  /// El servidor rechazó la unión de estos pares y el teléfono la deshizo: vuelven a la lista con su
+  /// aviso (HU-UBI-006, «Unión rech.», #679). Solo se sueltan los pares de una unión que ya se escribió
+  /// con la pantalla abierta: uno que espera sus 8 s o se está uniendo sigue oculto aunque traiga el
+  /// aviso de un rechazo anterior. Con el par vuelve también su «B» para los demás pares.
+  void soltarRechazadas(Set<String> clavesPar) {
+    if (!ref.mounted) return;
+    final vuelven = [for (final clave in clavesPar) ?_hechas.remove(clave)];
+    if (vuelven.isEmpty) return;
+    state = UnionesPendientesState(
+      pendiente: state.pendiente,
+      ocultas: {...state.ocultas}..removeAll(vuelven.map((u) => u.clavePar)),
+      duplicadasEnCurso: {...state.duplicadasEnCurso}..removeAll(vuelven.map((u) => u.duplicadaId)),
+      fallas: state.fallas,
+    );
+  }
+
   /// Cierra el aviso de las fallas sin reintentar.
   void descartarFalla() {
     if (state.fallas.isEmpty) return;
@@ -353,7 +405,10 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
     }
     _reintentosEnVuelo.remove(union);
     final reemplazada = _reintentosReemplazados.remove(union);
-    if (falla == null) return;
+    if (falla == null) {
+      _hechas[union.clavePar] = union;
+      return;
+    }
     final fallaDeLaUnion = FallaUnion(union: union, falla: falla);
     if (!ref.mounted) {
       if (reemplazada) return;

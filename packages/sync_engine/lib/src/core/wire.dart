@@ -106,8 +106,9 @@ List<Object?> jobsToJson(PushBatch batch) => [
         {
           'client_op_id': job.clientOpId,
           'entity': job.entity,
-          'op': job.op.name,
-          'sync_version': job.syncVersion,
+          'op': job.op.wireName,
+          // La unión de duplicados no compara versiones (§6.2): no la lleva.
+          if (job.op != Op.marcarComoDuplicado) 'sync_version': job.syncVersion,
           'payload': job.payload,
         },
     ];
@@ -286,12 +287,9 @@ Map<String, Object?> _mapa(Object? valor, String queEs) {
   throw FormatException('$queEs tiene que ser un objeto');
 }
 
-Op _op(Object? valor) => switch (valor) {
-      'insert' => Op.insert,
-      'update' => Op.update,
-      'delete' => Op.delete,
-      _ => throw FormatException('op inválida: $valor'),
-    };
+Op _op(Object? valor) => valor is String
+    ? Op.fromWireName(valor)
+    : throw FormatException('op inválida: $valor');
 
 /// Un `outcome` que este cliente no conoce es un contrato desalineado. Tratarlo
 /// como aceptado borraría de la cola un job que nunca subió.

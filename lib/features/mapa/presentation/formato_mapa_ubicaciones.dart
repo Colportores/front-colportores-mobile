@@ -1,8 +1,6 @@
 import '../domain/entities/estado_casa.dart';
-import '../domain/entities/lista_ubicaciones.dart';
 import '../domain/entities/ubicacion.dart';
 import 'formato_lista_ubicaciones.dart';
-import 'formato_ubicaciones.dart';
 
 /// Los textos del mapa de ubicaciones (vista 06, HU-UBI-003). Los del canvas están letra por letra;
 /// los que el canvas no dibuja (el vacío, el error, «Sin GPS») son propuestas marcadas en el
@@ -14,16 +12,46 @@ abstract final class TextosMapaUbicaciones {
   static const referencias = 'Referencias';
   static const miUbicacion = 'Mi ubicación';
   static const nueva = 'Nueva';
+
+  // Seguimiento de la ubicación (#670, decisión de Cristian del 05/11, «GPS viejo»): lo que dice el
+  // botón de ubicación según su modo. Son los tres textos del issue; los lee el lector de pantalla
+  // y se anuncian al cambiar de modo.
+  static const seguimientoLibre = 'Mapa libre';
+  static const seguimientoSeguir = 'Seguir mi ubicación';
+  static const seguimientoSeguirYGirar = 'Seguir y girar con el teléfono';
+
+  // Vista 41, 41E·03, 03B y 03C (#692): el nombre accesible del botón («Ubicación: Mapa libre»), la
+  // brújula que aparece arriba con el mapa girado y el cono que sale del punto del GPS.
+  static const ubicacion = 'Ubicación';
+  static const brujula = 'Brújula: volver al norte';
+  static const brujulaNorte = 'N';
+  static const conoOrientacion = 'Hacia dónde apunta el teléfono';
+
+  /// El aviso cuando se corta el seguimiento solo (propuesta: pendiente «mapa §2: texto/aviso»).
+  static const seguimientoCortado =
+      'Dejamos de seguir tu ubicación: el GPS se apagó o dejó de responder. '
+      'Activalo y tocá el botón para volver a seguirte.';
   static const cerrarVistaPrevia = 'Cerrar vista previa';
   static const leyendaSinVisita = 'Sin visita';
   static const leyendaAgrupadas = 'Agrupadas';
   static const leyendaCerca = 'Cerca tuyo: crece y muestra el número';
   static const leyendaTuUbicacion = 'Tu ubicación';
 
+  // Vista 39 (decisión del 23/10, #467): lo que el mapa dibuja y la leyenda no explicaba.
+  static const leyendaEdificio = 'Edificio';
+  static const leyendaAcercar = 'Al acercar: cada casa muestra su número';
+  static const muestraCuadrado = 'Casa con su número de puerta';
+
   // Lo que dice el lector de pantalla donde el canvas dibuja solo un ícono o un número.
   static const mapa = 'Mapa de ubicaciones';
   static const nuevaUbicacion = 'Nueva ubicación';
+
+  /// El pin para sumar una casa (vista 39, M·01; vista 41): se arrastra al lugar o se toca para
+  /// dejarlo en la ubicación de la colportora.
+  static const pinCasaNueva = 'Arrastrá para sumar una casa';
+  static const pinCasaNuevaPista = 'Tocalo para ponerlo en tu ubicación';
   static const miUbicacionSinGps = 'No disponible: no hay GPS.';
+  static const miUbicacionBuscandoGps = 'No disponible: buscando GPS…';
   static const alturaMinimizada = 'Minimizada';
   static const alturaTercio = 'A un tercio de la pantalla';
   static const alturaMitad = 'A la mitad de la pantalla';
@@ -60,18 +88,6 @@ abstract final class FormatoMapaUbicaciones {
   static String etiquetaPuerta(Ubicacion ubicacion) {
     final numero = ubicacion.numero?.trim();
     return numero == null || numero.isEmpty ? 's/n' : numero;
-  }
-
-  /// La línea chica de arriba de la vista previa (canvas): «CASA · 2 ESPACIOS · A 40 M». Sin GPS no
-  /// hay distancia y se omite.
-  static String rotuloVistaPrevia(ItemListaUbicacion item) {
-    final distancia = item.distanciaMetros;
-    final partes = [
-      FormatoUbicaciones.tipo(item.ubicacion.tipo),
-      FormatoListaUbicaciones.espacios(item.cantidadEspacios),
-      if (distancia != null && distancia.isFinite) 'a ${FormatoUbicaciones.distancia(distancia)}',
-    ];
-    return partes.join(' · ').toUpperCase();
   }
 
   /// El estado de la casa en la vista previa (canvas: «Cobranza pendiente · hoy 15:00»): el rótulo

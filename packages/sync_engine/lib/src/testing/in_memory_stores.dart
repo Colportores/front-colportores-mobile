@@ -24,6 +24,10 @@ class InMemoryJobStore implements JobStorePort {
 
   int _n = 0;
 
+  /// Cuándo se cerró el último job (`SyncStatus.lastPushAt`). Incremental, como
+  /// los contadores.
+  DateTime? _ultimoDone;
+
   /// Orden de llegada de cada job: el desempate de [_enOrden].
   final Map<String, int> _llegada = {};
 
@@ -73,6 +77,10 @@ class InMemoryJobStore implements JobStorePort {
   Future<void> markDone(Iterable<String> jobIds, {required DateTime at}) async {
     for (final id in jobIds) {
       _reemplazar(byId(id).copyWith(state: JobState.done, doneAt: at));
+    }
+    if (jobIds.isNotEmpty &&
+        (_ultimoDone == null || at.isAfter(_ultimoDone!))) {
+      _ultimoDone = at;
     }
   }
 
@@ -127,6 +135,12 @@ class InMemoryJobStore implements JobStorePort {
       ]);
 
   @override
+  Future<List<QueuedJob>> listPending() async => _enOrden([
+        for (final j in _jobs.values)
+          if (j.state == JobState.pending) j
+      ]);
+
+  @override
   Future<void> replacePayload(
       String jobId, Map<String, Object?> payload) async {
     final q = _sinMandar(jobId, 'replacePayload');
@@ -160,7 +174,7 @@ class InMemoryJobStore implements JobStorePort {
       for (final id in _porFila[(entity, pk)] ?? const <String>[]) {
         final q = _jobs[id];
         if (q == null ||
-            q.job.op == Op.insert ||
+            !q.job.op.esperaVersion ||
             q.state == JobState.done ||
             q.state == JobState.invalid) {
           continue;
@@ -196,7 +210,9 @@ class InMemoryJobStore implements JobStorePort {
     for (final id in jobIds) {
       final q = _jobs[id];
       if (q == null ||
-          (q.state != JobState.blocked && q.state != JobState.waiting)) {
+          (q.state != JobState.blocked &&
+              q.state != JobState.waiting &&
+              q.state != JobState.pending)) {
         continue;
       }
       _reemplazar(q.copyWith(
@@ -263,6 +279,7 @@ class InMemoryJobStore implements JobStorePort {
         invalid: _cuenta[JobState.invalid]!,
         blocked: _cuenta[JobState.blocked]!,
         waiting: _cuenta[JobState.waiting]!,
+        lastPushAt: _ultimoDone,
       );
 
   @override
@@ -340,7 +357,7 @@ class InMemoryLocalStore implements LocalStorePort {
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> delta, {
     required String scope,
-    required String watermark,
+    required String? watermark,
     PullNotices notices = PullNotices.none,
   }) async {
     if (failOnApply) {
@@ -372,7 +389,7 @@ class InMemoryLocalStore implements LocalStorePort {
       aLaEspera.clear();
     }
     if (!notices.isEmpty) avisos.add(notices);
-    watermarks[scope] = watermark;
+    if (watermark != null) watermarks[scope] = watermark;
     applies++;
   }
 
@@ -390,5 +407,41 @@ class InMemoryLocalStore implements LocalStorePort {
         filas[i] = {...fila, 'sync_version': version};
       }
     }
+  }
+}
+
+/// `sync_meta` en memoria (HU-SYNC-007). Un test que simula reiniciar el
+/// celular arma otro motor con **el mismo** [InMemorySyncMeta], como lo haría la
+/// DB en disco.
+class InMemorySyncMeta implements SyncMetaPort {
+  SyncMeta _meta = const SyncMeta();
+
+  /// Cuántas veces se escribió.
+  int writes = 0;
+
+  /// Si es `true`, [write] lanza: la DB local falló.
+  bool failOnWrite = false;
+
+  @override
+  Future<SyncMeta> read() async => _meta;
+
+  @override
+  Future<void> write({
+    DateTime? lastPullAt,
+    DateTime? lastBackupAt,
+    DateTime? lastPushAt,
+    SyncNetwork? lastPushNetwork,
+  }) async {
+    if (failOnWrite) throw StateError('la DB local falló al anotar sync_meta');
+    writes++;
+    final previo = _meta;
+    final pushNuevo = lastPushAt != null &&
+        (previo.lastPushAt == null || !lastPushAt.isBefore(previo.lastPushAt!));
+    _meta = SyncMeta(
+      lastPullAt: lastPullAt ?? previo.lastPullAt,
+      lastBackupAt: lastBackupAt ?? previo.lastBackupAt,
+      lastPushAt: pushNuevo ? lastPushAt : previo.lastPushAt,
+      lastPushNetwork: pushNuevo ? lastPushNetwork : previo.lastPushNetwork,
+    );
   }
 }

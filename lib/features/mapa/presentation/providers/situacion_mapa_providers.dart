@@ -285,10 +285,33 @@ final class SolicitudMapaNotifier extends Notifier<EstadoSolicitudMapa> {
     _paquete = _delCatalogo(ref.read(paqueteDelAmbitoProvider(ambito))) ?? _paquete;
     ref.listen(estadosDescargaTilesProvider, (_, nuevo) {
       if (nuevo case AsyncData(:final value) when _esDeEsteAmbito(value.paqueteId)) {
+        if (_loTapaOtraEnMarcha(value)) {
+          state = _conLoQueSigueEnMarcha(state);
+          return;
+        }
         state = _segunEstado(state, value);
       }
     });
     return _delDescargador();
+  }
+
+  /// `true` si [estado] es la falla de una descarga mientras otra del mismo lugar sigue en marcha o
+  /// en cola: lo que baja manda sobre lo que falló, igual que al armar la tarjeta
+  /// ([_delDescargador]). Sin esto, la falla de la zona que llega con la tarjeta ya montada pisaría
+  /// el «Descargando el mapa…» o el «Se descarga sola…» de la ciudad, y «Descargar mapa» se
+  /// habilitaría mientras el mapa se baja.
+  bool _loTapaOtraEnMarcha(EstadoDescarga estado) {
+    if (estado is! DescargaFallida) return false;
+    return _descargador()?.hayOtraEnMarchaQueCubre(ambito, salvoId: estado.paqueteId) ?? false;
+  }
+
+  /// [actual] con lo que dice el descargador de la descarga que sigue en marcha o en cola, y sin
+  /// falla: la que se ignoró no pisa nada, y el estado de la otra se lee de donde está, porque
+  /// puede no haberle avisado a esta tarjeta (se encoló antes de que existiera la vista, o su aviso
+  /// y la falla llegaron juntos).
+  EstadoSolicitudMapa _conLoQueSigueEnMarcha(EstadoSolicitudMapa actual) {
+    final enMarcha = _delDescargador();
+    return actual.copiar(enCola: enMarcha.enCola, bajando: enMarcha.bajando, sinFalla: true);
   }
 
   /// En qué está la descarga que el descargador ya tiene en marcha para el ámbito, si hay alguna.

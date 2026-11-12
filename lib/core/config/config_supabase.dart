@@ -12,8 +12,8 @@ abstract final class ConfigSupabase {
 
   static bool get configurada => url.isNotEmpty && anonKey.isNotEmpty;
 
-  /// Deep link base de la app: de él cuelgan los enlaces del correo (verificación y recuperación,
-  /// más abajo) y es el destino del reenvío de la verificación. Tiene que estar (a) en
+  /// Deep link base de la app: de él cuelgan los enlaces del correo (verificación —también la
+  /// reenviada, #679— y recuperación, más abajo). Tiene que estar (a) en
   /// `AndroidManifest.xml` como intent-filter de `MainActivity` y (b) en el dashboard:
   /// Authentication → URL Configuration → Redirect URLs.
   static const String redirectBase = 'io.supabase.colportores://login-callback/';

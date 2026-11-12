@@ -5,6 +5,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/consulta_lista_ubicaciones.dart';
 import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
@@ -17,9 +18,14 @@ import '../providers/baja_ubicacion_providers.dart';
 import '../providers/duplicados_providers.dart';
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
+import '../providers/personas_providers.dart' show lectorUltimaVisitaDeLaUbicacionProvider;
+import '../providers/ubicacion_colportor_provider.dart';
 import '../providers/uniones_pendientes_notifier.dart';
+import '../textos_personas.dart' show FormatoPersonas;
+import '../widgets/aviso_con_deshacer.dart';
 import '../widgets/hoja_filtros_lista.dart';
 import '../widgets/hoja_reactivar.dart';
+import '../widgets/mostrar_hoja_casa.dart';
 import '../widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
 import '../widgets/piezas_lista_ubicaciones.dart';
 import '../widgets/textos_posibles_duplicados.dart';
@@ -49,19 +55,26 @@ abstract final class TextosListaUbicaciones {
   static const nueva = 'Nueva';
 }
 
+/// Qué se hace al abrir una ubicación de la Lista: su `id` y la distancia que muestra su fila (la
+/// hoja de la ubicación dice «EDIFICIO · A 25 M» igual que desde el mapa), o `null` sin GPS.
+typedef AlAbrirUbicacion = void Function(String ubicacionId, double? distanciaMetros);
+
 /// La pestaña «Lista» (vista 05, HU-UBI-002): las ubicaciones del colportor con filtros combinables,
 /// contadores, orden por cercanía, «Mostrar bajas», buscador y carga de a 50.
 ///
 /// Vive dentro de la pantalla principal (`IndexedStack`): [activa] dice si la pestaña está a la
-/// vista. El GPS se pide la primera vez que se abre, no al arrancar la app.
+/// vista. El GPS no es de esta pestaña: lo lee de `ubicacionColportorProvider`, que solo el mapa pide.
 class ListaUbicacionesPage extends ConsumerStatefulWidget {
   const ListaUbicacionesPage({
     super.key,
     required this.colportorId,
     this.activa = true,
     this.alAbrirUbicacion,
+    this.casaAbreSuHoja = false,
     this.alRegistrar,
     this.alRevisarDuplicados,
+    this.paraElegir = false,
+    this.alActivarGps,
   });
 
   /// UUID del colportor con la sesión iniciada: la lista es «las que registré».
@@ -70,9 +83,15 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// La pestaña está a la vista.
   final bool activa;
 
-  /// Qué pasa al tocar una fila. `null` mientras no haya una pantalla de destino (las ubicaciones
-  /// del espacio, vista 11): las filas se ven igual pero no se tocan.
-  final ValueChanged<String>? alAbrirUbicacion;
+  /// Qué pasa al tocar una fila. Por defecto abre la hoja de la casa, «la misma que en el mapa»
+  /// (vista 39, C·01); una pantalla de destino propia (las ubicaciones del espacio, vista 11) la
+  /// reemplaza.
+  final AlAbrirUbicacion? alAbrirUbicacion;
+
+  /// Con [alAbrirUbicacion], una casa abre igual la hoja de la casa (vista 39, C·01) y el destino queda
+  /// para lo que puede tener deptos (edificio y negocio): una casa no tiene espacios que gestionar, y la
+  /// hoja de la ubicación (vista 11) solo le mostraría «Editar casa».
+  final bool casaAbreSuHoja;
 
   /// Cómo se abre el alta («Nueva» y «Registrar tu primera ubicación»). Por defecto abre
   /// `AltaUbicacionPage`; un test lo reemplaza.
@@ -81,6 +100,19 @@ class ListaUbicacionesPage extends ConsumerStatefulWidget {
   /// Cómo se abre «Posibles duplicados» desde el aviso «N posibles duplicados · Revisar». Por defecto
   /// abre `PosiblesDuplicadosPage`; un test lo reemplaza.
   final Future<void> Function()? alRevisarDuplicados;
+
+  /// La lista hace de selector (el de la casa de «+ Agendar», #568): tiene su estado propio, aparte
+  /// del de la pestaña Lista, que sigue viva debajo con su búsqueda y sus filtros.
+  final bool paraElegir;
+
+  /// «Activar GPS»: lleva al colportor a la pestaña Mapa, que es la única que pide el permiso (#651);
+  /// nunca sale un diálogo sobre la Lista. Sin esto (la Lista de «+ Agendar», sin Mapa al lado) el
+  /// chip solo informa.
+  final VoidCallback? alActivarGps;
+
+  /// La clave del estado de esta lista.
+  String get clave =>
+      paraElegir ? ListaUbicacionesNotifier.claveDeSeleccion(colportorId) : colportorId;
 
   @override
   ConsumerState<ListaUbicacionesPage> createState() => _ListaUbicacionesPageState();
@@ -94,27 +126,22 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
 
   /// Una sola hoja de filtros y una sola alta a la vez: un segundo toque no abre otra encima.
   var _abriendoHoja = false;
+
+  /// La baja sobre la que está abierta la hoja de «Reactivar»: su fila va resaltada (vista 09·03).
+  String? _reactivandoId;
   var _abriendoAlta = false;
   var _abriendoDuplicados = false;
 
+  /// Una sola hoja de la casa a la vez: un segundo toque (o dos filas seguidas) no abre otra encima.
+  var _abriendoCasa = false;
+
   ListaUbicacionesNotifier get _notificador =>
-      ref.read(listaUbicacionesProvider(widget.colportorId).notifier);
+      ref.read(listaUbicacionesProvider(widget.clave).notifier);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    if (widget.activa) WidgetsBinding.instance.addPostFrameCallback((_) => _alAbrirPestana());
-  }
-
-  @override
-  void didUpdateWidget(ListaUbicacionesPage anterior) {
-    super.didUpdateWidget(anterior);
-    // Cambiar un provider durante la construcción no se permite: se pide el GPS al terminar el
-    // cuadro.
-    if (widget.activa && !anterior.activa) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _alAbrirPestana());
-    }
   }
 
   @override
@@ -126,16 +153,11 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     super.dispose();
   }
 
-  void _alAbrirPestana() {
-    if (!mounted) return;
-    unawaited(_notificador.alAbrirPestana());
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState estado) {
     // Volvió de los ajustes del sistema: si estaba sin GPS, se vuelve a intentar.
     if (estado == AppLifecycleState.resumed && widget.activa) {
-      unawaited(_notificador.reintentarGpsSiHaceFalta());
+      unawaited(ref.read(ubicacionColportorProvider.notifier).reintentarGpsSiHaceFalta());
     }
   }
 
@@ -189,18 +211,103 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     }
   }
 
-  /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04).
+  /// La distancia que muestra la fila de esa ubicación en la Lista, si está cargada y se conoce.
+  double? _distanciaDe(String ubicacionId) {
+    for (final item
+        in ref.read(listaUbicacionesProvider(widget.clave)).lista?.items ??
+            const <ItemListaUbicacion>[]) {
+      if (item.ubicacion.id == ubicacionId) return item.distanciaMetros;
+    }
+    return null;
+  }
+
+  /// Tocar una fila (vista 05): se abre la hoja de la casa de la vista 39, o el destino que se pasó en
+  /// [ListaUbicacionesPage.alAbrirUbicacion]. Una casa dada de baja se abre igual, para ver lo que
+  /// pasó; su «Reactivar» es el de la fila.
+  Future<void> _abrirCasa(ItemListaUbicacion item) async {
+    final destino = widget.alAbrirUbicacion;
+    if (destino != null && !_laCasaAbreSuHoja(item)) {
+      destino(item.ubicacion.id, item.distanciaMetros);
+      return;
+    }
+    if (_abriendoCasa) return;
+    _abriendoCasa = true;
+    try {
+      await _mostrarHojaCasa(item);
+    } finally {
+      _abriendoCasa = false;
+    }
+  }
+
+  bool _laCasaAbreSuHoja(ItemListaUbicacion item) =>
+      widget.casaAbreSuHoja && item.ubicacion.tipo == TipoUbicacion.casa;
+
+  Future<void> _mostrarHojaCasa(ItemListaUbicacion item) => mostrarHojaCasa(
+    context,
+    colportorId: widget.colportorId,
+    item: item,
+    alReactivar: _reactivar,
+    // «Abrir la existente» desde «Editar casa» (#652): la hoja de esa otra ubicación.
+    alAbrirOtra: _abrirLaExistente,
+  );
+
+  /// «Abrir la existente» del aviso de un duplicado: la hoja de esa ubicación, que es la de la casa si
+  /// es una casa y [ListaUbicacionesPage.casaAbreSuHoja]. No pasa por la guarda de [_abrirCasa]: se
+  /// llega desde la hoja de otra casa, que todavía se está cerrando.
+  void _abrirLaExistente(String ubicacionId) {
+    for (final item
+        in ref.read(listaUbicacionesProvider(widget.colportorId)).lista?.items ??
+            const <ItemListaUbicacion>[]) {
+      if (item.ubicacion.id == ubicacionId && _laCasaAbreSuHoja(item)) {
+        unawaited(_mostrarHojaCasa(item));
+        return;
+      }
+    }
+    widget.alAbrirUbicacion?.call(ubicacionId, _distanciaDe(ubicacionId));
+  }
+
+  /// «Reactivar» una baja (vista 09·03) y, ya reactivada, el aviso con «Deshacer» (09·04). Si la baja
+  /// choca con otra casa activa (D1), la hoja lo dice y ofrece «Abrir la existente» solo si la Lista
+  /// tiene a dónde abrirla ([ListaUbicacionesPage.alAbrirUbicacion]).
   Future<void> _reactivar(ItemListaUbicacion item) async {
     if (_abriendoHoja) return;
     _abriendoHoja = true;
-    Ubicacion? reactivada;
+    setState(() => _reactivandoId = item.ubicacion.id);
+    SalidaHojaReactivar? salida;
     try {
-      reactivada = await mostrarHojaReactivar(context, colportorId: widget.colportorId, item: item);
+      final ultimaVisita = await _ultimaVisitaDe(item.ubicacion.id);
+      if (!mounted) return;
+      salida = await mostrarHojaReactivar(
+        context,
+        colportorId: widget.colportorId,
+        item: item,
+        ultimaVisita: ultimaVisita,
+        ofreceAbrirExistente: widget.alAbrirUbicacion != null,
+      );
     } finally {
       _abriendoHoja = false;
+      if (mounted) setState(() => _reactivandoId = null);
     }
-    if (reactivada == null || !mounted) return;
-    _avisarReactivada(reactivada, item.motivoBaja);
+    if (!mounted) return;
+    switch (salida) {
+      case ReactivacionRealizada(:final ubicacion):
+        _avisarReactivada(ubicacion, item.motivoBaja);
+      case AbrirExistenteElegida(:final ubicacionId):
+        _abrirLaExistente(ubicacionId);
+      case null:
+        break;
+    }
+  }
+
+  /// El renglón «Última visita» de «Reactivar» («No contestó · 02/09»), o `null` si la ubicación no
+  /// tiene ninguna visita o no se pudo leer: el renglón no se dibuja, nunca se inventa (HU-UBI-005).
+  Future<String?> _ultimaVisitaDe(String ubicacionId) async {
+    try {
+      final ultima = await ref.read(lectorUltimaVisitaDeLaUbicacionProvider).de(ubicacionId);
+      return ultima == null ? null : FormatoPersonas.ultimaVisita(ultima);
+    } on Object {
+      return null;
+    }
   }
 
   /// El aviso de la vista 09·04: «Av. Italia 1240 reactivada. Vuelve a aparecer en el mapa.» con
@@ -215,42 +322,14 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     final darDeBaja = ref.read(darDeBajaUbicacionUseCaseProvider);
     final direccion = FormatoUbicaciones.direccion(reactivada);
     final mediaQuery = MediaQuery.of(context);
-    // Con el texto grande «Deshacer» va debajo del aviso, no al lado: Flutter mide la acción sin la
-    // escala del texto y la deja en una columna angosta que parte «reactivada»; y `actionOverflowThreshold`
-    // tampoco alcanza (reserva el 40 % del ancho aunque la acción baje, y el aviso mide ~300 de 640).
-    final textoGrande = mediaQuery.textScaler.scale(14) / 14 > 1.3;
-    final texto = Text(
-      TextosReactivar.reactivada(direccion),
-      style: const TextStyle(fontSize: 13.5, color: Colors.white),
+    mostrarAvisoConDeshacer(
+      mensajero,
+      mediaQuery: mediaQuery,
+      texto: TextosReactivar.reactivada(direccion),
+      etiquetaDeshacer: TextosReactivar.deshacer,
+      duracion: TextosReactivar.duracionDeshacer,
+      alDeshacer: () => unawaited(_deshacer(mensajero, darDeBaja, reactivada, motivo)),
     );
-    final deshacer = SnackBarAction(
-      label: TextosReactivar.deshacer,
-      textColor: const Color(0xFFC9D6EA),
-      onPressed: () => unawaited(_deshacer(mensajero, darDeBaja, reactivada, motivo)),
-    );
-    mensajero
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          duration: TextosReactivar.duracionDeshacer,
-          // Con un lector de pantalla el aviso no se cierra solo (WCAG 2.2.1): quien navega con
-          // TalkBack/VoiceOver no llega a «Deshacer» en 8 s. Sin lector dura 8 s, como en el canvas
-          // (sin `action` Flutter no lo deja abierto, y con `action` lo dejaría abierto para todos).
-          persist: mediaQuery.accessibleNavigation,
-          backgroundColor: ColoresLista.tinta,
-          content: textoGrande
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    texto,
-                    Align(alignment: AlignmentDirectional.centerEnd, child: deshacer),
-                  ],
-                )
-              : texto,
-          action: textoGrande ? null : deshacer,
-        ),
-      );
   }
 
   Future<void> _deshacer(
@@ -287,6 +366,8 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
 
   Future<void> _registrar() async {
     if (_abriendoAlta) return;
+    // Con la cuenta restringida mientras esta pantalla estaba abierta no se empieza un alta nueva.
+    if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendoAlta = true;
     try {
       final personalizado = widget.alRegistrar;
@@ -304,6 +385,8 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
   /// ver los pares: el aviso de una unión que falló fuera de la pantalla se da por leído.
   Future<void> _revisarDuplicados() async {
     if (_abriendoDuplicados) return;
+    // Con la cuenta restringida no se abre otra revisión de duplicados.
+    if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendoDuplicados = true;
     try {
       ref.read(unionesFallidasFueraDePantallaProvider.notifier).olvidar();
@@ -320,7 +403,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
 
   @override
   Widget build(BuildContext context) {
-    final proveedor = listaUbicacionesProvider(widget.colportorId);
+    final proveedor = listaUbicacionesProvider(widget.clave);
     final estado = ref.watch(proveedor);
     // «Limpiar filtros» también vacía la búsqueda: el campo tiene que seguirla.
     ref.listen(proveedor.select((s) => s.filtros.busqueda), (_, texto) {
@@ -339,6 +422,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
     final sinUbicaciones = lista?.sinUbicaciones ?? false;
     // Sin pares para revisar la Lista queda como siempre: la franja no ocupa ni un lugar entre las filas.
     final hayDuplicados = ref.watch(cantidadParesParaRevisarProvider(widget.colportorId)) > 0;
+    final fallasDeUnion = ref.watch(avisoUnionFallidaProvider(widget.colportorId));
     // Una unión que falló cuando ya se había salido de «Posibles duplicados»: se anuncia aunque la Lista
     // esté bajada y la franja (primer ítem del desplazamiento) no esté construida (WCAG 4.1.3). La
     // franja no se anuncia sola mientras muestra una falla (`liveRegion` apagado en `_AvisoDuplicados`),
@@ -365,7 +449,7 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
               busqueda: _busqueda,
               alEscribir: _alEscribir,
               alEnviar: _buscarYa,
-              alActivarGps: () => unawaited(_notificador.activarGps()),
+              alActivarGps: widget.alActivarGps,
             ),
             _FilaFiltros(
               estado: estado,
@@ -384,22 +468,55 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
                 child: _AvisoLectura(alReintentar: _notificador.reintentar),
               ),
             Expanded(
-              child: _Cuerpo(
-                estado: estado,
-                ahora: ahora,
-                // Lo primero de lo que se desplaza, no del encabezado fijo: a 320×568 con el texto al
-                // 200 % el encabezado ya ocupa casi toda la pantalla y la franja no entra (QA de #357).
-                avisoDuplicados: sinUbicaciones || !hayDuplicados
-                    ? null
-                    : _AvisoDuplicados(
-                        colportorId: widget.colportorId,
-                        alRevisar: () => unawaited(_revisarDuplicados()),
+              child: LayoutBuilder(
+                builder: (context, zona) {
+                  final franja = sinUbicaciones || !hayDuplicados
+                      ? null
+                      : _AvisoDuplicados(
+                          colportorId: widget.colportorId,
+                          alRevisar: () => unawaited(_revisarDuplicados()),
+                        );
+                  // La franja de una unión fallida queda fija bajo el encabezado si entra y todavía
+                  // deja lugar a las filas (#362); si no, es lo primero de lo que se desplaza. La de
+                  // siempre («3 posibles duplicados») va siempre dentro del desplazamiento.
+                  final fija =
+                      franja != null &&
+                      lista != null &&
+                      fallasDeUnion.isNotEmpty &&
+                      _AvisoDuplicados.entraFija(context, fallasDeUnion, zona);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Siempre hay un hijo en este lugar: al pasar de fija a desplazable el cuerpo
+                      // conserva su estado.
+                      if (fija)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: _AvisoDuplicados.separacionDeLaFija,
+                          ),
+                          child: franja,
+                        )
+                      else
+                        const SizedBox.shrink(),
+                      Expanded(
+                        child: _Cuerpo(
+                          estado: estado,
+                          ahora: ahora,
+                          // Lo primero de lo que se desplaza, no del encabezado fijo: a 320×568 con el
+                          // texto al 200 % el encabezado ya ocupa casi toda la pantalla y la franja no
+                          // entra (QA de #357).
+                          avisoDuplicados: fija ? null : franja,
+                          alAbrirUbicacion: (item) => unawaited(_abrirCasa(item)),
+                          alReactivar: (item) => unawaited(_reactivar(item)),
+                          reactivandoId: _reactivandoId,
+                          alRegistrar: () => unawaited(_registrar()),
+                          notificador: _notificador,
+                          desplazamiento: _desplazamiento,
+                        ),
                       ),
-                alAbrirUbicacion: widget.alAbrirUbicacion,
-                alReactivar: (item) => unawaited(_reactivar(item)),
-                alRegistrar: () => unawaited(_registrar()),
-                notificador: _notificador,
-                desplazamiento: _desplazamiento,
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -429,7 +546,7 @@ class _Cabecera extends StatelessWidget {
   final TextEditingController busqueda;
   final ValueChanged<String> alEscribir;
   final ValueChanged<String> alEnviar;
-  final VoidCallback alActivarGps;
+  final VoidCallback? alActivarGps;
 
   @override
   Widget build(BuildContext context) {
@@ -470,31 +587,46 @@ class _ChipGps extends StatelessWidget {
   const _ChipGps({required this.estado, required this.alActivar});
 
   final ListaUbicacionesState estado;
-  final VoidCallback alActivar;
+  final VoidCallback? alActivar;
 
   @override
   Widget build(BuildContext context) {
     const estilo = TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: ColoresLista.grisTexto);
     final lectura = estado.lectura;
     switch (estado.gps) {
-      case EstadoGpsLista.sinPedir:
-        return const SizedBox.shrink();
       case EstadoGpsLista.buscando when lectura == null:
         return const Text('◎ Buscando GPS…', style: estilo);
+      // Todavía nadie pidió el GPS (el mapa no se abrió): se ofrece activarlo, igual que el alta.
+      case EstadoGpsLista.sinPedir:
       case EstadoGpsLista.sinGps:
-        return Semantics(
-          button: true,
-          label: 'Sin GPS. Activar GPS',
-          child: ExcludeSemantics(
-            child: TextButton(
-              onPressed: alActivar,
-              style: TextButton.styleFrom(
-                foregroundColor: ColoresLista.azul,
-                minimumSize: const Size(48, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                textStyle: estilo.copyWith(fontWeight: FontWeight.w600),
+        final texto = estado.gps == EstadoGpsLista.sinPedir
+            ? '◎ Sin GPS · Activar GPS'
+            : '◎ Sin GPS';
+        // Con el texto agrandado el chip no puede ser más ancho que la pantalla: se parte en dos
+        // renglones en vez de empujar el título fuera de los costados.
+        final tope = BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width - 40);
+        if (alActivar == null) {
+          return ConstrainedBox(
+            constraints: tope,
+            child: Text(texto, style: estilo),
+          );
+        }
+        return ConstrainedBox(
+          constraints: tope,
+          child: Semantics(
+            button: true,
+            label: 'Sin GPS. Activar GPS',
+            child: ExcludeSemantics(
+              child: TextButton(
+                onPressed: alActivar,
+                style: TextButton.styleFrom(
+                  foregroundColor: ColoresLista.azul,
+                  minimumSize: const Size(48, 48),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  textStyle: estilo.copyWith(fontWeight: FontWeight.w600),
+                ),
+                child: Text(texto, textAlign: TextAlign.center),
               ),
-              child: const Text('◎ Sin GPS'),
             ),
           ),
         );
@@ -733,6 +865,7 @@ class _Cuerpo extends StatelessWidget {
     required this.ahora,
     required this.alAbrirUbicacion,
     required this.alReactivar,
+    required this.reactivandoId,
     required this.alRegistrar,
     required this.notificador,
     required this.desplazamiento,
@@ -745,8 +878,11 @@ class _Cuerpo extends StatelessWidget {
   /// «3 posibles duplicados · Revisar» (o el de la falla): va arriba de lo que se desplaza. No se
   /// muestra mientras se lee la lista por primera vez ni cuando esa lectura falla.
   final Widget? avisoDuplicados;
-  final ValueChanged<String>? alAbrirUbicacion;
+  final ValueChanged<ItemListaUbicacion> alAbrirUbicacion;
   final ValueChanged<ItemListaUbicacion> alReactivar;
+
+  /// La baja que tiene abierta la hoja de «Reactivar»: su fila va resaltada.
+  final String? reactivandoId;
   final VoidCallback alRegistrar;
   final ListaUbicacionesNotifier notificador;
   final ScrollController desplazamiento;
@@ -902,8 +1038,11 @@ class _Cuerpo extends StatelessWidget {
           item: item,
           lista: lista,
           ahora: ahora,
-          alTocar: alAbrirUbicacion == null ? null : () => alAbrirUbicacion!(id),
-          alReactivar: item.esBaja ? () => alReactivar(item) : null,
+          alTocar: () => alAbrirUbicacion(item),
+          // Una baja por unión de duplicados no se reactiva: la fila dice «Unida a otra ubicación» y no
+          // se toca (HU-UBI-005, «Reactivar»).
+          alReactivar: item.puedeReactivarse ? () => alReactivar(item) : null,
+          seleccionada: id == reactivandoId,
         );
       },
     );
@@ -1025,7 +1164,9 @@ class _AvisoLectura extends StatelessWidget {
 /// #338, F3); con más de una, «No pudimos unir 2 pares · Revisar». Los pares siguen en «Revisar».
 ///
 /// Es lo primero de lo que se desplaza en la Lista (no del encabezado fijo): con el texto agrandado
-/// en un teléfono chico el encabezado ya ocupa casi toda la pantalla.
+/// en un teléfono chico el encabezado ya ocupa casi toda la pantalla. La de una unión fallida es la
+/// excepción (#362): si entra bajo el encabezado y deja lugar a las filas ([entraFija]) queda fija
+/// ahí, a la vista aunque la Lista esté bajada; si no entra, se desplaza como siempre.
 class _AvisoDuplicados extends ConsumerWidget {
   const _AvisoDuplicados({required this.colportorId, required this.alRevisar});
 
@@ -1038,6 +1179,55 @@ class _AvisoDuplicados extends ConsumerWidget {
       '${TextosPosiblesDuplicados.avisoUnionesFallidas([for (final f in fallas) f.union.direccion])}. '
       '${TextosPosiblesDuplicados.revisar}';
 
+  /// Lo que la Lista conserva como mínimo para las filas cuando la franja queda fija: una fila tocable
+  /// (48 dp). Si no queda eso, la franja va dentro del desplazamiento.
+  static const _alturaMinimaDeLasFilas = 48.0;
+
+  /// Respiro entre la franja fija y las filas.
+  static const separacionDeLaFija = 8.0;
+  static const _margenLateral = 20.0;
+  static const _rellenoLateral = 14.0;
+  static const _margenSuperior = 8.0;
+  static const _rellenoVertical = 8.0;
+  static const _alturaTocable = 48.0;
+
+  static const _estiloTexto = TextStyle(
+    fontFamily: 'Inter',
+    fontSize: 13.5,
+    color: Color(0xFF6E5212),
+  );
+  static const _estiloRevisar = TextStyle(fontWeight: FontWeight.w700, color: ColoresLista.azul);
+
+  /// Lo que mide la franja de [fallas] en un ancho de [ancho] dp con el texto de la persona: el margen
+  /// de arriba más el cuadro (el texto en sus renglones o 48 dp, lo que sea más).
+  static double alturaDeLaFranja(BuildContext context, double ancho, List<FallaUnion> fallas) {
+    final base = (Theme.of(context).textTheme.bodyMedium ?? const TextStyle()).merge(_estiloTexto);
+    final pintor = TextPainter(
+      text: TextSpan(
+        style: base,
+        children: [
+          TextSpan(text: '${_textoDeFallas(fallas)} · '),
+          const TextSpan(text: TextosPosiblesDuplicados.revisar, style: _estiloRevisar),
+        ],
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: ancho - 2 * (_margenLateral + _rellenoLateral));
+    final alto = pintor.height + 2 * _rellenoVertical;
+    pintor.dispose();
+    return _margenSuperior + (alto < _alturaTocable ? _alturaTocable : alto);
+  }
+
+  /// Si la franja de [fallas] entra en [zona] (lo que queda bajo el encabezado) y deja a las filas al
+  /// menos [_alturaMinimaDeLasFilas].
+  static bool entraFija(BuildContext context, List<FallaUnion> fallas, BoxConstraints zona) {
+    final alto = alturaDeLaFranja(context, zona.maxWidth, fallas) + separacionDeLaFija;
+    return zona.maxHeight - alto >= _alturaMinimaDeLasFilas;
+  }
+
+  static String _textoDeFallas(List<FallaUnion> fallas) =>
+      TextosPosiblesDuplicados.avisoUnionesFallidas([for (final f in fallas) f.union.direccion]);
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cantidad = ref.watch(cantidadParesParaRevisarProvider(colportorId));
@@ -1045,10 +1235,10 @@ class _AvisoDuplicados extends ConsumerWidget {
     final fallas = ref.watch(avisoUnionFallidaProvider(colportorId));
     final hayFallas = fallas.isNotEmpty;
     final texto = hayFallas
-        ? TextosPosiblesDuplicados.avisoUnionesFallidas([for (final f in fallas) f.union.direccion])
+        ? _textoDeFallas(fallas)
         : TextosPosiblesDuplicados.avisoEnLista(cantidad);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      padding: const EdgeInsets.fromLTRB(_margenLateral, _margenSuperior, _margenLateral, 0),
       child: Semantics(
         button: true,
         // Con una falla no es región viva: la Lista la anuncia ella (`ref.listen` de arriba), esté o no
@@ -1067,24 +1257,23 @@ class _AvisoDuplicados extends ConsumerWidget {
               borderRadius: BorderRadius.circular(12),
               onTap: alRevisar,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 48),
+                constraints: const BoxConstraints(minHeight: _alturaTocable),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: _rellenoLateral,
+                    vertical: _rellenoVertical,
+                  ),
                   child: Text.rich(
                     TextSpan(
                       children: [
                         TextSpan(text: '$texto · '),
                         const TextSpan(
                           text: TextosPosiblesDuplicados.revisar,
-                          style: TextStyle(fontWeight: FontWeight.w700, color: ColoresLista.azul),
+                          style: _estiloRevisar,
                         ),
                       ],
                     ),
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 13.5,
-                      color: Color(0xFF6E5212),
-                    ),
+                    style: _estiloTexto,
                   ),
                 ),
               ),

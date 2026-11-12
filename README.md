@@ -80,6 +80,7 @@ docker compose -f compose.dev.yml run --rm flutter dart run build_runner build  
 docker compose -f compose.dev.yml run --rm flutter flutter build apk --debug
 ```
 
+- **Check local en secuencia (`J=1`).** En local el check completo se corre con `docker compose -f compose.dev.yml run --rm -e J=1 flutter bash scripts/check.sh` (o `flutter test --concurrency=1` si lo corrés suelto): un solo `flutter_tester` en vez de ~8 en paralelo, para no pasar de los 3 GB que `compose.dev.yml` le fija al contenedor (`mem_limit: 3g`). Sin `J` los tests corren en paralelo, que es lo que usa CI.
 - **Imagen y cachés compartidas.** `-p <nombre>` propio está bien para aislar contenedores, `build/` y `android/.gradle`; la imagen (`front-colportores-mobile-dev:latest`) y las cachés de pub y Gradle (`front-colportores-mobile_pub_cache`, `front-colportores-mobile_gradle_cache`) son compartidas por todos los proyectos.
   `docker compose build` solo cuando cambia `dockerfile.dev` (y nunca `down -v` sobre esas cachés).
 - `build/` y `android/.gradle` viven en volúmenes Linux (D8/dex falla sobre el bind mount de Windows). Para sacar el APK al host:
@@ -104,14 +105,37 @@ flutter run --dart-define=SUPABASE_URL=https://xxx.supabase.co --dart-define=SUP
 
 - «Contactar a soporte» (vista 13) abre el WhatsApp de soporte, +54 3751 530020 (`https://wa.me/5493751530020`). El número es configuración (`lib/core/config/config_soporte.dart`): se cambia en compilación con `--dart-define=SOPORTE_WHATSAPP=<código de país y número, sin +>` (en Argentina los celulares llevan el 9: `549…`) y `--dart-define=SOPORTE_WHATSAPP_VISIBLE="+54 …"`.
 - La app entra solo con correo y contraseña (decisión del 02/10: no hay inicio de sesión con Google ni con otro proveedor). El respaldo en Google Drive es otro flujo y sigue (HU-SYNC-004). Los enlaces del correo (verificación y recuperación) vuelven por el deep link `io.supabase.colportores://login-callback/` (intent-filter en `AndroidManifest.xml`); esa URL tiene que estar allowlisteada en Supabase → Authentication → URL Configuration → Redirect URLs. **Al apagar el proveedor Google en Supabase (Authentication → Providers) NO se saca esa URL del allowlist**: el reenvío de la verificación sigue usándola (`ConfigSupabase.redirectBase`).
+- El respaldo en Google Drive (HU-SYNC-004, Configuración → «Respaldo» → «Cuenta Drive») usa `google_sign_in` solo para autorizar el permiso `drive.appdata`. Sin `--dart-define=GOOGLE_SERVER_CLIENT_ID=…` (y `GOOGLE_IOS_CLIENT_ID` en iOS) la app corre igual pero no se puede conectar: registro y pasos en `docs/google-drive-oauth.md`.
 - La verificación de email (HU-AUTH-002) vuelve por un deep link propio, mismo scheme/host, path distinto: `io.supabase.colportores://login-callback/verificado` (issue #84). **Pendiente de sumar** esa URL —o un comodín `io.supabase.colportores://login-callback/**`— en el mismo lugar que la de arriba; sin eso Supabase rechaza el `emailRedirectTo` del registro y el correo de verificación no vuelve a la app.
-- `scripts/check_auth_providers.sh` verifica contra `/auth/v1/settings` que el proyecto tenga email activo y Apple apagado (si Google sigue activo, solo avisa: la app ya no lo usa); en CI lee las variables de repo `SUPABASE_URL` / `SUPABASE_ANON_KEY` (`gh variable set …`) y con ellas el job del APK sale ya configurado.
+- `scripts/check_auth_providers.sh` verifica contra `/auth/v1/settings` que el proyecto tenga email activo y Apple apagado (si Google sigue activo, solo avisa: la app ya no lo usa); en CI lee las variables de repo `SUPABASE_URL` / `SUPABASE_ANON_KEY` (`gh variable set …`), que son también las que usa `staging.yml` si el environment `staging` no define las suyas.
 - La sesión la persiste `supabase_flutter` (SharedPreferences por default). Pasarla a `flutter_secure_storage` (`Supabase.initialize(authOptions: FlutterAuthClientOptions(localStorage: …))`) está pendiente de decisión (ADR-006).
 - Umbrales de cobertura (`scripts/coverage_check.sh`): total ≥ 70%, dominio ≥ 90%.
 
+### Plataformas mínimas y push remotas (Firebase)
+
+- **Android 10+ e iOS 15+.** iOS subió de 13 a 15 por `firebase_core` 5 / `firebase_messaging` 17 (push remotas, HU-NOT-003, ADR-014): decisión de Cristian del 11/11 en #614. El mínimo de iOS está en `IPHONEOS_DEPLOYMENT_TARGET` de `ios/Runner.xcodeproj` (no hay Podfile: los plugins van por Swift Package Manager); no se bajan versiones de Firebase para sostener iOS viejos.
+- Android: `android/app/google-services.json` (proyecto Firebase `colportores-66b3b`). El plugin de Google Services se aplica solo si el archivo tiene el applicationId del build (`app/build.gradle.kts`); si no, el build avisa y la app arranca sin push. En producción (`exigir-entorno`) `android-build.yml` falla si falta la app.
+- iOS: falta `GoogleService-Info.plist` y la clave de APNs en Firebase; sin el plist, Firebase no arranca y la app sigue sin push.
+- Con la app cerrada o en segundo plano, el sistema muestra el título fijo del servidor en el canal de Android `avisos_campania` («Avisos de tu campaña»); la app arma el texto completo al tocar o al abrir.
+
 ## CI
 
-`ci.yml` (push a `develop`/`staging`/`production`; PR contra esas y contra `feature/**`): `build_runner`, `dart format --set-exit-if-changed`, `dart analyze --fatal-infos` (incluye las reglas de Riverpod del plugin `riverpod_lint`), `flutter test --coverage` con umbrales, el smoke test de proveedores de Supabase Auth (omitido si no hay variables), y un job aparte que compila el APK debug — con SQLCipher es el que valida que el hook resuelve los binarios de Android. La versión de Flutter de CI y de `dockerfile.dev` se suben juntas.
+`ci.yml` (push a `develop`/`staging`/`production`; PR contra esas y contra `feature/**`): `build_runner`, `dart format --set-exit-if-changed`, `dart analyze --fatal-infos` (incluye las reglas de Riverpod del plugin `riverpod_lint`), `flutter test --coverage` con umbrales, y el smoke test de proveedores de Supabase Auth (omitido si no hay variables). No compila el APK: eso (y la validación de que el hook de SQLCipher resuelve los binarios de Android) pasó a `staging.yml`, ver «Despliegue»; para la demo se corre a mano desde `develop`. La versión de Flutter de CI y de `dockerfile.dev` se suben juntas.
+
+## Despliegue (staging y production)
+
+Ramas `develop → staging → production`. Los compilados de despliegue no corren en el CI de develop: salen de dos workflows que comparten `android-build.yml` (`workflow_call`) y toman variables y secretos de los GitHub Environments `staging` y `production`.
+
+| Workflow | Cuándo | Qué compila | Dónde publica |
+|---|---|---|---|
+| `staging.yml` | push a `staging` | APK release, `applicationId` con sufijo `.staging` y nombre «Colportores (staging)», variables de **dev** | pre-release `staging-<n>` en GitHub Releases |
+| `staging.yml` | a mano (`gh workflow run staging.yml --ref develop`) | por defecto el `app-debug.apk` de la demo (debug, sin sufijo, Supabase dev) | artefacto de Actions; pre-release solo si se pide y desde `staging`/`develop` |
+| `production.yml` | push a `production` | AAB release firmado, variables de **producción** (exige `APP_ENV=production` y rechaza el proyecto dev) | Google Play (track `PLAY_TRACK`, por defecto `internal`, en borrador) |
+
+- Variables (`vars`, no secretas): `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `APP_ENV` y opcionales (`GOOGLE_SERVER_CLIENT_ID`, `SOPORTE_WHATSAPP`, `SOPORTE_WHATSAPP_VISIBLE`, `LOG_LEVEL`). En `staging`, si el environment no las define, valen las del repo (proyecto dev).
+- Secretos del environment: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (obligatorios en producción; en staging, sin ellos el release se firma con la clave de debug del runner y para actualizarlo hay que desinstalar) y `PLAY_SERVICE_ACCOUNT_JSON` (producción).
+- `android/app/build.gradle.kts` lee del entorno el sufijo (`COLPORTORES_APP_ID_SUFFIX`), el nombre (`COLPORTORES_APP_NAME`) y la keystore (`ANDROID_KEYSTORE_PATH` y compañía). Sin esas variables (local, Docker) el build es el de siempre.
+- El repo es público: ningún paso imprime valores, la keystore se decodifica a un archivo temporal que se borra al final y los `dart-define` van por archivo (`--dart-define-from-file`), no por la línea de comandos.
 
 ## Privacidad
 

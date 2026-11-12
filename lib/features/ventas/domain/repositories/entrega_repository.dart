@@ -1,0 +1,103 @@
+import 'package:dartz/dartz.dart';
+
+import '../../../../core/error/failure.dart';
+import '../entities/entrega.dart';
+import '../entities/entrega_diferida.dart';
+import '../entities/entrega_pendiente.dart';
+
+/// Persistencia de las entregas de lo vendido (BACK-HU-VEN-002, #430).
+///
+/// Cada operación que escribe es **todo o nada**, en una transacción local: las filas de `entrega`,
+/// su encolado para el sync (sin dato del cliente) y el recálculo del color de la casa
+/// (`house_status`, R-UB08).
+abstract interface class EntregaRepository {
+  /// Entrega **ahora** todo lo vendido en [ventaId]: una fila por producto con lo que falta entregar
+  /// (un combo, una por componente), ya entregada, con [ahora] como fecha de entrega y [colportorId]
+  /// como autor. [generarId] da el id de cada fila nueva.
+  ///
+  /// - Es idempotente: si la venta ya está toda entregada, no escribe nada y devuelve lo que había
+  ///   ([EntregaRegistrada.yaEstaba]); un doble toque o un reintento no entrega dos veces.
+  /// - Una venta que no está en el teléfono, o cualquier otra falla, es [FailureEntregaNoGuardada]:
+  ///   no se guarda nada.
+  Future<Either<Failure, EntregaRegistrada>> entregarAhora(
+    String ventaId, {
+    required String colportorId,
+    required DateTime ahora,
+    required String Function() generarId,
+  });
+
+  /// Guarda las [filas] de la entrega de la venta [ventaId] que la colportora armó en la pantalla
+  /// «Entregar ahora» (27B): las entregadas y las que dejó para otro día (`pendiente`).
+  ///
+  /// - Si la venta ya tiene filas de entrega, no escribe nada y devuelve las que había
+  ///   ([EntregaRegistrada.yaEstaba]): un doble toque o un reintento no entrega dos veces.
+  /// - Con [soloDesde] (el libro que se sumó a una venta abierta, 42B·09D) solo cuentan las filas
+  ///   creadas desde ese instante: lo de antes de la venta no se toca ni frena la entrega de lo nuevo.
+  /// - Una venta que no está en el teléfono, o cualquier otra falla, es [FailureEntregaNoGuardada]:
+  ///   no se guarda nada.
+  Future<Either<Failure, EntregaRegistrada>> registrarEntrega(
+    String ventaId,
+    List<Entrega> filas, {
+    DateTime? soloDesde,
+  });
+
+  /// Las filas vivas de la venta [ventaId] (vacío si todavía no se entregó nada). Solo lee. Si no se
+  /// puede leer es [FailureEntregaNoDisponible]: no es lo mismo que «nada entregado».
+  Future<Either<Failure, List<Entrega>>> deLaVenta(String ventaId);
+
+  /// Deja lo que falta entregar de la venta [ventaId] para [fechaPrevista] (HU-VEN-003, «Entrega
+  /// diferida» y «Poner fecha»), con su cita `ENTREGA` en la agenda. Todo en una transacción: las
+  /// filas, la cita, sus jobs de sync y el color de la casa.
+  ///
+  /// - Una venta **sin filas de entrega** guarda [filasNuevas] (una por producto, pendientes y con la
+  ///   fecha); una que ya tiene filas pendientes les pone la fecha ([filasNuevas] no se usa).
+  /// - Una venta tiene **una cita viva por cada grupo de libros diferido** (decisión de Cristian del
+  ///   11/11, «Entrega cita»): si esos libros ya tenían su cita `PROGRAMADA`, se la **mueve** a la
+  ///   fecha nueva; si la venta ya tiene una cita a esa misma hora, los libros pasan a ella; si no, se
+  ///   crea una ([idDeLaCita] solo se usa al crearla). Repetir la misma fecha no escribe nada
+  ///   ([EntregaDiferida.yaEstaba]).
+  /// - Una venta sin nada pendiente, que no está en el teléfono o cuya casa no está, no guarda nada.
+  /// - Con [soloDesde] (el libro que se sumó a una venta abierta, 42B·09D) solo cuentan las filas
+  ///   creadas desde ese instante: lo pendiente de antes conserva su fecha y su cita.
+  /// - Con [entregaIds] («Poner fecha» de un grupo, 27C·02) solo esas filas; una que no es de la venta
+  ///   es un `FailureValidacion`.
+  Future<Either<Failure, EntregaDiferida>> diferir(
+    String ventaId, {
+    required DateTime fechaPrevista,
+    required DateTime ahora,
+    required List<Entrega> filasNuevas,
+    required String idDeLaCita,
+    DateTime? soloDesde,
+    Set<String>? entregaIds,
+  });
+
+  /// Marca como entregado, con la fecha real [ahora], lo pendiente de la venta [ventaId] (HU-VEN-003,
+  /// «Cumplir entrega pendiente»). Todo en una transacción: las filas, la cita, sus jobs de sync y el
+  /// color de la casa.
+  ///
+  /// - [entregaIds] son las filas que se entregan (27C·04, entrega parcial); `null`: todo lo
+  ///   pendiente. Lo que no se entrega sigue pendiente, con [nuevaFecha] si la hay y **sin fecha** si
+  ///   no (27C·04, «Sin fecha»). Con [nuevaFecha] y una venta sin cita se agenda una ([idDeLaCita]).
+  /// - Con [agendaId] («Entregado hoy» de una cita) se entregan los libros de esa cita. Una venta puede
+  ///   tener una cita por cada grupo de libros diferido (decisión de Cristian del 11/11, «Entrega
+  ///   cita»): marcar una entrega toca solo los libros de esa cita (o del grupo de [entregaIds]); lo
+  ///   de las otras citas no se toca.
+  /// - La cita de esos libros pasa a `CUMPLIDA` si no queda nada pendiente o si lo que queda no tiene
+  ///   fecha nueva; con [nuevaFecha] se queda `PROGRAMADA` y se mueve a ella.
+  /// - Repetir la llamada con lo ya entregado no escribe nada ([EntregaCumplida.yaEstaba]). Una venta
+  ///   sin filas o con una fila que no es suya es un `FailureValidacion`.
+  Future<Either<Failure, EntregaCumplida>> cumplir(
+    String ventaId, {
+    required DateTime ahora,
+    required String idDeLaCita,
+    Set<String>? entregaIds,
+    DateTime? nuevaFecha,
+    String? agendaId,
+  });
+
+  /// Lo que falta entregar, una entrada por cita (por grupo de libros de una venta), de la más próxima a la más lejana y al final las que
+  /// no tienen fecha (27C·02). Con [espacioPersonaId], solo las de esa persona (la ficha, vista 32).
+  /// Reactivo y solo del teléfono: emite de nuevo cuando cambia una entrega, una venta o una cita. Un
+  /// error al leer sale por el `Stream`.
+  Stream<List<EntregaPendiente>> observarPendientes({String? espacioPersonaId});
+}

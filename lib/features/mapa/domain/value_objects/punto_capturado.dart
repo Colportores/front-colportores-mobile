@@ -13,15 +13,20 @@ enum OrigenCoordenadas {
 
 /// Una posición que devolvió el GPS, con la precisión que reporta el sistema operativo.
 final class LecturaGps extends Equatable {
-  const LecturaGps({required this.coordenadas, required this.precisionMetros});
+  const LecturaGps({required this.coordenadas, required this.precisionMetros, this.rumboGrados});
 
   final Coordenadas coordenadas;
 
   /// Radio de incertidumbre en metros que reporta el SO (68 % de confianza en Android e iOS).
   final double precisionMetros;
 
+  /// Hacia dónde se mueve el teléfono, en grados desde el norte en el sentido de las agujas del
+  /// reloj (0 ≤ rumbo < 360). `null` si no se sabe: una lectura suelta, o el teléfono quieto, que no
+  /// tiene rumbo que dar (#670).
+  final double? rumboGrados;
+
   @override
-  List<Object?> get props => [coordenadas, precisionMetros];
+  List<Object?> get props => [coordenadas, precisionMetros, rumboGrados];
 }
 
 /// El punto elegido para un alta: una lectura del GPS o un marcador puesto a mano.

@@ -27,11 +27,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/mapa_base_falso.dart' show overridesPestanaMapa;
 import '../helpers/qa_jornada_sin_cerrar_250_arnes.dart';
 
-/// Los casos de borde de una jornada siguiente que llega con la pantalla abierta pasan al S7:
-/// necesitan que el motor de sync (#175) traiga la jornada, y no pierden nada. El `skip` de
-/// `testWidgets` no admite un texto: el motivo es el issue #339.
-const _pasaAlS7 = true;
-
 /// Lunes 21 18:00:30: la jornada siguiente empezó en el mismo minuto que `inicioQa` (18:00).
 final _siguienteMismoMinuto = inicioQa.add(const Duration(seconds: 30));
 
@@ -808,7 +803,7 @@ void main() {
     });
   });
 
-  group('Hallazgos de QA (el primero arreglado; los otros dos pasan al S7)', () {
+  group('Hallazgos de QA (el rango al revés y la pantalla sin salida: #339)', () {
     // QA #327 (PR #336), arreglado en la ronda única: la etiqueta «Finalizando…» salía a ~1.9:1 al
     // terminar la transición del botón apagado (gris al 38 % de Material sobre azul al 50 %). El
     // canvas 21A·04 la pinta en blanco sobre el azul al 85 %, y así queda ahora (`ConEspera`).
@@ -858,9 +853,9 @@ void main() {
       ds.demoraFinalizar!.complete();
     });
 
-    // skip, pasa al S7 (#339) — si cuando se cierra ya hay una jornada siguiente en el mismo
-    // minuto del inicio y la pantalla se abrió sin ella (foto vieja), el aviso dice «entre las
-    // 18:01 y las 18:00»: un rango al revés que no le sirve a nadie (el caso de uso no lo cuida).
+    // #339 — si cuando se cierra ya hay una jornada siguiente en el mismo minuto del inicio y la
+    // pantalla se abrió sin ella (foto vieja), el aviso no puede decir «entre las 18:01 y las
+    // 18:00»: un rango al revés que no le sirve a nadie. Dice que empezaron a la misma hora.
     testWidgets('una siguiente que llega con la pantalla abierta no deja un rango invertido en el '
         'aviso', (tester) async {
       fijarPantallaQa(tester, telefonoChicoQa);
@@ -878,31 +873,70 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('entre las 18:01 y las 18:00'), findsNothing);
-    }, skip: _pasaAlS7);
+      expect(find.textContaining('entre las'), findsNothing);
+      expect(
+        find.descendant(
+          of: _avisoSiguiente,
+          matching: find.text(
+            'Esta jornada y la siguiente empezaron a la misma hora (18:00), así que no hay una '
+            'hora para cerrarla. Avisale a tu coordinador.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('corregir_jornada_error')), findsNothing);
+    });
 
-    // skip, pasa al S7 (#339) — en ese mismo caso la pantalla no ofrece salida: sin flecha (la foto
-    // vieja dice que hay hora válida) y con el atrás del sistema bloqueado por el PopScope.
-    testWidgets(
-      'una siguiente que llega con la pantalla abierta no deja la pantalla sin salida',
-      (tester) async {
-        fijarPantallaQa(tester, telefonoChicoQa);
-        final ds = DataSourceQa(
-          iniciales: [jornadaAbiertaQa(), _cerradaQa(DateTime(2026, 9, 21, 18, 0, 30))],
-        );
-        await montarQa(tester, ds);
-        final resultado = await abrirCorregirQa(tester);
-        await elegirHoraQa(tester, '20:00');
-        await tester.ensureVisible(find.byKey(const Key('corregir_jornada_cerrar')));
-        await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
-        await tester.pumpAndSettle();
+    // #339 — en ese mismo caso la pantalla tiene que ofrecer salida: la flecha y el atrás del
+    // sistema (antes la foto vieja decía que había hora válida y el PopScope lo bloqueaba).
+    testWidgets('una siguiente que llega con la pantalla abierta no deja la pantalla sin salida', (
+      tester,
+    ) async {
+      fijarPantallaQa(tester, telefonoChicoQa);
+      final ds = DataSourceQa(
+        iniciales: [jornadaAbiertaQa(), _cerradaQa(DateTime(2026, 9, 21, 18, 0, 30))],
+      );
+      await montarQa(tester, ds);
+      final resultado = await abrirCorregirQa(tester);
+      await elegirHoraQa(tester, '20:00');
+      await tester.ensureVisible(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
 
-        final hayFlecha = _flecha.evaluate().isNotEmpty;
-        await navegadorQa.currentState!.maybePop();
-        await tester.pumpAndSettle();
+      // Las dos salidas: la flecha a la vista y el atrás del sistema, sin escribir nada.
+      expect(_flecha, findsOneWidget);
+      expect(resultado.recibido, isFalse);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
 
-        expect(hayFlecha || resultado.recibido, isTrue, reason: 'tiene que haber una salida');
-      },
-      skip: _pasaAlS7,
-    );
+      expect(resultado.recibido, isTrue);
+      expect(resultado.valor, isNull);
+      expect(ds.escrituras, 0, reason: 'la jornada sigue abierta, sin un fin inventado');
+    });
+
+    testWidgets('con la siguiente llegada con la pantalla abierta, la flecha vuelve y el botón '
+        '«Elegir la hora» se ve apagado', (tester) async {
+      fijarPantallaQa(tester, telefonoChicoQa);
+      final ds = DataSourceQa(
+        iniciales: [jornadaAbiertaQa(), _cerradaQa(DateTime(2026, 9, 21, 18, 0, 30))],
+      );
+      await montarQa(tester, ds);
+      final resultado = await abrirCorregirQa(tester);
+      await elegirHoraQa(tester, '20:00');
+      await tester.ensureVisible(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.tap(find.byKey(const Key('corregir_jornada_cerrar')));
+      await tester.pumpAndSettle();
+
+      // El botón de cerrar vuelve a estar quieto (nada trabado en «Finalizando…») y sin hora.
+      expect(find.text('Finalizando…'), findsNothing);
+      expect(find.text('--:--'), findsOneWidget);
+      expect(botonCerrarQa(tester).onPressed, isNull);
+      expect(tester.widget<InkWell>(_botonElegir).onTap, isNull);
+
+      await tester.tap(_flecha);
+      await tester.pumpAndSettle();
+      expect(resultado.recibido, isTrue);
+      expect(ds.escrituras, 0);
+    });
   });
 }

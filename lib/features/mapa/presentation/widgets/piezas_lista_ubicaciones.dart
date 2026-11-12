@@ -1,3 +1,4 @@
+import 'package:colportores_mapa/colportores_mapa.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
@@ -6,6 +7,7 @@ import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../formato_lista_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
+import '../mapa_base/marcador_estado.dart';
 
 /// Los colores de la lista (vista 05) que el tema no cubre. Los demás salen de `Theme.of(context)`.
 abstract final class ColoresLista {
@@ -14,7 +16,7 @@ abstract final class ColoresLista {
   static const tinta = Color(0xFF0E1A2B);
   static const verde = Color(0xFF1F6E3A);
   static const azul = Color(0xFF13407A);
-  static const azulClaro = Color(0xFF5C82B8);
+
   static const rojo = Color(0xFFA8312A);
   static const azulFondo = Color(0xFFE6EEF8);
   static const grisBorde = Color(0xFFCFD6E1);
@@ -43,41 +45,29 @@ class InsigniaEstadoCasa extends StatelessWidget {
   Widget build(BuildContext context) {
     final esGrande = tamano >= 26;
     final glifo = FormatoListaUbicaciones.glifo(estado);
-    final forma = estado.esDeVenta
+    // Los colores y la forma son los del mapa: los tokens de lib-mapa (#673).
+    final token = VarianteMarcador.de(estado).token;
+    final forma = token.forma == FormaDeMarcador.cuadrado
         ? BorderRadius.circular(esGrande ? 8 : 5)
         : BorderRadius.circular(tamano);
-    final (Color fondo, Color tinta, Border? borde, Gradient? degradado) = switch (estado) {
-      EstadoCasa.sinVisita => (
-        Colors.white,
-        ColoresLista.grisEstado,
-        Border.all(color: ColoresLista.grisEstado, width: 2.5),
-        null,
-      ),
-      EstadoCasa.noContesto => (ColoresLista.grisEstado, Colors.white, null, null),
-      EstadoCasa.entrevistaAgendada => (ColoresLista.ambar, ColoresLista.tinta, null, null),
-      EstadoCasa.entrevistaHecha => (ColoresLista.verde, Colors.white, null, null),
-      EstadoCasa.ventaCompleta => (ColoresLista.verde, Colors.white, null, null),
-      EstadoCasa.cobranzaPendiente => (ColoresLista.azul, Colors.white, null, null),
-      EstadoCasa.entregaYPago => (
-        ColoresLista.azul,
-        Colors.white,
-        null,
-        // Franjas a 135°: 4 px de azul y 3 de azul claro (canvas, «Entrega y pago»).
-        LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment(-1 + 2 * (7 / _raiz2) / tamano, -1 + 2 * (7 / _raiz2) / tamano),
-          tileMode: TileMode.repeated,
-          colors: const [
-            ColoresLista.azul,
-            ColoresLista.azul,
-            ColoresLista.azulClaro,
-            ColoresLista.azulClaro,
-          ],
-          stops: const [0, 4 / 7, 4 / 7, 1],
-        ),
-      ),
-      EstadoCasa.rechazo => (ColoresLista.rojo, Colors.white, null, null),
-    };
+    final fondo = Color(token.relleno);
+    final tinta = Color(token.tinta);
+    final borde = token.borde == null ? null : Border.all(color: Color(token.borde!), width: 2.5);
+    final franjas = token.franjas;
+    // Franjas a 135° (canvas, «Entrega y pago»): 4 px del relleno y 3 de la clara, del token.
+    final periodo = franjas == null ? 0.0 : franjas.anchoOscura + franjas.anchoClara;
+    final degradado = franjas == null
+        ? null
+        : LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment(
+              -1 + 2 * (periodo / _raiz2) / tamano,
+              -1 + 2 * (periodo / _raiz2) / tamano,
+            ),
+            tileMode: TileMode.repeated,
+            colors: [fondo, fondo, Color(franjas.clara), Color(franjas.clara)],
+            stops: [0, franjas.anchoOscura / periodo, franjas.anchoOscura / periodo, 1],
+          );
     return Semantics(
       image: true,
       label: FormatoListaUbicaciones.estado(estado),
@@ -185,7 +175,9 @@ class _CirculoPunteado extends CustomPainter {
 
 /// Una fila de la lista (canvas, 05B): la insignia del estado, la dirección, la segunda línea y a
 /// la derecha la distancia o la última actualización. Una baja lleva «BAJA», el círculo punteado y
-/// fondo tostado, sin flecha; solo se toca si la pantalla ofrece [alReactivar] (vista 09·03).
+/// fondo tostado, sin flecha; solo se toca si la pantalla ofrece [alReactivar] (vista 09·03). Con
+/// [seleccionada] (la hoja de «Reactivar» abierta sobre ella) va resaltada: fondo azul claro y barra
+/// azul de 3 px a la izquierda.
 class FilaUbicacionLista extends StatelessWidget {
   const FilaUbicacionLista({
     super.key,
@@ -195,6 +187,7 @@ class FilaUbicacionLista extends StatelessWidget {
     this.alTocar,
     this.alReactivar,
     this.conFlecha = true,
+    this.seleccionada = false,
   });
 
   final ItemListaUbicacion item;
@@ -211,6 +204,10 @@ class FilaUbicacionLista extends StatelessWidget {
   /// Qué pasa al tocar una **baja**: abre «Reactivar» (vista 09·03), su única acción. `null`: la baja
   /// no se puede tocar (el mapa, vista 06, la lista sin elegirla).
   final VoidCallback? alReactivar;
+
+  /// La baja sobre la que está abierta la hoja de «Reactivar» (canvas 09·03): se ve cuál se está por
+  /// reactivar.
+  final bool seleccionada;
 
   @override
   Widget build(BuildContext context) {
@@ -266,9 +263,10 @@ class FilaUbicacionLista extends StatelessWidget {
               Text(
                 FormatoListaUbicaciones.meta(item, ahora),
                 // El motivo de una baja es texto libre (hasta 4 renglones pegados): la fila no crece
-                // con él. Entero se lee en la hoja de reactivar.
-                maxLines: esBaja ? 2 : null,
-                overflow: esBaja ? TextOverflow.ellipsis : null,
+                // con él. Entero se lee en la hoja de reactivar. La unión no tiene hoja donde leerla y
+                // su texto es fijo («Unida a otra ubicación»): se muestra entera.
+                maxLines: esBaja && !item.esBajaPorUnion ? 2 : null,
+                overflow: esBaja && !item.esBajaPorUnion ? TextOverflow.ellipsis : null,
                 style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: colores.gris),
               ),
               if (apilada) ...[const SizedBox(height: 3), textoDerecha],
@@ -286,12 +284,22 @@ class FilaUbicacionLista extends StatelessWidget {
       ],
     );
 
+    // La barra azul de la fila seleccionada ocupa 3 px: el relleno de la izquierda baja otro tanto y
+    // el contenido no se corre.
+    const barra = 3.0;
     final fila = Container(
       constraints: const BoxConstraints(minHeight: 64),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: EdgeInsets.fromLTRB(seleccionada ? 20 - barra : 20, 8, 20, 8),
       decoration: BoxDecoration(
-        color: esBaja ? ColoresLista.filaBaja : Colors.white,
-        border: Border(bottom: BorderSide(color: colores.borde)),
+        color: seleccionada
+            ? ColoresLista.azulFondo
+            : (esBaja ? ColoresLista.filaBaja : Colors.white),
+        border: Border(
+          left: seleccionada
+              ? const BorderSide(color: ColoresLista.azul, width: barra)
+              : BorderSide.none,
+          bottom: BorderSide(color: colores.borde),
+        ),
       ),
       child: cuerpo,
     );
@@ -299,6 +307,7 @@ class FilaUbicacionLista extends StatelessWidget {
     return Semantics(
       container: true,
       button: tocable,
+      selected: seleccionada,
       enabled: !esBaja || reactivable,
       label: FormatoListaUbicaciones.etiquetaFila(item, lista, ahora),
       hint: reactivable ? 'Tocá para reactivar' : null,

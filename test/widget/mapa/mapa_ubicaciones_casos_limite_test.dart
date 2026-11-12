@@ -265,7 +265,7 @@ void main() {
       expect(find.text('Av. Italia 1234'), findsOneWidget);
       expect(find.text('Comercio 2381'), findsNothing);
       expect(punto(m.mapa, 'a').estilo, EstiloPunto.seleccionado);
-      expect(punto(m.mapa, 'd').estilo, EstiloPunto.contexto);
+      expect(punto(m.mapa, 'd').estilo, EstiloPunto.conEstado);
     });
 
     testWidgets('«✕» tocada dos veces, y volver a elegir la misma ubicación', (tester) async {
@@ -295,15 +295,16 @@ void main() {
       expect(altoHoja(tester), closeTo(844 / 3, 1));
     });
 
-    testWidgets('«Mi ubicación» dos veces: la lectura más nueva es la que vale, aunque la más '
-        'vieja llegue después', (tester) async {
+    // #670: el botón ya no pide una lectura en cada toque, pasa de modo (libre → seguir → seguir y
+    // girar). El primer toque pide una lectura nueva y abre el seguimiento; el segundo cambia de modo
+    // y no pide otra. La posición viva del stream gana a la lectura suelta que llegue más tarde.
+    testWidgets('«Mi ubicación» dos veces: la posición más nueva es la que vale, aunque la lectura '
+        'suelta más vieja llegue después', (tester) async {
       final gps = GpsFalso();
       final c2 = Completer<Either<Failure, LecturaGps>>();
-      final c3 = Completer<Either<Failure, LecturaGps>>();
       final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()), gps: gps);
       gps.porLectura = (numero) => switch (numero) {
         2 => c2.future,
-        3 => c3.future,
         _ => Future.value(Right(lecturaGps(6))),
       };
       const vieja = Coordenadas(lat: -34.8870, lon: -56.1302);
@@ -312,14 +313,15 @@ void main() {
       await tester.tap(botonMiUbicacion);
       await tester.tap(botonMiUbicacion);
       await asentarLista(tester);
-      c3.complete(Right(lecturaGps(5, punto: nueva)));
+      gps.moverse(lecturaGps(5, punto: nueva));
       await asentarLista(tester);
       c2.complete(Right(lecturaGps(5, punto: vieja)));
       await asentarLista(tester);
 
-      expect(gps.lecturas, 3);
+      expect(gps.lecturas, 2, reason: 'solo el primer toque (de libre a seguir) pide otra lectura');
       expect(punto(m.mapa, 'gps').coordenadas, nueva);
       expect(m.repo.activas, 1);
+      expect(m.gps.siguiendo, isTrue);
     });
 
     testWidgets('«Activar GPS» tocado dos veces abre un solo diálogo del sistema', (tester) async {

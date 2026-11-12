@@ -22,10 +22,25 @@ abstract final class TextosCampos {
 }
 
 class SelectorTipoUbicacion extends StatelessWidget {
-  const SelectorTipoUbicacion({super.key, required this.tipo, required this.alElegir});
+  const SelectorTipoUbicacion({
+    super.key,
+    required this.tipo,
+    required this.alElegir,
+    this.conDescripcion = false,
+  });
 
   final TipoUbicacion? tipo;
   final ValueChanged<TipoUbicacion> alElegir;
+
+  /// Cada botón dice qué es debajo de su nombre (N·02 de la vista 41: «Una o varias personas»).
+  final bool conDescripcion;
+
+  /// Lo que dice cada tipo debajo de su nombre (vista 41, N·02).
+  static const descripciones = {
+    TipoUbicacion.casa: 'Una o varias personas',
+    TipoUbicacion.edificio: 'Varios deptos',
+    TipoUbicacion.negocio: 'Un comercio',
+  };
 
   static const _iconos = {
     TipoUbicacion.casa: Icons.home_outlined,
@@ -72,6 +87,7 @@ class SelectorTipoUbicacion extends StatelessWidget {
               icono: _iconos[t]!,
               elegido: tipo == t,
               enFila: enFila,
+              descripcion: conDescripcion ? descripciones[t] : null,
               alTocar: () => alElegir(t),
             ),
         ];
@@ -106,9 +122,13 @@ class _BotonTipo extends StatelessWidget {
     required this.elegido,
     required this.enFila,
     required this.alTocar,
+    this.descripcion,
   });
 
   final String etiqueta;
+
+  /// Qué es, debajo del nombre (vista 41); `null` sin descripción.
+  final String? descripcion;
   final IconData icono;
   final bool elegido;
 
@@ -134,11 +154,23 @@ class _BotonTipo extends StatelessWidget {
         style: estiloEtiqueta(elegido: elegido).copyWith(color: color),
       ),
     );
+    final detalle = descripcion;
+    final textoDescripcion = detalle == null
+        ? null
+        : Text(
+            detalle,
+            textAlign: enFila ? TextAlign.center : TextAlign.start,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.25,
+              color: elegido ? Colors.white.withValues(alpha: 0.85) : ColoresAlta.gris,
+            ),
+          );
     return Semantics(
       button: true,
       selected: elegido,
       inMutuallyExclusiveGroup: true,
-      label: etiqueta,
+      label: detalle == null ? etiqueta : '$etiqueta. $detalle',
       excludeSemantics: true,
       onTap: alTocar,
       child: Material(
@@ -169,16 +201,36 @@ class _BotonTipo extends StatelessWidget {
                             textoEtiqueta,
                           ],
                         ),
+                        if (textoDescripcion != null) ...[
+                          const SizedBox(height: 2),
+                          textoDescripcion,
+                        ],
                       ],
                     )
                   : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisAlignment: textoDescripcion == null
+                          ? MainAxisAlignment.center
+                          : MainAxisAlignment.start,
                       children: [
                         Icon(icono, size: 20, color: color),
                         const SizedBox(width: 8),
                         if (elegido) Icon(Icons.check, size: 14, color: color),
                         if (elegido) const SizedBox(width: 2),
-                        textoEtiqueta,
+                        if (textoDescripcion == null)
+                          textoEtiqueta
+                        else
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  etiqueta,
+                                  style: estiloEtiqueta(elegido: elegido).copyWith(color: color),
+                                ),
+                                textoDescripcion,
+                              ],
+                            ),
+                          ),
                       ],
                     ),
             ),

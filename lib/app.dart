@@ -7,6 +7,7 @@ import 'core/conectividad/conectividad_providers.dart';
 import 'core/error/failure.dart';
 import 'core/sync/sync_providers.dart';
 import 'core/theme/tema_colportaje.dart';
+import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/domain/entities/destino_enlace_verificacion_usado.dart';
 import 'features/auth/domain/entities/enlace_recuperacion.dart';
 import 'features/auth/domain/entities/estado_cuenta.dart';
@@ -25,13 +26,34 @@ import 'features/auth/presentation/providers/estado_cuenta_providers.dart';
 import 'features/auth/presentation/providers/preparacion_db_local_notifier.dart';
 import 'features/auth/presentation/providers/recuperacion_password_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
+import 'features/auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import 'features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import 'features/inicio/presentation/pages/inicio_page.dart';
+import 'features/jornada/presentation/pages/jornadas_por_cerrar_page.dart';
+import 'features/jornada/presentation/providers/jornadas_por_cerrar_providers.dart';
+import 'features/mapa/presentation/providers/limpieza_notas_borradas_providers.dart';
+import 'features/mapa/presentation/providers/pantallas_sobre_el_mapa.dart';
+import 'features/mapa/presentation/providers/uniones_rechazadas_providers.dart';
+import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
+import 'features/notificaciones/presentation/providers/alarmas_exactas_providers.dart';
+import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
+import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
+import 'features/notificaciones/presentation/providers/push_remotas_providers.dart';
+import 'features/notificaciones/presentation/providers/recordatorios_por_baja_providers.dart';
+import 'features/notificaciones/presentation/widgets/aviso_push_en_app.dart';
+import 'features/respaldo/presentation/pages/recuperacion_page.dart';
+import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
+import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
+import 'features/tickets/presentation/providers/tickets_providers.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
 /// del árbol de widgets (el listener de deep link de verificación de email, más abajo), ya que
 /// todavía no hay un router (`go_router` llega con el mapa en Sprint 5).
 final navigatorKeyColportores = GlobalKey<NavigatorState>();
+
+/// Avisa a la pantalla principal cuando vuelve a quedar arriba de la pila ([RouteAware]): ahí se
+/// cierra el aviso de la cuenta que se restringió con algo abierto (#383).
+final routeObserverColportores = RouteObserver<ModalRoute<void>>();
 
 /// Raíz de la app. El router (go_router) llega con el mapa en Sprint 5; hasta entonces la
 /// navegación es "hay sesión → pantalla principal (la jornada, HU-JOR-001), no hay → login".
@@ -94,8 +116,15 @@ class ColportoresApp extends ConsumerWidget {
     return _RevisionAlVolver(
       child: MaterialApp(
         navigatorKey: navigatorKeyColportores,
+        navigatorObservers: [routeObserverColportores, ref.read(pantallasSobreElMapaProvider)],
         title: 'Colportores',
         theme: temaClaro(),
+        // HU-NOT-003 (24C·08): el aviso de una push que llega con la app abierta va arriba de
+        // cualquier pantalla, así que no puede ser parte de una.
+        builder: (context, child) => AvisoPushEnAppHost(
+          activo: sesion.value != null,
+          child: child ?? const SizedBox.shrink(),
+        ),
         // Solo la primera lectura de la sesión (arranque) pasa por la pantalla de carga. Un
         // «Entrar» en vuelo vuelve a poner `AsyncLoading`, pero con la sesión (nula) de antes: si
         // eso cambiara la pantalla, el login se desmontaba con la respuesta en camino y el aviso del
@@ -171,7 +200,13 @@ class _RevisionAlVolverState extends ConsumerState<_RevisionAlVolver> {
   void initState() {
     super.initState();
     _ciclo = AppLifecycleListener(
-      onResume: () => unawaited(ref.read(sesionProvider.notifier).revisarVigencia()),
+      onResume: () {
+        unawaited(ref.read(sesionProvider.notifier).revisarVigencia());
+        // Las notificaciones pudieron activarse o apagarse en los ajustes del teléfono (HU-NOT-001).
+        if (ref.exists(notificacionesProvider)) {
+          unawaited(ref.read(notificacionesProvider.notifier).refrescar());
+        }
+      },
     );
   }
 
@@ -199,16 +234,89 @@ class _Principal extends ConsumerStatefulWidget {
   ConsumerState<_Principal> createState() => _PrincipalState();
 }
 
-class _PrincipalState extends ConsumerState<_Principal> {
+class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
   /// El colportor vio la pantalla de espera con la cuenta pendiente: si pasa a activa con la app
   /// abierta, antes de la pantalla principal se le muestra «Ya te asignaron» (vista 18, 18-A07).
   /// Una cuenta que ya llega activa (o suspendida y reactivada) entra directo.
   bool _vioPendiente = false;
   bool _mostrandoAsignada = false;
 
+  /// La ruta de esta pantalla, a la que se suscribe el observador para saber cuándo vuelve a quedar
+  /// arriba.
+  ModalRoute<void>? _ruta;
+
+  // En `dispose` ya no se puede usar el `context`: el mensajero se guarda antes.
+  ScaffoldMessengerState? _mensajero;
+
+  /// El aviso de la cuenta restringida, mientras está a la vista (#383).
+  AvisoDeCuentaRestringida? _aviso;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _mensajero = ScaffoldMessenger.of(context);
+    final ruta = ModalRoute.of(context);
+    if (ruta != _ruta) {
+      if (_ruta != null) routeObserverColportores.unsubscribe(this);
+      _ruta = ruta;
+      if (ruta != null) routeObserverColportores.subscribe(this, ruta);
+    }
+  }
+
+  @override
+  void dispose() {
+    routeObserverColportores.unsubscribe(this);
+    _quitarAviso();
+    super.dispose();
+  }
+
+  /// Lo que tenía abierto ya se guardó o se cerró y la persona llega a la pantalla de su cuenta: el
+  /// aviso de la restricción ya se lo dice esa pantalla (#383).
+  @override
+  void didPopNext() => _quitarAviso();
+
+  /// Cierra el aviso de la cuenta restringida, si sigue a la vista: con «Entendido», animado.
+  void _cerrarAviso() {
+    final aviso = _aviso;
+    if (aviso == null) return;
+    _aviso = null;
+    aviso.close();
+  }
+
+  /// Saca el aviso sin animación, después del cuadro en curso. Para cuando la persona llega a la
+  /// pantalla de su cuenta o la pantalla se va: no se anima encima de la pantalla siguiente (un
+  /// aviso a medio abrir que cambia de `Scaffold` desborda su propio alto mientras se anima), y
+  /// tocar los avisos con el árbol bloqueado falla (con TalkBack el cierre es inmediato).
+  void _quitarAviso() {
+    final aviso = _aviso;
+    final mensajero = _mensajero;
+    if (aviso == null || mensajero == null) return;
+    scheduleMicrotask(() {
+      if (!identical(_aviso, aviso) || !mensajero.mounted) return;
+      _aviso = null;
+      mensajero.removeCurrentMaterialBanner();
+    });
+  }
+
   void _alCambiarEstado(AsyncValue<EstadoCuenta?>? anterior, AsyncValue<EstadoCuenta?> actual) {
     if (actual is! AsyncData<EstadoCuenta?>) return;
     final estado = actual.value;
+    // La cuenta se restringió con la app abierta (la respuesta tardía de la consulta del arranque,
+    // #383): la pantalla de su cuenta ya está debajo y aparece sola al volver. Si tiene algo
+    // abierto (un formulario, una hoja, Configuración) lo termina y lo guarda, y mientras tanto se
+    // le avisa por qué va a cambiar la pantalla; si no tiene nada abierto, esa pantalla es el aviso.
+    if (estado != null &&
+        !estado.accedeAModulosDeCampo &&
+        (anterior?.value?.accedeAModulosDeCampo ?? false) &&
+        Navigator.of(context).canPop()) {
+      _cerrarAviso();
+      final aviso = _aviso = avisarCuentaRestringida(context, estado, alCerrar: _cerrarAviso);
+      unawaited(
+        aviso.closed.then<void>((_) {
+          if (identical(_aviso, aviso)) _aviso = null;
+        }),
+      );
+    }
     if (estado == EstadoCuenta.activa && _vioPendiente) {
       setState(() {
         _vioPendiente = false;
@@ -226,14 +334,61 @@ class _PrincipalState extends ConsumerState<_Principal> {
   @override
   Widget build(BuildContext context) {
     ref.watch(copiaNombreSesionProvider);
+    // HU-NOT-001: se lee desde el arranque, mientras se prepara la DB, para que el pedido del
+    // permiso (primer ingreso) aparezca sin un parpadeo de otra pantalla. Si no se puede leer, no se
+    // pide nada: el estado en error o cargando sigue de largo.
+    final pedirNotificaciones = ref.watch(
+      notificacionesProvider.select((estado) => estado.value?.debePedir ?? false),
+    );
     final preparacion = ref.watch(preparacionDbLocalProvider);
     if (preparacion is! DbLocalLista) return PreparacionDbLocalPage(estado: preparacion);
+    // HU-SYNC-006 (vista 34): en un teléfono sin datos, con la base ya abierta, se ofrece traer el
+    // respaldo de Drive antes de seguir; con datos o ya resuelto, no se ve. Va antes del motor de
+    // sync: una recuperación reemplaza la base y no puede haber nada escuchándola.
+    if (ref.watch(asistenteDeRecuperacionHabilitadoProvider)) {
+      final recuperacion = ref.watch(recuperacionPendienteProvider);
+      if (recuperacion.isLoading && !recuperacion.hasValue) return const _LeyendoElArranque();
+      if (recuperacion.value ?? false) return const RecuperacionPage();
+      // Después de recuperar puede haber jornadas abiertas con otra después: cada una pasa por «¿A qué
+      // hora terminaste?» antes de llegar a Hoy (HU-JOR-002), nunca cerradas con la hora de ahora.
+      final porCerrar = ref.watch(jornadasPorCerrarProvider(widget.sesion.usuarioId));
+      if (porCerrar.isLoading && !porCerrar.hasValue) return const _LeyendoElArranque();
+      if (porCerrar.value case final pendientes? when pendientes.isNotEmpty) {
+        return JornadasPorCerrarPage(sesion: widget.sesion, pendientes: pendientes);
+      }
+    }
     // Con la DB abierta, el motor de sync escucha el ciclo de vida (#178): sube al volver al frente
     // y vacía lo crítico al irse al fondo.
     ref.watch(cicloDeVidaSyncProvider);
+    // El respaldo en Drive al volver a la app y la verificación semanal (HU-SYNC-005, HU-SYNC-009).
+    ref.watch(respaldoAlVolverProvider);
+    // HU-SYNC-005 (#583): con Drive conectado queda programado el respaldo de la noche con la app
+    // cerrada (03:00, Wi-Fi y cargando); al desconectar se saca.
+    ref.watch(respaldoNocturnoProgramadoProvider);
+    // HU-NOT-002: el recordatorio que se tocó (o que abrió la app) lleva al detalle de la visita.
+    ref.watch(aperturasDesdeRecordatorioProvider);
+    // HU-NOT-005: los recordatorios que sonaron con la app cerrada se guardan en el historial.
+    ref.watch(conciliacionRecordatoriosProvider);
+    // HU-NOT-003: las push remotas se guardan en el historial y, con la app al frente, se avisan.
+    ref.watch(escuchaPushRemotasProvider);
+    // HU-NOT-002 («Aviso exacto»): el permiso «Alarmas y recordatorios» se lee al abrir y al volver a la
+    // app, y si cambió se reprograman los recordatorios (exactos o no).
+    ref.watch(reprogramacionPorAlarmasProvider);
+    // HU-UBI-012: las notas de persona borradas hace más de 90 días se borran para siempre.
+    ref.watch(limpiezaNotasBorradasProvider);
+    // HU-UBI-006 (#679): una unión de duplicados que el servidor rechazó se deshace en el teléfono y el
+    // par vuelve a «Posibles duplicados» con su aviso.
+    ref.watch(unionesRechazadasProvider);
+    // HU-VIS-002 («Agenda baja»): la agenda de una casa o un depto dados de baja no suena.
+    ref.watch(recordatoriosPorBajaProvider);
+    // HU-COB-007: las fotos de los tickets suben cuando hay red y el ticket ya llegó al servidor.
+    ref.watch(colaDeSubidaDeFotosProvider);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
     final estado = ref.watch(estadoCuentaProvider);
     if (estado case AsyncData(value: EstadoCuenta.pendienteAsignacion)) _vioPendiente = true;
+    // Primer ingreso, después de preparar el espacio seguro (vista 24, 24A·01): se pide una vez el
+    // permiso de notificaciones, antes de la pantalla principal; con «Activar» o «Ahora no» sigue.
+    if (pedirNotificaciones) return const PedidoPermisoNotificacionesPage();
     if (_mostrandoAsignada) {
       return CuentaAsignadaPage(onTerminar: () => setState(() => _mostrandoAsignada = false));
     }
@@ -250,6 +405,22 @@ class _PrincipalState extends ConsumerState<_Principal> {
       _ => const RevisandoCuentaPage(),
     };
   }
+}
+
+/// Mientras se lee lo que decide la primera pantalla (si hay un respaldo para ofrecer, si quedó una
+/// jornada abierta): un instante, con el círculo y el texto.
+class _LeyendoElArranque extends StatelessWidget {
+  const _LeyendoElArranque();
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(
+    body: Center(
+      child: CircularProgressIndicator(
+        key: Key('leyendo_arranque'),
+        semanticsLabel: 'Preparando tu espacio',
+      ),
+    ),
+  );
 }
 
 /// Lleva a la pantalla de la contraseña nueva (o de enlace vencido) desde la raíz de la pila.

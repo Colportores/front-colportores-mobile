@@ -2,6 +2,7 @@
 // cae adentro, lo más cercano al toque.
 import 'dart:math' as math;
 
+import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/seleccion_toque.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -127,6 +128,60 @@ void main() {
         SeleccionToque.masCercano([entero], const Coordenadas(lat: -35, lon: -56)),
         same(entero),
       );
+    });
+  });
+
+  group('SeleccionToque con cuadrados (vista 39, M·02)', () {
+    test('el área de consulta es de ±44 dp alrededor del dedo', () {
+      final area = SeleccionToque.areaDeCuadrados(const math.Point(100, 200), unidadesPorDp: 1);
+
+      expect(area.width, 88);
+      expect(area.height, 88);
+      expect(area.center.dx, 100);
+      expect(area.center.dy, 200);
+      expect(SeleccionToque.radioDeCuadradosDp, 44);
+    });
+
+    test('en Android el área se escala con la densidad', () {
+      final area = SeleccionToque.areaDeCuadrados(const math.Point(0, 0), unidadesPorDp: 2.75);
+
+      expect(area.width, closeTo(88 * 2.75, 1e-9));
+    });
+
+    test('dado un tope de metros, cuando el más cercano está más lejos, entonces no se elige '
+        'ninguno (el toque cae en el mapa)', () {
+      final lejos = _punto('lejos', -34.9001, -56.1500); // ~11 m
+
+      expect(SeleccionToque.masCercano([lejos], _toque, maximoMetros: 5), isNull);
+      expect(SeleccionToque.masCercano([lejos], _toque, maximoMetros: 20), same(lejos));
+    });
+
+    test('dado un tope de metros, cuando hay varios dentro, entonces gana el más cercano', () {
+      final a = _punto('a', -34.90005, -56.1500);
+      final b = _punto('b', -34.90002, -56.1500);
+      final fuera = _punto('fuera', -34.9005, -56.1500);
+
+      expect(SeleccionToque.masCercano([a, fuera, b], _toque, maximoMetros: 20), same(b));
+    });
+
+    test('dado un cuadrado de 40 dp y otro vecino, cuando el dedo cae en el hueco, entonces '
+        'elige el de más cerca dentro de los 44 dp', () {
+      // A zoom 19 un dp son ~0,12 m en Montevideo: 44 dp ≈ 5,4 m.
+      final metrosPorDp = ProyeccionMercator.metrosPorPixel(_toque.lat, 19);
+      final tope = SeleccionToque.radioDeCuadradosDp * metrosPorDp;
+      // ~4 m al norte (dentro) y ~8 m al sur (fuera).
+      final norte = _punto('norte', _toque.lat + 4 / 111320, _toque.lon);
+      final sur = _punto('sur', _toque.lat - 8 / 111320, _toque.lon);
+
+      expect(tope, closeTo(5.4, 0.2));
+      expect(SeleccionToque.masCercano([sur, norte], _toque, maximoMetros: tope), same(norte));
+      expect(SeleccionToque.masCercano([sur], _toque, maximoMetros: tope), isNull);
+    });
+
+    test('sin tope sigue eligiendo al más cercano, esté a la distancia que esté', () {
+      final lejos = _punto('lejos', -34.95, -56.1500);
+
+      expect(SeleccionToque.masCercano([lejos], _toque), same(lejos));
     });
   });
 }

@@ -214,10 +214,13 @@ void main() {
       expect(FormatoListaUbicaciones.meta(i, ahora), 'Casa · baja el 12/09 · Ya no existe');
     });
 
-    test('dado una baja con el motivo de una unión de duplicados, entonces no lo muestra '
-        '(es un código interno)', () {
+    test('dado una baja con el motivo de una unión de duplicados, entonces dice «Unida a otra '
+        'ubicación» y no el código interno', () {
       final i = item('a', baja: DateTime.utc(2026, 9, 12, 15), motivo: 'duplicado_de_ub-9');
-      expect(FormatoListaUbicaciones.meta(i, ahora), 'Casa · baja el 12/09');
+      expect(
+        FormatoListaUbicaciones.meta(i, ahora),
+        'Casa · baja el 12/09 · Unida a otra ubicación',
+      );
     });
 
     test('dado una baja con un motivo en blanco, entonces no deja un punto suelto', () {

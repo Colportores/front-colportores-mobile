@@ -99,6 +99,14 @@ abstract final class TextosPosiblesDuplicados {
       ? 'Las dos ubicaciones quedaron unidas en una.'
       : 'Las dos $direccion quedaron unidas en una.';
 
+  /// El mismo aviso con un lector de pantalla encendido (decisión de Cristian 21/10, «Deshacer AA»;
+  /// mapa §2, #384): la unión todavía no se hizo, se hace al cerrar el aviso. «Las dos Av. Italia 1234 se
+  /// unen en una cuando cierres este aviso.»; sin dirección: «Las dos ubicaciones se unen en una cuando
+  /// cierres este aviso.»
+  static String unenAlCerrar(String direccion) => direccion.isEmpty
+      ? 'Las dos ubicaciones se unen en una cuando cierres este aviso.'
+      : 'Las dos $direccion se unen en una cuando cierres este aviso.';
+
   // ------------------------------------------------------------ estados que el canvas no dibuja
   static const cargando = 'Buscando posibles duplicados';
   static const vacioTitulo = 'No hay posibles duplicados';
@@ -121,6 +129,31 @@ abstract final class TextosPosiblesDuplicados {
   /// «No se pudieron marcar 2 pares como duplicados. Probá de nuevo.»
   static String noSePudieronUnir(int cantidad) =>
       'No se pudieron marcar $cantidad pares como duplicados. Probá de nuevo.';
+
+  // ------------------------------------------------- cuando el servidor rechaza la unión (#679)
+  /// El aviso de la tarjeta del par cuya unión rechazó el servidor con `UB003` (la que se iba a
+  /// conservar ya está dada de baja): el texto de la HU (HU-UBI-006).
+  static const unionRechazadaConservadaDeBaja =
+      'La ubicación que ibas a conservar ya está dada de baja. Revisá el par de nuevo.';
+
+  /// El aviso con cualquier otro código (decisión de Cristian, 10/11, «Unión rech.»).
+  static const unionRechazada =
+      'No pudimos unir estas dos ubicaciones. Quedaron separadas, como estaban. '
+      'Revisá el par de nuevo.';
+
+  /// El aviso de la tarjeta según el [codigo] con que el servidor rechazó la unión.
+  static String avisoUnionRechazada(String codigo) =>
+      codigo == 'UB003' ? unionRechazadaConservadaDeBaja : unionRechazada;
+
+  /// La forma de una línea del aviso rojo, mientras está a la vista el «quedaron unidas en una»:
+  /// «1 no se pudo unir» / «2 no se pudieron unir» (#362). Provisorio: el plural es el ejemplo del
+  /// issue y el singular, su derivado.
+  static String cuentaDeFallas(int cantidad) =>
+      cantidad == 1 ? '1 no se pudo unir' : '$cantidad no se pudieron unir';
+
+  /// Lo que dice el lector del botón que muestra el aviso entero (la línea no lo dice: es un gesto).
+  /// Provisorio (#362).
+  static const verAvisoCompleto = 'Ver el aviso completo';
 
   /// El texto del aviso rojo según las fallas que hay: con una, el suyo ([falloUnion]); con dos o más,
   /// cuántos pares son.

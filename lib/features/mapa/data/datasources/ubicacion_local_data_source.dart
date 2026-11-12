@@ -1,3 +1,4 @@
+import '../../domain/entities/color_house_status.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/espacios_activos.dart';
 import '../../domain/entities/marcador_mapa.dart';
@@ -17,12 +18,37 @@ typedef UnionLocal = ({
   bool conservadaPasoAEdificio,
 });
 
-/// Una ubicación con la cantidad de espacios sin baja que tiene y, si está de baja, el motivo con que
-/// se dio de baja (`audit_log` local), para la lista (HU-UBI-002, HU-UBI-005).
+/// Una unión de duplicados que `UbicacionLocalDataSourceDrift.deshacerUnionesRechazadas` deshizo
+/// porque el servidor rechazó su trabajo con [codigo] (#679). [sinVolver] cuenta lo que no volvió a
+/// su lugar porque ya no estaba donde lo dejó la unión (se movió después).
+final class UnionDeshecha {
+  const UnionDeshecha({
+    required this.conservadaId,
+    required this.duplicadaId,
+    required this.codigo,
+    required this.duplicadaReactivada,
+    required this.conservadaVolvioACasa,
+    required this.sinVolver,
+  });
+
+  final String conservadaId;
+  final String duplicadaId;
+  final String codigo;
+  final bool duplicadaReactivada;
+  final bool conservadaVolvioACasa;
+  final int sinVolver;
+}
+
+/// Una ubicación con la cantidad de espacios sin baja que tiene, el color de su fila de
+/// `house_status` (`null` si no tiene: la casa es «Sin visita») y, si está de baja, el motivo con que
+/// se dio de baja (`audit_log` local) y la hora de su próxima entrevista agendada (`null` si no tiene),
+/// para la lista y el mapa (HU-UBI-002, HU-UBI-003, HU-UBI-005, HU-VIS-005, #491).
 typedef UbicacionConEspacios = ({
   UbicacionModel ubicacion,
   int cantidadEspacios,
+  ColorHouseStatus? color,
   String? motivoBaja,
+  DateTime? proximaEntrevista,
 });
 
 /// Persistencia local de las ubicaciones y sus espacios.
@@ -38,10 +64,14 @@ abstract interface class UbicacionLocalDataSource {
   /// - Si llega [duplicados] y hay candidatas, no escribe nada y lanza
   ///   [UbicacionDuplicadaException].
   /// - Si el encolado falla, la transacción se revierte y la excepción sale tal cual.
+  /// - Si llega [justificacion] (el texto de «Crear igual»), se guarda en el `audit_log` local
+  ///   (`ubicacion_crear_igual`) con el `id` de la ubicación, **en la misma transacción** y solo si
+  ///   la inserta (no si ya estaba ni si frena por duplicados). No va a la cola de sync.
   Future<InsercionUbicacion> insertar(
     UbicacionModel ubicacion, {
     EspacioModel? espacio,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   });
 
   /// La ubicación [id] (con baja o sin ella) o `null` si no está.
@@ -69,18 +99,29 @@ abstract interface class UbicacionLocalDataSource {
   ///   `CASA` o `NEGOCIO`, o de `NEGOCIO` a `CASA`, S17), **dentro de la
   ///   misma transacción** se cuentan los espacios sin baja: con dos o más no escribe nada y lanza
   ///   [UbicacionConEspaciosException]; con exactamente uno, a ese espacio se le quita el
-  ///   `numero_depto` (con `updated_at` = el de [nueva]; `piso`, `descripcion` y el resto quedan
+  ///   `numero_depto` (con `updated_at` = el de [nueva]; `piso` y el resto quedan
   ///   igual) y se encola su `update` con la fila entera, después del de la ubicación. Si ya no
   ///   tenía número, no se escribe ni se encola nada del espacio. Los espacios dados de baja no
-  ///   cuentan ni se tocan.
+  ///   cuentan ni se tocan. Con **ninguno** y con [espacioSiNoTiene] (el caso de uso lo manda al
+  ///   pasar a `CASA`), se inserta ese espacio y se encola su `insert` —después del `update` de la
+  ///   ubicación— en la misma transacción: una casa nunca queda sin espacio (S13).
+  /// - Si la fila está de baja y [nueva] la reactiva (`deleted_at` nulo) y esa baja nació de unir
+  ///   duplicados (`duplicado_de_*` en la auditoría local, con la misma marca que `deleted_at`): no
+  ///   escribe y lanza [ReactivacionDeUnionException]. Va antes que la búsqueda de duplicados: una
+  ///   unión no se reactiva por nada.
   /// - Si llega [duplicados] y hay candidatas (que nunca incluyen a la misma ubicación): no
   ///   escribe y lanza [UbicacionDuplicadaException].
   /// - Si el encolado falla, la transacción se revierte y la excepción sale tal cual.
+  /// - Si llega [justificacion] («Crear igual» de la edición), se guarda en el `audit_log` local
+  ///   (`ubicacion_crear_igual`) con el `id` de la ubicación y el `updated_at` nuevo, en la misma
+  ///   transacción y solo si escribe. No va a la cola de sync.
   Future<UbicacionModel> actualizar(
     UbicacionModel nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
+    EspacioModel? espacioSiNoTiene,
+    String? justificacion,
   });
 
   /// Pone o saca la baja de la ubicación [id] (`deleted_at` = [deletedAt], `null` reactiva), con
@@ -104,6 +145,12 @@ abstract interface class UbicacionLocalDataSource {
   ///   escribir ni encolar, con cualquier [baseUpdatedAt]: es el segundo de dos toques que se
   ///   pisaron.
   /// - Si no, y `updated_at` de la fila no es [baseUpdatedAt]: [UbicacionCambioException].
+  /// - Al **reactivar** (`deletedAt` nulo sobre una fila de baja), **dentro de la misma transacción**
+  ///   y antes de escribir (HU-UBI-005, «Reactivar»): si esa baja nació de unir duplicados
+  ///   (`duplicado_de_*` en la auditoría local, con la misma marca que `deleted_at`): no escribe y
+  ///   lanza [ReactivacionDeUnionException]; si llega [duplicados] y hay candidatas (con el criterio
+  ///   de `alSeguirIgual` son solo las que chocan por D1: la misma dirección a menos de 100 m): no
+  ///   escribe y lanza [UbicacionDuplicadaException].
   /// - Si el encolado falla, la transacción se revierte.
   Future<({UbicacionModel ubicacion, bool escribio})> cambiarBaja(
     String id, {
@@ -112,6 +159,7 @@ abstract interface class UbicacionLocalDataSource {
     required DateTime? deletedAt,
     String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   });
 
   /// La unión de un par de duplicados en una sola transacción (HU-UBI-006). Ver
@@ -135,8 +183,9 @@ abstract interface class UbicacionLocalDataSource {
   });
 
   /// Lo mismo que [observarDelColportor] (sin filtro de ciudad), cada ubicación con la cantidad de
-  /// espacios sin baja que tiene y el motivo de su baja vigente: un solo `JOIN` con `COUNT` (HU-UBI-002,
-  /// HU-UBI-005).
+  /// espacios sin baja que tiene, el color de su `house_status` vigente y el motivo de su baja vigente:
+  /// un solo `JOIN` con `COUNT` (HU-UBI-002, HU-UBI-005, HU-VIS-005). Emite de nuevo cuando cambia
+  /// `house_status`: el mapa y la lista se repintan solos al guardar una visita.
   Stream<List<UbicacionConEspacios>> observarListaDelColportor({
     required String colportorId,
     bool incluirBajas = false,
@@ -151,7 +200,8 @@ abstract interface class UbicacionLocalDataSource {
 }
 
 /// El alta o la edición encontró candidatas a duplicado; el repositorio la traduce a
-/// `AltaConDuplicados` o `ModificacionConDuplicados`.
+/// `AltaConDuplicados` o `ModificacionConDuplicados`. Al reactivar una baja, a
+/// `FailureReactivacionChocaConActiva` (D1).
 final class UbicacionDuplicadaException implements Exception {
   const UbicacionDuplicadaException(this.candidatas);
 
@@ -189,6 +239,21 @@ final class UbicacionConEspaciosException implements Exception {
 
   @override
   String toString() => 'UbicacionConEspaciosException($cantidad)';
+}
+
+/// Se quiso reactivar una baja que nació de unir duplicados (HU-UBI-005, «Reactivar»); el repositorio
+/// la traduce a `FailureReactivacionDeUnion`.
+final class ReactivacionDeUnionException implements Exception {
+  const ReactivacionDeUnionException({this.conservadaId});
+
+  /// La ubicación a la que se unió (la `A` de `duplicado_de_A`), si el motivo la trae; si `A` también
+  /// se unió a otra (B -> A -> C), la que sigue la cadena (C). Puede estar de baja o no existir:
+  /// quien la traduce mira si sigue activa.
+  final String? conservadaId;
+
+  /// Sin el uuid: la excepción puede terminar en un log.
+  @override
+  String toString() => 'ReactivacionDeUnionException';
 }
 
 /// Al marcar un duplicado, la ubicación que se conserva ya está de baja (HU-UBI-006).

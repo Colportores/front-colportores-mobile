@@ -1,8 +1,7 @@
 // QA de #286 / PR #288 (vista 03 sobre MapaBase): la pista «Mové el mapa para ajustar el punto» y el
 // pin en el mapa chico (360×640) con el texto agrandado, medidos con las fuentes reales.
 //
-// Los hallazgos de QA quedan con `skip: true` y el motivo en un comentario `// skip: QA #286 …`; el
-// implementador les saca el `skip` cuando los arregla.
+// Los hallazgos de QA #286 ya están arreglados: no queda ningún test con `skip` en este archivo.
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';

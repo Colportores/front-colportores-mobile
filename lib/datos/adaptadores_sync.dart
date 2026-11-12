@@ -44,10 +44,9 @@ final class AdaptadorDeModelo<T> extends SyncTableAdapter<T> {
   int syncVersionOf(T row) => _version(row);
 }
 
-/// Para las entidades que todavía no tienen modelo en la app (las réplicas del catálogo hasta
-/// HU-CAT-006, y `ubicacion_par_decidido` hasta que su tabla tenga `id`): la fila es el mapa del
-/// cloud tal cual. El ida y vuelta es la identidad, y lo que la vigila es la identidad
-/// cloud → DB → fila de `drift_local_store_test`.
+/// Para el resto de las entidades: la fila es el mapa del cloud tal cual, que es lo que la capa
+/// `data` encola y lo que `DriftLocalStore` aplica columna por columna. El ida y vuelta es la
+/// identidad, y lo que la vigila es la identidad cloud → DB → fila de `drift_local_store_test`.
 final class AdaptadorDeFila extends SyncTableAdapter<Map<String, Object?>> {
   const AdaptadorDeFila(this.remoteName, {this.pk = 'id'});
 
@@ -115,8 +114,12 @@ final _deModelo = <SyncTableAdapter<Object?>>[
   ),
 ];
 
-/// Un adaptador por cada entidad `push` o `pull` de [specsDeLaApp]: el de su modelo si lo tiene,
-/// y si no, el de fila.
+/// Un adaptador por cada entidad `push` o `pull` de [specsDeLaApp] (contrato §3): el de su modelo
+/// si está en [_deModelo], y si no, el de fila. Lo verifica la suite de conformidad (§8,
+/// `test/unit/datos/conformidad_test.dart`).
+///
+/// No se le pasan al motor: la app encola mapas con `stage()`, y `stageRow<T>()` elige el adaptador
+/// por el tipo de la fila, así que con varios adaptadores de fila tomaría el primero.
 final adaptadoresDeLaApp = <SyncTableAdapter<Object?>>[
   ..._deModelo,
   for (final s in specsDeLaApp)

@@ -6,20 +6,26 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sync_engine/adapters.dart';
 import 'package:sync_engine/sync_engine.dart';
 
-import '../../catalogo.dart';
-import '../../datos/adaptadores_sync.dart';
-import '../../datos/drift_job_store.dart';
-import '../../datos/drift_local_store.dart';
 import '../../datos/encolador_sync_motor.dart';
 import '../../features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
+import '../../features/respaldo/data/services/crypto_con_dek.dart';
+import '../../features/respaldo/data/services/envoltorio_en_drive.dart';
+import '../../features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
+import '../../features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import '../../plataforma/conectividad_del_motor.dart';
 import '../../plataforma/identidad_instalacion.dart';
-import '../../plataforma/realtime_supabase.dart';
+import '../../plataforma/realtime_de_supabase.dart';
+import '../arranque/cierre_de_la_raiz.dart';
 import '../conectividad/conectividad_providers.dart';
 import '../config/config_supabase.dart';
 import '../database/database_providers.dart';
 import '../logging/app_logger.dart';
+import '../secure_storage/secure_storage_providers.dart';
+import 'armado_del_motor.dart';
 import 'encolador_sync.dart';
+import 'hora_del_servidor.dart';
+import 'purga_de_la_cola.dart';
+import 'transporte_que_anota_la_hora.dart';
 
 // Cableado del motor de sync (contrato-sync-engine §3, #178). El motor es de Bruno (ADR-017,
 // `packages/sync_engine`, `lib/datos/`, `lib/plataforma/`); esto lo arma con lo que la app ya tiene:
@@ -39,14 +45,58 @@ final sobreSyncProvider = Provider<ClientEnvelope>(
 /// configurado (tests, demo), [TransporteSinBackend]: todo queda `PENDING`, nada se pierde.
 ///
 /// El token es el JWT de la sesión vigente. El refresh es de `supabase_flutter` (§10): si el token
-/// venció, el servidor contesta `401`, el lote queda `PENDING` y sube al próximo trigger.
+/// venció, el servidor contesta `401` y el lote queda `PENDING`. Cuando el refresh termina,
+/// [cicloDeVidaSyncProvider] dispara un ciclo y el lote sube sin esperar al próximo trigger.
 final transporteSyncProvider = Provider<SyncTransport>((ref) {
   if (!ConfigSupabase.configurada) return const TransporteSinBackend();
-  return SupabaseRpcTransport(
-    projectUrl: Uri.parse(ConfigSupabase.url),
-    anonKey: ConfigSupabase.anonKey,
-    token: () async => Supabase.instance.client.auth.currentSession?.accessToken,
-    device: ref.watch(sobreSyncProvider),
+  // La `server_time` de cada respuesta se anota (la usa lo que borra por tiempo, HU-UBI-012).
+  return TransporteQueAnotaLaHora(
+    SupabaseRpcTransport(
+      projectUrl: Uri.parse(ConfigSupabase.url),
+      anonKey: ConfigSupabase.anonKey,
+      token: () async => Supabase.instance.client.auth.currentSession?.accessToken,
+      device: ref.watch(sobreSyncProvider),
+    ),
+    ref.read(horaDelServidorProvider),
+  );
+});
+
+/// Realtime de los catálogos (§5.6, HU-SYNC-003): un timbre por cada cambio de `producto`, de
+/// `precio_por_ciudad` o de `precio_general`, para que el motor baje el delta sin esperar al próximo ciclo. Complementa al
+/// pull, no lo reemplaza. Sin Supabase configurado (tests, demo) no hay servidor que avise: `null`,
+/// y el motor sigue solo con los triggers del sistema.
+final realtimeSyncProvider = Provider<RealtimePort?>((ref) {
+  if (!ConfigSupabase.configurada) return null;
+  return RealtimeDeSupabase(FuenteDeCambiosSupabase(Supabase.instance.client));
+});
+
+/// El cifrado del backup: gzip y AES-256-GCM con la DEK de la DB. La DEK se pide al almacén en cada
+/// cifrado (no se guarda acá).
+final criptoConDekProvider = Provider<CryptoConDek>(
+  (ref) => CryptoConDek(() => ref.read(custodiaClaveDbProvider).leerDek()),
+);
+
+/// El `appDataFolder` de Drive de la persona (HU-SYNC-004/005/006): el token se pide en cada pedido,
+/// así que sin Drive conectado armar esto no toca nada y los pedidos fallan con `ArchiveSinToken`.
+final archivoDriveProvider = Provider<GoogleDriveArchive>(
+  (ref) => GoogleDriveArchive(
+    token: ref.watch(tokenDriveProvider),
+    digest: ref.watch(criptoConDekProvider).digest,
+  ),
+);
+
+/// La DEK envuelta con la contraseña, en Drive junto al respaldo (ADR-006, HU-SYNC-006): sin ella,
+/// el respaldo no se abre en un teléfono nuevo. Se sube después de cada respaldo y al cambiar la
+/// contraseña.
+final envoltorioEnDriveProvider = Provider<EnvoltorioEnDrive>((ref) {
+  final custodia = ref.watch(custodiaClaveDbProvider);
+  final token = ref.watch(tokenDriveProvider);
+  final archivo = ref.watch(archivoDriveProvider);
+  return EnvoltorioEnDrive(
+    envoltorios: () async => await token() == null ? null : archivo,
+    keyId: ref.watch(criptoConDekProvider).keyId,
+    envoltorioLocal: custodia.leerEnvoltorioCodificado,
+    desactualizado: () async => await custodia.envoltorioDesactualizadoPara() != null,
   );
 });
 
@@ -54,23 +104,64 @@ final transporteSyncProvider = Provider<SyncTransport>((ref) {
 ///
 /// La cola vive en esa DB, así que el motor se arma con ella y se tira cuando se cierra (cerrar
 /// sesión, HU-AUTH-010): un motor con la DB cerrada no tiene dónde encolar.
+///
+/// **También `null` mientras el asistente de recuperación está abierto** (decisión de Cristian,
+/// 04/11, «Motor vivo»): la recuperación pasa los datos del respaldo a esta DB y no puede haber un
+/// motor escuchándola, subiendo la cola o bajando el delta a la vez. El asistente trae su propio
+/// motor, que se cierra al terminar; cuando el asistente cierra, este se arma de nuevo.
+///
+/// Es una guarda: desde Configuración la app se reinicia por dentro antes de abrir el asistente
+/// (`reiniciarRaizProvider`), así que en el arranque que lo ofrece nunca hubo un motor andando; esta
+/// compuerta cubre la ventana en que la raíz todavía está resolviendo si lo ofrece.
 final motorSyncProvider = Provider<SyncEngine?>((ref) {
   final db = ref.watch(dbLocalProvider);
   if (db == null) return null;
-  final motor = SyncEngine(
-    specs: registroDeLaApp(db.allTables.map((t) => t.actualTableName)),
-    adapters: adaptadoresDeLaApp,
-    transport: ref.watch(transporteSyncProvider),
-    jobs: DriftJobStore(db),
-    store: DriftLocalStore(db, entidades: entidadesQueEscribeElMotor),
-    connectivity: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
-    // El catálogo de venta baja al instante cuando el administrador lo cambia (§5.6). Sin
-    // backend no hay a qué suscribirse.
-    realtime: ConfigSupabase.configurada ? RealtimeSupabase(Supabase.instance.client) : null,
+  if (ref.watch(asistenteDeRecuperacionHabilitadoProvider) &&
+      ref.watch(recuperacionPendienteProvider.select((r) => r.value ?? false))) {
+    return null;
+  }
+  // El backup E2E en el Drive de la persona (HU-SYNC-005, ADR-006) se arma con la receta de
+  // `armarMotorDeSync`, la misma del respaldo nocturno.
+  final motor = armarMotorDeSync(
+    db: db,
+    leerDek: () => ref.read(custodiaClaveDbProvider).leerDek(),
+    tokenDrive: ref.watch(tokenDriveProvider),
+    transporte: ref.watch(transporteSyncProvider),
+    conectividad: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
+    realtime: ref.watch(realtimeSyncProvider),
   );
-  ref.onDispose(() => unawaited(motor.dispose()));
+  // Al tirarse el motor (cerrar sesión, o la raíz entera al «Recuperar mi respaldo») el ciclo en curso
+  // sigue usando la DB: el cierre queda anotado y `CierreDeLaRaiz.alTirar` lo espera antes de cerrarla.
+  final cierre = ref.read(cierreDeLaRaizProvider);
+  ref.onDispose(() => cierre.registrar(cerrarElMotor(motor)));
   return motor;
 });
+
+/// Cuánto se espera al ciclo en curso de un motor que se tira: más que eso y la raíz nueva arranca igual
+/// (con la red colgada un ciclo puede tardar mucho, y la persona no puede quedar mirando una pantalla
+/// vacía).
+const esperaDelCicloAlCerrarElMotor = Duration(seconds: 30);
+
+/// Da de baja el motor y espera a que termine el ciclo que tenía en curso (un push o un pull a medio
+/// hacer sobre la DB): cerrar la base antes se lo llevaría puesto. `dispose` va primero, así no arranca
+/// otro. No lanza: lo que falle o se pase de [espera] se registra.
+Future<void> cerrarElMotor(
+  SyncEngine motor, {
+  Duration espera = esperaDelCicloAlCerrarElMotor,
+}) async {
+  try {
+    await motor.dispose();
+    await motor.settled.timeout(espera);
+  } on TimeoutException {
+    AppLogger.instance.warn(LogModulo.sync, 'MOTOR_CIERRE_LENTO', 'el ciclo no terminó a tiempo', {
+      'segundos': espera.inSeconds,
+    });
+  } on Object catch (e) {
+    AppLogger.instance.warn(LogModulo.sync, 'MOTOR_CIERRE_FALLO', 'no se pudo cerrar el motor', {
+      'error': e.runtimeType.toString(),
+    });
+  }
+}
 
 /// Por donde la capa `data` encola lo que escribe (contrato §3). Sin DB abierta no hay motor:
 /// [EncoladorSyncSinMotor] falla a propósito y la escritura se revierte, en vez de quedar en el
@@ -80,9 +171,21 @@ final encoladorSyncProvider = Provider<EncoladorSync>((ref) {
   return motor == null ? const EncoladorSyncSinMotor() : EncoladorSyncMotor(motor);
 });
 
+/// Los cambios de la sesión de Supabase (`onAuthStateChange`). Sin Supabase configurado (tests,
+/// demo) no hay sesión que cambie: el flujo queda vacío.
+final cambiosDeSesionSyncProvider = Provider<Stream<AuthState>>((ref) {
+  if (!ConfigSupabase.configurada) return const Stream<AuthState>.empty();
+  return Supabase.instance.client.auth.onAuthStateChange;
+});
+
 /// Los triggers de §5.2 que vienen del sistema: la app vuelve al frente (sube lo pendiente y baja
 /// el delta) o se va al fondo (sale ya lo crítico que esperaba su ventana de 2 s). Al armarse,
 /// además, arranca un ciclo: lo que quedó en la cola de la sesión anterior sube sin esperar.
+///
+/// También cuando `supabase_flutter` termina de refrescar el token (`tokenRefreshed`): el colportor
+/// vuelve con el token vencido, el primer ciclo recibe `401` y todo queda `PENDING`; sin este
+/// disparo lo pendiente esperaría al próximo resume, cambio de red o venta. Va como `appResumed`
+/// (sube la cola y baja el delta), así el contrato no cambia.
 ///
 /// Lo observa la pantalla principal mientras la DB está abierta. Necesita el binding de Flutter
 /// (`AppLifecycleListener`), por eso no vive dentro de [motorSyncProvider].
@@ -94,6 +197,37 @@ final cicloDeVidaSyncProvider = Provider<void>((ref) {
     onHide: () => unawaited(_vaciar(motor)),
   );
   ref.onDispose(ciclo.dispose);
+  final refresco = ref
+      .watch(cambiosDeSesionSyncProvider)
+      .where((cambio) => cambio.event == AuthChangeEvent.tokenRefreshed)
+      .listen(
+        (_) => _disparar(motor, SyncTrigger.appResumed),
+        onError: (Object e, StackTrace st) => AppLogger.instance.error(
+          LogModulo.sync,
+          'REFRESH_TOKEN_FAIL',
+          'falló el flujo de cambios de sesión',
+          const {},
+          e,
+          st,
+        ),
+      );
+  ref.onDispose(() => unawaited(refresco.cancel()));
+
+  // La cola no guarda para siempre los envíos ya confirmados (#188): al arrancar y cada vez que
+  // termina un ciclo bien (`lastSuccessAt` cambia: lo dispare un resume, la red, el botón o el
+  // realtime) se sacan los `DONE` de hace más de 7 días. Sin esperarla: ni el arranque ni el
+  // sync dependen de esto, y un fallo no se propaga.
+  final purga = PurgaDeLaCola(motor.purge);
+  unawaited(purga.correr());
+  DateTime? ultimoCicloVisto;
+  final vigiaDelEstado = motor.status.listen((estado) {
+    final termino = estado.lastSuccessAt;
+    if (termino == null || termino == ultimoCicloVisto) return;
+    ultimoCicloVisto = termino;
+    unawaited(purga.correr());
+  });
+  ref.onDispose(() => unawaited(vigiaDelEstado.cancel()));
+
   _disparar(motor, SyncTrigger.appResumed);
 });
 
@@ -107,6 +241,14 @@ void _disparar(SyncEngine motor, SyncTrigger trigger) {
             'kind': falla.kind.name,
             'code': falla.code,
             'status': falla.status,
+          });
+        }
+        // HU-SYNC-008: con el ahorro de datos y sin Wi-Fi, el ciclo sube lo pendiente y deja el
+        // pull esperando; el motivo queda registrado (`data_saver_on_mobile`).
+        if (resultado.pausedReason case final motivo?) {
+          AppLogger.instance.info(LogModulo.sync, 'PULL_EN_PAUSA', 'el pull espera al Wi-Fi', {
+            'trigger': trigger.name,
+            'reason': motivo,
           });
         }
       },

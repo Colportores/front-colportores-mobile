@@ -6,6 +6,10 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Usamos tu ubicación para marcar en el mapa el lugar que vas a registrar.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Usamos la cámara para sacar la foto del ticket del depósito.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Usamos tus fotos para elegir la del ticket del depósito.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -59,9 +63,16 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
+	<!-- Respaldo de la noche con la app cerrada (HU-SYNC-005, #583), workmanager: iOS despierta la app
+	     con una BGProcessingTask. El identificador es el mismo de AppDelegate.swift y de
+	     `nombreTareaRespaldoNocturno` (lib/features/respaldo/data/services/programador_nocturno_del_sistema.dart). -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>UIInterfaceOrientationPortrait</string>
+		<string>com.colportores.respaldo_nocturno</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
 	</array>
 </dict>
 </plist>

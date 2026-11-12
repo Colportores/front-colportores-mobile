@@ -1,0 +1,71 @@
+/// Por qué la persistencia rechazó agendar, cancelar o registrar una visita (BACK-HU-VIS-001).
+///
+/// Los decide la capa `data` dentro de la transacción (donde puede leer el estado real de la DB) y
+/// el repositorio los traduce a un `FailureValidacion` con el [campo] y el [mensaje] de acá. Los
+/// mensajes dicen qué pasa y qué hacer; son textos **para confirmar** cuando llegue la pantalla.
+enum MotivoRechazoAgenda {
+  /// El espacio (la casa o el depto) no está en el teléfono (o está dado de baja).
+  espacioInexistente(
+    'espacio',
+    'No encontramos esa casa en tu teléfono. Volvé al mapa y elegila de nuevo.',
+  ),
+
+  /// El vínculo persona ↔ espacio no está en el teléfono (o está dado de baja, o es de otra casa).
+  personaInexistente('persona', 'No encontramos a esa persona en tu teléfono. Elegila de nuevo.'),
+
+  /// La ubicación alternativa de la agenda (`ubicacion_alt_id`) no está en el teléfono o está dada de
+  /// baja: el servidor rechaza una FK rota y la agenda no subiría.
+  ubicacionAltInexistente(
+    'ubicacion',
+    'No encontramos esa otra ubicación en tu teléfono. Elegila de nuevo o agendá sin ella.',
+  ),
+
+  /// La jornada de la visita (`jornada_id`) no está en el teléfono o está dada de baja.
+  jornadaInexistente(
+    'jornada',
+    'No encontramos la jornada de esta visita en tu teléfono. Volvé al mapa y registrá la visita de '
+        'nuevo.',
+  ),
+
+  /// La visita no está en el teléfono.
+  visitaInexistente('visita', 'Esa visita ya no está en tu teléfono.'),
+
+  /// La agenda no está en el teléfono (o está dada de baja).
+  agendaInexistente(
+    'agenda',
+    'Esa agenda ya no está en tu teléfono. Volvé a la lista de agendados.',
+  ),
+
+  /// La agenda ya se cumplió o se canceló.
+  agendaCerrada('agenda', 'Esa agenda ya se cumplió o se canceló. Revisá la lista de agendados.'),
+
+  /// La cobranza es una cuota del plan de una venta (HU-COB-004): se reprograma, pero no deja de ser
+  /// una cobranza.
+  cuotaDelPlan(
+    'agenda',
+    'Esta cobranza es una cuota del plan de la venta: podés cambiar el día y la hora, pero no el '
+        'tipo.',
+  ),
+
+  /// La cita es la de una entrega para otro día (HU-VEN-003): se reprograma, pero no deja de ser una
+  /// entrega. El selector de la pantalla ya no ofrece otro tipo; esto es la defensa de la persistencia.
+  citaDeEntrega(
+    'agenda',
+    'Esta cita es de una entrega: podés cambiar el día y la hora, pero no el tipo.',
+  ),
+
+  /// La cobranza es la última cuota abierta del plan de su venta: siempre es lo que falta, así que no
+  /// se cancela (decisión del 03/11, #608).
+  ultimaCuotaDelPlan(
+    'agenda',
+    'Esta es la última cuota del plan y siempre es lo que falta: no se cancela. Reprogramala con '
+        '«Modificar» o cambiá las cuotas anteriores desde la lista de cuotas.',
+  );
+
+  const MotivoRechazoAgenda(this.campo, this.mensaje);
+
+  /// Campo del formulario al que se asocia el mensaje.
+  final String campo;
+
+  final String mensaje;
+}

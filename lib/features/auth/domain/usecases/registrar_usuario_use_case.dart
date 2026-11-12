@@ -67,7 +67,8 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
   final AuthRepository _repository;
 
   /// Lo que dice el campo cuando el email está incompleto o mal armado.
-  static const String _emailIncompleto = 'El email no es válido';
+  static const String _emailIncompleto =
+      'El email no es válido. Revisá que esté completo, como nombre@correo.com.';
 
   static final RegExp _cedulaFormatoRegExp = RegExp(r'^[\d.\-]+$');
   static final RegExp _cedulaNormalizadaRegExp = RegExp(r'^\d{7,8}$');
@@ -97,9 +98,7 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
       errores['email'] = aviso;
     }
 
-    if (PoliticaPassword.excedeLargoMaximo(params.password)) {
-      errores['password'] = PoliticaPassword.demasiadoLarga;
-    } else if (PoliticaPassword.validar(params.password) case final error?) {
+    if (PoliticaPassword.validar(params.password) case final error?) {
       errores['password'] = error;
     }
 

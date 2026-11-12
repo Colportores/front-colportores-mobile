@@ -3,7 +3,7 @@ import 'package:sync_engine/sync_engine.dart';
 
 import '../core/database/app_database.dart';
 import '../core/database/fecha_utc_converter.dart';
-import 'replicas_catalogo_table.dart';
+import 'sync_fuera_del_area_table.dart';
 import 'sync_queue_table.dart';
 
 part 'drift_local_store.g.dart';
@@ -41,7 +41,7 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> rows, {
     required String scope,
-    required String watermark,
+    required String? watermark,
     PullNotices notices = PullNotices.none,
   }) => transaction(() async {
     for (final entidad in notices.areaReset) {
@@ -78,10 +78,12 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
         const SyncFueraDelAreaCompanion(confirmada: Value(true)),
       );
     }
-
-    await into(
-      syncWatermarks,
-    ).insertOnConflictUpdate(SyncWatermarksCompanion.insert(scope: scope, watermark: watermark));
+    // Sin watermark (la `server_row` de un LWW) se deja el que había.
+    if (watermark != null) {
+      await into(
+        syncWatermarks,
+      ).insertOnConflictUpdate(SyncWatermarksCompanion.insert(scope: scope, watermark: watermark));
+    }
   });
 
   /// Con un `area_reset` de [tabla]: todo lo que el teléfono tiene de ella pasa a esperar volver a
@@ -171,7 +173,10 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
     if (valor == null) return null;
     if (columna is GeneratedColumnWithTypeConverter) {
       final conversor = (columna as GeneratedColumnWithTypeConverter<Object?, Object>).converter;
-      if (conversor is FechaUtcConverter) {
+      // Las fechas del cloud llegan como texto ISO. Una columna `nullable()` envuelve el conversor
+      // en un `NullAwareTypeConverter`, que ya no es un `FechaUtcConverter` pero sigue siendo un
+      // `TypeConverter<DateTime?, int?>`: se las reconoce por eso, con o sin `null`.
+      if (conversor is TypeConverter<DateTime?, int?>) {
         return conversor.toSql(valor is DateTime ? valor : DateTime.parse('$valor'));
       }
       return conversor.toSql(valor);
@@ -179,6 +184,9 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
     return switch (columna.type) {
       DriftSqlType.int => (valor as num).toInt(),
       DriftSqlType.double => (valor as num).toDouble(),
+      // El cloud manda `true`/`false` (`agenda.es_estricta`); Drift lo guarda como 0 o 1 al
+      // atar la variable, pero su validación espera un `bool`, no el entero.
+      DriftSqlType.bool => valor is num ? valor != 0 : valor,
       _ => valor,
     };
   }

@@ -27,6 +27,7 @@ import 'package:test/test.dart';
 
 import 'src/core/model.dart';
 import 'src/core/ports.dart';
+import 'src/core/queue.dart';
 
 final _t0 = DateTime.utc(2026, 11, 13, 8);
 
@@ -104,6 +105,20 @@ void runJobStoreContract(String nombre, JobStorePort Function() crear) {
       expect(estado.inFlight, 0);
       expect(estado.pending, 0);
       expect(estado.invalid, 0);
+    });
+
+    test('status dice cuándo se cerró el último job (lastPushAt)', () async {
+      expect((await cola.status()).lastPushAt, isNull,
+          reason: 'sin nada enviado no hay fecha que mostrar');
+      final a = await cola.append(_job('op-1', minuto: 1));
+      final b = await cola.append(_job('op-2', minuto: 2));
+      await cola.claimPending(limit: 10);
+
+      await cola.markDone([b], at: _t0.add(const Duration(minutes: 5)));
+      await cola.markDone([a], at: _t0);
+
+      expect((await cola.status()).lastPushAt, _t0.add(const Duration(minutes: 5)),
+          reason: 'es el DONE más nuevo, no el último que se marcó');
     });
 
     test('markPending devuelve el job a la cola tal cual', () async {
@@ -353,6 +368,30 @@ void runJobStoreContract(String nombre, JobStorePort Function() crear) {
         expect(versiones, {enVuelo: 7, pendiente: 7, alta: null, otra: 1});
       });
 
+      test(
+          'la unión de duplicados vuelve tal cual de la cola, y rebaseVersions '
+          'no le pone versión (§6.2)', () async {
+        final cola = crear();
+        await cola.append(SyncJob(
+          clientOpId: 'op-union',
+          entity: 'ubicacion',
+          op: Op.marcarComoDuplicado,
+          payload: const {'duplicada_id': 'u-b', 'conservada_id': 'u-a'},
+          createdAt: _t0,
+          rowPk: 'u-b',
+        ));
+
+        await cola.rebaseVersions('ubicacion', {'u-b': 7});
+
+        final [q] = await cola.claimPending(limit: 10);
+        expect(q.job.op, Op.marcarComoDuplicado);
+        expect(q.job.payload, {'duplicada_id': 'u-b', 'conservada_id': 'u-a'});
+        expect(q.job.rowPk, 'u-b');
+        expect(q.job.syncVersion, isNull);
+        expect(await cola.unsentFor('ubicacion', 'u-b'), isEmpty,
+            reason: 'ya salió');
+      });
+
       test('withUnapplied dice qué filas tienen escrituras sin aplicar',
           () async {
         final cola = crear();
@@ -480,6 +519,38 @@ void runJobStoreContract(String nombre, JobStorePort Function() crear) {
             ['op-par', 'op-alta', 'op-espacio']);
       });
 
+      test('listPending trae solo los PENDING, en orden de creación', () async {
+        final cola = crear();
+        await cola.append(_job('op-b', minuto: 20));
+        await cola.append(_job('op-a', minuto: 10));
+        await enEspera(cola, ['op-alta', 'op-espacio']);
+
+        expect([for (final q in await cola.listPending()) q.job.clientOpId],
+            ['op-a', 'op-b']);
+        await cola.claimPending(limit: 1);
+        expect([for (final q in await cola.listPending()) q.job.clientOpId],
+            ['op-b'],
+            reason: 'lo que ya se tomó no es PENDING');
+      });
+
+      test(
+          'release también reubica un PENDING detrás de todo, y sigue PENDING',
+          () async {
+        final cola = crear();
+        final [alta] = await enEspera(cola, ['op-alta']);
+        // Lo que cuelga del alta pero nunca llegó a quedar en espera: se
+        // encoló antes que el ciclo que lo habría retenido.
+        final colgado = await cola.append(_job('op-colgado', minuto: 10));
+        await cola.append(_job('op-par', minuto: 20));
+
+        await cola.release([alta, colgado],
+            at: _t0.add(const Duration(minutes: 5)));
+
+        final tomados = await cola.claimPending(limit: 10);
+        expect([for (final q in tomados) q.job.clientOpId],
+            ['op-par', 'op-alta', 'op-colgado']);
+      });
+
       test('release limpia el error y dependsOn', () async {
         final cola = crear();
         final ids = await enEspera(cola, ['op-alta', 'op-espacio']);
@@ -565,6 +636,24 @@ void runLocalStoreContract(
       expect(await store.watermarkOf('mirror'), 'w-del-backup');
     });
 
+    test('applyDelta sin watermark escribe la fila y deja el que había',
+        () async {
+      // El LWW (§5.4) aplica la `server_row` de un conflicto sin pasar por una
+      // página de pull. Con `''` el backend contesta 22023 en la próxima
+      // reconciliación; con el watermark pisado, se saltearía lo que falta.
+      await store.applyDelta(const {}, scope: 'mirror', watermark: 'w-1');
+      await store.applyDelta({
+        fila.entidad: [fila.fila],
+      }, scope: 'mirror', watermark: null);
+      expect(await store.watermarkOf('mirror'), 'w-1');
+
+      await store.applyDelta({
+        fila.entidad: [fila.fila],
+      }, scope: 'otro', watermark: null);
+      expect(await store.watermarkOf('otro'), isNull,
+          reason: 'no se inventa un watermark vacío');
+    });
+
     test('aplicar dos veces avanza el watermark, no lo retrocede', () async {
       await store.applyDelta(const {}, scope: 'replica', watermark: 'w-1');
       await store.applyDelta(const {}, scope: 'replica', watermark: 'w-2');
@@ -635,6 +724,98 @@ void runArchiveContract(String nombre, ArchivePort Function() crear) {
       final ids = (await archivo.list()).map((e) => e.id).toSet();
       expect(ids, hasLength(2),
           reason: 'list no puede perder ni repetir entradas');
+    });
+
+    test('exportedAt viaja con la entrada y vuelve en list', () async {
+      final instante = DateTime.utc(2026, 10, 28, 22, 15, 3, 120);
+      final e = await archivo.upload(
+        payload: const [1],
+        parentId: null,
+        watermark: 'w-1',
+        exportedAt: instante,
+      );
+
+      expect(e.exportedAt, instante);
+      expect((await archivo.list()).single.exportedAt, instante,
+          reason: 'el incremental siguiente parte de este instante, no de la '
+              'fecha de subida: sin él se pierden las filas escritas mientras '
+              'subía');
+    });
+
+    test('delete saca la entrada del listado y borrar dos veces no falla',
+        () async {
+      final base = await archivo
+          .upload(payload: const [1], parentId: null, watermark: 'w-1');
+      final otra = await archivo
+          .upload(payload: const [2], parentId: null, watermark: 'w-2');
+
+      await archivo.delete(base.id);
+      await archivo.delete(base.id);
+
+      expect((await archivo.list()).map((e) => e.id), [otra.id]);
+    });
+  });
+}
+
+/// Lo que el motor da por sentado de un [SyncMetaPort] (HU-SYNC-007).
+void runSyncMetaContract(String nombre, SyncMetaPort Function() crear) {
+  group('$nombre · contrato de SyncMetaPort', () {
+    late SyncMetaPort meta;
+    setUp(() => meta = crear());
+
+    test('sin nada anotado, todo es null: «todavía no hubo»', () async {
+      final m = await meta.read();
+
+      expect(m.lastPullAt, isNull);
+      expect(m.lastBackupAt, isNull);
+      expect(m.lastPushAt, isNull);
+      expect(m.lastPushNetwork, isNull);
+    });
+
+    test('lo anotado vuelve igual', () async {
+      await meta.write(
+        lastPullAt: _t0,
+        lastBackupAt: _t0.add(const Duration(hours: 1)),
+        lastPushAt: _t0.add(const Duration(hours: 2)),
+        lastPushNetwork: SyncNetwork.mobile,
+      );
+
+      final m = await meta.read();
+      expect(m.lastPullAt, _t0);
+      expect(m.lastBackupAt, _t0.add(const Duration(hours: 1)));
+      expect(m.lastPushAt, _t0.add(const Duration(hours: 2)));
+      expect(m.lastPushNetwork, SyncNetwork.mobile);
+    });
+
+    test('anotar un campo no borra los demás', () async {
+      await meta.write(lastPullAt: _t0, lastBackupAt: _t0);
+      await meta.write(lastPullAt: _t0.add(const Duration(minutes: 5)));
+
+      final m = await meta.read();
+      expect(m.lastPullAt, _t0.add(const Duration(minutes: 5)));
+      expect(m.lastBackupAt, _t0,
+          reason: 'un campo null es «no lo toques», nunca «borralo»');
+    });
+
+    test('un envío más viejo que el anotado no lo pisa', () async {
+      final nuevo = _t0.add(const Duration(hours: 1));
+      await meta.write(lastPushAt: nuevo, lastPushNetwork: SyncNetwork.wifi);
+      await meta.write(lastPushAt: _t0, lastPushNetwork: SyncNetwork.mobile);
+
+      final m = await meta.read();
+      expect(m.lastPushAt, nuevo);
+      expect(m.lastPushNetwork, SyncNetwork.wifi,
+          reason: 'la red es la del envío más nuevo');
+    });
+
+    test('un envío nuevo sin red conocida borra la red del anterior', () async {
+      await meta.write(lastPushAt: _t0, lastPushNetwork: SyncNetwork.mobile);
+      await meta.write(lastPushAt: _t0.add(const Duration(minutes: 1)));
+
+      final m = await meta.read();
+      expect(m.lastPushAt, _t0.add(const Duration(minutes: 1)));
+      expect(m.lastPushNetwork, isNull,
+          reason: 'decir «por datos» de un envío que salió por otra red miente');
     });
   });
 }

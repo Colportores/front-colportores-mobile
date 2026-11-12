@@ -16,6 +16,12 @@ abstract interface class ParesDuplicadosRepository {
   /// como error del stream.
   Stream<Map<String, ParDecidido>> observarDecididos();
 
+  /// Los pares cuya última unión el servidor rechazó y quedaron separados en el teléfono (HU-UBI-006,
+  /// decisión de Cristian, 10/11, «Unión rech.»; #679), por `ParDuplicado.clave`, con el código del
+  /// rechazo (`UB003`, `UB004`, `42501`, `CG001`…). Reactivo. Un error de lectura sale como error del
+  /// stream.
+  Stream<Map<String, String>> observarUnionesRechazadas();
+
   /// Guarda [decision] sobre [par] con fecha [ahora]. Si el par ya tenía una, la reemplaza.
   Future<Either<Failure, Unit>> decidir(
     ParDuplicado par,

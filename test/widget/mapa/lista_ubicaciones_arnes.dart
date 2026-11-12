@@ -1,14 +1,21 @@
 // Arnés de los tests de la lista de ubicaciones (vista 05): monta la pestaña con los fakes de
 // `lista_ubicaciones_falsos.dart` y deja a mano las búsquedas más usadas.
+import 'dart:async';
+
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/contexto_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/lista_ubicaciones_page.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart'
+    show ClaveDeLaCasa, ContextoDeVisita;
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_lista_ubicaciones.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
+import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart';
 
 /// Deja correr los fotogramas que hacen falta (la base emite en el turno siguiente y las hojas se
@@ -22,7 +29,10 @@ Future<void> asentarLista(WidgetTester tester, [int veces = 8]) async {
 /// Monta la pestaña «Lista» como la ve el colportor `col-1`.
 ///
 /// [activa] `false` la deja montada pero fuera de vista (como las demás pestañas del
-/// `IndexedStack`); [activaCambiante] la va cambiando durante el test. [escala] es el `textScaler`.
+/// `IndexedStack`); [activaCambiante] la va cambiando durante el test. [montadaCambiante] `false`
+/// la desmonta del todo (la pestaña se destruye, como al cerrar la sesión) y `true` la vuelve a
+/// montar. [escala] es el `textScaler`. [gpsAbierto] `false` es el colportor que todavía no pasó
+/// por el mapa (la única vista que pide el GPS, #651): nadie lo lee.
 Future<void> montarLista(
   WidgetTester tester, {
   RepoListaFalso? repo,
@@ -32,16 +42,33 @@ Future<void> montarLista(
   Size tamano = const Size(390, 844),
   bool activa = true,
   ValueNotifier<bool>? activaCambiante,
-  ValueChanged<String>? alAbrir,
+  ValueNotifier<bool>? montadaCambiante,
+  AlAbrirUbicacion? alAbrir,
+  bool casaAbreSuHoja = false,
   Future<void> Function()? alRegistrar,
   Key? clave,
+  Stream<ContextoDeLaCasa> Function(ClaveDeLaCasa clave)? lecturaContexto,
+  FutureOr<void> Function(ContextoDeVisita)? registrarVisita,
+  List<Override> masOverrides = const [],
+  bool gpsAbierto = true,
+  VoidCallback? alActivarGps,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: overridesLista(repo: repo ?? RepoListaFalso(), gps: gps, ciudades: ciudades),
+      overrides: [
+        ...overridesLista(
+          repo: repo ?? RepoListaFalso(),
+          gps: gps,
+          ciudades: ciudades,
+          gpsAbierto: gpsAbierto,
+        ),
+        // La hoja de la casa (vista 39) lee de la base; acá, de un contexto fijo (el del canvas).
+        ...overridesHojaCasa(lectura: lecturaContexto, registrarVisita: registrarVisita),
+        ...masOverrides,
+      ],
       child: MaterialApp(
         theme: temaClaro(),
         builder: (context, child) => MediaQuery(
@@ -52,14 +79,21 @@ Future<void> montarLista(
         ),
         home: Scaffold(
           body: ValueListenableBuilder<bool>(
-            valueListenable: activaCambiante ?? ValueNotifier(activa),
-            builder: (context, estaActiva, _) => ListaUbicacionesPage(
-              key: clave,
-              colportorId: 'col-1',
-              activa: estaActiva,
-              alAbrirUbicacion: alAbrir,
-              alRegistrar: alRegistrar,
-            ),
+            valueListenable: montadaCambiante ?? ValueNotifier(true),
+            builder: (context, estaMontada, _) => !estaMontada
+                ? const SizedBox.shrink()
+                : ValueListenableBuilder<bool>(
+                    valueListenable: activaCambiante ?? ValueNotifier(activa),
+                    builder: (context, estaActiva, _) => ListaUbicacionesPage(
+                      key: clave,
+                      colportorId: 'col-1',
+                      activa: estaActiva,
+                      alAbrirUbicacion: alAbrir,
+                      casaAbreSuHoja: casaAbreSuHoja,
+                      alRegistrar: alRegistrar,
+                      alActivarGps: alActivarGps,
+                    ),
+                  ),
           ),
         ),
       ),

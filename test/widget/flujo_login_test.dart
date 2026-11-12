@@ -118,7 +118,10 @@ void main() {
       await tester.tap(find.byKey(const Key('login_enviar')));
       await tester.pumpAndSettle();
 
-      expect(find.text('El email no es válido'), findsOneWidget);
+      expect(
+        find.text('El email no es válido. Revisá que esté completo, como nombre@correo.com.'),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('login_error_general')), findsNothing);
     });
 
@@ -167,6 +170,9 @@ void main() {
 
       await tester.tap(find.byKey(const Key('inicio_configuracion')));
       await tester.pumpAndSettle();
+      // Con la fila «Mostrar el aviso de privacidad» (#445) el botón queda bajo el pliegue de 800 × 600.
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));

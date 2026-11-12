@@ -17,7 +17,9 @@ const _auditoria = {
   'sync_version': 3,
 };
 
-/// Una fila del cloud por entidad: la que se usa para el ida y vuelta de cada adaptador.
+/// Una fila del cloud para cada entidad que tiene modelo en la app: la que se usa para el ida y
+/// vuelta de su adaptador. Las demás usan el adaptador de fila, cuyo ida y vuelta es la identidad,
+/// y les alcanza con una fila cualquiera ([_filaMinima]).
 const _filas = <String, Map<String, Object?>>{
   'jornada': {
     'id': 'jor-1',
@@ -25,7 +27,6 @@ const _filas = <String, Map<String, Object?>>{
     'inicio': '2026-10-16T08:00:00.000Z',
     'fin': '2026-10-16T20:00:00.000Z',
     'acompaniante_id': null,
-    'tipo_acompaniamiento': null,
     'total_visitas': 7,
     'total_ventas': 2,
     ..._auditoria,
@@ -46,7 +47,6 @@ const _filas = <String, Map<String, Object?>>{
     'ubicacion_id': 'ub-1',
     'numero_depto': '3B',
     'piso': '3',
-    'descripcion': null,
     ..._auditoria,
   },
   'campania_ciudad': {'id': 'cc-1', 'campania_id': 'cam-1', 'ciudad_id': 'ciu-1', ..._auditoria},
@@ -82,74 +82,12 @@ const _filas = <String, Map<String, Object?>>{
     'calle_b': 'Bulevar Artigas',
     ..._auditoria,
   },
-  'ubicacion_par_decidido': {
-    'id': 'par-1',
-    'ubicacion_a_id': 'ub-1',
-    'ubicacion_b_id': 'ub-2',
-    'decision': 'CONSERVAR_AMBOS',
-    'decidido_en': '2026-10-16T12:00:00.000Z',
-    ..._auditoria,
-  },
-  'pais': {'id': 'pa-1', 'nombre': 'Uruguay', 'iso_code': 'UY', ..._auditoria},
-  'ciudad': {
-    'id': 'ciu-1',
-    'nombre': 'Montevideo',
-    'pais_id': 'pa-1',
-    'lat_centro': -34.9,
-    'lon_centro': -56.16,
-    'zoom_inicial': 13,
-    'bbox_oeste': -56.4,
-    'bbox_sur': -34.95,
-    'bbox_este': -56.0,
-    'bbox_norte': -34.7,
-    ..._auditoria,
-  },
-  'campania': {
-    'id': 'cam-1',
-    'nombre': 'Verano',
-    'tipo': 'VERANO',
-    'fecha_inicio': '2026-12-01',
-    'fecha_fin': null,
-    'coordinador_id': 'coord-1',
-    ..._auditoria,
-  },
-  'campania_colportor': {
-    'id': 'ins-1',
-    'campania_id': 'cam-1',
-    'usuario_id': 'col-1',
-    'zona_id': 'zon-1',
-    'meta_libros': 120,
-    ..._auditoria,
-  },
-  'producto': {
-    'id': 'pro-1',
-    'nombre': 'El Deseado de todas las gentes',
-    'descripcion': null,
-    'tipo': 'LIBRO',
-    'es_bonificable': true,
-    'es_misionero': false,
-    'precio_base_compra': 450,
-    'casa_editora': 'ACES',
-    'imagen_url': null,
-    ..._auditoria,
-  },
-  'coleccion': {'id': 'col-1', 'nombre': 'Salud', ..._auditoria},
-  'producto_coleccion': {
-    'id': 'pc-1',
-    'producto_id': 'pro-1',
-    'coleccion_id': 'col-1',
-    ..._auditoria,
-  },
-  'precio_por_ciudad': {
-    'id': 'pre-1',
-    'campania_ciudad_id': 'cc-1',
-    'producto_id': 'pro-1',
-    'coleccion_id': null,
-    'precio_venta': 1200,
-    'valido_desde': '2026-12-01',
-    'valido_hasta': null,
-    ..._auditoria,
-  },
+};
+
+/// La fila de ejemplo de una entidad sin modelo: su clave y las columnas de sync.
+Map<String, Object?> _filaMinima(SyncTableAdapter<Object?> adaptador, String pk) => {
+  pk: '${adaptador.remoteName}-1',
+  ..._auditoria,
 };
 
 void main() {
@@ -157,6 +95,7 @@ void main() {
   final tablas = db.allTables.map((t) => t.actualTableName).toSet();
   // Las tablas del motor no son entidades del contrato: no se declaran (`catalogo.dart`).
   final entidades = tablas.difference(tablasDelMotor);
+  final pkDe = {for (final s in specsDeLaApp) s.entity: s.pk};
 
   runConformanceSuite(
     ConformanceFixture(
@@ -165,7 +104,9 @@ void main() {
       adapters: adaptadoresDeLaApp,
       samples: {
         for (final a in adaptadoresDeLaApp)
-          if (_filas[a.remoteName] case final fila?) a.remoteName: [a.fromSyncJson(fila)],
+          a.remoteName: [
+            a.fromSyncJson(_filas[a.remoteName] ?? _filaMinima(a, pkDe[a.remoteName] ?? 'id')),
+          ],
       },
     ),
   );

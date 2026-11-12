@@ -14,6 +14,7 @@ final class AgregarEspacioParams extends Equatable {
     required this.ubicacionId,
     required this.colportorId,
     required this.numeroDepto,
+    this.piso,
   });
 
   /// El `id` (UUID v7) de este alta: la pantalla lo genera una vez por formulario
@@ -29,16 +30,19 @@ final class AgregarEspacioParams extends Equatable {
   /// Obligatorio: el espacio sin número es el default de la casa y no se crea desde acá.
   final String numeroDepto;
 
+  /// Opcional (vista 11·02, «Piso · opcional»): en blanco cuenta como sin piso.
+  final String? piso;
+
   @override
-  List<Object?> get props => [id, ubicacionId, colportorId, numeroDepto];
+  List<Object?> get props => [id, ubicacionId, colportorId, numeroDepto, piso];
 }
 
 /// HU-UBI-007 — Alta de un espacio (departamento, local) dentro de una ubicación.
 ///
 /// 1. Sin `id`, ubicación, colportor o número de departamento (en blanco cuenta como vacío):
 ///    `Left(FailureValidacion)` con el detalle por campo.
-/// 2. Arma el espacio —`id` UUID v7 del alta, `numero_depto` sin espacios en los bordes, auditoría
-///    con el colportor como `created_by`— y se lo pasa al repositorio, que en una sola transacción
+/// 2. Arma el espacio —`id` UUID v7 del alta, `numero_depto` y `piso` sin espacios en los bordes (el
+///    piso en blanco queda sin piso), auditoría con el colportor como `created_by`— y se lo pasa al repositorio, que en una sola transacción
 ///    valida que la ubicación exista, esté activa y no sea una `CASA`, que el número no repita el
 ///    de otro espacio activo de la ubicación, y guarda y encola el sync.
 ///
@@ -62,6 +66,7 @@ final class AgregarEspacioUseCase implements UseCase<Espacio, AgregarEspacioPara
     final ubicacionId = params.ubicacionId.trim();
     final colportorId = params.colportorId.trim();
     final numeroDepto = params.numeroDepto.trim();
+    final piso = params.piso?.trim();
 
     final campos = <String, String>{
       if (id.isEmpty) 'id': 'Falta el identificador del alta del espacio',
@@ -77,6 +82,7 @@ final class AgregarEspacioUseCase implements UseCase<Espacio, AgregarEspacioPara
         id: id,
         ubicacionId: ubicacionId,
         numeroDepto: numeroDepto,
+        piso: piso == null || piso.isEmpty ? null : piso,
         auditoria: Auditoria(createdAt: ahora, updatedAt: ahora, createdBy: colportorId),
       ),
     );

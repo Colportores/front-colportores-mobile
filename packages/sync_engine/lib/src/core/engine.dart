@@ -41,6 +41,8 @@ class SyncOutcome {
     this.conflicts = 0,
     this.pulled = 0,
     this.skipped = false,
+    this.pausedReason,
+    this.pushPausedUntil,
     this.failure,
   });
 
@@ -50,8 +52,19 @@ class SyncOutcome {
   final int conflicts;
   final int pulled;
 
-  /// El ciclo no llegó a correr: ahorro de datos, o ya había uno en curso.
+  /// El ciclo no llegó a correr: ya había uno en curso, o el motor está apagado.
   final bool skipped;
+
+  /// Por qué el ciclo subió pero **no bajó** el delta: [kDataSaverOnMobile]
+  /// (HU-SYNC-008). El ciclo no falló —lo pendiente subió— y el pull espera a
+  /// que haya Wi-Fi, a un sync manual o a un evento de realtime.
+  final String? pausedReason;
+
+  /// Hasta cuándo la subida está frenada por un `429` (§5.1): el servidor pidió
+  /// esperar y el motor no sube nada hasta esa hora. El ciclo no falló por eso
+  /// —la cola quedó en `PENDING` y el pull corrió—, pero este ciclo no subió.
+  /// Es solo memoria: si se cierra la app, la espera se pierde.
+  final DateTime? pushPausedUntil;
 
   /// La falla transitoria que lo cortó. Los jobs volvieron a `PENDING`.
   final TransportFailure? failure;
@@ -71,26 +84,45 @@ class SyncEngine {
     ConnectivityPort? connectivity,
     RealtimePort? realtime,
     BackupService? backup,
+    SyncMetaPort? meta,
     DateTime Function()? clock,
     UuidV7? uuid,
     this.batchLimit = 500,
     this.realtimeDebounce = const Duration(milliseconds: 300),
     this.criticalDebounce = const Duration(seconds: 2),
     this.inFlightLease = const Duration(minutes: 10),
-  })  : _specs = specs,
-        _uuid = uuid ?? UuidV7(),
-        _adapters = {for (final a in adapters) a.remoteName: a},
-        _backup = backup,
-        _realtimePort = realtime,
-        _transport = transport,
-        _jobs = jobs,
-        _store = store,
-        _clock = clock ?? (() => DateTime.now().toUtc()) {
+    this.maxRetryAfter = const Duration(seconds: 60),
+    this.defaultRetryAfter = const Duration(seconds: 5),
+  }) : _specs = specs,
+       _uuid = uuid ?? UuidV7(),
+       _adapters = {for (final a in adapters) a.remoteName: a},
+       _backup = backup,
+       _meta = meta,
+       _connectivity = connectivity,
+       _realtimePort = realtime,
+       _transport = transport,
+       _jobs = jobs,
+       _store = store,
+       _clock = clock ?? (() => DateTime.now().toUtc()) {
     if (connectivity != null) {
       _conn = connectivity.onlineChanges.listen((online) {
         if (online) trigger(SyncTrigger.connectivity);
       });
+      // HU-SYNC-008: el pull que el ahorro de datos dejó esperando sale cuando
+      // aparece un Wi-Fi. Pasar de datos móviles a Wi-Fi no cambia `online`.
+      _wifiSub = connectivity.wifiChanges.listen((wifi) {
+        if (wifi && _pullEnPausa != null) trigger(SyncTrigger.connectivity);
+      });
     }
+    // HU-SYNC-007: la fecha del último backup sale del propio servicio.
+    _backup?.alTerminarUnBackup = (entrada) async {
+      _ultimoBackup = entrada.createdAt;
+      await _anotarMeta(lastBackupAt: entrada.createdAt);
+      await _emit();
+    };
+    // El backup guarda el watermark de pull de la DB (§7 fase 3): la app llama
+    // a `backup.backupNow()` sin saber qué es.
+    _backup?.watermarkProvider = () => _store.watermarkOf(_scopeMirror);
     resubscribe();
   }
 
@@ -102,14 +134,18 @@ class SyncEngine {
   final UuidV7 _uuid;
   final Map<String, SyncTableAdapter<Object?>> _adapters;
   final BackupService? _backup;
+  final SyncMetaPort? _meta;
+  final ConnectivityPort? _connectivity;
   final DateTime Function() _clock;
 
   /// Backup E2E (§3, ADR-003). Lanza si el motor se armó sin los puertos de
   /// backup: es un error de cableado, no algo que la app deba atrapar.
   BackupService get backup =>
       _backup ??
-      (throw StateError('este SyncEngine se armó sin BackupService: '
-          'faltan ArchivePort, CryptoPort y SnapshotPort'));
+      (throw StateError(
+        'este SyncEngine se armó sin BackupService: '
+        'faltan ArchivePort, CryptoPort y SnapshotPort',
+      ));
 
   /// Ventana de coalescencia de eventos realtime.
   ///
@@ -149,10 +185,27 @@ class SyncEngine {
   /// como el reclamo corre en cada ciclo, no hace falta reiniciar la app.
   final Duration inFlightLease;
 
+  /// Lo más que el motor frena la subida por un `429`, venga lo que venga en el
+  /// `Retry-After`: un encabezado de una hora dejaría al colportor sin respaldo
+  /// de sus ventas toda la jornada.
+  final Duration maxRetryAfter;
+
+  /// Cuánto frena la subida un `429` sin `Retry-After` (o con uno en cero): una
+  /// espera corta en vez de reintentar al instante contra un servidor que ya
+  /// dijo que no da abasto.
+  final Duration defaultRetryAfter;
+
   StreamSubscription<bool>? _conn;
+  StreamSubscription<bool>? _wifiSub;
   StreamSubscription<String>? _realtimeSub;
   Timer? _realtimeTimer;
   Timer? _criticalTimer;
+
+  /// Despierta al motor cuando vence la espera de un `429`: lo que llegó
+  /// durante la espera (una venta, volver al frente) se descartó y no
+  /// vuelve a avisar, así que sin este timer quedaría `PENDING` hasta el
+  /// próximo trigger. Uno solo: cada espera nueva reemplaza al anterior.
+  Timer? _esperaTimer;
 
   /// La zona donde se construyó el motor, para programar sus timers.
   ///
@@ -185,18 +238,44 @@ class SyncEngine {
   Future<SyncOutcome>? _running;
   bool _dataSaver = false;
   DateTime? _lastSuccessAt;
+  DateTime? _ultimoPush;
+  SyncNetwork? _ultimaRed;
+  DateTime? _ultimoPull;
+  DateTime? _ultimoBackup;
+
+  /// Por qué el último ciclo dejó el pull esperando (HU-SYNC-008), o `null`.
+  String? _pullEnPausa;
+
+  /// Hasta cuándo no se sube nada porque el backend contestó `429`, o `null`.
+  ///
+  /// Solo en memoria, a propósito: la cola no cambia (los jobs siguen en
+  /// `PENDING`) y reabrir la app empieza sin espera. Frena **toda** la subida y
+  /// no solo la entidad que rebotó: retener un alta y dejar salir lo que la
+  /// nombra termina en `23503` y en jobs `INVALID`. El pull sigue.
+  DateTime? _subidaFrenadaHasta;
 
   /// Desde cuándo el backend contesta `401`. Ver [SyncStatus.unauthorizedSince].
   DateTime? _sinSesionDesde;
 
-  /// Estado de la cola para la UI (§3). No emite hasta que algo cambia.
+  /// Estado de la cola para la UI (§3). No emite hasta que algo cambia: quien
+  /// abre la pantalla pide el estado de ahora con [statusNow] y sigue el flujo.
   Stream<SyncStatus> get status => _status.stream;
+
+  /// El estado de ahora (HU-SYNC-007): conteos de la cola, última subida y
+  /// última bajada, último backup y si el pull está en pausa por el ahorro de
+  /// datos. Es lo primero que muestra la pantalla de estado, antes de que el
+  /// flujo [status] emita algo.
+  Future<SyncStatus> statusNow() async {
+    _verificarVivo();
+    return _foto();
+  }
 
   /// El ciclo en curso, si hay uno. Los tests lo esperan en vez de dormir.
   Future<SyncOutcome> get settled =>
       _running ??
       Future.value(
-          const SyncOutcome(trigger: SyncTrigger.manual, skipped: true));
+        const SyncOutcome(trigger: SyncTrigger.manual, skipped: true),
+      );
 
   /// Encola una escritura local (§3).
   ///
@@ -210,6 +289,14 @@ class SyncEngine {
   ///
   /// Lanza [LocalOnlyViolationError] si [entity] es `local`, y
   /// [UnregisteredEntityError] si no tiene `SyncSpec`.
+  ///
+  /// [Op.marcarComoDuplicado] (la unión de duplicados, §6.2) lleva como
+  /// payload `{duplicada_id, conservada_id}` y no la fila: se encola siempre
+  /// aparte, detrás de lo que ya esperaba (las altas de A y de B incluidas), sin
+  /// versión esperada y sin fundirse con otra escritura ni absorber una en
+  /// espera. Su `rowPk` es la duplicada, para que la `sync_version` de B que
+  /// devuelve el servidor vuelva a la fila. Sin los dos ids lanza
+  /// [ArgumentError].
   Future<String> stage(
     String entity,
     Op op,
@@ -223,6 +310,16 @@ class SyncEngine {
     // guardar la venta que guardarla y no subirla nunca.
     _verificarVivo();
     _specs.assertStageable(entity);
+    final union = op == Op.marcarComoDuplicado;
+    if (union &&
+        (payload['duplicada_id'] is! String ||
+            payload['conservada_id'] is! String)) {
+      throw ArgumentError.value(
+        payload,
+        'payload',
+        'marcar_como_duplicado necesita duplicada_id y conservada_id',
+      );
+    }
 
     final ahora = _clock();
     final job = SyncJob(
@@ -230,14 +327,20 @@ class SyncEngine {
       entity: entity,
       op: op,
       payload: payload,
-      syncVersion: syncVersion,
+      syncVersion: union ? null : syncVersion,
       createdAt: ahora,
-      rowPk: payload[_specs.of(entity).pk]?.toString(),
+      rowPk: (union ? payload['duplicada_id'] : payload[_specs.of(entity).pk])
+          ?.toString(),
     );
+
+    // §6.2: la unión no es una escritura de la fila, así que no reemplaza ni
+    // se funde con nada. Lo que nombra (A y B) ya está antes en la cola; si
+    // alguna espera, `_sinLoQueEspera` la retiene detrás al mandar.
+    final seFunde = op != Op.insert && !union;
 
     // §2.2: si la fila tiene una escritura en espera, esta la reemplaza en vez
     // de encolarse aparte. Es como la app resuelve un conflicto (vista 10).
-    final absorbido = op == Op.insert ? null : await _absorber(job);
+    final absorbido = seFunde ? await _absorber(job) : null;
     if (absorbido != null) {
       await _emit();
       // Resolver un conflicto es lo que la colportora estaba esperando para
@@ -246,7 +349,7 @@ class SyncEngine {
       return absorbido;
     }
 
-    final fundido = op == Op.insert ? null : await _fundirEnPendiente(job);
+    final fundido = seFunde ? await _fundirEnPendiente(job) : null;
     if (fundido != null) {
       await _emit();
       if (_specs.of(entity).critical) _programarCritico();
@@ -291,9 +394,15 @@ class SyncEngine {
     // Todas las escrituras en espera de esta fila, de la más vieja a la más
     // nueva: un update que se mandó antes de que el alta chocara también quedó
     // esperándola, y fundirlo después de esta escritura la pisaría.
+    // La unión de duplicados (§6.2) no es una escritura de B: no se reemplaza
+    // ni se descarta con ella. Si espera porque nombra a B, vuelve a la cola
+    // con lo que cuelga de B.
     final deLaFila = [
       for (final q in enEspera)
-        if (q.job.entity == job.entity && pkDe(_specs, q.job) == pk) q
+        if (q.job.entity == job.entity &&
+            q.job.op != Op.marcarComoDuplicado &&
+            pkDe(_specs, q.job) == pk)
+          q,
     ];
     if (deLaFila.isEmpty) return null;
 
@@ -320,8 +429,17 @@ class SyncEngine {
     };
     await _jobs.replacePayload(destino.id, fila);
     await _jobs.discardHeld([for (final q in deLaFila.skip(1)) q.id]);
-    await _jobs.release([destino.id, for (final q in colgados) q.id],
-        at: ahora);
+    // B1: lo que cuelga de la fila y quedó `PENDING` (un espacio cargado sin
+    // señal, antes de que ningún ciclo lo viera) tiene que salir detrás del
+    // alta, no delante. Va con los que estaban esperando, en su orden.
+    final sueltos = _pendientesQueCuelgan([
+      destino,
+      ...colgados,
+    ], await _jobs.listPending());
+    await _jobs.release([
+      destino.id,
+      for (final q in _enOrdenDeCreacion([...colgados, ...sueltos])) q.id,
+    ], at: ahora);
     return destino.id;
   }
 
@@ -342,12 +460,58 @@ class SyncEngine {
     final sinMandar = await _jobs.unsentFor(job.entity, pk);
     if (sinMandar.isEmpty) return null;
     final destino = sinMandar.last;
-    if (destino.state != JobState.pending || destino.job.op == Op.delete) {
+    // Tampoco en una unión de duplicados (§6.2): su payload no es la fila, y lo
+    // que se escribe de B después de unirla sale después.
+    if (destino.state != JobState.pending ||
+        destino.job.op == Op.delete ||
+        destino.job.op == Op.marcarComoDuplicado) {
       return null;
     }
-    await _jobs.replacePayload(
-        destino.id, {...destino.job.payload, ...job.payload});
+    final fundido = {...destino.job.payload, ...job.payload};
+    await _jobs.replacePayload(destino.id, fundido);
+    await _pasarDetrasDeLoQueNombra(destino, fundido, job.createdAt);
     return destino.id;
+  }
+
+  /// El payload fundido de [destino] puede nombrar una fila cuyo alta se
+  /// encoló **después** de él: la agenda que se agenda y más tarde se cumple
+  /// con una visita funde el cumplimiento en su alta, y ahora lleva `visita_id`
+  /// aunque el alta de la visita viaje detrás. El servidor aplica el lote en
+  /// orden y comprueba cada FK en el momento (`23503`): la agenda quedaba
+  /// `INVALID` y la cita cumplida no subía nunca.
+  ///
+  /// Si pasa, [destino] se reubica detrás de esas altas, con lo que cuelga de
+  /// él (el mismo criterio de [_absorber]). Si no nombra nada que vaya
+  /// después, no se mueve: conserva su lugar en la cola.
+  ///
+  /// Solo cuentan las altas de entidades con PK propia (`id`): `house_status`
+  /// se identifica con el id de la ubicación y nadie lo nombra, así que su PK
+  /// no es una referencia posible (y confundiría a la ubicación con su propio
+  /// color).
+  Future<void> _pasarDetrasDeLoQueNombra(
+    QueuedJob destino,
+    Map<String, Object?> payload,
+    DateTime ahora,
+  ) async {
+    final pendientes = await _jobs.listPending();
+    final lugar = pendientes.indexWhere((q) => q.id == destino.id);
+    if (lugar < 0) return;
+    final propia = _specs.of(destino.job.entity).pk;
+    final detras = <String>{};
+    for (final q in pendientes.skip(lugar + 1)) {
+      if (q.job.op != Op.insert || _specs.of(q.job.entity).pk != 'id') continue;
+      if (pkDe(_specs, q.job) case final pk?) detras.add(pk);
+    }
+    if (detras.isEmpty) return;
+    final nombra = payload.entries.any(
+      (e) => e.key != propia && e.value is String && detras.contains(e.value),
+    );
+    if (!nombra) return;
+    final cuelgan = _pendientesQueCuelgan([destino], pendientes);
+    await _jobs.release([
+      destino.id,
+      for (final q in _enOrdenDeCreacion(cuelgan)) q.id,
+    ], at: ahora);
   }
 
   /// Las `sync_version` que el servidor les dio a las filas de un lote vuelven
@@ -360,19 +524,67 @@ class SyncEngine {
   /// por fila: con 20.000 jobs, una consulta por fila es la diferencia entre
   /// subir en segundos y en minutos.
   Future<void> _devolverVersiones(
-      Map<String, Map<String, int>> versiones) async {
+    Map<String, Map<String, int>> versiones,
+  ) async {
     for (final MapEntry(key: entidad, value: porFila) in versiones.entries) {
-      await _store.applyVersions(entidad,
-          pkColumn: _specs.of(entidad).pk, versionPorFila: porFila);
+      await _store.applyVersions(
+        entidad,
+        pkColumn: _specs.of(entidad).pk,
+        versionPorFila: porFila,
+      );
       await _jobs.rebaseVersions(entidad, porFila);
     }
+  }
+
+  /// Los `PENDING` de [pendientes] que nombran una fila de [liberados] (la regla
+  /// de [FilasRetenidas]: como PK o como referencia), o algo que a su vez
+  /// cuelga de ellos. Son los que `release` tiene que pasar detrás del alta: si
+  /// quedaran delante, saldrían en el lote antes de la fila que nombran y el
+  /// servidor los rechazaría con `23503` en vez de dejarlos en espera (§2.2).
+  List<QueuedJob> _pendientesQueCuelgan(
+    List<QueuedJob> liberados,
+    List<QueuedJob> pendientes,
+  ) {
+    if (pendientes.isEmpty) return const [];
+    final retenidas = FilasRetenidas.de(_specs, liberados);
+    final propios = {for (final q in liberados) q.id};
+    final cuelgan = <String>{};
+    var crecio = true;
+    while (crecio) {
+      crecio = false;
+      for (final q in pendientes) {
+        if (propios.contains(q.id) || cuelgan.contains(q.id)) continue;
+        if (retenidas.nombrada(q.job) == null) continue;
+        cuelgan.add(q.id);
+        retenidas.retener(q.job);
+        crecio = true;
+      }
+    }
+    return [
+      for (final q in pendientes)
+        if (cuelgan.contains(q.id)) q,
+    ];
+  }
+
+  /// [jobs] por `createdAt`, con el orden en que vinieron como desempate
+  /// (`List.sort` no es estable).
+  List<QueuedJob> _enOrdenDeCreacion(List<QueuedJob> jobs) {
+    final conPosicion = [for (final (i, q) in jobs.indexed) (i, q)];
+    conPosicion.sort((a, b) {
+      final porFecha = a.$2.job.createdAt.compareTo(b.$2.job.createdAt);
+      return porFecha != 0 ? porFecha : a.$1.compareTo(b.$1);
+    });
+    return [for (final (_, q) in conPosicion) q];
   }
 
   /// Lo que cuelga, directa o indirectamente, de la fila [pk]: los `WAITING`
   /// cuyo `dependsOn` es ella, o una fila que a su vez cuelga de ella. En orden
   /// de creación.
-  List<QueuedJob> _colgadosDe(String pk, List<QueuedJob> enEspera,
-      {required List<QueuedJob> excepto}) {
+  List<QueuedJob> _colgadosDe(
+    String pk,
+    List<QueuedJob> enEspera, {
+    required List<QueuedJob> excepto,
+  }) {
     final fuera = {for (final q in excepto) q.id};
     final filas = {pk};
     final colgados = <String>{};
@@ -393,7 +605,7 @@ class SyncEngine {
     }
     return [
       for (final q in enEspera)
-        if (colgados.contains(q.id)) q
+        if (colgados.contains(q.id)) q,
     ];
   }
 
@@ -412,8 +624,10 @@ class SyncEngine {
       // Qué entidad cambió no altera lo que hay que hacer: bajar el delta.
       _realtimePending = true;
       _realtimeTimer?.cancel();
-      _realtimeTimer =
-          _zona.createTimer(realtimeDebounce, () => unawaited(_drainRealtime()));
+      _realtimeTimer = _zona.createTimer(
+        realtimeDebounce,
+        () => unawaited(_drainRealtime()),
+      );
     });
   }
 
@@ -430,7 +644,7 @@ class SyncEngine {
       adaptador.toSyncJson(row),
       clientOpId: clientOpId,
       // En un insert no hay versión previa que esperar (§5.4).
-      syncVersion: op == Op.insert ? null : adaptador.syncVersionOf(row),
+      syncVersion: op.esperaVersion ? adaptador.syncVersionOf(row) : null,
     );
   }
 
@@ -438,8 +652,10 @@ class SyncEngine {
     for (final adaptador in _adapters.values) {
       if (adaptador is SyncTableAdapter<T>) return adaptador;
     }
-    throw StateError('no hay SyncTableAdapter registrado para $T. '
-        'Pasalo en SyncEngine(adapters: [...])');
+    throw StateError(
+      'no hay SyncTableAdapter registrado para $T. '
+      'Pasalo en SyncEngine(adapters: [...])',
+    );
   }
 
   /// El adaptador de una entidad remota, si la app lo registró.
@@ -459,13 +675,15 @@ class SyncEngine {
     await settled;
   }
 
-  /// Sync manual (HU-SYNC-007). Corre **siempre**, incluso con ahorro de datos.
+  /// Sync manual (HU-SYNC-007): push y pull inmediatos. Corre **siempre**,
+  /// incluso con ahorro de datos y con datos móviles.
   Future<SyncOutcome> syncNow() {
     _verificarVivo();
     return _start(SyncTrigger.manual);
   }
 
-  /// Un disparador automático (§5.2). No corre con ahorro de datos activo.
+  /// Un disparador automático (§5.2). Con el ahorro de datos activo y solo
+  /// datos móviles sube igual, pero deja el pull para el Wi-Fi ([setDataSaver]).
   Future<SyncOutcome> trigger(SyncTrigger trigger) => _start(trigger);
 
   /// La cola de error, para mostrarla (RF-SY06).
@@ -475,6 +693,27 @@ class SyncEngine {
   /// que después va a [requeue].
   Future<List<QueuedJob>> errorQueue({int limit = 100}) =>
       _jobs.listInvalid(limit: limit);
+
+  /// Las operaciones que el servidor rechazó, para el «Ver detalle» de la
+  /// pantalla de estado (HU-SYNC-007): tabla, fecha, tipo y el último error,
+  /// **sin datos personales** (ni el payload ni los valores que el servidor
+  /// cita en su mensaje; ver [sanitizarError]).
+  ///
+  /// Del más reciente al más viejo. Para el payload entero, [errorQueue].
+  Future<List<FailedOperation>> failedOperations({int limit = 100}) async {
+    final fallidas = await _jobs.listInvalid(limit: limit);
+    return [
+      for (final q in fallidas)
+        FailedOperation(
+          jobId: q.id,
+          entity: q.job.entity,
+          op: q.job.op,
+          createdAt: q.job.createdAt,
+          code: q.code,
+          lastError: sanitizarError(q.message),
+        ),
+    ];
+  }
 
   /// Lo que está en espera (§2.2), en orden de creación: las escrituras que el
   /// servidor no aplicó por un conflicto ([JobState.blocked]) y lo que cuelga
@@ -491,6 +730,31 @@ class SyncEngine {
     _verificarVivo();
     await _jobs.requeue(jobId);
     await _emit();
+  }
+
+  /// «Reintentar todas las fallidas» (HU-SYNC-007): `INVALID` → `PENDING` para
+  /// todas. Devuelve cuántas reencoló. No dispara un ciclo: la pantalla sigue
+  /// con [syncNow], así el colportor ve el resultado de ese intento.
+  ///
+  /// Una que el servidor vuelva a rechazar vuelve a la cola de error con su
+  /// motivo; nada se pierde ni se reintenta solo.
+  Future<int> requeueAllInvalid() async {
+    _verificarVivo();
+    // De a páginas: reencolar saca de `INVALID` lo que se acaba de leer, así
+    // que la página siguiente es la que sigue. El tope es lo que había al
+    // empezar: lo que el servidor rechace mientras tanto no entra en esta vuelta.
+    final total = (await _jobs.status()).invalid;
+    var n = 0;
+    while (n < total) {
+      final pagina = await _jobs.listInvalid(limit: 200);
+      if (pagina.isEmpty) break;
+      for (final q in pagina) {
+        await _jobs.requeue(q.id);
+      }
+      n += pagina.length;
+    }
+    if (n > 0) await _emit();
+    return n;
   }
 
   /// Saca jobs de la cola de error para siempre. Devuelve cuántos sacó.
@@ -511,9 +775,33 @@ class SyncEngine {
     return n;
   }
 
-  /// Ahorro de datos (HU-SYNC-008). Solo afecta a los ciclos automáticos:
-  /// [syncNow] sigue funcionando.
-  void setDataSaver(bool on) => _dataSaver = on;
+  /// Ahorro de datos (HU-SYNC-008). Solo afecta al batch, y dentro del batch,
+  /// solo a **bajar**:
+  ///
+  /// - Con datos móviles, el delta (el «pull periódico» de cualquier ciclo
+  ///   automático) espera a que haya Wi-Fi. El ciclo no falla: sube lo pendiente
+  ///   y lo deja dicho en [SyncOutcome.pausedReason] y en
+  ///   [SyncStatus.pullPausedReason] (`data_saver_on_mobile`).
+  /// - **Lo que sube no se frena**: una venta, un cobro o una jornada salen por
+  ///   datos móviles igual que antes, en el mismo ciclo.
+  /// - Realtime sigue activo (es liviano) y [syncNow] corre siempre.
+  /// - El backup automático pide Wi-Fi: ver [automaticBackupAllowed].
+  void setDataSaver(bool on) {
+    _dataSaver = on;
+    // La pantalla de estado muestra el modo y, si hay un pull en pausa, el motivo.
+    unawaited(_emit().catchError((Object _) {}));
+  }
+
+  /// El ahorro de datos está activo (HU-SYNC-008).
+  bool get dataSaver => _dataSaver;
+
+  /// Si el backup **automático** (el de la noche, el del cierre de jornada)
+  /// puede correr ahora: con el ahorro de datos activo exige Wi-Fi
+  /// (HU-SYNC-008). Quien lo agenda lo consulta antes de llamar a
+  /// `backup.backupNow()`. El backup que el colportor pide a mano no pasa por
+  /// acá: lo pidió, y la pantalla le avisa del peso.
+  Future<bool> automaticBackupAllowed() async =>
+      !_dataSaver || await _estaEnWifi();
 
   /// Recuperación de dispositivo: el colportor perdió el celular (§7).
   ///
@@ -525,7 +813,30 @@ class SyncEngine {
   /// Precondición, del lado de la app: login en el dispositivo nuevo, sesiones
   /// del viejo revocadas y DB cifrada inicializada. El motor recibe la DB vacía
   /// y el JWT.
-  Future<RecoveryReport> recover() async {
+  ///
+  /// - [onProgress] recibe el paso en que va (el asistente de la vista 34).
+  /// - [cancel] corta la descarga del respaldo sin tocar la DB; ver
+  ///   [RecoveryCancelToken].
+  /// - [backup] es el servicio con el que se restaura, si no es el del motor:
+  ///   en un teléfono nuevo el respaldo está cifrado con la llave del teléfono
+  ///   viejo, que la persona recupera con su contraseña, y no es la que usa
+  ///   este motor para respaldar. Después del restore, el respaldo de este
+  ///   motor arranca de una base nueva.
+  /// - [keyId] limita el restore a la cadena de esa llave.
+  /// - [sources] restaura **varias cadenas juntas**, las de cada teléfono que
+  ///   la persona tuvo (contrato §7, «Varios respaldos de otros teléfonos»):
+  ///   cada una se baja con el servicio que tiene su llave, se fusionan por la
+  ///   fecha de cada fila en una sola operación, y el pull de la reconciliación
+  ///   parte del watermark de la cadena **más vieja**: tomar el más nuevo
+  ///   dejaría sin bajar lo que solo tenía la vieja. Si se pasa, [backup] y
+  ///   [keyId] se ignoran.
+  Future<RecoveryReport> recover({
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+    BackupService? backup,
+    String? keyId,
+    List<RecoverySource>? sources,
+  }) async {
     _verificarVivo();
     // Toma el mismo candado que los ciclos: si vuelve la red mientras el wizard
     // reconcilia, el trigger de conectividad no puede arrancar un pull en
@@ -536,7 +847,12 @@ class SyncEngine {
     final candado = Completer<SyncOutcome>();
     _running = candado.future;
     try {
-      return await _recuperar();
+      final fuentes = sources ??
+          [
+            if (backup ?? _backup case final servicio?)
+              RecoverySource(backup: servicio, keyId: keyId),
+          ];
+      return await _recuperar(onProgress, cancel, fuentes);
     } finally {
       _running = null;
       _correrPendiente();
@@ -546,11 +862,20 @@ class SyncEngine {
     }
   }
 
-  Future<RecoveryReport> _recuperar() async {
+  Future<RecoveryReport> _recuperar(
+    RecoveryProgressCallback? onProgress,
+    RecoveryCancelToken? cancel,
+    List<RecoverySource> fuentes,
+  ) async {
     final ahora = _clock();
-    BackupEntry? punta;
+    var hayRestore = false;
+    var parcial = false;
+    var partesAplicadas = 0;
+    var partesTotales = 0;
+    final puntas = <BackupEntry>[];
     DateTime? restauradoAntes;
     var problema = '';
+    var cadenasSalteadas = 0;
 
     // Fase 1 — restore desde Drive.
     //
@@ -562,25 +887,86 @@ class SyncEngine {
     final yaRestaurado = await _store.watermarkOf(_scopeRecovery);
 
     if (yaRestaurado != null) {
-      punta = null;
       restauradoAntes = DateTime.tryParse(yaRestaurado);
-    } else if (_backup != null && await _backup.isAuthorized) {
-      punta = await _backup.restore();
-      if (punta == null) {
-        final estado = await _backup.verifyChain();
+      // Un reintento no repite el restore ni trae las fechas de las cadenas:
+      // cuántas se saltearon sale de la marca guardada junto a la de
+      // recuperación (una marca vieja, sin ella, cuenta cero).
+      final salteadas = await _store.watermarkOf(_scopeRecoverySalteadas);
+      cadenasSalteadas = int.tryParse(salteadas ?? '') ?? 0;
+    } else if (fuentes.isNotEmpty && await fuentes.first.backup.isAuthorized) {
+      // El avance suma las partes de todas las cadenas: el «12/15 partes».
+      var totalDelAvance = 0;
+      if (fuentes.every((f) => f.keyId != null)) {
+        for (final f in fuentes) {
+          for (final c in await f.backup.candidateChains()) {
+            if (c.keyId == f.keyId) totalDelAvance += c.parts;
+          }
+        }
+      }
+      final bajadas = <DownloadedChain>[];
+      var antes = 0;
+      for (final f in fuentes) {
+        final bajada = await f.backup.downloadChain(
+          keyId: f.keyId,
+          partsBefore: antes,
+          partsTotal: totalDelAvance > 0 ? totalDelAvance : null,
+          onProgress: onProgress,
+          cancel: cancel,
+          waitForNetwork: _esperarLaRed,
+        );
+        if (bajada == null) continue;
+        bajadas.add(bajada);
+        antes += bajada.outcome.total;
+      }
+      cadenasSalteadas = fuentes.length - bajadas.length;
+      if (bajadas.isEmpty) {
+        final estado = await fuentes.first.backup.verifyChain();
         problema = estado.problems.map((p) => p.name).join(', ');
       } else {
+        await fuentes.first.backup.applyChains(
+          bajadas,
+          onProgress: onProgress,
+          cancel: cancel,
+        );
+        hayRestore = true;
+        for (final b in bajadas) {
+          puntas.add(b.outcome.tip);
+          parcial = parcial || b.outcome.partial;
+          partesAplicadas += b.outcome.applied;
+          partesTotales += b.outcome.total;
+          if (b.outcome.problem.isNotEmpty && problema.isEmpty) {
+            problema = b.outcome.problem;
+          }
+        }
+        // Lo restaurado conserva su fecha de escritura: el respaldo de este
+        // motor parte de una base completa, no de un incremental que no lo vería.
+        _backup?.requestNewBase();
         // El watermark que tenía la DB al momento del backup: desde ahí
-        // arranca la reconciliación, no desde cero.
+        // arranca la reconciliación, no desde cero. Con varias cadenas, el de la
+        // más vieja: lo que solo tenía la vieja tiene que bajar también.
+        final masVieja = puntas.reduce(
+          (a, b) => b.createdAt.isBefore(a.createdAt) ? b : a,
+        );
+        final masNueva = puntas.reduce(
+          (a, b) => b.createdAt.isAfter(a.createdAt) ? b : a,
+        );
         await _store.applyDelta(
           const {},
           scope: _scopeMirror,
-          watermark: punta.watermark,
+          watermark: masVieja.watermark,
+        );
+        // Antes que la marca de recuperación: si el corte cae entre las dos,
+        // el reintento vuelve a restaurar (no hay marca) en vez de contar de
+        // menos.
+        await _store.applyDelta(
+          const {},
+          scope: _scopeRecoverySalteadas,
+          watermark: '$cadenasSalteadas',
         );
         await _store.applyDelta(
           const {},
           scope: _scopeRecovery,
-          watermark: punta.createdAt.toIso8601String(),
+          watermark: masNueva.createdAt.toIso8601String(),
         );
       }
     }
@@ -591,32 +977,67 @@ class SyncEngine {
     // `client_op_id` puede haber vencido (TTL 24 h) pero las PK son UUID v7
     // del dispositivo original, así que un insert repetido vuelve
     // `duplicate`, no una segunda venta.
-    final replay = punta == null ? null : await _pushPending();
+    onProgress?.call(const RecoveryProgress(RecoveryPhase.replaying));
+    // Con la subida frenada por un 429 no se reenvía ahora: la cola restaurada
+    // queda en PENDING y sale cuando venza la espera.
+    final replay = hayRestore && _subidaFrenada() == null
+        ? await _pushPending()
+        : null;
 
     // Fase 3 — reconciliación: lo que subió después del backup.
     final reconciliadas = <String, int>{};
+    onProgress?.call(const RecoveryProgress(RecoveryPhase.reconciling));
     await _pullInto(_scopeMirror, _specs.pushable, reconciliadas);
 
     // Fase 4 — catálogos: réplica fresca, no se restauran del backup.
     await _pullInto(_scopeReplica, _specs.replicaOnly, reconciliadas);
     resubscribe();
 
-    _lastSuccessAt = _clock();
+    _lastSuccessAt = _ultimoPull = _clock();
+    await _anotarMeta(lastPullAt: _ultimoPull);
     await _emit();
+    onProgress?.call(const RecoveryProgress(RecoveryPhase.done));
 
     // En un reintento, la fecha sale de la marca: el reporte tiene que decir de
     // cuándo son los datos aunque el restore haya sido en el intento anterior.
-    final fechaDelBackup = punta?.createdAt ?? restauradoAntes;
+    final fechas = [for (final p in puntas) p.createdAt];
+    final fechaDelBackup = fechas.isEmpty
+        ? restauradoAntes
+        : fechas.reduce((a, b) => b.isAfter(a) ? b : a);
     return RecoveryReport(
       backupDate: fechaDelBackup,
+      backupDates: fechas,
       replayedJobs: replay?.pushed ?? 0,
       pulledEntities: reconciliadas,
       lostWindow: fechaDelBackup == null
           ? null
           : LostWindow(from: fechaDelBackup, to: ahora),
       chainProblem: problema,
+      partial: parcial,
+      partsRestored: partesAplicadas,
+      partsTotal: partesTotales,
+      skippedChains: cadenasSalteadas,
     );
   }
+
+  /// Espera a que vuelva la red, para que el restore siga con la parte donde
+  /// quedó. `false` si no vuelve en [_esperaMaximaDeRed]: ahí el restore falla y
+  /// la persona reintenta. Sin puerto de conectividad, no hay nada que esperar.
+  Future<bool> _esperarLaRed() async {
+    final red = _connectivity;
+    if (red == null) return true;
+    if (await red.isOnline) return true;
+    try {
+      await red.onlineChanges
+          .firstWhere((online) => online)
+          .timeout(_esperaMaximaDeRed);
+      return true;
+    } on TimeoutException {
+      return false;
+    }
+  }
+
+  static const _esperaMaximaDeRed = Duration(minutes: 10);
 
   /// Purga de `DONE` a los 7 días (§5.8).
   Future<int> purge({Duration retention = const Duration(days: 7)}) =>
@@ -626,10 +1047,14 @@ class SyncEngine {
     if (_disposed) return;
     _disposed = true;
     _criticalTimer?.cancel();
+    _esperaTimer?.cancel();
     _realtimeTimer?.cancel();
     await _realtimeSub?.cancel();
     await _realtimePort?.unsubscribe();
     await _conn?.cancel();
+    await _wifiSub?.cancel();
+    _backup?.alTerminarUnBackup = null;
+    _backup?.watermarkProvider = null;
     await _status.close();
   }
 
@@ -652,7 +1077,6 @@ class SyncEngine {
     if (_running != null) return;
     while (_realtimePending) {
       _realtimePending = false;
-      if (_dataSaver) return;
       await _start(SyncTrigger.realtime);
     }
   }
@@ -667,9 +1091,6 @@ class SyncEngine {
     // Los caminos internos —un trigger pendiente que se libera, el debounce de
     // realtime— no tiran: simplemente no hacen nada.
     if (_disposed) return SyncOutcome(trigger: trigger, skipped: true);
-    if (_dataSaver && trigger != SyncTrigger.manual) {
-      return SyncOutcome(trigger: trigger, skipped: true);
-    }
 
     // Un solo ciclo por vez: dos en paralelo se pisarían los jobs IN_FLIGHT y
     // podrían mandar el mismo dos veces.
@@ -701,7 +1122,11 @@ class SyncEngine {
     // §5.6: el evento solo dice que algo cambió allá. Subir la cola por eso
     // convertiría cada cambio de precio del administrador en tráfico de subida
     // desde todos los celulares a la vez.
-    final subida = trigger == SyncTrigger.realtime
+    //
+    // Tras un 429 no se sube nada hasta que venza su Retry-After (§5.1), y el
+    // ciclo sigue con el pull.
+    final frenada = trigger == SyncTrigger.realtime ? null : _subidaFrenada();
+    final subida = trigger == SyncTrigger.realtime || frenada != null
         ? (pushed: 0, invalidated: 0, conflicts: 0, failure: null)
         : await _pushPending();
     if (subida.failure != null) {
@@ -712,7 +1137,24 @@ class SyncEngine {
         pushed: subida.pushed,
         invalidated: subida.invalidated,
         conflicts: subida.conflicts,
+        pushPausedUntil: _subidaFrenada(),
         failure: subida.failure,
+      );
+    }
+
+    // Con la subida hecha, la fecha del último envío se actualiza sola: sale de
+    // los jobs que el servidor confirmó (`DONE`). Lo que sí se decide acá es si
+    // este ciclo baja el delta (HU-SYNC-008).
+    if (await _pausaDelPull(trigger) case final motivo?) {
+      _pullEnPausa = motivo;
+      await _emit();
+      return SyncOutcome(
+        trigger: trigger,
+        pushed: subida.pushed,
+        invalidated: subida.invalidated,
+        conflicts: subida.conflicts,
+        pausedReason: motivo,
+        pushPausedUntil: frenada,
       );
     }
 
@@ -720,6 +1162,9 @@ class SyncEngine {
     try {
       pulled = await _pull(_scopeReplica, _specs.pullable);
     } on TransportFailure catch (falla) {
+      // Un 429 del pull también pide esperar: lo que sube después va al mismo
+      // servidor.
+      _frenarSubidaSi429(falla);
       _anotarSesion(falla);
       await _emit();
       return SyncOutcome(
@@ -727,11 +1172,14 @@ class SyncEngine {
         pushed: subida.pushed,
         invalidated: subida.invalidated,
         conflicts: subida.conflicts,
+        pushPausedUntil: _subidaFrenada(),
         failure: falla,
       );
     }
 
-    _lastSuccessAt = _clock();
+    _lastSuccessAt = _ultimoPull = _clock();
+    await _anotarMeta(lastPullAt: _ultimoPull);
+    _pullEnPausa = null;
     _anotarSesion(null);
     await _emit();
     return SyncOutcome(
@@ -740,18 +1188,150 @@ class SyncEngine {
       invalidated: subida.invalidated,
       conflicts: subida.conflicts,
       pulled: pulled,
+      pushPausedUntil: frenada,
     );
+  }
+
+  /// Hasta cuándo sigue frenada la subida por un `429`, o `null` si no lo está.
+  /// Una espera vencida se descarta acá mismo, y también una que quedó más
+  /// lejos que [maxRetryAfter] (la hora del teléfono retrocedió: sin esto la
+  /// subida quedaría frenada horas).
+  DateTime? _subidaFrenada() {
+    final hasta = _subidaFrenadaHasta;
+    if (hasta == null) return null;
+    final ahora = _clock();
+    if (ahora.isBefore(hasta) && !hasta.isAfter(ahora.add(maxRetryAfter))) {
+      return hasta;
+    }
+    _subidaFrenadaHasta = null;
+    _esperaTimer?.cancel();
+    _esperaTimer = null;
+    return null;
+  }
+
+  /// Un `429` frena la subida hasta su `Retry-After`, con el tope de
+  /// [maxRetryAfter]; sin encabezado (o en cero) espera [defaultRetryAfter].
+  /// Cualquier otra falla se ignora acá. Si ya había una espera más larga, no
+  /// se acorta. Deja armado el timer que reanuda la subida al vencer.
+  void _frenarSubidaSi429(TransportFailure falla) {
+    if (falla.status != 429) return;
+    final pedido = falla.retryAfter;
+    final espera = pedido == null || pedido <= Duration.zero
+        ? defaultRetryAfter
+        : pedido;
+    final hasta = _clock().add(espera > maxRetryAfter ? maxRetryAfter : espera);
+    final actual = _subidaFrenadaHasta;
+    if (actual == null || hasta.isAfter(actual)) _subidaFrenadaHasta = hasta;
+    _armarReanudacion();
+  }
+
+  /// Programa un solo ciclo para cuando venza la espera. El ciclo sube lo que
+  /// haya `PENDING` (incluido lo que entró durante la espera); si el servidor
+  /// vuelve a contestar `429`, la espera nueva arma el siguiente timer, así
+  /// que hay a lo sumo un intento por cada `Retry-After` y nunca una ráfaga.
+  void _armarReanudacion() {
+    _esperaTimer?.cancel();
+    _esperaTimer = null;
+    final hasta = _subidaFrenadaHasta;
+    if (hasta == null || _disposed) return;
+    final falta = hasta.difference(_clock());
+    _esperaTimer = _zona.createTimer(
+      falta > Duration.zero ? falta : Duration.zero,
+      () {
+        _esperaTimer = null;
+        if (_disposed) return;
+        // Si el reloj todavía no llegó (se atrasó, o la espera se renovó),
+        // se vuelve a esperar lo que falta en vez de perder el aviso.
+        if (_subidaFrenada() != null) {
+          _armarReanudacion();
+          return;
+        }
+        unawaited(trigger(SyncTrigger.connectivity));
+      },
+    );
+  }
+
+  /// HU-SYNC-008: con el ahorro de datos activo y solo datos móviles, el ciclo
+  /// automático **no baja** el delta y devuelve el motivo.
+  ///
+  /// No aplica al sync manual (el colportor lo pidió), al realtime (es liviano:
+  /// un evento, un delta chico) ni a un teléfono sin red: ahí el pull falla como
+  /// siempre, y llamar «ahorro de datos» a eso mentiría sobre el motivo.
+  Future<String?> _pausaDelPull(SyncTrigger trigger) async {
+    if (!_dataSaver ||
+        trigger == SyncTrigger.manual ||
+        trigger == SyncTrigger.realtime) {
+      return null;
+    }
+    final red = _connectivity;
+    if (red == null) return null;
+    if (!await red.isOnline || await red.isOnWifi) return null;
+    return kDataSaverOnMobile;
+  }
+
+  /// Con qué red sale un envío, o `null` si no se sabe: sin puerto de
+  /// conectividad, sin red o si el puerto falla. Nunca se inventa un Wi-Fi: la
+  /// vista dice «por datos» solo cuando lo sabe, y no por eso se cae un envío.
+  Future<SyncNetwork?> _redActual() async {
+    final red = _connectivity;
+    if (red == null) return null;
+    try {
+      if (!await red.isOnline) return null;
+      return await red.isOnWifi ? SyncNetwork.wifi : SyncNetwork.mobile;
+    } on Object {
+      return null;
+    }
+  }
+
+  /// Anota en el teléfono lo que la pantalla de estado muestra después de
+  /// reiniciar (HU-SYNC-007). Si la DB local falla no pasa nada grave: la
+  /// bajada, el respaldo o el envío ya están hechos y el dato sigue en memoria;
+  /// lo único que se pierde es acordarse de ellos tras cerrar la app.
+  Future<void> _anotarMeta({
+    DateTime? lastPullAt,
+    DateTime? lastBackupAt,
+    DateTime? lastPushAt,
+    SyncNetwork? lastPushNetwork,
+  }) async {
+    final meta = _meta;
+    if (meta == null) return;
+    try {
+      await meta.write(
+        lastPullAt: lastPullAt,
+        lastBackupAt: lastBackupAt,
+        lastPushAt: lastPushAt,
+        lastPushNetwork: lastPushNetwork,
+      );
+    } on Object {
+      // Ver arriba.
+    }
+  }
+
+  /// Lo que quedó anotado en el teléfono. Sin puerto, o si falla la lectura,
+  /// no hay nada: el estado sale solo de lo que sabe el motor en memoria.
+  Future<SyncMeta> _leerMeta() async {
+    final meta = _meta;
+    if (meta == null) return const SyncMeta();
+    try {
+      return await meta.read();
+    } on Object {
+      return const SyncMeta();
+    }
+  }
+
+  /// Sin puerto de conectividad no hay forma de saber que es un dato móvil: se
+  /// asume Wi-Fi, que es el comportamiento de antes del ahorro de datos.
+  Future<bool> _estaEnWifi() async {
+    final red = _connectivity;
+    return red == null || await red.isOnWifi;
   }
 
   /// Vacía la cola hacia el backend. Es el corazón del ciclo y también la
   /// fase 2 de §7 (replay), que es el mismo trabajo sobre una cola restaurada.
   Future<
-      ({
-        int pushed,
-        int invalidated,
-        int conflicts,
-        TransportFailure? failure
-      })> _pushPending() async {
+    ({int pushed, int invalidated, int conflicts, TransportFailure? failure})
+  >
+  _pushPending() async {
     var pushed = 0, invalidated = 0, conflicts = 0;
 
     // Lo que quedó colgado en vuelo vuelve a la cola. En **cada** ciclo y no
@@ -762,6 +1342,8 @@ class SyncEngine {
     await _jobs.reclaimInFlight(inFlightLease);
 
     final tomados = await _jobs.claimPending(limit: batchLimit);
+    // La red por la que sale este envío, mirada antes de mandar (HU-SYNC-007).
+    final red = tomados.isEmpty ? null : await _redActual();
     // Un mapa una vez por ciclo, en vez de recorrer la lista por cada
     // resultado: con lotes de 500 son 500 búsquedas de 500 elementos.
     final idPorOpId = {for (final q in tomados) q.job.clientOpId: q.id};
@@ -788,7 +1370,9 @@ class SyncEngine {
     try {
       for (final armado in buildBatches(tomados)) {
         final lote = _conVersionVista(
-            await _sinLoQueEspera(armado, retenidas, idPorOpId), versionVista);
+          await _sinLoQueEspera(armado, retenidas, idPorOpId),
+          versionVista,
+        );
         // Lo que se retuvo ya no está en vuelo: quedó WAITING.
         final salen = {for (final job in lote.jobs) job.clientOpId};
         for (final job in armado.jobs) {
@@ -807,15 +1391,20 @@ class SyncEngine {
             // El lote entero rebotó por su contenido: reintentarlo tal cual daría
             // el mismo error para siempre (§5.1).
             for (final id in ids) {
-              await _jobs.markInvalid(id,
-                  code: falla.code, message: falla.message);
+              await _jobs.markInvalid(
+                id,
+                code: falla.code,
+                message: falla.message,
+              );
               sinResolver.remove(id);
             }
             invalidated += ids.length;
             continue;
           }
           // Transitorio: vuelven a PENDING y el ciclo se corta acá. Lo que quedó
-          // sin intentar ya está en PENDING, así que sube al próximo trigger.
+          // sin intentar ya está en PENDING, así que sube al próximo trigger
+          // (con un 429, el primero que llegue después de su Retry-After).
+          _frenarSubidaSi429(falla);
           await _jobs.markPending(sinResolver);
           sinResolver.clear();
           return (
@@ -826,65 +1415,90 @@ class SyncEngine {
           );
         }
 
-        final hechos = <String>[];
+        final hechos = <String>{};
         final versiones = <String, Map<String, int>>{};
-        for (final r in resultado.results) {
-          final id = idPorOpId[r.clientOpId];
-          if (id == null) continue;
-          switch (r.outcome) {
-            case JobOutcome.accepted:
-            case JobOutcome.duplicate:
-              final job = jobPorId[id]!;
-              if ((r.syncVersion, job.rowPk) case (final v?, final pk?)
-                  when job.op != Op.delete) {
-                (versiones[job.entity] ??= {})[pk] = v;
-              }
-              hechos.add(id);
-              pushed++;
-            case JobOutcome.conflict when r.serverRow != null:
-              // §5.4: el servidor gana por sync_version. Se aplica su fila y el
-              // job se cierra: no es un error del colportor, no va a la cola de
-              // error.
-              await _store.applyDelta(
-                {
-                  _entidadDe(tomados, id): [r.serverRow!]
-                },
-                scope: _scopeMirror,
-                watermark: await _store.watermarkOf(_scopeMirror) ?? '',
-              );
-              hechos.add(id);
-              conflicts++;
-            case JobOutcome.conflict:
-              // §2.2: sin server_row no hay con qué resolver. El servidor no
-              // guardó la fila y la colportora la resuelve en la vista 10; lo
-              // que cuelga de ella espera. Ninguno se cierra: un DONE acá es
-              // una venta que no sube nunca.
-              final dependeDe = r.dependsOn ?? '';
-              if (r.code == kCodigoEsperaAltaEnConflicto &&
-                  dependeDe.isNotEmpty) {
-                await _jobs.markWaiting(id,
-                    dependsOn: dependeDe, code: r.code, message: r.message);
-              } else {
-                // Una espera sin depends_on no dice qué esperar: si quedara
-                // WAITING, nada la liberaría. BLOCKED, por lo menos, se ve.
-                await _jobs.markBlocked(id, code: r.code, message: r.message);
-              }
-              retenidas.retener(jobPorId[id]!);
-              conflicts++;
-            case JobOutcome.invalid:
-              await _jobs.markInvalid(id, code: r.code, message: r.message);
-              invalidated++;
+        try {
+          for (final r in resultado.results) {
+            final id = idPorOpId[r.clientOpId];
+            if (id == null) continue;
+            switch (r.outcome) {
+              case JobOutcome.accepted:
+              case JobOutcome.duplicate:
+                final job = jobPorId[id]!;
+                // También la de un `delete`: la baja de esta app es lógica (`deleted_at`), la
+                // fila sigue en el teléfono y, si se reactiva, su próximo `update` tiene que
+                // salir con la versión que dejó la baja. Si la fila ya no está (baja física),
+                // `applyVersions` la saltea.
+                if ((r.syncVersion, job.rowPk) case (final v?, final pk?)) {
+                  (versiones[job.entity] ??= {})[pk] = v;
+                }
+                hechos.add(id);
+                pushed++;
+              case JobOutcome.conflict when r.serverRow != null:
+                // §5.4: el servidor gana por sync_version. Se aplica su fila y el
+                // job se cierra: no es un error del colportor, no va a la cola de
+                // error.
+                await _store.applyDelta(
+                  {
+                    _entidadDe(tomados, id): [r.serverRow!],
+                  },
+                  scope: _scopeMirror,
+                  // M1: la fila del servidor se aplica sin tocar el watermark.
+                  // Guardar `''` si no había ninguno rompe la fase 3 de
+                  // `recover()`: el backend contesta 22023 a un watermark vacío.
+                  watermark: null,
+                );
+                hechos.add(id);
+                conflicts++;
+              case JobOutcome.conflict:
+                // §2.2: sin server_row no hay con qué resolver. El servidor no
+                // guardó la fila y la colportora la resuelve en la vista 10; lo
+                // que cuelga de ella espera. Ninguno se cierra: un DONE acá es
+                // una venta que no sube nunca.
+                final dependeDe = r.dependsOn ?? '';
+                if (r.code == kCodigoEsperaAltaEnConflicto &&
+                    dependeDe.isNotEmpty) {
+                  await _jobs.markWaiting(
+                    id,
+                    dependsOn: dependeDe,
+                    code: r.code,
+                    message: r.message,
+                  );
+                } else {
+                  // Una espera sin depends_on no dice qué esperar: si quedara
+                  // WAITING, nada la liberaría. BLOCKED, por lo menos, se ve.
+                  await _jobs.markBlocked(id, code: r.code, message: r.message);
+                }
+                retenidas.retener(jobPorId[id]!);
+                conflicts++;
+              case JobOutcome.invalid:
+                await _jobs.markInvalid(id, code: r.code, message: r.message);
+                invalidated++;
+            }
+            if (!hechos.contains(id)) sinResolver.remove(id);
           }
-          sinResolver.remove(id);
-        }
-        await _devolverVersiones(versiones);
-        for (final MapEntry(key: entidad, value: porFila)
-            in versiones.entries) {
-          for (final MapEntry(key: pk, value: v) in porFila.entries) {
-            versionVista[(entidad, pk)] = v;
+        } finally {
+          // M2: lo que el servidor ya aceptó se cierra aunque un conflicto de
+          // más abajo haga reventar aplicar su fila (una DB local que falla).
+          // Si no, esos jobs quedarían `IN_FLIGHT` hasta el lease y su
+          // `sync_version` no volvería a las filas ni a la cola: una edición
+          // nueva de la misma fila saldría con la versión vieja.
+          await _devolverVersiones(versiones);
+          for (final MapEntry(key: entidad, value: porFila)
+              in versiones.entries) {
+            for (final MapEntry(key: pk, value: v) in porFila.entries) {
+              versionVista[(entidad, pk)] = v;
+            }
+          }
+          if (hechos.isNotEmpty) {
+            final ahora = _clock();
+            await _jobs.markDone(hechos, at: ahora);
+            _ultimoPush = ahora;
+            _ultimaRed = red;
+            await _anotarMeta(lastPushAt: ahora, lastPushNetwork: red);
+            sinResolver.removeAll(hechos);
           }
         }
-        if (hechos.isNotEmpty) await _jobs.markDone(hechos, at: _clock());
       }
     } on Object {
       if (sinResolver.isNotEmpty) await _jobs.markPending(sinResolver);
@@ -901,16 +1515,18 @@ class SyncEngine {
 
   /// [lote] con la `sync_version` que el servidor devolvió en este mismo
   /// ciclo para cada fila que ya viajó (ver `versionVista` en
-  /// [_pushPending]). Las altas no esperan versión.
+  /// [_pushPending]). Las altas y la unión de duplicados no esperan versión.
   PushBatch _conVersionVista(
-      PushBatch lote, Map<(String, String), int> versionVista) {
+    PushBatch lote,
+    Map<(String, String), int> versionVista,
+  ) {
     if (versionVista.isEmpty) return lote;
     var cambio = false;
     final jobs = <SyncJob>[];
     for (final job in lote.jobs) {
       final pk = job.rowPk;
       final vista = pk == null ? null : versionVista[(job.entity, pk)];
-      if (job.op == Op.insert || vista == null || vista == job.syncVersion) {
+      if (!job.op.esperaVersion || vista == null || vista == job.syncVersion) {
         jobs.add(job);
       } else {
         jobs.add(job.copyWith(syncVersion: vista));
@@ -924,8 +1540,11 @@ class SyncEngine {
   /// salir (§2.2). Si viajara, el servidor no lo podría aplicar: la fila no
   /// existe allá, y como el alta que la crea no va en este lote, no lo deja en
   /// espera sino `INVALID`.
-  Future<PushBatch> _sinLoQueEspera(PushBatch lote, FilasRetenidas retenidas,
-      Map<String, String> idPorOpId) async {
+  Future<PushBatch> _sinLoQueEspera(
+    PushBatch lote,
+    FilasRetenidas retenidas,
+    Map<String, String> idPorOpId,
+  ) async {
     if (retenidas.isEmpty) return lote;
     final salen = <SyncJob>[];
     for (final job in lote.jobs) {
@@ -1046,16 +1665,46 @@ class SyncEngine {
     // sobre una tabla que crece. Si nadie está mirando el estado, no hay a
     // quién informarle.
     if (!_status.hasListener) return;
+    final foto = await _foto();
+    if (_status.isClosed) return;
+    _status.add(foto);
+  }
+
+  /// El estado de ahora: lo que cuenta la cola más lo que sabe el motor.
+  Future<SyncStatus> _foto() async {
     final s = await _jobs.status();
-    _status.add(SyncStatus(
+    final meta = await _leerMeta();
+    // El envío anotado más nuevo, de memoria o del teléfono, con su red.
+    final (anotadoAt, anotadaRed) = switch ((_ultimoPush, meta.lastPushAt)) {
+      (final m?, final d?) when d.isAfter(m) => (d, meta.lastPushNetwork),
+      (final m?, _) => (m, _ultimaRed),
+      (null, final d?) => (d, meta.lastPushNetwork),
+      (null, null) => (null, null),
+    };
+    // El último envío se acuerda de los `DONE` de la cola (sobrevive a cerrar
+    // la app); el de memoria cubre un store que no lo sabe contar.
+    final ultimoPush = _masNuevo(anotadoAt, s.lastPushAt);
+    // Si la cola sabe de un envío más nuevo que el anotado (uno de antes de que
+    // el motor anotara la red), la red del anotado no es la de ese: no se sabe.
+    final redDelEnvio =
+        anotadoAt != null && (s.lastPushAt?.isAfter(anotadoAt) ?? false)
+        ? null
+        : anotadaRed;
+    return SyncStatus(
       pending: s.pending,
       inFlight: s.inFlight,
       invalid: s.invalid,
       blocked: s.blocked,
       waiting: s.waiting,
       lastSuccessAt: _lastSuccessAt,
+      lastPushAt: ultimoPush,
+      lastPullAt: _masNuevo(_ultimoPull, meta.lastPullAt),
+      lastBackupAt: _masNuevo(_ultimoBackup, meta.lastBackupAt),
+      lastPushNetwork: redDelEnvio,
+      pullPausedReason: _dataSaver ? _pullEnPausa : null,
+      dataSaver: _dataSaver,
       unauthorizedSince: _sinSesionDesde,
-    ));
+    );
   }
 
   // --- correspondencia entre lote y cola --------------------------------------
@@ -1068,11 +1717,22 @@ class SyncEngine {
   /// se haya cerrado en el medio.
   static const _scopeRecovery = 'recovery';
 
+  /// Cuántas cadenas del restore se saltearon por no tener una base usable. Se
+  /// guarda junto a [_scopeRecovery] para que el reintento tras un corte en la
+  /// fase 3 lo informe (#656).
+  static const _scopeRecoverySalteadas = 'recovery_skipped';
+
   List<String> _idsDe(PushBatch lote, Map<String, String> idPorOpId) => [
-        for (final job in lote.jobs)
-          if (idPorOpId[job.clientOpId] case final id?) id,
-      ];
+    for (final job in lote.jobs)
+      if (idPorOpId[job.clientOpId] case final id?) id,
+  ];
 
   String _entidadDe(List<QueuedJob> tomados, String id) =>
       tomados.firstWhere((q) => q.id == id).job.entity;
 }
+
+DateTime? _masNuevo(DateTime? a, DateTime? b) => switch ((a, b)) {
+  (final x?, final y?) => x.isAfter(y) ? x : y,
+  (final x?, null) => x,
+  (null, final y) => y,
+};

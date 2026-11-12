@@ -503,24 +503,19 @@ void main() {
       expect(a.cierres.guardados, isEmpty);
     });
 
-    // QA #346: el aviso se fija antes de esperar al reloj y nadie lo retira si la persona cierra
-    // sesión a propósito en esa ventana; el login sale con «Tu sesión se cerró porque…». Es previo
-    // al PR (el control de abajo falla igual con la app ya abierta); el camino temprano lo hace
-    // alcanzable justo después del arranque.
-    test(
-      'fin de sesión temprano y «Cerrar sesión» a propósito en esa ventana: el login sale sin '
-      'aviso ni saludo',
-      () async {
-        final a = await cierraAPropositoConElGuardadoEnEspera();
+    // QA #346, arreglado en #349: el aviso se fija antes de esperar al reloj y nadie lo retiraba si
+    // la persona cerraba sesión a propósito en esa ventana; el login salía con «Tu sesión se cerró
+    // porque…». Ahora el cierre a propósito retira el aviso y el saludo.
+    test('fin de sesión temprano y «Cerrar sesión» a propósito en esa ventana: el login sale sin '
+        'aviso ni saludo', () async {
+      final a = await cierraAPropositoConElGuardadoEnEspera();
 
-        expect(a.aviso, isNull, reason: 'cerró a propósito: no puede salir «se cerró tu sesión»');
-        expect(a.reingreso, isNull);
-      },
-      skip:
-          'QA #346: «Cerrar sesión» a propósito durante el guardado lento deja el aviso del fin de sesión (previo al PR)',
-    );
+      expect(a.aviso, isNull, reason: 'cerró a propósito: no puede salir «se cerró tu sesión»');
+      expect(a.reingreso, isNull);
+    });
 
-    test('control (previo al PR): la misma carrera con la app ya abierta deja el aviso', () async {
+    test('control (era previo al PR #346): la misma carrera con la app ya abierta tampoco deja el '
+        'aviso', () async {
       final reloj = _RelojPorTurnos();
       final a = _Arranque(guardada: _sesionGuardada(), reloj: reloj);
       expect(await a.leer(), isNotNull);
@@ -536,39 +531,35 @@ void main() {
 
       expect(a.sesion, isNull);
       expect(a.cierreGuardado, isNull);
-      expect(a.aviso, isNotNull, reason: 'documenta el comportamiento previo: el aviso queda');
+      expect(a.aviso, isNull, reason: 'cerró a propósito: no queda «se cerró tu sesión»');
+      expect(a.reingreso, isNull);
     });
   });
 
   group('QA #311 — el saludo del login sin sesión que cerrar', () {
-    test(
-      'sin sesión guardada ni motivo pendiente, con el último correo en el teléfono, el fin de '
-      'sesión temprano deja el correo en el saludo (igual que el arranque siguiente)',
-      () async {
-        final a = _Arranque(conPuerta: true, almacenInicial: {ClaveSegura.ultimoCorreo: _correo});
-        final lectura = a.leer();
-        await pumpEventQueue();
+    test('sin sesión guardada ni motivo pendiente, con el último correo en el teléfono, el fin de '
+        'sesión temprano deja el correo en el saludo (igual que el arranque siguiente)', () async {
+      final a = _Arranque(conPuerta: true, almacenInicial: {ClaveSegura.ultimoCorreo: _correo});
+      final lectura = a.leer();
+      await pumpEventQueue();
 
-        a.remoto.simularExpiracion(MotivoExpiracion.revocada);
-        await pumpEventQueue();
-        a.local.puerta!.complete();
-        await lectura;
-        await _asentar();
-        final enEsteArranque = a.reingreso;
+      a.remoto.simularExpiracion(MotivoExpiracion.revocada);
+      await pumpEventQueue();
+      a.local.puerta!.complete();
+      await lectura;
+      await _asentar();
+      final enEsteArranque = a.reingreso;
 
-        final b = _Arranque(almacenPrevio: a.almacen);
-        await b.leer();
-        await _asentar();
+      final b = _Arranque(almacenPrevio: a.almacen);
+      await b.leer();
+      await _asentar();
 
-        expect(b.reingreso?.email, _correo, reason: 'el arranque siguiente sí pone el correo');
-        expect(
-          enEsteArranque?.email,
-          b.reingreso?.email,
-          reason: 'el saludo del arranque en que llegó el aviso no debería diferir del siguiente',
-        );
-      },
-      skip:
-          'QA #346: sin sesión ni motivo pendiente, el fin de sesión temprano no lee el último correo',
-    );
+      expect(b.reingreso?.email, _correo, reason: 'el arranque siguiente sí pone el correo');
+      expect(
+        enEsteArranque?.email,
+        b.reingreso?.email,
+        reason: 'el saludo del arranque en que llegó el aviso no debería diferir del siguiente',
+      );
+    });
   });
 }

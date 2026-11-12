@@ -33,7 +33,8 @@ void main() {
       expect(ProyeccionMercator.tamanoMundo(MapaAlta.zoomPais), closeTo(enFlutterMap(6.5), 1e-6));
       expect(ProyeccionMercator.tamanoMundo(MapaAlta.zoomCalle), closeTo(enFlutterMap(17), 1e-6));
       expect(ProyeccionMercator.tamanoMundo(MapaAlta.zoomMinimo), closeTo(enFlutterMap(3), 1e-6));
-      expect(ProyeccionMercator.tamanoMundo(MapaAlta.zoomMaximo), closeTo(enFlutterMap(19), 1e-6));
+      // El máximo ya no es el 19 de #267: es el token `zoomMaximo` de lib-mapa (19 de MapLibre, #673).
+      expect(ProyeccionMercator.tamanoMundo(MapaAlta.zoomMaximo), closeTo(enFlutterMap(20), 1e-6));
       expect(
         ProyeccionMercator.tamanoMundo(MapaAlta.zoomMaximoVistaPrevia),
         closeTo(enFlutterMap(18), 1e-6),
@@ -44,7 +45,7 @@ void main() {
       expect(MapaAlta.zoomPais, 5.5);
       expect(MapaAlta.zoomCalle, 16);
       expect(MapaAlta.zoomMinimo, 2);
-      expect(MapaAlta.zoomMaximo, 18);
+      expect(MapaAlta.zoomMaximo, 19);
       expect(MapaAlta.zoomMaximoVistaPrevia, 17);
     });
 
@@ -106,13 +107,14 @@ void main() {
       expect(separacion, inInclusiveRange(6, 12));
     });
 
-    test('el zoom mínimo deja ver medio continente y el máximo, una cuadra', () {
-      // Con 360 dp de ancho, el mínimo muestra casi 6000 km (medio continente) y el máximo, unos 90 m.
+    test('el zoom mínimo deja ver medio continente y el máximo, media cuadra', () {
+      // Con 360 dp de ancho, el mínimo muestra casi 6000 km (medio continente) y el máximo (z19 de
+      // MapLibre, #673), unos 45 m.
       final enElMinimo = ProyeccionMercator.metrosPorPixel(_montevideo.lat, MapaAlta.zoomMinimo);
       final enElMaximo = ProyeccionMercator.metrosPorPixel(_montevideo.lat, MapaAlta.zoomMaximo);
 
       expect(enElMinimo * _ancho / 1000, inInclusiveRange(5000, 6500));
-      expect(enElMaximo * _ancho, inInclusiveRange(80, 100));
+      expect(enElMaximo * _ancho, inInclusiveRange(40, 50));
       expect(MapaAlta.zoomMinimo, lessThan(MapaAlta.zoomPais));
       expect(MapaAlta.zoomPais, lessThan(MapaAlta.zoomCalle));
       expect(MapaAlta.zoomCalle, lessThan(MapaAlta.zoomMaximo));

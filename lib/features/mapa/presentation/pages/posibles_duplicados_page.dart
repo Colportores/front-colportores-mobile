@@ -4,11 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/usecases/duplicados_ubicacion_use_cases.dart';
 import '../providers/duplicados_providers.dart';
 import '../providers/uniones_pendientes_notifier.dart';
 import '../widgets/hoja_comparar_duplicado.dart';
-import '../widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
+import '../widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta, InsigniaCirculo;
 import '../widgets/piezas_lista_ubicaciones.dart' show ColoresLista;
 import '../widgets/piezas_posibles_duplicados.dart';
 import '../widgets/textos_posibles_duplicados.dart';
@@ -24,7 +25,9 @@ import '../widgets/textos_posibles_duplicados.dart';
 ///
 /// Si una unión no se puede hacer, el aviso rojo queda FIJO debajo de la barra (no dentro de la lista,
 /// donde se iba de vista al bajar): con una falla dice por qué; con dos o más, cuántos pares son. Con
-/// el texto agrandado no pasa del 200 % y, si no entra, se desplaza: la lista siempre tiene lugar.
+/// el texto agrandado no pasa del 200 % y, si no entra, se desplaza: la lista siempre tiene lugar. Mientras
+/// el «quedaron unidas en una» está a la vista el aviso rojo se achica a una línea con la cuenta y
+/// «Reintentar» (#362), y ese otro aviso tampoco pasa del 200 %.
 class PosiblesDuplicadosPage extends ConsumerStatefulWidget {
   const PosiblesDuplicadosPage({super.key, required this.colportorId});
 
@@ -52,14 +55,31 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
   /// Lo más que ocupa el aviso rojo de la altura disponible: el resto es de la lista.
   static const _fraccionMaximaDelAviso = 0.5;
 
+  /// Lo que mide el aviso «quedaron unidas» mientras no se va solo (con lector de pantalla): la lista
+  /// lo suma abajo para poder llegar al «Revisar» del último par sin descartar el aviso. 0 si no hay
+  /// uno de esos a la vista (con los 8 s el aviso se va solo y la lista no se mueve).
+  final _altoAvisoQueSeQueda = ValueNotifier<double>(0);
+
+  /// De quién es la altura que se está siguiendo: el aviso que se va (o está saliendo) no la pisa.
+  Object? _medidorVigente;
+
+  /// Hay otra ruta encima de esta pantalla (la edición de «Editar uno», una hoja…). Con lector de
+  /// pantalla el aviso «unen al cerrar» no se va solo y, a la vista, dejaría en la cola (sin verse) los
+  /// avisos de la pantalla de arriba (p. ej. «Guardado sin conexión»): mientras está cubierta se lo
+  /// suelta sin confirmar la unión y se vuelve a mostrar cuando la pantalla queda arriba otra vez (#540).
+  var _cubierta = false;
+
   @override
   void dispose() {
-    _ocultarAviso();
+    _ocultarAvisoAlTerminarElCuadro();
+    _altoAvisoQueSeQueda.dispose();
     super.dispose();
   }
 
   Future<void> _abrirHoja(ParaRevisar par) async {
     if (_abriendoHoja) return;
+    // Con la cuenta restringida mientras esta pantalla estaba abierta no se empieza otra revisión.
+    if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendoHoja = true;
     try {
       await mostrarHojaCompararDuplicado(context, colportorId: widget.colportorId, par: par);
@@ -73,6 +93,11 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
   void _mostrarAviso(UnionPendiente union) {
     final mensajero = ScaffoldMessenger.maybeOf(context);
     if (mensajero == null) return;
+    // Cubierta por otra ruta, el aviso que no se va solo espera: vuelve en `_seguirCobertura`.
+    if (_cubierta && union.esperaElCierre) {
+      _ocultarAviso();
+      return;
+    }
     final notificador = ref.read(unionesPendientesProvider.notifier);
     final plazo = ref.read(plazoDeshacerUnionProvider);
     final mediaQuery = MediaQuery.of(context);
@@ -80,7 +105,10 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
     // Flutter mide la acción sin la escala del texto y la deja en una columna angosta).
     final textoGrande = mediaQuery.textScaler.scale(14) / 14 > 1.3;
     final texto = Text(
-      TextosPosiblesDuplicados.unidas(union.direccion),
+      // Con lector la unión todavía no se hizo: se hace al cerrar el aviso (mapa §2, #384).
+      union.esperaElCierre
+          ? TextosPosiblesDuplicados.unenAlCerrar(union.direccion)
+          : TextosPosiblesDuplicados.unidas(union.direccion),
       style: const TextStyle(fontSize: 13.5, color: Colors.white),
     );
     final deshacer = SnackBarAction(
@@ -91,37 +119,87 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
       },
     );
     _ocultarAviso();
+    final medidor = Object();
     final aviso = mensajero.showSnackBar(
       SnackBar(
         duration: plazo,
         // Con un lector de pantalla el aviso no se cierra solo (le da tiempo de leerlo y de llegar a
-        // «Deshacer»): se va cuando la unión se hace o con «Deshacer» (`_ocultarAviso`). Eso NO cumple
-        // WCAG 2.2.1 (límite de tiempo ajustable): la unión se hace igual a los 8 s, también con
-        // lector. Cuánto espera con lector lo decide Cristian (mobile-208-impl-p6-deshacer-lector).
-        persist: mediaQuery.accessibleNavigation,
+        // «Deshacer») y la unión tampoco corre contra un reloj (WCAG 2.2.1, decisión de Cristian 21/10,
+        // «Deshacer AA»): se hace cuando el aviso se cierra (`aviso.closed`, abajo), al salir de la
+        // pantalla o al unir otro par. «Deshacer» la cancela. Sin lector, 8 s para todos.
+        persist: union.esperaElCierre,
         // Sin arrastrar para cerrarlo: «Deshacer» es lo único que sale de ahí antes de los 8 s.
         dismissDirection: DismissDirection.none,
         backgroundColor: ColoresLista.tinta,
-        content: textoGrande
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  texto,
-                  Align(alignment: AlignmentDirectional.centerEnd, child: deshacer),
-                ],
-              )
-            : texto,
+        // El texto no pasa del 200 %, como el del aviso rojo (#362): a 300 % en un teléfono chico el
+        // aviso ocupaba más de la mitad de la pantalla y, con el aviso rojo, no dejaba ver la lista.
+        content: _EscalaAcotada(
+          child: _MideElAviso(
+            alMedir: union.esperaElCierre ? (alto) => _alMedirAviso(medidor, alto) : null,
+            child: textoGrande
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      texto,
+                      Align(alignment: AlignmentDirectional.centerEnd, child: deshacer),
+                    ],
+                  )
+                : texto,
+          ),
+        ),
         action: textoGrande ? null : deshacer,
       ),
     );
     _aviso = aviso;
     _mensajero = mensajero;
+    _medidorVigente = union.esperaElCierre ? medidor : null;
     unawaited(
-      aviso.closed.then((_) {
-        if (identical(_aviso, aviso)) _aviso = null;
+      aviso.closed.then((motivo) {
+        // Se cerró por otro lado (el lector lo descartó, otra pantalla limpió los avisos). Si lo
+        // cerramos nosotros (`_ocultarAviso`) `_aviso` ya es `null`.
+        if (!identical(_aviso, aviso)) return;
+        _aviso = null;
+        if (!mounted) return;
+        _medidorVigente = null;
+        _altoAvisoQueSeQueda.value = 0;
+        if (!union.esperaElCierre) return;
+        // Con lector la unión espera a que la persona cierre el aviso (`dismiss`). Si lo cerró otro
+        // aviso (`hide` / `remove`: p. ej. el del módulo bloqueado), la unión sigue esperando y el aviso
+        // vuelve a mostrarse (mapa §2, #384).
+        final sigueEsperando = identical(ref.read(unionesPendientesProvider).pendiente, union);
+        if (sigueEsperando &&
+            (motivo == SnackBarClosedReason.hide || motivo == SnackBarClosedReason.remove)) {
+          _mostrarAviso(union);
+        } else {
+          notificador.confirmarPendiente(union);
+        }
       }),
     );
+  }
+
+  /// Sigue si otra ruta tapa esta pantalla: el aviso que no se va solo se suelta (la unión sigue
+  /// esperando, no se confirma ni se cancela) y reaparece cuando la pantalla vuelve a quedar arriba.
+  void _seguirCobertura(bool cubierta) {
+    if (cubierta == _cubierta) return;
+    _cubierta = cubierta;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final pendiente = ref.read(unionesPendientesProvider).pendiente;
+      if (pendiente == null || !pendiente.esperaElCierre) return;
+      if (_cubierta) {
+        _ocultarAviso();
+      } else if (_aviso == null) {
+        _mostrarAviso(pendiente);
+      }
+    });
+  }
+
+  /// La altura que mide el aviso de esta pantalla que no se va solo; la de uno que ya no es el vigente
+  /// no cuenta.
+  void _alMedirAviso(Object medidor, double alto) {
+    if (!mounted || !identical(_medidorVigente, medidor)) return;
+    if (alto != _altoAvisoQueSeQueda.value) _altoAvisoQueSeQueda.value = alto;
   }
 
   /// Cierra el aviso si es el nuestro. Se limpia la cola entera (no `close()` del aviso): con uno que
@@ -129,7 +207,22 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
   void _ocultarAviso() {
     if (_aviso == null) return;
     _aviso = null;
+    _medidorVigente = null;
+    _altoAvisoQueSeQueda.value = 0;
     _mensajero?.clearSnackBars();
+  }
+
+  /// Lo mismo que [_ocultarAviso], pero después del cuadro en curso: en `dispose` el árbol está
+  /// bloqueado y, con un lector de pantalla, el cierre del aviso es inmediato y falla («ScaffoldMessenger
+  /// cannot be marked as needing to build because the framework is locked»). `_aviso` se suelta ya,
+  /// para que el cierre no cuente como un cierre de la persona (`aviso.closed`).
+  void _ocultarAvisoAlTerminarElCuadro() {
+    final mensajero = _mensajero;
+    if (_aviso == null || mensajero == null) return;
+    _aviso = null;
+    scheduleMicrotask(() {
+      if (mensajero.mounted) mensajero.clearSnackBars();
+    });
   }
 
   @override
@@ -143,6 +236,21 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
         _mostrarAviso(pendiente);
       }
     });
+
+    // Un par unido con la pantalla abierta queda oculto; si el servidor rechaza la unión, el teléfono
+    // la deshace y el par vuelve con su aviso: se suelta sin salir y volver a entrar (#679).
+    ref.listen(paresParaRevisarProvider(widget.colportorId), (_, lectura) {
+      final rechazadas = {
+        for (final p in lectura.value ?? const <ParaRevisar>[])
+          if (p.rechazoDeUnion != null) p.par.clave,
+      };
+      if (rechazadas.isNotEmpty) {
+        ref.read(unionesPendientesProvider.notifier).soltarRechazadas(rechazadas);
+      }
+    });
+
+    final ruta = ModalRoute.of(context);
+    _seguirCobertura(ruta != null && !ruta.isCurrent);
 
     final lectura = ref.watch(paresParaRevisarProvider(widget.colportorId));
     final uniones = ref.watch(unionesPendientesProvider);
@@ -171,6 +279,8 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
                   fallas: fallas,
                   paresVigentes: clavesDePares,
                   alturaMaxima: restricciones.maxHeight * _fraccionMaximaDelAviso,
+                  // Con el «quedaron unidas en una» a la vista el aviso rojo se achica (#362).
+                  compacto: uniones.pendiente != null,
                 ),
               Expanded(
                 child: pares == null
@@ -181,20 +291,23 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
                       )
                     : visibles.isEmpty
                     ? const _Vacio()
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                        itemCount: visibles.length + 1,
-                        itemBuilder: (context, i) {
-                          if (i == 0) return _Encabezado(cantidad: visibles.length);
-                          final item = visibles[i - 1];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _TarjetaPar(
-                              item: item,
-                              alRevisar: () => unawaited(_abrirHoja(item)),
-                            ),
-                          );
-                        },
+                    : ValueListenableBuilder<double>(
+                        valueListenable: _altoAvisoQueSeQueda,
+                        builder: (context, altoAviso, _) => ListView.builder(
+                          padding: EdgeInsets.fromLTRB(20, 0, 20, 24 + altoAviso),
+                          itemCount: visibles.length + 1,
+                          itemBuilder: (context, i) {
+                            if (i == 0) return _Encabezado(cantidad: visibles.length);
+                            final item = visibles[i - 1];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _TarjetaPar(
+                                item: item,
+                                alRevisar: () => unawaited(_abrirHoja(item)),
+                              ),
+                            );
+                          },
+                        ),
                       ),
               ),
             ],
@@ -285,7 +398,8 @@ class _Encabezado extends StatelessWidget {
   }
 }
 
-/// Un par: el motivo y la distancia, las dos ubicaciones y «Revisar».
+/// Un par: el motivo y la distancia, las dos ubicaciones y «Revisar». Si el servidor rechazó la
+/// unión de este par y quedó separado en el teléfono, arriba va el aviso (#679).
 class _TarjetaPar extends StatelessWidget {
   const _TarjetaPar({required this.item, required this.alRevisar});
 
@@ -306,6 +420,13 @@ class _TarjetaPar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (item.rechazoDeUnion case final codigo?) ...[
+            AvisoUnionRechazada(
+              key: Key('union_rechazada_${par.clave}'),
+              texto: TextosPosiblesDuplicados.avisoUnionRechazada(codigo),
+            ),
+            const SizedBox(height: 10),
+          ],
           EncabezadoMotivoPar(
             motivo: TextosPosiblesDuplicados.motivo(par.motivo),
             distancia: TextosPosiblesDuplicados.aDistancia(par.distanciaMetros),
@@ -354,11 +475,18 @@ class _TarjetaPar extends StatelessWidget {
 /// El texto no pasa del 200 % ([escalaMaximaDelAviso]): este aviso comparte la pantalla con la lista y,
 /// a 320×568, más grande no deja lugar. Si aun así no entra en [alturaMaxima], se desplaza solo el
 /// texto: «Reintentar» y «Entendido» quedan siempre enteros a la vista.
-class _AvisoFalla extends ConsumerWidget {
+///
+/// Mientras el aviso «quedaron unidas en una» está a la vista ([compacto]) el aviso rojo se achica a
+/// una línea con la cuenta y «Reintentar» (#362): los dos juntos taparían la lista en un teléfono chico.
+/// Tocar la línea muestra el aviso entero, con el texto completo y «Entendido», hasta que el otro aviso
+/// se va; entonces vuelve a su tamaño. Es el mismo nodo de región viva en las dos formas (la etiqueta es
+/// el texto entero): pasar de una a otra no hace que el lector repita el aviso.
+class _AvisoFalla extends ConsumerStatefulWidget {
   const _AvisoFalla({
     required this.fallas,
     required this.paresVigentes,
     required this.alturaMaxima,
+    required this.compacto,
   });
 
   final List<FallaUnion> fallas;
@@ -367,42 +495,218 @@ class _AvisoFalla extends ConsumerWidget {
   final Set<String>? paresVigentes;
   final double alturaMaxima;
 
+  /// Hay un «quedaron unidas en una» a la vista: el aviso se achica.
+  final bool compacto;
+
   /// El tamaño más grande del texto del aviso: el 200 % de WCAG 1.4.4, que a 320×568 deja la lista a la
   /// vista (revisión de #357).
   static const escalaMaximaDelAviso = 2.0;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AvisoFalla> createState() => _AvisoFallaState();
+}
+
+class _AvisoFallaState extends ConsumerState<_AvisoFalla> {
+  /// La persona tocó la línea y pidió ver el aviso entero mientras dura el «quedaron unidas».
+  var _completo = false;
+
+  @override
+  void didUpdateWidget(_AvisoFalla anterior) {
+    super.didUpdateWidget(anterior);
+    // Al irse el otro aviso se olvida lo pedido: el próximo «quedaron unidas» vuelve a empezar compacto.
+    if (!widget.compacto) _completo = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final notificador = ref.read(unionesPendientesProvider.notifier);
+    final fallas = widget.fallas;
+    final texto = TextosPosiblesDuplicados.falloUniones([for (final f in fallas) f.falla]);
+    final sePuedeReintentar = fallas.any((f) => f.sePuedeReintentar);
+    void reintentar() => notificador.reintentar(paresVigentes: widget.paresVigentes);
+    final compacto = widget.compacto && !_completo;
+    return _EscalaAcotada(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        child: Semantics(
+          liveRegion: true,
+          container: true,
+          label: texto,
+          child: compacto
+              ? _FallaCompacta(
+                  key: const Key('duplicados_falla_union'),
+                  texto: texto,
+                  cuenta: TextosPosiblesDuplicados.cuentaDeFallas(fallas.length),
+                  alVerCompleta: () => setState(() => _completo = true),
+                  alReintentar: sePuedeReintentar ? reintentar : null,
+                )
+              : AvisoAlta(
+                  key: const Key('duplicados_falla_union'),
+                  color: ColoresAlta.rojo,
+                  glyph: '!',
+                  texto: texto,
+                  conRegionViva: false,
+                  alturaMaxima: widget.alturaMaxima - 12,
+                  acciones: Wrap(
+                    children: [
+                      if (sePuedeReintentar)
+                        EnlaceAlta(
+                          key: const Key('duplicados_reintentar_union'),
+                          texto: TextosPosiblesDuplicados.reintentar,
+                          alPresionar: reintentar,
+                        ),
+                      EnlaceAlta(
+                        key: const Key('duplicados_descartar_falla'),
+                        texto: TextosPosiblesDuplicados.entendido,
+                        alPresionar: notificador.descartarFalla,
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dice cuánto mide el aviso «quedaron unidas» a la vista ([alMedir]) mientras exista, mirando el
+/// `SnackBar` que lo contiene después de cada cuadro (sin pedir ninguno: no hace que la pantalla gaste
+/// de más). Sin [alMedir] es [child] y nada más. No usa una `GlobalKey` en el `SnackBar`: durante la
+/// transición de página lo dibujan dos `Scaffold` a la vez.
+class _MideElAviso extends StatefulWidget {
+  const _MideElAviso({required this.alMedir, required this.child});
+
+  final ValueChanged<double>? alMedir;
+  final Widget child;
+
+  @override
+  State<_MideElAviso> createState() => _MideElAvisoState();
+}
+
+class _MideElAvisoState extends State<_MideElAviso> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.alMedir != null) _medirDespuesDelCuadro();
+  }
+
+  void _medirDespuesDelCuadro() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      double? alto;
+      context.visitAncestorElements((elemento) {
+        if (elemento.widget is! SnackBar) return true;
+        alto = elemento.size?.height;
+        return false;
+      });
+      final medida = alto;
+      if (medida != null) widget.alMedir?.call(medida);
+      _medirDespuesDelCuadro();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// El texto de [child] no pasa del 200 % ([_AvisoFalla.escalaMaximaDelAviso]): el aviso rojo y el
+/// «quedaron unidas en una» comparten la pantalla con la lista.
+class _EscalaAcotada extends StatelessWidget {
+  const _EscalaAcotada({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     return MediaQuery(
       data: mediaQuery.copyWith(
-        textScaler: mediaQuery.textScaler.clamp(maxScaleFactor: escalaMaximaDelAviso),
+        textScaler: mediaQuery.textScaler.clamp(maxScaleFactor: _AvisoFalla.escalaMaximaDelAviso),
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-        child: AvisoAlta(
-          key: const Key('duplicados_falla_union'),
-          color: ColoresAlta.rojo,
-          glyph: '!',
-          texto: TextosPosiblesDuplicados.falloUniones([for (final f in fallas) f.falla]),
-          alturaMaxima: alturaMaxima - 12,
-          acciones: Wrap(
-            children: [
-              if (fallas.any((f) => f.sePuedeReintentar))
-                EnlaceAlta(
-                  key: const Key('duplicados_reintentar_union'),
-                  texto: TextosPosiblesDuplicados.reintentar,
-                  alPresionar: () => notificador.reintentar(paresVigentes: paresVigentes),
+      child: child,
+    );
+  }
+}
+
+/// El aviso rojo en su forma de una línea: «! 2 no se pudieron unir ⌄  Reintentar». La línea entera es un
+/// botón que muestra el aviso completo; «Reintentar» (si hay algo para reintentar) va aparte, a un toque.
+/// Con el texto grande la cuenta y «Reintentar» pasan a renglones distintos (`Wrap`), cada uno de 48 dp
+/// como mínimo.
+class _FallaCompacta extends StatelessWidget {
+  const _FallaCompacta({
+    super.key,
+    required this.texto,
+    required this.cuenta,
+    required this.alVerCompleta,
+    required this.alReintentar,
+  });
+
+  /// El texto entero del aviso: lo dice el nodo de región viva de afuera y va en el nombre del botón.
+  final String texto;
+
+  /// «2 no se pudieron unir».
+  final String cuenta;
+  final VoidCallback alVerCompleta;
+
+  /// `null`: ninguna de las fallas se puede reintentar.
+  final VoidCallback? alReintentar;
+
+  @override
+  Widget build(BuildContext context) {
+    final reintentar = alReintentar;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(10, 2, 4, 2),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: ColoresAlta.rojo, width: 1.5),
+      ),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Semantics(
+            button: true,
+            container: true,
+            excludeSemantics: true,
+            label: '$cuenta. ${TextosPosiblesDuplicados.verAvisoCompleto}',
+            onTap: alVerCompleta,
+            child: InkWell(
+              key: const Key('duplicados_falla_ver_completa'),
+              borderRadius: BorderRadius.circular(10),
+              onTap: alVerCompleta,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const InsigniaCirculo(color: ColoresAlta.rojo, glyph: '!'),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          cuenta,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(Icons.expand_more, size: 20, color: ColoresAlta.tinta),
+                    ],
+                  ),
                 ),
-              EnlaceAlta(
-                key: const Key('duplicados_descartar_falla'),
-                texto: TextosPosiblesDuplicados.entendido,
-                alPresionar: notificador.descartarFalla,
               ),
-            ],
+            ),
           ),
-        ),
+          if (reintentar != null)
+            EnlaceAlta(
+              key: const Key('duplicados_reintentar_union'),
+              texto: TextosPosiblesDuplicados.reintentar,
+              alPresionar: reintentar,
+            ),
+        ],
       ),
     );
   }

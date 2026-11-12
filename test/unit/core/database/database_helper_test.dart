@@ -72,6 +72,33 @@ void main() {
       });
     });
 
+    group('dada una espera de bloqueo (el respaldo de la noche, #583)', () {
+      Future<int> esperaDeLaConexion(AppDatabase db) async {
+        final fila = await db.customSelect('PRAGMA busy_timeout').getSingle();
+        return fila.read<int>('timeout');
+      }
+
+      test('cuando abre, la conexión espera ese tiempo al candado de otra', () async {
+        final conEspera = DatabaseHelper(
+          directorio: () async => directorio,
+          directorioTemporal: () async => directorio,
+          esperaDeBloqueo: const Duration(seconds: 5),
+          logger: loggerMudo(),
+        );
+        addTearDown(conEspera.cerrar);
+
+        final db = await conEspera.abrir(_clave(1));
+
+        expect(await esperaDeLaConexion(db), 5000);
+      });
+
+      test('sin ella (la app) no cambia: la conexión no espera', () async {
+        final db = await helper.abrir(_clave(1));
+
+        expect(await esperaDeLaConexion(db), 0);
+      });
+    });
+
     group('dado que ya está abierta', () {
       setUp(() => helper.abrir(_clave(1)));
 

@@ -60,6 +60,8 @@ typedef EscrituraEdicion = ({
   DateTime baseUpdatedAt,
   CriterioDuplicadoUbicacion? duplicados,
   bool reduceAUnEspacio,
+  Espacio? espacioSiNoTiene,
+  String? justificacion,
 });
 
 /// El repositorio de ubicaciones de la edición: guarda la ubicación en memoria y deja que el test
@@ -186,12 +188,16 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
+    Espacio? espacioSiNoTiene,
+    String? justificacion,
   }) async {
     escrituras.add((
       nueva: nueva,
       baseUpdatedAt: baseUpdatedAt,
       duplicados: duplicados,
       reduceAUnEspacio: reduceAUnEspacio,
+      espacioSiNoTiene: espacioSiNoTiene,
+      justificacion: justificacion,
     ));
     final espera = bloqueoEscritura;
     if (espera != null) await espera.future;
@@ -209,6 +215,7 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
     required DateTime ahora,
     String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   }) async {
     bajas.add((id: id, baseUpdatedAt: baseUpdatedAt, motivo: motivo));
     final espera = bloqueoBaja;
@@ -239,6 +246,7 @@ final class RepoEdicionFalso with UbicacionRepositorySinModificar implements Ubi
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) => throw UnimplementedError();
 
   @override

@@ -611,6 +611,10 @@ void main() {
       datos.falloAlUnir = null;
       await _unir(tester, _parArtigas);
 
+      // Con el «quedaron unidas» a la vista el aviso rojo es una línea (#362): «Entendido» está a un
+      // toque, al mostrar el aviso entero.
+      expect(find.byKey(const Key('duplicados_descartar_falla')), findsNothing);
+      await _tocar(tester, find.byKey(const Key('duplicados_falla_ver_completa')));
       await _tocar(tester, find.byKey(const Key('duplicados_descartar_falla')));
 
       expect(_avisoRojo, findsNothing);

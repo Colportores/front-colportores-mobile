@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Recordatorios de las visitas (HU-NOT-002): flutter_local_notifications busca el ícono del aviso
+     por nombre (`@mipmap/ic_launcher`), y el recorte de recursos de una build de release lo tiraría
+     por no verlo referenciado: sin ícono el aviso no se muestra. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@mipmap/ic_launcher" />

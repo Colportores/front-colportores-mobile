@@ -173,6 +173,9 @@ void _tocarActualizarBajoElAviso(WidgetTester tester) {
 Future<void> _cerrarSesionDesdeConfiguracion(WidgetTester tester) async {
   await tester.tap(_configuracion);
   await tester.pumpAndSettle();
+  // Con la fila «Mostrar el aviso de privacidad» (#445) el botón queda bajo el pliegue de 800 × 600.
+  await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
+  await tester.pump();
   await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -423,8 +426,8 @@ void main() {
       expect(_principal, findsOneWidget);
     });
 
-    testWidgets('si ya entró a su inicio con el último estado conocido, la respuesta tardía no la '
-        'saca de ahí: queda guardada para el próximo arranque', (tester) async {
+    testWidgets('si ya entró a su inicio con el último estado conocido y la respuesta tardía '
+        'restringe, la lleva a la pantalla de su cuenta (#383)', (tester) async {
       final colgada = await _entrarSinRespuesta(tester);
       final usuarioId = _container.read(sesionProvider).value!.usuarioId;
       await _recordado.guardar(usuarioId, EstadoCuenta.activa);
@@ -435,10 +438,27 @@ void main() {
       colgada.complete();
       await tester.pumpAndSettle();
 
+      expect(_principal, findsNothing);
+      expect(_titulo, findsOneWidget);
+      expect(tester.takeException(), isNull);
+      expect(await _recordado.leer(usuarioId), EstadoCuenta.pendienteAsignacion);
+    });
+
+    testWidgets('si ya entró a su inicio con el último estado conocido y la respuesta tardía '
+        'habilita, no la saca de ahí', (tester) async {
+      final colgada = await _entrarSinRespuesta(tester, estado: EstadoCuenta.activa);
+      final usuarioId = _container.read(sesionProvider).value!.usuarioId;
+      await _recordado.guardar(usuarioId, EstadoCuenta.activa);
+      await _vencerElTope(tester);
+      expect(_principal, findsOneWidget);
+
+      colgada.complete();
+      await tester.pumpAndSettle();
+
       expect(_principal, findsOneWidget);
       expect(_titulo, findsNothing);
       expect(tester.takeException(), isNull);
-      expect(await _recordado.leer(usuarioId), EstadoCuenta.pendienteAsignacion);
+      expect(await _recordado.leer(usuarioId), EstadoCuenta.activa);
     });
 
     testWidgets('con un «Reintentar» consultando, la respuesta tardía se aplica, pero manda la del '

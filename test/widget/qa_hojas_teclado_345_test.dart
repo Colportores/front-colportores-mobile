@@ -28,9 +28,6 @@ import '../helpers/mapa_base_falso.dart' show VistaMapaFalsa;
 import '../helpers/modificar_ubicacion_qa_307_arnes.dart' as m;
 import '../helpers/qa_hojas_teclado_324_arnes.dart';
 
-/// Con `--dart-define=QA_VER_HALLAZGOS=true` los tests que documentan un hallazgo corren (y fallan).
-const _verHallazgos = bool.fromEnvironment('QA_VER_HALLAZGOS');
-
 const _rotuloEditar = 'EDITAR UBICACIÓN';
 
 Finder get _cerrar => find.byTooltip('Cerrar');
@@ -209,10 +206,8 @@ void main() {
   // ---------------------------------------------------------------------------------------------------
   group('QA #345 · M3 · el motivo de «Registrar» apagado se lee una sola vez', () {
     final casos = <(a.EstadoAlta, String)>[
-      (a.EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo),
       (a.EstadoAlta.sinGps, TextosAlta.marcaElPunto),
       (a.EstadoAlta.gpsImpreciso, TextosAlta.elegiPrecision),
-      (a.EstadoAlta.numeroEditado, TextosAlta.elegiElTipo),
       (a.EstadoAlta.sinGpsSinConexion, TextosAlta.marcaElPunto),
       (a.EstadoAlta.sinCiudades, TextosAlta.marcaElPunto),
     ];
@@ -256,11 +251,8 @@ void main() {
       (tester) async {
         final handle = tester.ensureSemantics();
         await a.abrirEn(tester, a.EstadoAlta.gpsPreciso);
-        await tester.tap(find.text('Casa'));
-        await a.asentar(tester);
         expect(a.registrarHabilitado(tester), isTrue);
         for (final motivo in [
-          TextosAlta.elegiElTipo,
           TextosAlta.marcaElPunto,
           TextosAlta.elegiPrecision,
           TextosAlta.elegiLaCiudad,
@@ -275,30 +267,23 @@ void main() {
       },
     );
 
-    testWidgets(
-      'el motivo cambia al resolver lo que falta y sigue habiendo una sola lectura en cada paso',
-      (tester) async {
-        final handle = tester.ensureSemantics();
-        await a.abrirEn(tester, a.EstadoAlta.gpsImpreciso, teclado: a.tecladoAbierto);
-        expect(_lecturas(tester, TextosAlta.elegiPrecision), 1);
-        await tester.ensureVisible(find.text(TextosAlta.continuar));
-        await tester.pump();
-        await tester.tap(find.text(TextosAlta.continuar));
-        await a.asentar(tester);
-        expect(_lecturas(tester, TextosAlta.elegiPrecision), 0, reason: 'el motivo viejo se fue');
-        expect(_lecturas(tester, TextosAlta.elegiElTipo), 1, reason: 'ahora falta el tipo');
-        await tester.ensureVisible(find.text('Casa'));
-        await tester.pump();
-        await tester.tap(find.text('Casa'));
-        await a.asentar(tester);
-        expect(a.registrarHabilitado(tester), isTrue);
-        expect(_lecturas(tester, TextosAlta.elegiElTipo), 0, reason: 'sin motivo, sin lectura');
-        final listo = tester.getSemantics(a.botonRegistrarFijo).getSemanticsData();
-        expect(listo.hint, isEmpty);
-        expect(listo.label, TextosAlta.registrar);
-        handle.dispose();
-      },
-    );
+    testWidgets('el motivo se va al resolver lo que falta y no queda ninguna lectura', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await a.abrirEn(tester, a.EstadoAlta.gpsImpreciso, teclado: a.tecladoAbierto);
+      expect(_lecturas(tester, TextosAlta.elegiPrecision), 1);
+      await tester.ensureVisible(find.text(TextosAlta.continuar));
+      await tester.pump();
+      await tester.tap(find.text(TextosAlta.continuar));
+      await a.asentar(tester);
+      expect(_lecturas(tester, TextosAlta.elegiPrecision), 0, reason: 'el motivo viejo se fue');
+      expect(a.registrarHabilitado(tester), isTrue, reason: 'el tipo ya viene en «Casa» (#665)');
+      final listo = tester.getSemantics(a.botonRegistrarFijo).getSemanticsData();
+      expect(listo.hint, isEmpty);
+      expect(listo.label, TextosAlta.registrar);
+      handle.dispose();
+    });
 
     testWidgets(
       'mientras guarda ("Registrando…") no hay motivo, ni pista ni texto; si falla, el botón vuelve '
@@ -306,8 +291,6 @@ void main() {
       (tester) async {
         final handle = tester.ensureSemantics();
         final montada = await a.abrirEn(tester, a.EstadoAlta.gpsPreciso);
-        await tester.tap(find.text('Casa'));
-        await a.asentar(tester);
         await _tocarCampo(tester, a.campoNumero, a.asentar);
         await tester.enterText(a.campoNumero, '1240');
         await a.asentar(tester);
@@ -316,11 +299,7 @@ void main() {
         await a.asentar(tester);
 
         expect(find.text(TextosAlta.registrando), findsOneWidget, reason: 'cargando, con contexto');
-        for (final motivo in [
-          TextosAlta.elegiElTipo,
-          TextosAlta.marcaElPunto,
-          TextosAlta.elegiPrecision,
-        ]) {
+        for (final motivo in [TextosAlta.marcaElPunto, TextosAlta.elegiPrecision]) {
           expect(find.text(motivo), findsNothing);
           expect(_lecturas(tester, motivo), 0);
         }
@@ -593,36 +572,33 @@ void main() {
   group('QA #345 · 07·04 · el diálogo no desborda mientras el teclado termina de bajar', () {
     for (final t in telefonos) {
       for (final escala in [1.0, 2.0, 3.0]) {
-        final hallazgo = t.tamano.width == 360 && escala == 3.0;
-        testWidgets(
-          '${t.nombre} · ${veces(escala)}${hallazgo ? ' · QA #345: el AlertDialog desborda 22 dp en los cuadros en que el teclado (300 dp) todavía baja' : ''}',
-          (tester) async {
-            await abrirEdicionQa(tester, tamano: t.tamano, escala: escala);
-            await tester.ensureVisible(m.campoNumero);
-            await tester.pump();
-            await tester.tap(m.campoNumero);
-            await tester.enterText(m.campoNumero, '1238');
-            await m.asentarConTeclado(tester);
-            expect(tester.view.viewInsets.bottom, greaterThan(0), reason: 'el teclado está arriba');
-            tester.takeException();
+        // 360×640 a 3× desbordaba 22 dp en los cuadros en que el teclado (300 dp) todavía bajaba (QA de
+        // #355, arreglado en #358: las acciones van en la zona que se desplaza).
+        testWidgets('${t.nombre} · ${veces(escala)}', (tester) async {
+          await abrirEdicionQa(tester, tamano: t.tamano, escala: escala);
+          await tester.ensureVisible(m.campoNumero);
+          await tester.pump();
+          await tester.tap(m.campoNumero);
+          await tester.enterText(m.campoNumero, '1238');
+          await m.asentarConTeclado(tester);
+          expect(tester.view.viewInsets.bottom, greaterThan(0), reason: 'el teclado está arriba');
+          tester.takeException();
 
-            await tester.tap(_cerrar, warnIfMissed: false);
-            // Lo que el framework hace al abrir el diálogo: pide ocultar el teclado en el primer cuadro y
-            // el sistema lo baja de a poco; el diálogo se arma con cada alto intermedio.
-            for (var cuadro = 0; cuadro < 20; cuadro++) {
-              await tester.pump(const Duration(milliseconds: 16));
-              final bajando = tester.view.viewInsets.bottom;
-              if (bajando > 0) m.ponerTeclado(tester, math.max(0, bajando - 20));
-              expect(
-                tester.takeException(),
-                isNull,
-                reason: 'cuadro $cuadro, teclado ${bajando.round()} dp',
-              );
-            }
-            expect(find.text('¿Descartar los cambios?'), findsOneWidget);
-          },
-          skip: hallazgo && !_verHallazgos, // skip: QA #345 — ver el título del test
-        );
+          await tester.tap(_cerrar, warnIfMissed: false);
+          // Lo que el framework hace al abrir el diálogo: pide ocultar el teclado en el primer cuadro y
+          // el sistema lo baja de a poco; el diálogo se arma con cada alto intermedio.
+          for (var cuadro = 0; cuadro < 20; cuadro++) {
+            await tester.pump(const Duration(milliseconds: 16));
+            final bajando = tester.view.viewInsets.bottom;
+            if (bajando > 0) m.ponerTeclado(tester, math.max(0, bajando - 20));
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: 'cuadro $cuadro, teclado ${bajando.round()} dp',
+            );
+          }
+          expect(find.text('¿Descartar los cambios?'), findsOneWidget);
+        });
       }
     }
   });

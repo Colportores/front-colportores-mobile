@@ -4,15 +4,16 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/services/activador_gps.dart';
 import '../../domain/services/proveedor_gps.dart';
+import '../../domain/services/seguidor_gps.dart';
 import '../../domain/value_objects/punto_capturado.dart';
 import 'plataforma_gps.dart';
 
-/// Adaptador de [ProveedorGps] y [ActivadorGps] sobre [PlataformaGps] (HU-UBI-001).
+/// Adaptador de [ProveedorGps], [SeguidorGps] y [ActivadorGps] sobre [PlataformaGps] (HU-UBI-001).
 ///
 /// Nunca lanza: cualquier falla de la plataforma es `Left(FailureGpsNoDisponible)` con el motivo
 /// que le sirve a la pantalla («Activar GPS»). Esta es la pantalla que pide el permiso, la primera
 /// vez que se abre el alta. Loguea en `[MAP]` sin coordenadas.
-final class ProveedorGpsPlataforma implements ProveedorGps, ActivadorGps {
+final class ProveedorGpsPlataforma implements ProveedorGps, SeguidorGps, ActivadorGps {
   ProveedorGpsPlataforma(
     this._plataforma, {
     this.limite = const Duration(seconds: 15),
@@ -26,6 +27,18 @@ final class ProveedorGpsPlataforma implements ProveedorGps, ActivadorGps {
 
   final AppLogger _log;
 
+  /// El último pedido del permiso contestó «negado para siempre». En Android, mirar el permiso
+  /// nunca lo dice (siempre da `denegado`): sin recordarlo, cada lectura lo volvería a pedir, el
+  /// sistema contestaría sin mostrar nada y, con «Activar GPS» recién tocado, la app taparía los
+  /// ajustes que se acababan de abrir (#679). Lo borra un permiso concedido o un pedido nuevo.
+  var _negadoParaSiempre = false;
+
+  Future<PermisoUbicacion> _pedirPermiso() async {
+    final permiso = await _plataforma.pedirPermiso();
+    _negadoParaSiempre = permiso == PermisoUbicacion.denegadoParaSiempre;
+    return permiso;
+  }
+
   @override
   Future<Either<Failure, LecturaGps>> posicionActual() async {
     try {
@@ -33,7 +46,10 @@ final class ProveedorGpsPlataforma implements ProveedorGps, ActivadorGps {
         return const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.servicioApagado));
       }
       var permiso = await _plataforma.permiso();
-      if (permiso == PermisoUbicacion.denegado) permiso = await _plataforma.pedirPermiso();
+      if (permiso == PermisoUbicacion.concedido) _negadoParaSiempre = false;
+      if (permiso == PermisoUbicacion.denegado && !_negadoParaSiempre) {
+        permiso = await _pedirPermiso();
+      }
       if (permiso != PermisoUbicacion.concedido) {
         return const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.permisoDenegado));
       }
@@ -47,14 +63,42 @@ final class ProveedorGpsPlataforma implements ProveedorGps, ActivadorGps {
   }
 
   @override
+  Stream<Either<Failure, LecturaGps>> seguir() async* {
+    try {
+      // Seguir no abre el diálogo del permiso: solo lo mira. Si ya no está (o la ubicación se apagó
+      // desde la última lectura) avisa por qué y termina; quien siguió ofrece «Activar GPS».
+      if (!await _plataforma.servicioActivo()) {
+        yield const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.servicioApagado));
+        return;
+      }
+      if (await _plataforma.permiso() != PermisoUbicacion.concedido) {
+        yield const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.permisoDenegado));
+        return;
+      }
+      // `await for` y no `yield*`: un error del plugin tiene que caer en el `catch` de abajo, y
+      // `yield*` lo reenviaría tal cual como error del stream.
+      await for (final lectura in _plataforma.seguir()) {
+        yield Right(lectura);
+      }
+    } on Object catch (e) {
+      _log.warn(LogModulo.map, 'GPS_SEGUIR_FAIL', 'se cortó el seguimiento del GPS', {
+        'causa': e.runtimeType.toString(),
+      });
+      yield const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.sinSenal));
+    }
+  }
+
+  @override
   Future<void> activar(MotivoSinGps motivo) async {
     try {
       switch (motivo) {
         case MotivoSinGps.servicioApagado:
           await _plataforma.abrirAjustesUbicacion();
         case MotivoSinGps.permisoDenegado:
+          // «Activar GPS» es un toque explícito: pregunta de nuevo aunque la última respuesta haya
+          // sido «para siempre» (el colportor pudo cambiarlo a «preguntar cada vez»).
           var permiso = await _plataforma.permiso();
-          if (permiso == PermisoUbicacion.denegado) permiso = await _plataforma.pedirPermiso();
+          if (permiso == PermisoUbicacion.denegado) permiso = await _pedirPermiso();
           if (permiso == PermisoUbicacion.denegadoParaSiempre) {
             await _plataforma.abrirAjustesApp();
           }

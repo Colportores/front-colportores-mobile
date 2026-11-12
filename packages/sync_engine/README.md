@@ -24,6 +24,9 @@ dart test        # ~1 s
 | §5.1 — estados `PENDING`/`IN_FLIGHT`/`INVALID`/`DONE`, sin retry counter | ✅ |
 | §2.2 — «en espera»: `BLOCKED`/`WAITING`, compactación y el mismo lote | ✅ [`core/retenidas.dart`](lib/src/core/retenidas.dart), [formato de cable](docs/formato-de-cable.md#en-espera-22) |
 | RF-SY06 — `engine.errorQueue()`: la cola de error, con código y job | ✅ |
+| HU-SYNC-007 — `engine.statusNow()` (conteos, última subida/bajada/backup), `failedOperations()` («Ver detalle», sin PII), `requeueAllInvalid()`, `syncNow()` | ✅ [`test/estado_y_ahorro_test.dart`](test/estado_y_ahorro_test.dart) |
+| HU-SYNC-007 — la última bajada, el último backup y la red del último envío (`SyncStatus.lastPushNetwork`: Wi-Fi o datos) sobreviven a reiniciar: el motor los anota en un `SyncMetaPort` (`sync_meta`, aparte de `sync_watermark`) | ✅ [`test/meta_persistente_test.dart`](test/meta_persistente_test.dart) |
+| HU-SYNC-008 — `setDataSaver()`: con datos móviles sube igual, el pull espera al Wi-Fi (`data_saver_on_mobile`), realtime y `syncNow()` siguen; `automaticBackupAllowed()` | ✅ [`test/estado_y_ahorro_test.dart`](test/estado_y_ahorro_test.dart) |
 | §5.2 — triggers: conectividad, app resumed, escritura crítica. Sin timer | ✅ |
 | §5.3 — idempotencia por `client_op_id` + PK v7 | ✅ |
 | §5.4 — conflictos LWW por `sync_version` | ✅ |
@@ -41,6 +44,7 @@ dart test        # ~1 s
 | §6 — `BffTransport`: el camino batch por HTTP | ✅ [`adapters/bff_transport.dart`](lib/src/adapters/bff_transport.dart) |
 | ADR-003 — compresión, SHA-256 e `Isolate.run` del backup | ✅ [`adapters/backup_codec.dart`](lib/src/adapters/backup_codec.dart) |
 | ADR-003, §6 — `DriveArchive`: el `appDataFolder` por HTTP, con la cadena en `appProperties` | ✅ [`adapters/drive_archive.dart`](lib/src/adapters/drive_archive.dart) |
+| HU-SYNC-005, HU-SYNC-009 — `GoogleDriveArchive`: Drive v3 real (subida multipart, paginación, `sha256Checksum` para verificar sin bajar, `ArchiveUnauthorized` / `ArchiveNoSpace` / `ArchiveSinToken`); `BackupService`: incremental desde la última lectura, rotación (base a 30 días o 30 parches, la vieja se borra recién con la nueva confirmada), `verifyIntegrity()` (cadena rota o eslabón corrupto → base nueva) | ✅ [`google_drive_archive_test.dart`](test/google_drive_archive_test.dart), [`backup_rotacion_test.dart`](test/backup_rotacion_test.dart), [`backup_test.dart`](test/backup_test.dart) |
 | `JobStorePort`, `LocalStorePort`, `SnapshotPort` sobre Drift + SQLCipher | ❌ en este repo. Los implementa la app en `lib/datos/` y se verifican con [`port_contracts.dart`](lib/port_contracts.dart); hoy el motor corre sobre los fakes. Es [#29](https://github.com/Colportores/front-colportores-mobile/issues/29) |
 | RF-AL06 — `AesGcmCrypto`: AES-256-GCM sobre el bloque comprimido | ✅ [`adapters/aes_gcm_crypto.dart`](lib/src/adapters/aes_gcm_crypto.dart) |
 | Adaptadores de plataforma: los cinco plugins, y la aceleración nativa del cifrado | ❌ |
@@ -249,10 +253,35 @@ milisegundo— y en la calle, donde las ventas están separadas por horas, cada 
 sigue saliendo sola. `engine.flush()` la saltea cuando no se puede esperar: al
 pasar la app a segundo plano, al cerrar la jornada.
 
-También quedó medido, sin arreglar, el costo de no compactar la outbox: editar
-la misma fila 51 veces manda 51 jobs, **51× más bytes que mandar solo el
-último**. Compactar cambia lo que el servidor ve, así que es una decisión del
-contrato y no del motor.
+También quedó medido el costo de no compactar la outbox: editar la misma fila
+51 veces mandaba 51 jobs, **51× más bytes que mandar solo el último**. Hoy el
+motor **compacta las escrituras `PENDING` de una misma fila**: en `stage()`, un
+`insert` o `update` nuevo se funde en el job `PENDING` anterior de esa fila (el
+payload fundido tiene el último valor de cada campo, y el job conserva su `op`
+y la `sync_version` esperada), así que las 51 ediciones suben como una. No se
+funde un `delete`, ni nada que ya esté `IN_FLIGHT`, `DONE` o enviado (el
+servidor ya lo vio). Es la decisión de «Fusión cola» (23/10) y la prueba está en
+[`test/version_de_vuelta_test.dart`](test/version_de_vuelta_test.dart).
+
+## Un `429` frena la subida (#188)
+
+Si el backend contesta `429`, el motor **no sube nada** hasta que pasa el
+`Retry-After` del encabezado, con un tope de 60 segundos (`maxRetryAfter`); sin
+encabezado, o en cero, espera 5 segundos (`defaultRetryAfter`). Los jobs
+vuelven a `PENDING` como en cualquier falla transitoria y los triggers que
+lleguen durante la espera no llaman al transporte: no hay ráfaga de reintentos.
+El pull sigue, y `SyncOutcome.pushPausedUntil` dice hasta cuándo espera la
+subida. Un `429` del pull también frena la subida.
+
+La espera frena **toda** la subida y no solo la entidad que rebotó: retener un
+alta y dejar salir lo que la nombra termina en `23503` y en jobs `INVALID`. Vive
+solo en memoria (reabrir la app empieza sin espera). Un solo timer despierta al
+motor cuando vence la espera y corre un ciclo que sube lo que haya `PENDING`
+(también lo que entró durante la espera): hay a lo sumo un intento por
+`Retry-After`, y si vuelve otro `429` la espera se renueva. Si el reloj del
+teléfono retrocede, una espera más lejana que el tope se descarta. Decisión de Cristian
+del 04/11; la prueba está en
+[`test/espera_del_429_test.dart`](test/espera_del_429_test.dart).
 
 ## Dependencias entre entidades — un agujero abierto
 

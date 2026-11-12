@@ -32,7 +32,7 @@ void main() {
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
       expect(fila.read<int>('user_version'), db.schemaVersion);
-      expect(db.schemaVersion, 9);
+      expect(db.schemaVersion, 37);
       expect(AppDatabase.versionEsquema, db.schemaVersion);
     });
 
@@ -47,12 +47,57 @@ void main() {
           'table espacio',
           'index espacio_ubicacion_idx',
           'table ubicacion_par_decidido',
+          'table ubicacion_union_local',
           'table campania_ciudad',
           'index campania_ciudad_ciudad_id_idx',
           'table zona',
           'index zona_campania_ciudad_idx',
           'table zona_vertice',
           'index zona_vertice_zona_idx',
+          'table persona',
+          'table espacio_persona',
+          'index espacio_persona_espacio_idx',
+          'index espacio_persona_persona_idx',
+          'table nota',
+          'index nota_objetivo_idx',
+          'table agenda',
+          'index agenda_colportor_idx',
+          'index agenda_espacio_persona_idx',
+          'table visita',
+          'index visita_colportor_idx',
+          'index visita_espacio_persona_idx',
+          'table house_status',
+          'table notificacion_historial',
+          'index notificacion_historial_recibida_idx',
+          'table producto',
+          'table coleccion',
+          'table producto_coleccion',
+          'index producto_coleccion_coleccion_idx',
+          'table precio_por_ciudad',
+          'index precio_por_ciudad_campania_ciudad_idx',
+          'index precio_por_ciudad_producto_idx',
+          'index precio_por_ciudad_coleccion_idx',
+          'table precio_general',
+          'index precio_general_producto_idx',
+          'index precio_general_coleccion_idx',
+          'table parametro_global',
+          'table stock',
+          'index stock_usuario_idx',
+          'table venta',
+          'index venta_colportor_idx',
+          'index venta_espacio_persona_idx',
+          'table venta_item',
+          'index venta_item_venta_idx',
+          'table entrega',
+          'index entrega_venta_idx',
+          'table devolucion',
+          'index devolucion_venta_idx',
+          'table deposito',
+          'table deuda_casa_cache',
+          'index deposito_ticket_idx',
+          'table ticket',
+          'table ticket_foto_local',
+          'table sync_meta',
         ]),
       );
     });
@@ -60,7 +105,7 @@ void main() {
     test('dado una DB nueva, cuando abre, loguea DB_CREADA con la versión', () async {
       await db.customSelect('SELECT 1').get();
 
-      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":9}']);
+      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":37}']);
     });
 
     test('dado una DB ya creada, cuando se vuelve a abrir, no loguea nada', () async {
@@ -100,7 +145,7 @@ void main() {
 
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
-      expect(fila.read<int>('user_version'), 9);
+      expect(fila.read<int>('user_version'), 37);
       expect(
         await _esquema(db),
         containsAll([
@@ -108,12 +153,40 @@ void main() {
           'table ubicacion',
           'table espacio',
           'table ubicacion_par_decidido',
+          'table ubicacion_union_local',
           'table campania_ciudad',
           'table zona',
           'table zona_vertice',
+          'table persona',
+          'table espacio_persona',
+          'table nota',
+          'table agenda',
+          'table visita',
+          'table house_status',
+          'table notificacion_historial',
+          'table producto',
+          'table coleccion',
+          'table producto_coleccion',
+          'table precio_por_ciudad',
+          'table precio_general',
+          'table parametro_global',
+          'table stock',
+          'table venta',
+          'table venta_item',
+          'table cobranza',
+          'table entrega',
+          'index entrega_venta_idx',
+          'table devolucion',
+          'index devolucion_venta_idx',
+          'table deposito',
+          'table deuda_casa_cache',
+          'index deposito_ticket_idx',
+          'table ticket',
+          'table ticket_foto_local',
+          'table sync_meta',
         ]),
       );
-      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":9}']);
+      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":37}']);
     });
   });
 }

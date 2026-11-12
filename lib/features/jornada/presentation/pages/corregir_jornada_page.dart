@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dartz/dartz.dart' show Either;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/domain/entities/sesion.dart';
+import '../../domain/entities/jornada.dart';
 import '../../domain/jornada_sin_cerrar.dart';
 import '../formato_jornada.dart';
 import '../providers/jornada_actual_notifier.dart';
@@ -29,6 +31,7 @@ class CorregirJornadaPage extends ConsumerStatefulWidget {
     required this.sesion,
     required this.inicio,
     this.inicioSiguiente,
+    this.finalizar,
   });
 
   final Sesion sesion;
@@ -39,6 +42,11 @@ class CorregirJornadaPage extends ConsumerStatefulWidget {
   /// Inicio de la jornada siguiente del mismo colportor, si hay una (viene de
   /// `FailureJornadaDeDiaAnterior`): el fin no puede pasarlo.
   final DateTime? inicioSiguiente;
+
+  /// Cómo se cierra la jornada con la hora elegida. Sin esto, la jornada en curso (la de Hoy). La
+  /// jornada que quedó abierta **con otra después** (la recuperación de dispositivo, vista 34) pasa
+  /// el cierre propio: no es la jornada en curso, y su tope es el inicio de la siguiente.
+  final Future<Either<Failure, Jornada>> Function(DateTime hora)? finalizar;
 
   @override
   ConsumerState<CorregirJornadaPage> createState() => _CorregirJornadaPageState();
@@ -51,6 +59,17 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
   bool _cerrando = false;
   String? _error;
 
+  /// Inicio de la jornada siguiente que la pantalla conoce. Arranca con la que trajo
+  /// `FailureJornadaDeDiaAnterior` y se actualiza si, al cerrar, el caso de uso encuentra otra: una
+  /// siguiente que llegó con la pantalla abierta (la trajo el motor de sync), #339.
+  late DateTime? _inicioSiguiente = widget.inicioSiguiente;
+
+  /// Último instante válido que el caso de uso informó al rechazar una hora (`hasta` de
+  /// `FailureHoraFueraDeRango`): si el tope real es menor que el que la pantalla calculó con su foto
+  /// vieja (llegó una siguiente con la pantalla abierta, #339), la hoja ofrece este rango y no
+  /// contradice el aviso. `null` mientras no se haya rechazado nada.
+  DateTime? _topeInformado;
+
   /// Si el último dibujo mostró el aviso de reloj atrasado: un toque más en «Elegir la hora» lo
   /// vuelve a anunciar (un aviso que ya está en pantalla no se lee otra vez solo).
   bool _relojAtrasadoVisible = false;
@@ -61,11 +80,15 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
   /// de uso ([JornadaSinCerrar]), con el inicio de la jornada siguiente como tope si hay una.
   ({DateTime primero, DateTime ultimo})? _rango(DateTime ahora) {
     final primero = JornadaSinCerrar.primerMinutoDelFin(widget.inicio).toLocal();
-    final tope = JornadaSinCerrar.topeDelFin(
+    var topeUtc = JornadaSinCerrar.topeDelFin(
       inicio: widget.inicio,
       ahora: ahora,
-      inicioSiguiente: widget.inicioSiguiente,
-    ).toLocal();
+      inicioSiguiente: _inicioSiguiente,
+    );
+    if (_topeInformado case final informado? when informado.isBefore(topeUtc)) {
+      topeUtc = informado;
+    }
+    final tope = topeUtc.toLocal();
     final ultimo = DateTime(tope.year, tope.month, tope.day, tope.hour, tope.minute);
     return ultimo.isBefore(primero) ? null : (primero: primero, ultimo: ultimo);
   }
@@ -80,7 +103,7 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
   /// porque no haya rango: con el reloj dentro del minuto del inicio tampoco hay rango, y ahí la
   /// siguiente puede estar horas después, así que decir "empezaron a la misma hora" sería falso.
   bool _sinHoraPorSiguiente(DateTime ahora) {
-    final siguiente = widget.inicioSiguiente;
+    final siguiente = _inicioSiguiente;
     return siguiente != null &&
         !_relojAtrasado(ahora) &&
         siguiente.isBefore(JornadaSinCerrar.primerMinutoDelFin(widget.inicio));
@@ -150,9 +173,10 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
       _error = null;
     });
 
-    final resultado = await ref
-        .read(jornadaActualProvider(widget.sesion.usuarioId).notifier)
-        .finalizar(hora: hora);
+    final cerrarOtra = widget.finalizar;
+    final resultado = await (cerrarOtra != null
+        ? cerrarOtra(hora)
+        : ref.read(jornadaActualProvider(widget.sesion.usuarioId).notifier).finalizar(hora: hora));
 
     if (!mounted) return;
 
@@ -164,9 +188,37 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
       return;
     }
 
+    // Una jornada siguiente llegó con la pantalla abierta y no deja ningún minuto (#339): el caso de
+    // uso devuelve la señal de la corrección con la siguiente actual. La pantalla la toma, suelta la
+    // hora que ya no sirve y se redibuja con el aviso de «misma hora» y la flecha para volver. Nunca
+    // se muestra un rango al revés ni se inventa un fin.
+    final falla = resultado.fold<Failure?>((failure) => failure, (_) => null);
+    if (falla is FailureJornadaDeDiaAnterior) {
+      setState(() {
+        _cerrando = false;
+        _inicioSiguiente = falla.inicioSiguiente;
+        _horaElegida = null;
+        _error = null;
+      });
+      return;
+    }
+
     resultado.fold(
       (failure) => setState(() {
         _cerrando = false;
+        // Una hora que ya no vale porque el tope real es menor (#339): se suelta —sin elegir otra
+        // por la persona— y la hoja toma el tope que informó el caso de uso. El aviso (con el rango
+        // real y qué hacer) queda a la vista hasta que elija otra hora.
+        if (failure case FailureHoraFueraDeRango(:final hasta)) {
+          _horaElegida = null;
+          // Solo si el tope es menor por una siguiente (que no se va): si lo fijara el reloj o las
+          // 12 h, el reloj puede arreglarse y el tope viejo quedaría de más.
+          final sinSiguiente = JornadaSinCerrar.topeDelFin(
+            inicio: widget.inicio,
+            ahora: ref.read(relojJornadaProvider)(),
+          );
+          if (hasta.isBefore(sinSiguiente)) _topeInformado = hasta;
+        }
         _error = switch (failure) {
           FailureHoraFueraDeRango(:final mensaje) => '$mensaje Elegí otra hora y volvé a intentar.',
           // Un fallo del sistema al guardar: qué pasó y qué hacer (el mismo texto que Hoy).
@@ -224,10 +276,11 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
     required bool sinHoraPorSiguiente,
   }) {
     final notaDelDia = horaElegida == null ? null : _notaDelDia(horaElegida);
-    // Sin ninguna hora que ofrecer por la jornada siguiente (o mientras cierra) no hay nada que
-    // elegir: el toque no responde y el texto se ve apagado. Con el reloj atrasado el toque sí
-    // responde (anuncia el aviso), así que sigue encendido.
-    final elegirApagado = _cerrando || sinHoraPorSiguiente;
+    // Sin ninguna hora que ofrecer (por la jornada siguiente o porque el reloj del teléfono está
+    // dentro del minuto del inicio) o mientras cierra, no hay nada que elegir: el toque no responde
+    // y el texto se ve apagado. Con el reloj atrasado el toque sí responde (anuncia el aviso), así
+    // que sigue encendido.
+    final elegirApagado = _cerrando || (sinHoraValida && !relojAtrasado);
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(

@@ -44,7 +44,10 @@ final class FinalizarJornadaParams extends Equatable {
 ///    caer al día siguiente**, aunque cruce la medianoche: una jornada iniciada a las 23:59 es
 ///    válida, y no queda trabada sin una hora posible. Sin el margen de 30 min, porque es una
 ///    corrección, no un ajuste del momento. Fuera de ese rango, `Left(FailureHoraFueraDeRango)`
-///    con el rango real: nunca se ajusta en silencio ni se inventa un fin.
+///    con el rango real: nunca se ajusta en silencio ni se inventa un fin. Si en ese rango no queda
+///    ningún minuto (la jornada siguiente empezó en el mismo minuto que ésta y llegó con la
+///    pantalla abierta), no se devuelve un rango al revés: sale `Left(FailureJornadaDeDiaAnterior)`
+///    con la jornada siguiente actual, la señal de la corrección (#339).
 /// 3. Si no, la cierra con `fin = now()` en UTC y truncado al milisegundo (la precisión de la DB
 ///    local, como en `IniciarJornadaUseCase`), `updated_at = now()`, y devuelve la jornada
 ///    cerrada: la pantalla arma el resumen con [Jornada.duracion].
@@ -78,6 +81,12 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
 
   /// Cuánto hacia atrás se puede marcar el fin (HU-JOR-002).
   static const margenHaciaAtras = Duration(minutes: 30);
+
+  /// El reloj del teléfono quedó antes del inicio de la jornada: el aviso de la HU, sin rango.
+  static const _relojAtrasado = FailureValidacion(
+    campos: {'hora': 'La hora del teléfono es anterior al inicio de la jornada'},
+    mensaje: JornadaSinCerrar.avisoRelojAtrasado,
+  );
 
   final JornadaRepository _repository;
   final DisparadorBackup _backup;
@@ -131,18 +140,27 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
           ahora: ahora,
           inicioSiguiente: inicioSiguiente,
         );
-        if (!hora.isAfter(abierta.inicio) || hora.isAfter(tope)) {
+        final primerMinuto = JornadaSinCerrar.primerMinutoDelFin(abierta.inicio);
+        if (tope.isBefore(primerMinuto)) {
+          // No queda ningún minuto válido (la jornada siguiente empezó en el mismo minuto que ésta,
+          // #339): un rango al revés ("entre las 22:01 y las 22:00") no le sirve a nadie. Se
+          // devuelve la señal de la corrección, ahora con la jornada siguiente que hay, para que
+          // la pantalla la actualice, diga que no hay hora para cerrarla y deje volver. La jornada
+          // sigue abierta y nunca se inventa un fin.
           return Left(
-            FailureHoraFueraDeRango(
-              desde: JornadaSinCerrar.primerMinutoDelFin(abierta.inicio),
-              hasta: tope,
-            ),
+            FailureJornadaDeDiaAnterior(inicio: abierta.inicio, inicioSiguiente: inicioSiguiente),
           );
+        }
+        if (!hora.isAfter(abierta.inicio) || hora.isAfter(tope)) {
+          return Left(FailureHoraFueraDeRango(desde: primerMinuto, hasta: tope));
         }
         fin = hora;
       } else if (elegida == null) {
         fin = ahora;
       } else {
+        // El reloj del teléfono quedó antes del inicio (lo atrasaron a mano y la hora elegida es
+        // de antes): ningún minuto es válido, y el rango que saldría de acá sería al revés (#339).
+        if (ahora.isBefore(abierta.inicio)) return const Left(_relojAtrasado);
         final hace30 = _alMinuto(ahora.subtract(margenHaciaAtras));
         final desde = abierta.inicio.isAfter(hace30) ? abierta.inicio : hace30;
         final hora = _alMilisegundo(elegida);
@@ -154,12 +172,7 @@ final class FinalizarJornadaUseCase implements UseCase<Jornada, FinalizarJornada
 
       if (fin.isBefore(abierta.inicio)) {
         // Solo pasa si el reloj del teléfono quedó antes del inicio (lo atrasaron a mano).
-        return const Left(
-          FailureValidacion(
-            campos: {'hora': 'La hora del teléfono es anterior al inicio de la jornada'},
-            mensaje: JornadaSinCerrar.avisoRelojAtrasado,
-          ),
-        );
+        return const Left(_relojAtrasado);
       }
 
       final resultado = await _repository.finalizar(

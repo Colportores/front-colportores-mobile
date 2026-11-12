@@ -275,7 +275,7 @@ void main() {
       await _entrarSinConexion(tester);
 
       expect(tester.widget<FilledButton>(_actualizar).onPressed, isNotNull);
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
       expect(find.byKey(const Key('espera_configuracion')), findsOneWidget);
     });
   });
@@ -427,6 +427,9 @@ void main() {
 
       await tester.tap(find.byKey(const Key('espera_configuracion')));
       await tester.pumpAndSettle();
+      // Con la fila «Mostrar el aviso de privacidad» (#445) el botón queda bajo el pliegue de 800 × 600.
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -445,6 +448,9 @@ void main() {
 
       await tester.tap(find.byKey(const Key('espera_configuracion')));
       await tester.pumpAndSettle();
+      // Con la fila «Mostrar el aviso de privacidad» (#445) el botón queda bajo el pliegue de 800 × 600.
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));

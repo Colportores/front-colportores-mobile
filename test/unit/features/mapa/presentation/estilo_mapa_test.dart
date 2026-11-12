@@ -1,7 +1,6 @@
 // El estilo MapLibre que se arma a partir del de backend (#286): es JSON puro, se prueba sin la
 // vista nativa.
 import 'dart:convert';
-import 'dart:io';
 import 'dart:ui' show Color;
 
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
@@ -9,8 +8,11 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_map
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/estilo_mapa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/marcador_cercano.dart';
+import 'package:colportores_mobile/features/mapa/presentation/mapa_base/marcador_estado.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../../helpers/assets_de_lib_mapa.dart';
 
 const _montevideo = Coordenadas(lat: -34.88761, lon: -56.13024);
 const _recursos = '/data/user/0/uy.colportores/files/mapa/basemaps-5.7.2-1';
@@ -44,7 +46,7 @@ void main() {
   late Map<String, dynamic> base;
 
   setUpAll(() {
-    estiloBase = File('assets/mapa/estilo/colportores.json').readAsStringSync();
+    estiloBase = estiloDeLibMapa();
     base = jsonDecode(estiloBase) as Map<String, dynamic>;
   });
 
@@ -93,14 +95,14 @@ void main() {
       for (final fuente in fuentes) {
         for (final rango in ['0-255', '256-511', '8192-8447']) {
           expect(
-            File('assets/mapa/glyphs/$fuente/$rango.pbf').existsSync(),
+            archivoDeLibMapa('glyphs/$fuente/$rango.pbf').existsSync(),
             isTrue,
             reason: '$fuente/$rango.pbf',
           );
         }
       }
       for (final archivo in ['grayscale.json', 'grayscale.png', 'grayscale@2x.json']) {
-        expect(File('assets/mapa/sprites/$archivo').existsSync(), isTrue, reason: archivo);
+        expect(archivoDeLibMapa('sprites/$archivo').existsSync(), isTrue, reason: archivo);
       }
     });
   });
@@ -278,7 +280,7 @@ void main() {
         final fuentes = (c['layout'] as Map<String, dynamic>?)?['text-font'] as List<dynamic>?;
         if (fuentes == null) continue;
         for (final fuente in fuentes) {
-          expect(Directory('assets/mapa/glyphs/$fuente').existsSync(), isTrue);
+          expect(carpetaDeLibMapa('glyphs/$fuente').existsSync(), isTrue);
         }
       }
     });
@@ -308,11 +310,19 @@ void main() {
             final layout = (c['layout'] as Map<String, dynamic>?) ?? const {};
             expect(layout.containsKey('text-font'), isFalse, reason: c['id'] as String);
             expect(layout.containsKey('text-field'), isFalse, reason: c['id'] as String);
-            // La etiqueta de «cerca tuyo» es la única capa de símbolos que queda: su imagen no sale
-            // del sprite del estilo sino de la que la app registra en el mapa (`addImage`).
-            if (c['id'] == ConstructorEstiloMapa.capaCercano) {
+            // La etiqueta de «cerca tuyo», la insignia de estado y el cuadrado de la casa son las
+            // únicas capas de símbolos que quedan: su imagen no sale del sprite del estilo sino de
+            // la que la app registra en el mapa (`addImage`).
+            if (const [
+              ConstructorEstiloMapa.capaCercano,
+              ConstructorEstiloMapa.capaEstado,
+              ConstructorEstiloMapa.capaCuadrado,
+            ].contains(c['id'])) {
               expect(c['type'], 'symbol');
               expect(layout['icon-image'], ['get', 'imagen']);
+            } else if (c['id'] == ConstructorEstiloMapa.capaCuadradoAro) {
+              expect(c['type'], 'symbol');
+              expect(layout['icon-image'], MarcadorEstado.nombreAro);
             } else {
               expect(c['type'], isNot('symbol'), reason: c['id'] as String);
               expect(layout.containsKey('icon-image'), isFalse, reason: c['id'] as String);
@@ -504,14 +514,27 @@ void main() {
           PuntoMapa(id: 'd', coordenadas: _montevideo, estilo: EstiloPunto.seleccionado),
           PuntoMapa(id: 'e', coordenadas: _montevideo, estilo: EstiloPunto.nuevo),
           PuntoMapa(id: 'f', coordenadas: _montevideo, estilo: EstiloPunto.gps),
+          PuntoMapa(
+            id: 'g',
+            coordenadas: _montevideo,
+            estilo: EstiloPunto.conEstado,
+            variante: VarianteMarcador.ventaCompleta,
+          ),
+          PuntoMapa(
+            id: 'h',
+            coordenadas: _montevideo,
+            estilo: EstiloPunto.cuadrado,
+            variante: VarianteMarcador.noContesto,
+            etiqueta: '12',
+          ),
         ];
         List<String> ids(Map<String, dynamic> geojson) => [
           for (final f in geojson['features'] as List<dynamic>)
             ((f as Map<String, dynamic>)['properties'] as Map<String, dynamic>)['id'] as String,
         ];
 
-        expect(ids(ConstructorEstiloMapa.coleccionPuntos(puntos)), ['a', 'b']);
-        expect(ids(ConstructorEstiloMapa.coleccionPuntosLibres(puntos)), ['c', 'd', 'e', 'f']);
+        expect(ids(ConstructorEstiloMapa.coleccionPuntos(puntos)), ['a', 'b', 'g']);
+        expect(ids(ConstructorEstiloMapa.coleccionPuntosLibres(puntos)), ['c', 'd', 'e', 'f', 'h']);
         expect(
           {for (final e in EstiloPunto.values) e.name: e.sinAgrupar},
           {
@@ -521,6 +544,9 @@ void main() {
             'seleccionado': true,
             'nuevo': true,
             'gps': true,
+            'conEstado': false,
+            'cuadrado': true,
+            'cuadradoSeleccionado': true,
           },
         );
       });
@@ -592,9 +618,10 @@ void main() {
         expect(layout['icon-image'], ['get', 'imagen']);
         // La punta de abajo de la imagen cae sobre la ubicación.
         expect(layout['icon-anchor'], 'bottom');
-        // Ninguna se esconde ni esconde a otra: son pocas y todas tienen que verse.
+        // Ninguna se esconde: son pocas y todas tienen que verse. Ocupan su lugar (#673): el número de
+        // puerta de OSM que queda debajo se esconde (decisión P4 de lib-mapa).
         expect(layout['icon-allow-overlap'], isTrue);
-        expect(layout['icon-ignore-placement'], isTrue);
+        expect(layout['icon-ignore-placement'], isFalse);
         expect(layout.containsKey('text-field'), isFalse, reason: 'el número va en la imagen');
       });
 
@@ -693,6 +720,156 @@ void main() {
           }
         },
       );
+
+      group('el estado de la casa (vista 39)', () {
+        const insignia = 'colportores:estado:ventaCompleta';
+        const cuadrado = 'colportores:cuadrado:ventaCompleta';
+
+        Map<String, dynamic> propiedades(Map<String, dynamic> geojson, String id) {
+          final f = (geojson['features'] as List<dynamic>).cast<Map<String, dynamic>>().singleWhere(
+            (f) => (f['properties'] as Map<String, dynamic>)['id'] == id,
+          );
+          return f['properties'] as Map<String, dynamic>;
+        }
+
+        test('de lejos, la casa con estado lleva su insignia solo si ya está registrada', () {
+          const puntos = [
+            PuntoMapa(
+              id: 'v',
+              coordenadas: _montevideo,
+              estilo: EstiloPunto.conEstado,
+              variante: VarianteMarcador.ventaCompleta,
+            ),
+          ];
+
+          final con = ConstructorEstiloMapa.coleccionPuntos(puntos, imagenes: {insignia});
+          final sin = ConstructorEstiloMapa.coleccionPuntos(puntos);
+
+          expect(propiedades(con, 'v')['imagen'], insignia);
+          expect(propiedades(sin, 'v').containsKey('imagen'), isFalse);
+          // El respaldo se pinta con el color del estado.
+          expect(propiedades(sin, 'v')['fondo'], '#1F6E3A');
+          expect(propiedades(sin, 'v')['variante'], 'ventaCompleta');
+        });
+
+        test('acercada, la casa es un cuadrado con el número en dos renglones', () {
+          const puntos = [
+            PuntoMapa(
+              id: 'c',
+              coordenadas: _montevideo,
+              estilo: EstiloPunto.cuadrado,
+              variante: VarianteMarcador.ventaCompleta,
+              etiqueta: '3307',
+            ),
+            PuntoMapa(
+              id: 's',
+              coordenadas: _montevideo,
+              estilo: EstiloPunto.cuadradoSeleccionado,
+              variante: VarianteMarcador.ventaCompleta,
+              etiqueta: '12',
+            ),
+          ];
+
+          final geojson = ConstructorEstiloMapa.coleccionPuntosLibres(puntos, imagenes: {cuadrado});
+
+          expect(propiedades(geojson, 'c')['numero'], '33\n07');
+          expect(propiedades(geojson, 'c')['imagen'], cuadrado);
+          expect(propiedades(geojson, 's')['numero'], '12');
+          expect(propiedades(geojson, 's')['tinta'], '#FFFFFF');
+        });
+
+        test('los puntos sin estado conservan exactamente las propiedades de siempre', () {
+          final geojson = ConstructorEstiloMapa.coleccionPuntos(const [
+            PuntoMapa(id: 'm1', coordenadas: _montevideo),
+          ]);
+
+          expect(propiedades(geojson, 'm1'), {'id': 'm1', 'estilo': 'contexto'});
+        });
+
+        test('las capas del estado y del cuadrado existen, leen de su fuente y responden al '
+            'toque', () {
+          final estilo = construir(_config(agrupar: true));
+
+          expect(
+            capa(estilo, ConstructorEstiloMapa.capaEstado)['source'],
+            ConstructorEstiloMapa.fuentePuntos,
+          );
+          expect(
+            capa(estilo, ConstructorEstiloMapa.capaEstadoRespaldo)['source'],
+            ConstructorEstiloMapa.fuentePuntos,
+          );
+          for (final id in [
+            ConstructorEstiloMapa.capaCuadradoAro,
+            ConstructorEstiloMapa.capaCuadrado,
+            ConstructorEstiloMapa.capaCuadradoRespaldo,
+            ConstructorEstiloMapa.capaCuadradoNumero,
+          ]) {
+            expect(
+              capa(estilo, id)['source'],
+              ConstructorEstiloMapa.fuentePuntosLibres,
+              reason: id,
+            );
+          }
+          expect(
+            ConstructorEstiloMapa.capasTocables,
+            containsAll([
+              ConstructorEstiloMapa.capaEstado,
+              ConstructorEstiloMapa.capaEstadoRespaldo,
+              ConstructorEstiloMapa.capaCuadrado,
+              ConstructorEstiloMapa.capaCuadradoRespaldo,
+            ]),
+          );
+        });
+
+        test('sin los recursos no hay capa de texto para el número, pero sí el cuadrado', () {
+          final sin = construirSinRecursos(_config());
+          final ids = [for (final c in capas(sin)) c['id'] as String];
+
+          expect(ids, isNot(contains(ConstructorEstiloMapa.capaCuadradoNumero)));
+          expect(ids, contains(ConstructorEstiloMapa.capaCuadrado));
+          expect(ids, contains(ConstructorEstiloMapa.capaCuadradoRespaldo));
+          final numero = capa(construir(_config()), ConstructorEstiloMapa.capaCuadradoNumero);
+          expect((numero['layout'] as Map<String, dynamic>)['text-field'], ['get', 'numero']);
+        });
+
+        test('el número va anclado arriba a la izquierda, alineado a la izquierda y a 3 dp del '
+            'borde: la esquina de abajo a la derecha es del símbolo', () {
+          final numero = capa(construir(_config()), ConstructorEstiloMapa.capaCuadradoNumero);
+          final layout = numero['layout'] as Map<String, dynamic>;
+
+          expect(layout['text-anchor'], 'top-left');
+          expect(layout['text-justify'], 'left');
+          expect(layout['text-size'], 12);
+          // 20 dp del centro al borde menos 3 de margen, en ems de 12 dp.
+          expect(layout['text-offset'], everyElement(closeTo(-17 / 12, 1e-9)));
+          expect(layout['text-offset'], hasLength(2));
+        });
+
+        test('cada casa se dibuja una sola vez: o con la imagen o con el respaldo', () {
+          final estilo = construir(_config());
+          final conImagen = capa(estilo, ConstructorEstiloMapa.capaCuadrado)['filter'] as List;
+          final respaldo =
+              capa(estilo, ConstructorEstiloMapa.capaCuadradoRespaldo)['filter'] as List;
+
+          expect(conImagen.last, ['has', 'imagen']);
+          expect(respaldo.last, [
+            '!',
+            ['has', 'imagen'],
+          ]);
+        });
+
+        test('el seleccionado toma el color de su estado y, sin él, el blanco de siempre', () {
+          final estilo = construir(_config());
+          final paint =
+              capa(estilo, ConstructorEstiloMapa.capaSeleccionado)['paint'] as Map<String, dynamic>;
+
+          expect(paint['circle-color'], [
+            'coalesce',
+            ['get', 'fondo'],
+            '#FFFFFF',
+          ]);
+        });
+      });
 
       test('el seleccionado lleva un aro doble, blanco y azul, debajo del marcador', () {
         final estilo = construir(_config());

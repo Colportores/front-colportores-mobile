@@ -1274,7 +1274,8 @@ void main() {
         var ahora = base;
         await abrirDesdeElAlta(tester, ahora: () => ahora, hace: const Duration(seconds: 20));
         expect(find.text('Reenviar en 40s'), findsOneWidget);
-        expect(tester.widget<LinearProgressIndicator>(progreso).value, closeTo(40 / 60, 0.0001));
+        // Relleno del botón (#335): lo transcurrido de los 60 s, de izquierda a derecha.
+        expect(tester.widget<FractionallySizedBox>(progreso).widthFactor, closeTo(20 / 60, 0.0001));
 
         ahora = ahora.add(const Duration(seconds: 40));
         await tester.pump(const Duration(seconds: 40));
@@ -1853,8 +1854,8 @@ void main() {
       expect(volver, greaterThan(650));
     });
 
-    testWidgets('A02 reenviado: el aviso de éxito reemplaza el texto y la cuenta regresiva muestra '
-        'su barra de avance', (tester) async {
+    testWidgets('A02 reenviado: el aviso de éxito reemplaza el texto y la cuenta regresiva rellena '
+        'el botón', (tester) async {
       final remote = AuthRemoteDataSourceEnMemoria(
         credenciales: const {'lucia.silva@correo.com': 'Secreto123'},
       );
@@ -1868,18 +1869,18 @@ void main() {
       expect(find.text('Te reenviamos el correo. Puede tardar unos minutos.'), findsOneWidget);
       expect(find.text('Te enviamos un correo a'), findsNothing);
       expect(find.text('Reenviar en 60s'), findsOneWidget);
-      final progreso = tester.widget<LinearProgressIndicator>(
+      final progreso = tester.widget<FractionallySizedBox>(
         find.byKey(const Key('verificacion_email_progreso')),
       );
-      expect(progreso.value, 1);
+      expect(progreso.widthFactor, 0);
 
       await tester.pump(const Duration(seconds: 15));
       expect(find.text('Reenviar en 45s'), findsOneWidget);
       expect(
         tester
-            .widget<LinearProgressIndicator>(find.byKey(const Key('verificacion_email_progreso')))
-            .value,
-        0.75,
+            .widget<FractionallySizedBox>(find.byKey(const Key('verificacion_email_progreso')))
+            .widthFactor,
+        0.25,
       );
     });
 
