@@ -110,8 +110,8 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
   ///
   /// - Con una cuenta de Drive (16G·02): primero la hoja «Recuperar tu respaldo», que dice de qué
   ///   cuenta se trae; «Ahora no» no hace nada más.
-  /// - Sin Drive conectado (16G·03): primero la conexión con Google (16D·02) y, si quedó conectado,
-  ///   el asistente. Si no se conectó, el aviso de «no conectamos tu Drive» (16D·07), como la fila
+  /// - Sin Drive conectado (16G·03): primero la conexión con Google (16D·02), sin el respaldo de
+  ///   confirmación (#707), y, si quedó conectado, el asistente. Si no se conectó, el aviso de «no conectamos tu Drive» (16D·07), como la fila
   ///   «Cuenta Drive».
   ///
   /// No puede haber nada escuchando la base mientras se recupera, así que la app se reinicia por
@@ -141,7 +141,9 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
           if (empezar != true || !mounted) return;
         case DriveSinConectar():
           final avisoCancelado = ref.read(avisoDriveCanceladoProvider.notifier)..ocultar();
-          final conexion = await mostrarHojaConectarDrive(context);
+          // Sin el respaldo de confirmación del teléfono vacío (#707, decisión de Cristian del
+          // 11/11, «Resp. vacío»): el asistente encuentra solo los respaldos viejos.
+          final conexion = await mostrarHojaConectarDrive(context, conPrimerRespaldo: false);
           if (!mounted) return;
           if (conexion is DriveNoQuedoConectado) avisoCancelado.mostrar();
           if (conexion is! DriveQuedoConectado) return;
