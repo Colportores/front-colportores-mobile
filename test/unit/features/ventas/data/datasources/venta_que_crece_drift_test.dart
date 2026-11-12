@@ -585,6 +585,37 @@ void main() {
       },
     );
 
+    // Repro de la revisión de #709 (ronda 1): la cita sumada se mueve en la Agenda a la hora de la de
+    // antes y «Entregado hoy» se toca primero sobre ella (la que quedó sin grupo propio).
+    test(
+      'movida a la hora de la otra: «Entregado hoy» de la que quedó sin grupo entrega y cierra las dos',
+      () async {
+        final (:antes, despues: _) = await dosCitas();
+        final agenda = AgendaLocalDataSourceDrift(
+          db,
+          encolador: encolador,
+          estadoDeLasCasas: HouseStatusUpdaterDrift(db, encolador: encolador),
+        );
+        await agenda.modificar(
+          CambiosDeAgenda(
+            agendaId: 'a-2',
+            tipo: TipoAgenda.entrega,
+            fechaProgramada: antes,
+            idNota: 'nota-1',
+          ),
+          ahora: t1,
+        );
+
+        final hecho = await entregas.cumplir('v-39', ahora: t1, idDeLaCita: 'x', agendaId: 'a-2');
+
+        expect(hecho.yaEstaba, isFalse);
+        expect([for (final e in hecho.entregadas) e.id], unorderedEquals(['e-1', 'e-2']));
+        expect([hecho.cita?.id, ...hecho.otrasCitasCumplidas], unorderedEquals(['a-1', 'a-2']));
+        expect((await citaPorId('a-1')).estado, 'CUMPLIDA');
+        expect((await citaPorId('a-2')).estado, 'CUMPLIDA');
+      },
+    );
+
     test('«Poner fecha» de lo que quedó sin fecha no mueve la cita del libro sumado', () async {
       final (antes: _, :despues) = await dosCitas();
       // Lo de antes quedó sin fecha y sin cita (por ejemplo, la cita se canceló a mano).
