@@ -68,7 +68,8 @@ final class DarDeBajaYCrearNuevaElegido extends ResultadoEdicionPersona {
 /// - Si guardar falla, el formulario conserva lo escrito, el botón vuelve a habilitarse y pasa a decir
 ///   «Reintentar». El aviso rojo va dentro del contenido que se desplaza, arriba de los campos (como
 ///   32A·06), y la pantalla lo trae a la vista (decisión del 11/11, P1 del QA de #142): fijo abajo, al
-///   200 % y con el teclado abierto no entraba. Si la falla es que la persona ya no se puede editar
+///   200 % y con el teclado abierto no entraba. Además le pasa el foco del lector de pantalla al aviso
+///   (sin tocar el del teclado). Si la falla es que la persona ya no se puede editar
 ///   (se dio de baja o se borró con la pantalla abierta), se vuelve a leer y se muestra el aviso de la
 ///   causa real, sin «Reintentar». Un doble toque no guarda dos veces; mientras se guarda no se puede
 ///   salir.
@@ -517,9 +518,19 @@ class _FormularioState extends ConsumerState<_Formulario> {
       _enviando = false;
       _falla = falla;
     });
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _traerALaVista(_claveAvisoFalla, hastaArribaSiEntra: true),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _traerALaVista(_claveAvisoFalla, hastaArribaSiEntra: true);
+      _llevarElFocoDelLectorA(_claveAvisoFalla);
+    });
+  }
+
+  /// Le pasa el foco del lector de pantalla (TalkBack / VoiceOver) al aviso de [clave], para que quien
+  /// no lo ve sepa que algo falló y encuentre «Reintentar» a continuación. Es solo el foco de
+  /// accesibilidad: el del teclado (el campo que se estaba escribiendo) no se toca. Sin lector
+  /// encendido no hace nada.
+  void _llevarElFocoDelLectorA(GlobalKey clave) {
+    if (!mounted) return;
+    clave.currentContext?.findRenderObject()?.sendSemanticsEvent(const FocusSemanticEvent());
   }
 
   /// La persistencia rechazó el guardado por la persona (de solo lectura o borrada).
