@@ -53,7 +53,7 @@ class _EntregasPendientesPageState extends ConsumerState<EntregasPendientesPage>
   }
 
   Future<void> _marcar(EntregaPendiente entrega) => _abrir(() async {
-    await Navigator.of(context).push(MarcarEntregadoPage.ruta(ventaId: entrega.ventaId));
+    await Navigator.of(context).push(MarcarEntregadoPage.rutaDe(CualEntrega.de(entrega)));
   });
 
   Future<void> _ponerFecha(EntregaPendiente entrega) => _abrir(() async {
@@ -140,6 +140,7 @@ class _Grupos extends ConsumerWidget {
             entrega: entrega,
             tono: tono,
             nombres: nombres,
+            conVenta: entregas.where((o) => o.ventaId == entrega.ventaId).length > 1,
             alAbrir: () => alMarcar(entrega),
             alPonerFecha: tono == TonoDeEntrega.sinFecha ? () => alPonerFecha(entrega) : null,
           ),
@@ -169,12 +170,16 @@ class _Tarjeta extends ConsumerWidget {
     required this.tono,
     required this.nombres,
     required this.alAbrir,
+    this.conVenta = false,
     this.alPonerFecha,
   });
 
   final EntregaPendiente entrega;
   final TonoDeEntrega tono;
   final Map<String, String>? nombres;
+
+  /// La venta tiene más de una tarjeta (una por cita): el detalle dice su número.
+  final bool conVenta;
   final VoidCallback alAbrir;
   final VoidCallback? alPonerFecha;
 
@@ -198,6 +203,7 @@ class _Tarjeta extends ConsumerWidget {
         entrega,
         direccion: rotulo?.direccion ?? '',
         nombres: nombres,
+        conVenta: conVenta,
       ),
       alAbrir: alAbrir,
       alPonerFecha: alPonerFecha,

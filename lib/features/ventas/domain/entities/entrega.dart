@@ -96,6 +96,7 @@ final class EntregaRegistrada extends Equatable {
     this.colorDeLaCasa,
     this.yaEstaba = false,
     this.citaCumplidaId,
+    this.otrasCitasCumplidas = const [],
   });
 
   /// Todas las filas vivas de la venta.
@@ -113,9 +114,19 @@ final class EntregaRegistrada extends Equatable {
   /// si no cumplió ninguna.
   final String? citaCumplidaId;
 
+  /// Otras citas `ENTREGA` de la venta que esta entrega también cumplió: una venta puede tener una por
+  /// cada grupo de libros diferido (decisión de Cristian del 11/11, «Entrega cita»).
+  final List<String> otrasCitasCumplidas;
+
   /// Quedó algo por entregar.
   bool get quedaPendiente => entregas.any((e) => e.pendiente);
 
   @override
-  List<Object?> get props => [entregas, colorDeLaCasa, yaEstaba, citaCumplidaId];
+  List<Object?> get props => [
+    entregas,
+    colorDeLaCasa,
+    yaEstaba,
+    citaCumplidaId,
+    otrasCitasCumplidas,
+  ];
 }

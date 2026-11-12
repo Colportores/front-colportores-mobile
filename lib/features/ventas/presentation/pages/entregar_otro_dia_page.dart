@@ -209,7 +209,12 @@ class _EntregarOtroDiaPageState extends ConsumerState<EntregarOtroDiaPage> {
             );
           }
           return _Formulario(
-            args: ArgumentosOtroDia(ventaId: lista.ventaId, colportorId: widget.colportorId),
+            args: ArgumentosOtroDia(
+              ventaId: lista.ventaId,
+              colportorId: widget.colportorId,
+              // Solo estos libros: otra cita de la misma venta conserva su fecha («Entrega cita»).
+              entregaIds: {for (final l in lista.lineas) l.entregaId},
+            ),
             contenido: _Contenido(
               filas: [
                 for (final l in lista.lineas)

@@ -74,15 +74,11 @@ final nombresDeLosPendientesProvider = FutureProvider.autoDispose<Map<String, St
   return leido.fold<Map<String, String>?>((_) => null, (productos) => productos.nombres);
 }, retry: _sinReintentos);
 
-/// Lo que falta entregar de la venta [ventaId], en vivo; `null` si ya no queda nada.
+/// Lo que falta entregar de una venta ([CualEntrega]: de una de sus citas), en vivo; `null` si ya no
+/// queda nada.
 final entregaPendienteDeVentaProvider = Provider.autoDispose
-    .family<AsyncValue<EntregaPendiente?>, String>(
-      (ref, ventaId) => ref.watch(entregasPendientesProvider).whenData((lista) {
-        for (final entrega in lista) {
-          if (entrega.ventaId == ventaId) return entrega;
-        }
-        return null;
-      }),
+    .family<AsyncValue<EntregaPendiente?>, CualEntrega>(
+      (ref, cual) => ref.watch(entregasPendientesProvider).whenData(cual.en),
     );
 
 // --- «Entregar otro día» (27C·01) ---
@@ -95,6 +91,7 @@ final class ArgumentosOtroDia extends Equatable {
     required this.colportorId,
     this.productos = const [],
     this.soloDesde,
+    this.entregaIds,
   });
 
   final String ventaId;
@@ -104,8 +101,12 @@ final class ArgumentosOtroDia extends Equatable {
   /// Solo lo que se sumó a una venta abierta desde este instante (42B·09D); `null` = toda la venta.
   final DateTime? soloDesde;
 
+  /// Solo estas filas («Poner fecha» de una entrega sin fecha, 27C·02): lo de otra cita de la misma
+  /// venta no se toca. `null` = toda la venta (o lo de [soloDesde]).
+  final Set<String>? entregaIds;
+
   @override
-  List<Object?> get props => [ventaId, colportorId, productos, soloDesde];
+  List<Object?> get props => [ventaId, colportorId, productos, soloDesde, entregaIds];
 }
 
 final class OtroDiaState extends Equatable {
@@ -172,6 +173,7 @@ class OtroDiaNotifier extends Notifier<OtroDiaState> {
               fechaPrevista: fecha,
               productos: args.productos,
               soloDesde: args.soloDesde,
+              entregaIds: args.entregaIds,
             ),
           );
     } on Object {
@@ -237,9 +239,10 @@ final class MarcarState extends Equatable {
 }
 
 class MarcarNotifier extends Notifier<MarcarState> {
-  MarcarNotifier(this.ventaId);
+  MarcarNotifier(this.cual);
 
-  final String ventaId;
+  /// La entrega que se marca: una venta puede tener una por cada grupo de libros diferido.
+  final CualEntrega cual;
 
   @override
   MarcarState build() => const MarcarState();
@@ -279,7 +282,7 @@ class MarcarNotifier extends Notifier<MarcarState> {
           .read(cumplirEntregaUseCaseProvider)
           .call(
             CumplirEntregaParams(
-              ventaId: ventaId,
+              ventaId: cual.ventaId,
               entregaIds: aEntregar,
               nuevaFecha: queda ? s.nuevaFecha : null,
             ),
@@ -301,6 +304,5 @@ class MarcarNotifier extends Notifier<MarcarState> {
   }
 }
 
-final marcarProvider = NotifierProvider.autoDispose.family<MarcarNotifier, MarcarState, String>(
-  MarcarNotifier.new,
-);
+final marcarProvider = NotifierProvider.autoDispose
+    .family<MarcarNotifier, MarcarState, CualEntrega>(MarcarNotifier.new);

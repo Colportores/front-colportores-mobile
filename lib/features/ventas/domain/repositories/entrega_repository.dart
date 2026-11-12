@@ -51,13 +51,16 @@ abstract interface class EntregaRepository {
   ///
   /// - Una venta **sin filas de entrega** guarda [filasNuevas] (una por producto, pendientes y con la
   ///   fecha); una que ya tiene filas pendientes les pone la fecha ([filasNuevas] no se usa).
-  /// - Si la venta ya tenía una cita `PROGRAMADA`, se la **mueve** a la fecha nueva en vez de crear
-  ///   otra ([idDeLaCita] solo se usa al crearla). Repetir la misma fecha no escribe nada
+  /// - Una venta tiene **una cita viva por cada grupo de libros diferido** (decisión de Cristian del
+  ///   11/11, «Entrega cita»): si esos libros ya tenían su cita `PROGRAMADA`, se la **mueve** a la
+  ///   fecha nueva; si la venta ya tiene una cita a esa misma hora, los libros pasan a ella; si no, se
+  ///   crea una ([idDeLaCita] solo se usa al crearla). Repetir la misma fecha no escribe nada
   ///   ([EntregaDiferida.yaEstaba]).
   /// - Una venta sin nada pendiente, que no está en el teléfono o cuya casa no está, no guarda nada.
   /// - Con [soloDesde] (el libro que se sumó a una venta abierta, 42B·09D) solo cuentan las filas
-  ///   creadas desde ese instante: lo pendiente de antes conserva su fecha. Si la venta ya tiene una
-  ///   cita de entrega de lo de antes, no se agenda otra y es un `FailureValidacion`.
+  ///   creadas desde ese instante: lo pendiente de antes conserva su fecha y su cita.
+  /// - Con [entregaIds] («Poner fecha» de un grupo, 27C·02) solo esas filas; una que no es de la venta
+  ///   es un `FailureValidacion`.
   Future<Either<Failure, EntregaDiferida>> diferir(
     String ventaId, {
     required DateTime fechaPrevista,
@@ -65,6 +68,7 @@ abstract interface class EntregaRepository {
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
     DateTime? soloDesde,
+    Set<String>? entregaIds,
   });
 
   /// Marca como entregado, con la fecha real [ahora], lo pendiente de la venta [ventaId] (HU-VEN-003,
@@ -74,8 +78,12 @@ abstract interface class EntregaRepository {
   /// - [entregaIds] son las filas que se entregan (27C·04, entrega parcial); `null`: todo lo
   ///   pendiente. Lo que no se entrega sigue pendiente, con [nuevaFecha] si la hay y **sin fecha** si
   ///   no (27C·04, «Sin fecha»). Con [nuevaFecha] y una venta sin cita se agenda una ([idDeLaCita]).
-  /// - La cita `PROGRAMADA` de la venta pasa a `CUMPLIDA` si no queda nada pendiente o si lo que queda
-  ///   no tiene fecha nueva; con [nuevaFecha] se queda `PROGRAMADA` y se mueve a ella.
+  /// - Con [agendaId] («Entregado hoy» de una cita) se entregan los libros de esa cita. Una venta puede
+  ///   tener una cita por cada grupo de libros diferido (decisión de Cristian del 11/11, «Entrega
+  ///   cita»): marcar una entrega toca solo los libros de esa cita (o del grupo de [entregaIds]); lo
+  ///   de las otras citas no se toca.
+  /// - La cita de esos libros pasa a `CUMPLIDA` si no queda nada pendiente o si lo que queda no tiene
+  ///   fecha nueva; con [nuevaFecha] se queda `PROGRAMADA` y se mueve a ella.
   /// - Repetir la llamada con lo ya entregado no escribe nada ([EntregaCumplida.yaEstaba]). Una venta
   ///   sin filas o con una fila que no es suya es un `FailureValidacion`.
   Future<Either<Failure, EntregaCumplida>> cumplir(
@@ -84,9 +92,10 @@ abstract interface class EntregaRepository {
     required String idDeLaCita,
     Set<String>? entregaIds,
     DateTime? nuevaFecha,
+    String? agendaId,
   });
 
-  /// Lo que falta entregar, una entrada por venta, de la más próxima a la más lejana y al final las que
+  /// Lo que falta entregar, una entrada por cita (por grupo de libros de una venta), de la más próxima a la más lejana y al final las que
   /// no tienen fecha (27C·02). Con [espacioPersonaId], solo las de esa persona (la ficha, vista 32).
   /// Reactivo y solo del teléfono: emite de nuevo cuando cambia una entrega, una venta o una cita. Un
   /// error al leer sale por el `Stream`.

@@ -14,6 +14,7 @@ final class EntregaDiferida extends Equatable {
     this.colorDeLaCasa,
     this.yaEstaba = false,
     this.citaNueva = true,
+    this.citasCanceladas = const [],
   });
 
   /// Todas las filas vivas de la venta, las pendientes con la fecha prevista y las que ya se
@@ -40,12 +41,24 @@ final class EntregaDiferida extends Equatable {
   /// nueva (o ya estaba en ella).
   final bool citaNueva;
 
+  /// Otras citas de la venta que quedaron sin libros porque los suyos se pasaron a [cita] (estaba a la
+  /// misma hora): se cancelaron y sus avisos ya no tienen que sonar.
+  final List<String> citasCanceladas;
+
   /// Lleva la dirección de la casa: no se imprime (convenciones §7.5).
   @override
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [entregas, cita, direccion, colorDeLaCasa, yaEstaba, citaNueva];
+  List<Object?> get props => [
+    entregas,
+    cita,
+    direccion,
+    colorDeLaCasa,
+    yaEstaba,
+    citaNueva,
+    citasCanceladas,
+  ];
 }
 
 /// Lo que dejó «Entregado hoy» (HU-VEN-003, «Cumplir entrega pendiente»).
@@ -60,7 +73,9 @@ final class EntregaCumplida extends Equatable {
     this.colorDeLaCasa,
     this.yaEstaba = false,
     this.todoDevuelto = false,
-  });
+    this.otrasCitasCumplidas = const [],
+    bool? quedaPendiente,
+  }) : _quedaPendienteDeLoMarcado = quedaPendiente;
 
   /// Todas las filas vivas de la venta, como quedaron.
   final List<Entrega> entregas;
@@ -92,8 +107,16 @@ final class EntregaCumplida extends Equatable {
   /// cerró ([citaCumplida]) para que no quede programada para siempre.
   final bool todoDevuelto;
 
-  /// Quedó algo por entregar.
-  bool get quedaPendiente => entregas.any((e) => e.pendiente);
+  /// Otras citas de la venta que este «Entregado» también cumplió (además de [cita]): sus avisos ya no
+  /// tienen que sonar. Una venta puede tener una cita por cada grupo de libros diferido (decisión de
+  /// Cristian del 11/11, «Entrega cita»).
+  final List<String> otrasCitasCumplidas;
+
+  final bool? _quedaPendienteDeLoMarcado;
+
+  /// Quedó algo por entregar **de lo que se marcó** (la cita o los libros elegidos): lo pendiente de
+  /// otra cita de la misma venta no cuenta.
+  bool get quedaPendiente => _quedaPendienteDeLoMarcado ?? entregas.any((e) => e.pendiente);
 
   /// Lleva la dirección de la casa: no se imprime (convenciones §7.5).
   @override
@@ -110,5 +133,7 @@ final class EntregaCumplida extends Equatable {
     colorDeLaCasa,
     yaEstaba,
     todoDevuelto,
+    otrasCitasCumplidas,
+    quedaPendiente,
   ];
 }
