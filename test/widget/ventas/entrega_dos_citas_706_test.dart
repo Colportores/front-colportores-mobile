@@ -7,6 +7,7 @@ import 'package:colportores_mobile/features/agenda/presentation/widgets/piezas_a
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/entrega_pendiente.dart';
 import 'package:colportores_mobile/features/ventas/presentation/flujo_entregar_desde_la_ficha.dart';
+import 'package:colportores_mobile/features/ventas/presentation/formato_entrega_diferida.dart';
 import 'package:colportores_mobile/features/ventas/presentation/pages/entregar_otro_dia_page.dart';
 import 'package:colportores_mobile/features/ventas/presentation/pages/entregas_pendientes_page.dart';
 import 'package:colportores_mobile/features/ventas/presentation/pages/marcar_entregado_page.dart';
@@ -128,6 +129,43 @@ void main() {
   });
 
   group('«Entregas pendientes» con las dos citas de la venta', () {
+    // Decisión del 12/11, P2 del QA de #709: «Venta 0042» solo si la venta tiene más de una tarjeta.
+    testWidgets('las dos tarjetas de la misma venta dicen «Venta 0042»', (tester) async {
+      final e = _entorno([_deAntes, _sumado]);
+      await montarPantalla(tester, e, () => EntregasPendientesPage.ruta(colportorId: 'col-1'));
+
+      expect(find.textContaining('Venta 0042'), findsNWidgets(2));
+    });
+
+    testWidgets('con una sola tarjeta de la venta, como el canvas: sin el número', (tester) async {
+      final e = _entorno([_deAntes]);
+      await montarPantalla(tester, e, () => EntregasPendientesPage.ruta(colportorId: 'col-1'));
+
+      expect(find.textContaining('Salud y Hogar'), findsOneWidget);
+      expect(find.textContaining('Venta 0042'), findsNothing);
+    });
+
+    test('el detalle con la venta va primero y sin la venta queda como estaba', () {
+      const nombres = {'p-hijos': 'Nuestros Hijos'};
+      expect(
+        FormatoEntregaDiferida.detalleDeLaTarjeta(
+          _sumado,
+          direccion: 'Grecia 3310',
+          nombres: nombres,
+          conVenta: true,
+        ),
+        'Venta 0042 · Grecia 3310 · Nuestros Hijos × 1',
+      );
+      expect(
+        FormatoEntregaDiferida.detalleDeLaTarjeta(
+          _sumado,
+          direccion: 'Grecia 3310',
+          nombres: nombres,
+        ),
+        'Grecia 3310 · Nuestros Hijos × 1',
+      );
+    });
+
     testWidgets('una tarjeta por cita; tocar la del martes abre solo su libro', (tester) async {
       final e = _entorno([_deAntes, _sumado]);
       await montarPantalla(tester, e, () => EntregasPendientesPage.ruta(colportorId: 'col-1'));

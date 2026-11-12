@@ -712,7 +712,9 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
         rotulo: TextosVenta.motivo,
         controlador: _motivo,
         alCambiar: _notifier.escribirMotivo,
-        ayuda: TextosVenta.avisoMotivo,
+        ayuda: (_crece?.tieneMotivo ?? false)
+            ? TextosVentaQueCrece.motivoQueSeSuma
+            : TextosVenta.avisoMotivo,
         error: venta.motivoFalta
             ? TextosVenta.motivoFalta
             : venta.motivoNoEntra

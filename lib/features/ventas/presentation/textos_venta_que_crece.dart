@@ -124,6 +124,12 @@ abstract final class TextosVentaQueCrece {
 
   static const montoDeLoQueSumas = 'MONTO DE LO QUE SUMÁS';
 
+  /// La ayuda del campo «Motivo del cambio» cuando la venta ya tiene un motivo: el nuevo se le une
+  /// (decisión del orquestador del 12/11 por el mapa de decisiones, P1 del QA de #709).
+  static const motivoQueSeSuma =
+      'Se suma al motivo que ya tiene la venta. Tu coordinador va a leer los dos. No pongas datos '
+      'del cliente.';
+
   static const misioneros =
       'Los misioneros no se suman a una venta: anotalos al terminar la entrevista, en «Lo que '
       'dejaste».';

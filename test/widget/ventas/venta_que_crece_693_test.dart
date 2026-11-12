@@ -276,6 +276,30 @@ void main() {
       },
     );
 
+    // Decisión del 12/11, P1 del QA de #709: la ayuda dice que el motivo nuevo se suma.
+    testWidgets('con un motivo ya puesto, la ayuda del campo dice que el nuevo se le suma', (
+      tester,
+    ) async {
+      final venta = conMotivo('redondeo');
+      final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta]));
+      await montarNuevaVenta(tester, e, creceSobre: venta);
+      await _sumarSaludYHogar(tester);
+      await tocar(tester, find.byKey(const Key('venta_cambiar_monto')));
+
+      expect(find.text(TextosVentaQueCrece.motivoQueSeSuma), findsOneWidget);
+      expect(find.text(TextosVenta.avisoMotivo), findsNothing);
+    });
+
+    testWidgets('sin motivo de antes, la ayuda de siempre', (tester) async {
+      final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta39]));
+      await montarNuevaVenta(tester, e, creceSobre: venta39);
+      await _sumarSaludYHogar(tester);
+      await tocar(tester, find.byKey(const Key('venta_cambiar_monto')));
+
+      expect(find.text(TextosVenta.avisoMotivo), findsOneWidget);
+      expect(find.text(TextosVentaQueCrece.motivoQueSeSuma), findsNothing);
+    });
+
     testWidgets('con el monto calculado el motivo viejo queda como estaba', (tester) async {
       final venta = conMotivo('redondeo');
       final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta]));
