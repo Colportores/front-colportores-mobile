@@ -26,8 +26,13 @@ abstract final class FlujoEntregarDesdeLaFicha {
     required String personaId,
     required String espacioId,
     String? ventaId,
+    DateTime? fechaPrevista,
   }) async {
-    if (ventaId != null) return _marcar(context, ventaId);
+    // Con la fecha de la tarjeta se abre la entrega de esa cita (una venta puede tener una por cada
+    // grupo de libros diferido, decisión de Cristian del 11/11, «Entrega cita»).
+    if (ventaId != null) {
+      return _marcar(context, CualEntrega(ventaId, fechaPrevista: fechaPrevista));
+    }
 
     final contenedor = ProviderScope.containerOf(context, listen: false);
     final mensajero = ScaffoldMessenger.maybeOf(context);
@@ -55,16 +60,16 @@ abstract final class FlujoEntregarDesdeLaFicha {
         _avisar(mensajero, TextosEntregaDiferida.sinPendientesDeLaPersona);
         return false;
       case [final unica]:
-        return _marcar(context, unica.ventaId);
+        return _marcar(context, CualEntrega.de(unica));
       default:
         final elegida = await mostrarHojaQueEntrega(context, pendientes: pendientes);
         if (elegida == null || !context.mounted) return false;
-        return _marcar(context, elegida.ventaId);
+        return _marcar(context, CualEntrega.de(elegida));
     }
   }
 
-  static Future<bool> _marcar(BuildContext context, String ventaId) async {
-    final hecho = await Navigator.of(context).push(MarcarEntregadoPage.ruta(ventaId: ventaId));
+  static Future<bool> _marcar(BuildContext context, CualEntrega cual) async {
+    final hecho = await Navigator.of(context).push(MarcarEntregadoPage.rutaDe(cual));
     return hecho != null;
   }
 

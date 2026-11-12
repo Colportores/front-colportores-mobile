@@ -124,11 +124,6 @@ abstract final class TextosVentaQueCrece {
 
   static const montoDeLoQueSumas = 'MONTO DE LO QUE SUMÁS';
 
-  /// La venta ya tiene un motivo del monto a mano: lo que se suma va al precio de la lista (pendiente
-  /// de decisión: una venta lleva un solo motivo).
-  static const yaTieneMotivo =
-      'Esta venta ya tiene el monto cambiado a mano: lo que sumás va con el precio de la lista.';
-
   static const misioneros =
       'Los misioneros no se suman a una venta: anotalos al terminar la entrevista, en «Lo que '
       'dejaste».';

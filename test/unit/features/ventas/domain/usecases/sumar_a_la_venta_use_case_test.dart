@@ -39,7 +39,7 @@ class _Repo implements VentaQueCreceRepository {
 
   @override
   Future<Either<Failure, CitasDeLaVenta>> citasDe(String ventaId) async =>
-      const Right((cobranzaAgendada: false, entregaAgendada: false));
+      const Right((cobranzaAgendada: false));
 
   @override
   Stream<List<VentaAbierta>> observarAbiertasDe(String personaId) => const Stream.empty();
@@ -222,16 +222,103 @@ void main() {
       },
     );
 
-    test('si la venta ya tiene un motivo del monto, no se cambia el de lo que suma', () async {
+    // Decisión de Cristian del 11/11, «Dos motivos» (#706): se juntan con « · ».
+    test('si la venta ya tiene un motivo, guarda los dos unidos con « · »', () async {
       final r = await sumar(
         suma(
           aMano: 30000,
-          motivo: 'otro',
+          motivo: '  descuento del libro nuevo \n',
+          venta: _abierta(motivo: ' redondeo '),
+        ),
+      );
+
+      expect(r.isRight(), isTrue);
+      final llamada = repo.llamadas.single;
+      expect(llamada.motivo, 'redondeo · descuento del libro nuevo');
+      expect(llamada.diferencia, -10000);
+    });
+
+    test('con un motivo ya puesto, el nuevo en blanco sigue faltando', () async {
+      final r = await sumar(
+        suma(
+          aMano: 30000,
+          motivo: '   ',
           venta: _abierta(motivo: 'redondeo'),
         ),
       );
 
-      expect(r.fold((f) => (f as FailureValidacion).campos.keys, (_) => null), ['motivo']);
+      expect(
+        r.fold((f) => (f as FailureValidacion).campos['motivo'], (_) => null),
+        'Escribí por qué cambiaste el monto',
+      );
+      expect(repo.llamadas, isEmpty);
+    });
+
+    test('el tope de 500 se mide sobre el texto unido: justo en el borde entra', () async {
+      final viejo = 'v' * 400;
+      // 400 + « · » (3) + 97 = 500.
+      final nuevo = 'n' * 97;
+      final r = await sumar(
+        suma(
+          aMano: 30000,
+          motivo: nuevo,
+          venta: _abierta(motivo: viejo),
+        ),
+      );
+
+      expect(r.isRight(), isTrue);
+      expect(repo.llamadas.single.motivo!.runes.length, 500);
+      expect(repo.llamadas.single.motivo, '$viejo · $nuevo');
+    });
+
+    test('si el unido pasa de 500 no guarda nada y dice cuántos quedan para lo nuevo', () async {
+      final r = await sumar(
+        suma(
+          aMano: 30000,
+          motivo: 'n' * 98,
+          venta: _abierta(motivo: 'v' * 400),
+        ),
+      );
+
+      expect(
+        r.fold((f) => (f as FailureValidacion).campos['motivo'], (_) => null),
+        SumarALaVentaUseCase.motivoNoEntra(97),
+      );
+      expect(SumarALaVentaUseCase.motivoNoEntra(97), contains('97'));
+      expect(repo.llamadas, isEmpty);
+    });
+
+    test(
+      'mide en caracteres visibles (puntos de código) y sin los espacios de los bordes',
+      () async {
+        // Un emoji de 2 unidades UTF-16 cuenta 1, y los espacios del borde no cuentan.
+        final viejo = '😀' * 400;
+        final r = await sumar(
+          suma(
+            aMano: 30000,
+            motivo: '   ${'é' * 97}   ',
+            venta: _abierta(motivo: viejo),
+          ),
+        );
+
+        expect(r.isRight(), isTrue);
+        expect(repo.llamadas.single.motivo!.runes.length, 500);
+      },
+    );
+
+    test('con el motivo viejo ya en el tope no entra nada nuevo (quedan 0)', () async {
+      final r = await sumar(
+        suma(
+          aMano: 30000,
+          motivo: 'x',
+          venta: _abierta(motivo: 'v' * 500),
+        ),
+      );
+
+      expect(
+        r.fold((f) => (f as FailureValidacion).campos['motivo'], (_) => null),
+        SumarALaVentaUseCase.motivoNoEntra(0),
+      );
       expect(repo.llamadas, isEmpty);
     });
 

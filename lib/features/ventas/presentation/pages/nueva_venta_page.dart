@@ -18,6 +18,7 @@ import '../../domain/entities/precios_de_la_venta.dart';
 import '../../domain/entities/venta_abierta.dart';
 import '../../domain/entities/venta_para_devolver.dart' show CuentaDeLaVenta;
 import '../../domain/repositories/venta_repository.dart';
+import '../../domain/usecases/sumar_a_la_venta_use_case.dart' show SumarALaVentaUseCase;
 import '../formato_venta.dart';
 import '../providers/nueva_venta_notifier.dart';
 import '../providers/ventas_providers.dart';
@@ -480,6 +481,8 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
                   ? TextosVentaQueCrece.misioneros
                   : venta.motivoFalta
                   ? TextosVenta.motivoFalta
+                  : venta.motivoNoEntra
+                  ? SumarALaVentaUseCase.motivoNoEntra(venta.lugarParaElMotivo)
                   : null,
               alPresionar: venta.puedeRegistrar ? () => unawaited(_registrar()) : null,
             )
@@ -668,36 +671,25 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
         fuerte: true,
         claveValor: const Key('venta_saldo'),
       ),
+      // Con un motivo ya puesto también se puede: el nuevo se le une (decisión del 11/11, «Dos
+      // motivos»).
       if (!venta.cambiandoElMonto && venta.cobraAlgo)
-        if (crece.tieneMotivo)
-          const Padding(
-            key: Key('venta_ya_tiene_motivo'),
-            padding: EdgeInsets.only(top: 8),
-            child: Text(
-              TextosVentaQueCrece.yaTieneMotivo,
-              style: TextStyle(fontSize: 13, color: ColoresAgenda.gris, height: 1.4),
-            ),
-          )
-        else
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              key: const Key('venta_cambiar_monto'),
-              onPressed: venta.guardando ? null : _notifier.cambiarElMonto,
-              style: TextButton.styleFrom(
-                minimumSize: const Size(48, 48),
-                padding: EdgeInsets.zero,
-              ),
-              child: const Text(
-                TextosVenta.cambiarElMonto,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  color: ColoresAgenda.azul,
-                  fontWeight: FontWeight.w600,
-                ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const Key('venta_cambiar_monto'),
+            onPressed: venta.guardando ? null : _notifier.cambiarElMonto,
+            style: TextButton.styleFrom(minimumSize: const Size(48, 48), padding: EdgeInsets.zero),
+            child: const Text(
+              TextosVenta.cambiarElMonto,
+              style: TextStyle(
+                fontSize: 13.5,
+                color: ColoresAgenda.azul,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
+        ),
     ];
   }
 
@@ -721,7 +713,11 @@ class _NuevaVentaPageState extends ConsumerState<NuevaVentaPage> {
         controlador: _motivo,
         alCambiar: _notifier.escribirMotivo,
         ayuda: TextosVenta.avisoMotivo,
-        error: venta.motivoFalta ? TextosVenta.motivoFalta : null,
+        error: venta.motivoFalta
+            ? TextosVenta.motivoFalta
+            : venta.motivoNoEntra
+            ? SumarALaVentaUseCase.motivoNoEntra(venta.lugarParaElMotivo)
+            : null,
         teclado: TextInputType.multiline,
         maxLargo: 500,
         lineas: 3,

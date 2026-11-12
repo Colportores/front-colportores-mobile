@@ -53,7 +53,7 @@ class _EntregasPendientesPageState extends ConsumerState<EntregasPendientesPage>
   }
 
   Future<void> _marcar(EntregaPendiente entrega) => _abrir(() async {
-    await Navigator.of(context).push(MarcarEntregadoPage.ruta(ventaId: entrega.ventaId));
+    await Navigator.of(context).push(MarcarEntregadoPage.rutaDe(CualEntrega.de(entrega)));
   });
 
   Future<void> _ponerFecha(EntregaPendiente entrega) => _abrir(() async {

@@ -19,9 +19,10 @@ import 'registrar_venta_use_case.dart';
 /// 2. Cada renglón lleva el precio de la ciudad de la casa **de hoy**; lo vendido antes no se
 ///    recalcula. El total nuevo es el que tenía la venta más lo sumado.
 /// 3. Si la colportora cambió el monto de lo que suma, pide el motivo como en la venta («Monto
-///    manual»). Una venta lleva **un solo** motivo: si ya tiene uno, no se cambia el monto de lo
-///    sumado (pendiente de decisión, ver `TextosVentaQueCrece.yaTieneMotivo`) y lo que llegue así se
-///    rechaza sin guardar.
+///    manual»). Si la venta ya tenía uno, se juntan los dos (decisión de Cristian del 11/11, «Dos
+///    motivos»): queda `<viejo> · <nuevo>`, con el mismo tope de [ReglasDeVenta.largoMaximoMotivo]
+///    caracteres medido sobre el texto unido. Si no entra, no se corta: se rechaza sin guardar y el
+///    aviso dice cuántos caracteres le quedan para lo nuevo ([motivoNoEntra]).
 /// 4. Lo guarda por [VentaQueCreceRepository.sumar], que vuelve a mirar en la misma transacción que
 ///    la venta siga abierta.
 ///
@@ -33,6 +34,12 @@ final class SumarALaVentaUseCase implements UseCase<VentaQueCrecio, SumaALaVenta
   final VentaQueCreceRepository _repository;
   final String Function() _generarId;
   final DateTime Function() _ahora;
+
+  /// El motivo nuevo no entra junto al que la venta ya tenía: le quedan [quedan] caracteres para lo
+  /// nuevo. Texto a confirmar (mapa §2: texto).
+  static String motivoNoEntra(int quedan) => quedan == 1
+      ? 'Con el motivo que ya tiene la venta, para lo nuevo te queda 1 carácter: acortalo.'
+      : 'Con el motivo que ya tiene la venta, para lo nuevo te quedan $quedan caracteres: acortalo.';
 
   @override
   Future<Either<Failure, VentaQueCrecio>> call(SumaALaVenta s) async {
@@ -61,16 +68,17 @@ final class SumarALaVentaUseCase implements UseCase<VentaQueCrecio, SumaALaVenta
       if (s.venta.ventaId.trim().isEmpty) 'venta': 'Falta la venta a la que se suma',
       'lineas': ?errorDeLasLineas,
       'total': ?errorDelTotal,
-      if (errorDelTotal == null && aMano && s.venta.tieneMotivo)
-        'motivo':
-            'Esta venta ya tiene un motivo del monto: no se puede cambiar el monto de lo que sumás'
-      else if (errorDelTotal == null &&
+      if (errorDelTotal == null &&
           ReglasDeVenta.faltaElMotivo(
             calculado: calculado,
             cobrado: cobrado,
             motivo: s.motivoMontoManual,
           ))
-        'motivo': 'Escribí por qué cambiaste el monto',
+        'motivo': 'Escribí por qué cambiaste el monto'
+      else if (errorDelTotal == null &&
+          aMano &&
+          ReglasDeVenta.motivoNoEntra(s.venta.motivoMontoManual, s.motivoMontoManual))
+        'motivo': motivoNoEntra(ReglasDeVenta.lugarParaElMotivo(s.venta.motivoMontoManual)),
     };
     if (campos.isNotEmpty) return Left(FailureValidacion(campos: campos));
 
@@ -117,7 +125,9 @@ final class SumarALaVentaUseCase implements UseCase<VentaQueCrecio, SumaALaVenta
       numeroTalonario: s.venta.numeroTalonario,
       sumadoCentavos: sumado,
       ahora: ahora,
-      motivoMontoManual: aMano ? ReglasDeVenta.motivo(s.motivoMontoManual) : null,
+      motivoMontoManual: aMano
+          ? ReglasDeVenta.motivoUnido(s.venta.motivoMontoManual, s.motivoMontoManual)
+          : null,
       diferenciaCentavos: aMano ? cobrado - calculado : null,
     );
   }

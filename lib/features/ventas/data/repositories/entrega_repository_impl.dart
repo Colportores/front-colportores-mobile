@@ -112,6 +112,7 @@ final class EntregaRepositoryImpl implements EntregaRepository {
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
     DateTime? soloDesde,
+    Set<String>? entregaIds,
   }) async {
     try {
       return Right(
@@ -122,14 +123,15 @@ final class EntregaRepositoryImpl implements EntregaRepository {
           filasNuevas: filasNuevas,
           idDeLaCita: idDeLaCita,
           soloDesde: soloDesde,
+          entregaIds: entregaIds,
         ),
       );
-    } on EntregaYaAgendadaException {
-      return const Left(FailureValidacion(campos: {'entrega': _yaAgendada}));
     } on EntregaSinPendientesException catch (e) {
       return Left(
         FailureValidacion(campos: {'entrega': e.sinFilas ? _sinProductos : _yaEntregada}),
       );
+    } on EntregaAjenaException {
+      return const Left(FailureValidacion(campos: {'productos': _productoAjeno}));
     } on EntregaSinVentaException {
       return Left(
         _rechazada('ENTREGA_DIFERIDA_RECHAZADA', ventaId, 'venta', 'EntregaSinVentaException'),
@@ -152,6 +154,7 @@ final class EntregaRepositoryImpl implements EntregaRepository {
     required String idDeLaCita,
     Set<String>? entregaIds,
     DateTime? nuevaFecha,
+    String? agendaId,
   }) async {
     try {
       return Right(
@@ -161,6 +164,7 @@ final class EntregaRepositoryImpl implements EntregaRepository {
           idDeLaCita: idDeLaCita,
           entregaIds: entregaIds,
           nuevaFecha: nuevaFecha,
+          agendaId: agendaId,
         ),
       );
     } on EntregaSinPendientesException catch (e) {
@@ -184,8 +188,6 @@ final class EntregaRepositoryImpl implements EntregaRepository {
 
   // Textos a confirmar (el canvas no dibuja estos errores): dicen qué pasó y qué hacer.
   static const _yaEntregada = 'Esa venta ya está entregada: no queda nada pendiente.';
-  static const _yaAgendada =
-      'Esa venta ya tiene una entrega agendada. Entregá el libro nuevo ahora o en esa visita.';
   static const _sinProductos = 'Elegí al menos un producto para dejar para otro día.';
   static const _sinEntregas = 'Esa venta no tiene entregas pendientes.';
   static const _nadaPendiente = 'No queda nada pendiente de entregar en esa venta.';
