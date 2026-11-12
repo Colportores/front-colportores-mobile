@@ -191,6 +191,24 @@ datos. Una entidad **ausente** de `rows` significa "sin cambios". El motor no bo
 nada por ausencia. Si `has_more` es `true`, vuelve a pedir con el `watermark`
 nuevo antes de considerar la sync completa.
 
+Dos claves más, **aditivas** (backend `0016` y `0023`, §2.1 del contrato), que
+solo vienen cuando hay algo que avisar:
+
+```json
+{
+  "out_of_area": { "ubicacion": ["…"] },
+  "area_reset": ["ubicacion", "espacio", "house_status"]
+}
+```
+
+`out_of_area` son las filas que salieron del área del colportor desde el pull
+anterior: el motor las marca (`PullNotices.outOfArea`), no las borra.
+`area_reset` dice qué entidades bajan completas porque apareció una ciudad
+nueva: lo que el teléfono tenía de ellas y no vuelva a bajar antes de la
+última página (`has_more` en `false`) quedó fuera del área. Una página sin
+filas también se aplica si trae avisos o un `watermark` nuevo. Un servidor que
+no las manda no genera avisos.
+
 ## Rechazos del lote entero
 
 PostgREST devuelve todo error de la base con el SQLSTATE en `code`:

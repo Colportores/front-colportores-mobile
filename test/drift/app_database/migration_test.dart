@@ -42,6 +42,7 @@ import 'generated/schema_v33.dart' as v33;
 import 'generated/schema_v34.dart' as v34;
 import 'generated/schema_v35.dart' as v35;
 import 'generated/schema_v36.dart' as v36;
+import 'generated/schema_v37.dart' as v37;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
@@ -2322,6 +2323,62 @@ void main() {
           reason: 'el CHECK del estado',
         );
         expect(await nuevo.select(nuevo.ubicacionUnionLocal).get(), hasLength(1));
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 36, cuando migra a la 37, se conserva todo y la marca de '
+      '«fuera del área» y la réplica de `pais` quedan vacías (#181)', () async {
+    // #181: solo se suman `sync_fuera_del_area`, la marca del motor, y `pais`, la réplica del
+    // catálogo (P1, 12/11). Las casas, la cola y los watermarks no se tocan: lo que esperaba subir
+    // sigue esperando (convenciones §9).
+    const job = v36.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'ubicacion',
+      op: 'insert',
+      payload: '{"id":"ub-1"}',
+      rowPk: 'ub-1',
+      createdAt: 1758700000000,
+      state: 'PENDING',
+      code: '',
+      message: '',
+    );
+    const watermark = v36.SyncWatermarkData(scope: 'mirror', watermark: 'w-1');
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 36,
+      newVersion: 37,
+      createOld: v36.DatabaseAtV36.new,
+      createNew: v37.DatabaseAtV37.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.syncQueue, job)
+          ..insert(viejo.syncWatermark, watermark);
+      },
+      validateItems: (nuevo) async {
+        final jobs = await nuevo.select(nuevo.syncQueue).get();
+        expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+        final marcas = await nuevo.select(nuevo.syncWatermark).get();
+        expect(marcas.map((w) => w.toJson()), [watermark.toJson()]);
+        expect(await nuevo.select(nuevo.syncFueraDelArea).get(), isEmpty);
+
+        const insertar = 'INSERT INTO sync_fuera_del_area (entidad, fila_id, confirmada) VALUES ';
+        await nuevo.customStatement("$insertar('ubicacion', 'ub-1', 1)");
+        await expectLater(
+          nuevo.customStatement("$insertar('ubicacion', 'ub-1', 0)"),
+          throwsA(anything),
+          reason: 'una fila por entidad e id',
+        );
+        expect(await nuevo.select(nuevo.syncFueraDelArea).get(), hasLength(1));
+
+        expect(await nuevo.select(nuevo.pais).get(), isEmpty);
+        await nuevo.customStatement(
+          'INSERT INTO pais (id, nombre, iso_code, created_at, updated_at, sync_version) '
+          "VALUES ('pai-uy', 'Uruguay', 'UY', 1, 1, 1)",
+        );
+        expect(await nuevo.select(nuevo.pais).get(), hasLength(1));
       },
     );
   });

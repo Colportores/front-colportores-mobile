@@ -5,6 +5,7 @@
 import 'package:colportores_mobile/catalogo.dart';
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
+import 'package:colportores_mobile/datos/drift_job_store.dart';
 import 'package:colportores_mobile/datos/drift_local_store.dart';
 import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/agenda/data/models/agenda_model.dart';
@@ -19,6 +20,7 @@ import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_engine/port_contracts.dart';
+import 'package:sync_engine/sync_engine.dart';
 
 import '../../helpers/campo_falsos.dart';
 import '../../helpers/logger_mudo.dart';
@@ -432,5 +434,159 @@ void main() {
     // Una tabla nueva sin declarar en `catalogo.dart` revienta acá y al arrancar el motor: con
     // datos personales, olvidarse no puede ser silencioso.
     expect(() => registroDeLaApp(db.allTables.map((t) => t.actualTableName)), returnsNormally);
+  });
+
+  group('fuera del área (§2.1): se marca, nunca se borra', () {
+    Map<String, Object?> ubi(String id) => {..._ubicacion, 'id': id};
+
+    Future<void> tener(List<String> ids) =>
+        store.applyDelta({'ubicacion': ids.map(ubi).toList()}, scope: 'replica', watermark: 'w0');
+
+    test('out_of_area la marca y la app la ve', () async {
+      await tener(['u1', 'u2']);
+
+      await store.applyDelta(
+        const {},
+        scope: 'replica',
+        watermark: 'w1',
+        notices: const PullNotices(
+          outOfArea: {
+            'ubicacion': ['u1'],
+          },
+        ),
+      );
+
+      expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+      expect(await db.select(db.ubicaciones).get(), hasLength(2), reason: 'nada se borra');
+    });
+
+    test('la que vuelve a bajar deja de estar afuera', () async {
+      await tener(['u1']);
+      await store.applyDelta(
+        const {},
+        scope: 'replica',
+        watermark: 'w1',
+        notices: const PullNotices(
+          outOfArea: {
+            'ubicacion': ['u1'],
+          },
+        ),
+      );
+
+      await tener(['u1']);
+
+      expect(await store.observarFueraDelArea('ubicacion').first, isEmpty);
+    });
+
+    test('area_reset: lo que no vuelve a bajar queda afuera recién en la última página, '
+        'y lo que tiene escrituras sin subir no cuenta', () async {
+      await tener(['u1', 'u2', 'u3', 'u4']);
+      // u4 tiene una corrección en la cola que todavía no subió.
+      await DriftJobStore(db).append(
+        SyncJob(
+          clientOpId: 'op-u4',
+          entity: 'ubicacion',
+          op: Op.update,
+          payload: ubi('u4'),
+          createdAt: DateTime.utc(2026, 10, 16),
+          rowPk: 'u4',
+        ),
+      );
+
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u2')],
+        },
+        scope: 'replica',
+        watermark: 'r1',
+        notices: const PullNotices(areaReset: {'ubicacion'}, complete: false),
+      );
+      expect(
+        await store.observarFueraDelArea('ubicacion').first,
+        isEmpty,
+        reason: 'a mitad de la descarga no se sabe qué quedó afuera',
+      );
+
+      // El LWW de un push, en el medio, no concluye nada.
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u9')],
+        },
+        scope: 'mirror',
+        watermark: null,
+      );
+
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u3')],
+        },
+        scope: 'replica',
+        watermark: 'r2',
+        notices: const PullNotices(),
+      );
+
+      expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+      expect(await db.select(db.ubicaciones).get(), hasLength(5));
+    });
+
+    test('house_status se marca por su clave, ubicacion_id', () async {
+      Map<String, Object?> casa(String id) => {
+        'ubicacion_id': id,
+        'lat': -34.9,
+        'lon': -56.16,
+        'tipo_ubicacion': 'CASA',
+        'color': 'RECHAZO',
+        'prioridad': 7,
+        'created_at': '2026-10-23T13:45:10.123Z',
+        'updated_at': '2026-10-23T13:50:00.000Z',
+        'created_by': 'col-1',
+        'deleted_at': null,
+        'sync_version': 1,
+      };
+      await store.applyDelta(
+        {
+          'house_status': [casa('ub-1'), casa('ub-2')],
+        },
+        scope: 'mirror',
+        watermark: 'w0',
+      );
+
+      await store.applyDelta(
+        {
+          'house_status': [casa('ub-2')],
+        },
+        scope: 'mirror',
+        watermark: 'w1',
+        notices: const PullNotices(areaReset: {'house_status'}),
+      );
+
+      expect(await store.observarFueraDelArea('house_status').first, {'ub-1'});
+      expect(await db.select(db.houseStatuses).get(), hasLength(2), reason: 'nada se borra');
+    });
+
+    test(
+      'un pull sin avisos ni filas nuevas igual cierra la descarga que quedó a medias',
+      () async {
+        await tener(['u1', 'u2']);
+        await store.applyDelta(
+          {
+            'ubicacion': [ubi('u2')],
+          },
+          scope: 'replica',
+          watermark: 'r1',
+          notices: const PullNotices(areaReset: {'ubicacion'}, complete: false),
+        );
+
+        // La última página llega vacía: es la que dice que la descarga terminó.
+        await store.applyDelta(
+          const {},
+          scope: 'replica',
+          watermark: 'r2',
+          notices: const PullNotices(),
+        );
+
+        expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+      },
+    );
   });
 }

@@ -7,18 +7,19 @@
 
 import 'package:sync_engine/sync_engine.dart';
 
-/// Las tablas de la DB local que **no** son entidades del contrato: la cola, los watermarks y los
-/// metadatos del motor. No se declaran ni se sincronizan.
-const tablasDelMotor = {'sync_queue', 'sync_watermark', 'sync_meta'};
+/// Las tablas de la DB local que **no** son entidades del contrato: la cola, los watermarks, los
+/// metadatos y la marca de «fuera del área» del motor. No se declaran ni se sincronizan.
+const tablasDelMotor = {'sync_queue', 'sync_watermark', 'sync_meta', 'sync_fuera_del_area'};
 
 /// Lo que dice §2 para cada tabla local.
 final specsDeLaApp = <SyncSpec>[
   // push: lo que escribe el colportor. `critical` sube al instante (§5.2).
   SyncSpec.push('jornada', critical: true),
-  // `alsoPull` (la réplica de las casas de la ciudad, §2.1) llega con I2 (#181): el pull por
-  // ciudad y el aviso de fuera del área.
-  SyncSpec.push('ubicacion'),
-  SyncSpec.push('espacio'),
+  // Bidireccionales (§2.1, I2, #181): baja toda la ciudad de su zona (sin zona, todas las de la
+  // campaña), más lo que registró él. Lo que sale del área se marca en `sync_fuera_del_area`, no se
+  // borra, y el pull no pisa una fila con escrituras que todavía no subieron.
+  SyncSpec.push('ubicacion', alsoPull: true),
+  SyncSpec.push('espacio', alsoPull: true),
   // §2 y backend 0032: sube y sobrevive a una reinstalación. Hoy la tabla local no tiene `id` ni
   // columnas de sync y nada la encola: eso es un seguimiento de #178.
   SyncSpec.push('ubicacion_par_decidido'),
@@ -67,9 +68,8 @@ final specsDeLaApp = <SyncSpec>[
   // motor: va por el enlace firmado de `foto-ticket` y su ruta se completa en `url_cloud`, una vez.
   SyncSpec.push('ticket', alsoPull: true),
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
-  // `ubicacion_id`, no `id`). El `alsoPull` (las casas de la ciudad, §2.1) llega con el pull de las
-  // casas (#181).
-  SyncSpec.push('house_status', pk: 'ubicacion_id'),
+  // `ubicacion_id`, no `id`). Baja con las casas de la ciudad, con el mismo alcance (§2.1, #181).
+  SyncSpec.push('house_status', pk: 'ubicacion_id', alsoPull: true),
 
   // pull: el mapa de la campaña, por el canal de catálogo (§2). La app nunca las escribe.
   SyncSpec.pull('campania_ciudad'),
@@ -79,6 +79,9 @@ final specsDeLaApp = <SyncSpec>[
   // `campania` las baja cualquier autenticado (RLS de lectura abierta); `campania_colportor` baja
   // solo las inscripciones propias (backend-supabase 0014: `columna_duenio`). La app nunca las escribe.
   SyncSpec.pull('ciudad'),
+  // `pais` (V1: solo Uruguay), como `ciudad`: el contrato la lista entre las entidades `pull` y el
+  // servidor ya la sirve (backend-supabase 0002). Hoy ninguna pantalla la lee (P1 de #181, 12/11).
+  SyncSpec.pull('pais'),
   SyncSpec.pull('campania'),
   SyncSpec.pull('campania_colportor'),
 
