@@ -30,14 +30,24 @@ import '../widgets/piezas_venta.dart';
 ///
 /// Devuelve el [ResultadoCumplirEntrega] al cerrarse; `null` si se sale sin marcar.
 class MarcarEntregadoPage extends ConsumerStatefulWidget {
-  const MarcarEntregadoPage({super.key, required this.ventaId});
+  const MarcarEntregadoPage({super.key, required this.ventaId, this.cual});
 
   /// La venta cuya entrega se marca.
   final String ventaId;
 
+  /// Cuál de sus entregas: una venta puede tener una cita por cada grupo de libros diferido (decisión
+  /// de Cristian del 11/11, «Entrega cita») y se marcan solo los de esa. `null`: la primera de la venta.
+  final CualEntrega? cual;
+
   static Route<ResultadoCumplirEntrega> ruta({required String ventaId}) =>
       MaterialPageRoute<ResultadoCumplirEntrega>(
         builder: (_) => MarcarEntregadoPage(ventaId: ventaId),
+      );
+
+  /// La de [cual] (la tarjeta de «Entregas pendientes», o la de la ficha con su fecha).
+  static Route<ResultadoCumplirEntrega> rutaDe(CualEntrega cual) =>
+      MaterialPageRoute<ResultadoCumplirEntrega>(
+        builder: (_) => MarcarEntregadoPage(ventaId: cual.ventaId, cual: cual),
       );
 
   @override
@@ -65,6 +75,8 @@ class _MarcarEntregadoPageState extends ConsumerState<MarcarEntregadoPage> {
 
   DateTime get _ahora => ref.read(relojEntregaProvider)().toLocal();
 
+  CualEntrega get _cual => widget.cual ?? CualEntrega(widget.ventaId);
+
   void _cerrar([ResultadoCumplirEntrega? resultado]) {
     if (_saliendo) return;
     _saliendo = true;
@@ -85,7 +97,7 @@ class _MarcarEntregadoPageState extends ConsumerState<MarcarEntregadoPage> {
         ahora: ahora,
       );
       if (elegida == null || !mounted) return;
-      ref.read(marcarProvider(widget.ventaId).notifier).elegirNuevaFecha(elegida);
+      ref.read(marcarProvider(_cual).notifier).elegirNuevaFecha(elegida);
     } finally {
       _abriendoHoja = false;
     }
@@ -100,7 +112,7 @@ class _MarcarEntregadoPageState extends ConsumerState<MarcarEntregadoPage> {
   /// Con algo destildado y su «Nueva fecha» ya pasada, antes de guardar se pregunta (decisión del
   /// 28/10, P2 del QA de #435, la misma regla que 27C·01).
   Future<void> _marcar(EntregaPendiente pendiente) async {
-    final estado = ref.read(marcarProvider(widget.ventaId));
+    final estado = ref.read(marcarProvider(_cual));
     final nueva = estado.nuevaFecha;
     final queda = pendiente.lineas.any((l) => estado.desmarcadas.contains(l.entregaId));
     final hayMarcadas = pendiente.lineas.any((l) => !estado.desmarcadas.contains(l.entregaId));
@@ -123,7 +135,7 @@ class _MarcarEntregadoPageState extends ConsumerState<MarcarEntregadoPage> {
 
   Future<void> _marcarYa(EntregaPendiente pendiente) async {
     final mensajero = ScaffoldMessenger.maybeOf(context);
-    final resultado = await ref.read(marcarProvider(widget.ventaId).notifier).marcar([
+    final resultado = await ref.read(marcarProvider(_cual).notifier).marcar([
       for (final l in pendiente.lineas) l.entregaId,
     ]);
     if (resultado == null || !mounted) return;
@@ -147,11 +159,11 @@ class _MarcarEntregadoPageState extends ConsumerState<MarcarEntregadoPage> {
 
   @override
   Widget build(BuildContext context) {
-    final vivo = ref.watch(entregaPendienteDeVentaProvider(widget.ventaId));
+    final vivo = ref.watch(entregaPendienteDeVentaProvider(_cual));
     // Guardando o ya guardado, la lista en vivo puede haber sacado la venta: se sigue mostrando lo que
     // se estaba marcando hasta cerrarse.
     final enCurso = ref.watch(
-      marcarProvider(widget.ventaId).select((s) => s.guardando || s.guardada != null),
+      marcarProvider(_cual).select((s) => s.guardando || s.guardada != null),
     );
     final pendiente = vivo.value ?? (enCurso ? _ultima : null);
     if (vivo.value != null) _ultima = vivo.value;
@@ -195,6 +207,7 @@ class _MarcarEntregadoPageState extends ConsumerState<MarcarEntregadoPage> {
       );
     } else {
       cuerpo = _Formulario(
+        cual: _cual,
         pendiente: pendiente,
         nombresLeidos: nombres,
         scroll: _scroll,
@@ -263,6 +276,7 @@ class _EsqueletoDeMarcar extends StatelessWidget {
 /// 27C·03 y 27C·04: qué se entregó y, si falta algo, para cuándo.
 class _Formulario extends ConsumerWidget {
   const _Formulario({
+    required this.cual,
     required this.pendiente,
     required this.nombresLeidos,
     required this.scroll,
@@ -272,6 +286,8 @@ class _Formulario extends ConsumerWidget {
     required this.alCerrar,
   });
 
+  /// Con qué se abrió la pantalla: la clave del estado de «Marcar» (no cambia aunque la fecha sí).
+  final CualEntrega cual;
   final EntregaPendiente pendiente;
   final AsyncValue<Map<String, String>?> nombresLeidos;
   final ScrollController scroll;
@@ -288,13 +304,12 @@ class _Formulario extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ventaId = pendiente.ventaId;
-    ref.listen(marcarProvider(ventaId).select((s) => s.falla), (anterior, falla) {
+    ref.listen(marcarProvider(cual).select((s) => s.falla), (anterior, falla) {
       // El aviso de error está arriba: si la lista es larga y estaba más abajo, se lo lleva a la vista.
       if (falla != null && scroll.hasClients) scroll.jumpTo(0);
     });
-    final estado = ref.watch(marcarProvider(ventaId));
-    final notifier = ref.read(marcarProvider(ventaId).notifier);
+    final estado = ref.watch(marcarProvider(cual));
+    final notifier = ref.read(marcarProvider(cual).notifier);
     final rotulo = ref.watch(
       rotuloDeEntregaProvider((
         espacioId: pendiente.espacioId,

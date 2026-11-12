@@ -111,7 +111,10 @@ void main() {
 
       await tocar(tester, entregar('ent-p1'));
 
-      expect(m.entregas, [(personaId: 'per-1', espacioId: 'esp-1', ventaId: 'ven-7')]);
+      // Con la fecha de la tarjeta: si la venta tiene dos entregas (una por cita, #706), se abre esta.
+      expect(m.entregas, [
+        (personaId: 'per-1', espacioId: 'esp-1', ventaId: 'ven-7', fechaPrevista: prevista),
+      ]);
     });
 
     testWidgets('con dos pendientes de ventas distintas cada «Entregar» lleva su venta', (

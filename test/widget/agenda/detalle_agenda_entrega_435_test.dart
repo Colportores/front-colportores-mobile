@@ -35,6 +35,7 @@ class _RepoQueExplota extends EntregasEnMemoria {
     required String idDeLaCita,
     Set<String>? entregaIds,
     DateTime? nuevaFecha,
+    String? agendaId,
   }) => throw StateError('sin base abierta');
 }
 
@@ -96,14 +97,16 @@ void main() {
       expect(find.byKey(ClavesDetalleAgenda.registrar), findsNothing);
     });
 
-    testWidgets('«Entregado hoy» marca todo lo pendiente de la venta y lo avisa', (tester) async {
+    testWidgets('«Entregado hoy» marca lo pendiente de esa cita y lo avisa', (tester) async {
       final e = await _montar(tester);
 
       await _tocarEntregadoHoy(tester);
 
       final llamada = e.entregas.cumplidas.single;
       expect(llamada.ventaId, 'v-1');
-      expect(llamada.entregaIds, isNull, reason: 'sin ids: todo lo que siga pendiente');
+      expect(llamada.entregaIds, isNull, reason: 'sin ids: todo lo que siga pendiente de la cita');
+      // Solo los libros de ESTA cita: la venta puede tener otra para lo que se le sumó (#706).
+      expect(e.entregas.agendasAlCumplir.single, 'ag-1');
       expect(llamada.nuevaFecha, isNull);
       expect(find.text('Entrega marcada.'), findsOneWidget);
       expect(_entregadoHoy, findsOneWidget);

@@ -49,6 +49,7 @@ class _RepoFalso implements EntregaRepository {
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
     DateTime? soloDesde,
+    Set<String>? entregaIds,
   }) => throw UnimplementedError('Lo cubre entrega_diferida_use_cases_test.dart');
 
   @override
@@ -58,6 +59,7 @@ class _RepoFalso implements EntregaRepository {
     required String idDeLaCita,
     Set<String>? entregaIds,
     DateTime? nuevaFecha,
+    String? agendaId,
   }) => throw UnimplementedError('Lo cubre entrega_diferida_use_cases_test.dart');
 
   @override

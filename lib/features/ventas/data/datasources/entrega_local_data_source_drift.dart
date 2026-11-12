@@ -40,15 +40,6 @@ final class EntregaSinCasaException implements Exception {
   String toString() => 'EntregaSinCasaException';
 }
 
-/// La venta ya tiene una cita de entrega de lo de antes y se quería agendar otra para lo que se le
-/// sumó (42B·09D): una venta tiene una sola cita de entrega viva. No se guarda nada.
-final class EntregaYaAgendadaException implements Exception {
-  const EntregaYaAgendadaException();
-
-  @override
-  String toString() => 'EntregaYaAgendadaException';
-}
-
 /// La venta no tiene nada pendiente de entregar (ya se entregó todo, o no tiene filas de entrega).
 final class EntregaSinPendientesException implements Exception {
   const EntregaSinPendientesException({this.sinFilas = false});
@@ -120,6 +111,7 @@ final class EntregaLocalDataSourceDrift {
 
     final instante = instanteMs(ahora);
     final previas = await _vivas(ventaId);
+    final reparto = await _reparto(ventaId, previas);
     // Lo pendiente que cabe en lo que falta se cumple; lo que sobra de un producto (más pendiente que
     // faltante, por una devolución) se deja como está: no se entrega lo que volvió.
     final restante = Map<String, int>.of(faltante);
@@ -147,23 +139,24 @@ final class EntregaLocalDataSourceDrift {
       await _encolador.encolar('entrega', OperacionSync.insert, EntregaModel.toJson(fila));
     }
 
-    // Si ya no queda nada pendiente, la visita de la entrega se hizo: su cita pasa a CUMPLIDA.
-    String? citaCumplida;
-    if (cumplidas.isNotEmpty && previas.every((e) => !e.pendiente || cumplidas.contains(e.id))) {
-      final cita = await _citaViva(ventaId);
-      if (cita != null) {
-        await _escribirCita(
-          cita.id,
-          AgendasCompanion(estado: Value(EstadoAgenda.cumplida.codigo), updatedAt: Value(instante)),
-        );
-        citaCumplida = cita.id;
-      }
+    // Cada cita cuyos libros quedaron todos entregados se hizo: pasa a CUMPLIDA. Una venta puede
+    // tener una por cada grupo de libros diferido (decisión de Cristian del 11/11, «Entrega cita»).
+    final cumplidasLasCitas = <String>[];
+    for (final cita in reparto.citas) {
+      final grupo = reparto.filasDe(cita, previas);
+      if (grupo.isEmpty || !grupo.every((e) => cumplidas.contains(e.id))) continue;
+      await _escribirCita(
+        cita.id,
+        AgendasCompanion(estado: Value(EstadoAgenda.cumplida.codigo), updatedAt: Value(instante)),
+      );
+      cumplidasLasCitas.add(cita.id);
     }
     final color = await _recalcular(venta.espacioPersonaId, ahora: ahora, colportorId: colportorId);
     return EntregaRegistrada(
       entregas: await _vivas(ventaId),
       colorDeLaCasa: color,
-      citaCumplidaId: citaCumplida,
+      citaCumplidaId: cumplidasLasCitas.firstOrNull,
+      otrasCitasCumplidas: cumplidasLasCitas.skip(1).toList(),
     );
   });
 
@@ -212,8 +205,17 @@ final class EntregaLocalDataSourceDrift {
   /// Ver [EntregaRepository.deLaVenta].
   Future<List<Entrega>> deLaVenta(String ventaId) => _vivas(ventaId);
 
-  /// Ver [EntregaRepository.diferir]. Lanza [EntregaSinVentaException], [EntregaSinCasaException] o
-  /// [EntregaSinPendientesException].
+  /// Ver [EntregaRepository.diferir]. Lanza [EntregaSinVentaException], [EntregaSinCasaException],
+  /// [EntregaSinPendientesException] o [EntregaAjenaException].
+  ///
+  /// Los libros que se difieren (todos, los sumados desde [soloDesde] o las filas [entregaIds]) quedan
+  /// para [fechaPrevista] con **su** cita (decisión de Cristian del 11/11, «Entrega cita»: una cita
+  /// viva por cada grupo de libros diferido). Lo pendiente de otro grupo de la venta, con su cita, no
+  /// se toca. La cita de los libros:
+  /// - si la venta ya tiene una cita a esa misma hora, es esa (la misma visita);
+  /// - si no, la que ya tenían esos libros se mueve a la fecha nueva;
+  /// - si no tenían, se crea una.
+  /// Una cita que se queda sin libros porque los suyos pasaron a otra de la misma hora se cancela.
   Future<EntregaDiferida> diferir(
     String ventaId, {
     required DateTime fechaPrevista,
@@ -221,23 +223,27 @@ final class EntregaLocalDataSourceDrift {
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
     DateTime? soloDesde,
+    Set<String>? entregaIds,
   }) => _db.transaction(() async {
     final venta = await _ventaViva(ventaId);
     final espacioId = await _espacioDe(venta.espacioPersonaId);
     if (espacioId == null) throw const EntregaSinCasaException();
     final cuando = instanteMs(fechaPrevista);
 
-    var cambio = false;
-    final previas = _desde(await _vivas(ventaId), soloDesde);
-    if (soloDesde != null) {
-      // Lo que se sumó a una venta que ya tiene una cita de entrega de lo de antes: esa cita no se
-      // mueve ni se agenda otra (una sola cita de entrega viva por venta).
-      final otra = await _citaViva(ventaId);
-      if (otra != null && !previas.any((e) => e.id == otra.entregaId)) {
-        throw const EntregaYaAgendadaException();
-      }
+    final todas = await _vivas(ventaId);
+    if (entregaIds != null && !entregaIds.every((id) => todas.any((e) => e.id == id))) {
+      throw const EntregaAjenaException();
     }
-    if (previas.isEmpty) {
+    List<Entrega> objetivoDe(List<Entrega> filas) => [
+      for (final f in _desde(filas, soloDesde))
+        if (entregaIds == null || entregaIds.contains(f.id)) f,
+    ];
+
+    var cambio = false;
+    // Las citas y sus grupos como estaban antes de mover nada.
+    final reparto = await _reparto(ventaId, todas);
+    final objetivo = objetivoDe(todas);
+    if (objetivo.isEmpty) {
       // Sin filas y sin productos que dejar: no hay entrega que agendar.
       if (filasNuevas.isEmpty) throw const EntregaSinPendientesException(sinFilas: true);
       for (final fila in filasNuevas) {
@@ -245,22 +251,47 @@ final class EntregaLocalDataSourceDrift {
         await _encolador.encolar('entrega', OperacionSync.insert, EntregaModel.toJson(fila));
       }
       cambio = true;
-    } else {
-      final pendientes = previas.where((e) => e.pendiente).toList();
-      if (pendientes.isEmpty) throw const EntregaSinPendientesException();
-      for (final fila in pendientes) {
-        if (fila.fechaPrevista == cuando) continue;
-        await _actualizar(fila.editada(ahora: ahora, fechaPrevista: cuando));
-        cambio = true;
-      }
+    } else if (!objetivo.any((e) => e.pendiente)) {
+      throw const EntregaSinPendientesException();
     }
-    final filas = _desde(await _vivas(ventaId), soloDesde);
+    final ids = {
+      for (final e in objetivo.isEmpty ? filasNuevas : objetivo)
+        if (e.pendiente) e.id,
+    };
+
+    // La cita que ya está a esa hora (de estos libros o de otros de la venta) es la de esta visita.
+    Agenda? cita = reparto.citas
+        .where((c) => c.fechaProgramada.isAtSameMomentAs(cuando))
+        .firstOrNull;
+    // Las citas que hoy llevan estos libros y se quedan sin ninguno al moverlos.
+    final vacias = [
+      for (final c in reparto.citas)
+        if (reparto.filasDe(c, todas) case final grupo
+            when grupo.isNotEmpty && grupo.every((e) => ids.contains(e.id)))
+          c,
+    ];
+
+    for (final fila in objetivoDe(await _vivas(ventaId))) {
+      if (!fila.pendiente || fila.fechaPrevista == cuando) continue;
+      await _actualizar(fila.editada(ahora: ahora, fechaPrevista: cuando));
+      cambio = true;
+    }
+    final filas = objetivoDe(await _vivas(ventaId));
     // La cita apunta a una fila de la entrega: la primera de las pendientes.
     final ancla = filas.firstWhere((e) => e.pendiente);
 
-    final previa = await _citaViva(ventaId);
-    final Agenda cita;
-    if (previa == null) {
+    var nueva = false;
+    if (cita == null && vacias.isNotEmpty) {
+      cita = await _escribirCita(
+        vacias.first.id,
+        AgendasCompanion(
+          fechaProgramada: Value(cuando),
+          entregaId: Value(ancla.id),
+          updatedAt: Value(instanteMs(ahora)),
+        ),
+      );
+      cambio = true;
+    } else if (cita == null) {
       cita = await _crearCita(
         id: idDeLaCita,
         venta: venta,
@@ -269,19 +300,22 @@ final class EntregaLocalDataSourceDrift {
         ancla: ancla,
         ahora: ahora,
       );
+      nueva = true;
       cambio = true;
-    } else if (previa.fechaProgramada != cuando || previa.entregaId != ancla.id) {
-      cita = await _escribirCita(
-        previa.id,
+    }
+
+    final canceladas = <String>[];
+    for (final c in vacias) {
+      if (c.id == cita.id) continue;
+      await _escribirCita(
+        c.id,
         AgendasCompanion(
-          fechaProgramada: Value(cuando),
-          entregaId: Value(ancla.id),
+          estado: Value(EstadoAgenda.cancelada.codigo),
           updatedAt: Value(instanteMs(ahora)),
         ),
       );
+      canceladas.add(c.id);
       cambio = true;
-    } else {
-      cita = previa;
     }
 
     final color = await _recalcularEspacio(espacioId, ahora: ahora, colportorId: venta.colportorId);
@@ -291,19 +325,25 @@ final class EntregaLocalDataSourceDrift {
       direccion: await _direccionDe(espacioId),
       colorDeLaCasa: color,
       yaEstaba: !cambio,
-      citaNueva: previa == null,
+      citaNueva: nueva,
+      citasCanceladas: canceladas,
     );
   });
 
   /// Ver [EntregaRepository.cumplir]. Lanza [EntregaSinVentaException],
   /// [EntregaSinPendientesException] (`sinFilas` si la venta no tiene ninguna fila) o
   /// [EntregaAjenaException].
+  ///
+  /// Una venta puede tener una cita por cada grupo de libros diferido (decisión de Cristian del 11/11,
+  /// «Entrega cita»): marcar una entrega toca solo los libros de esa cita ([agendaId]) o del grupo de
+  /// las filas pedidas ([entregaIds]). Sin ninguno de los dos, toda la venta.
   Future<EntregaCumplida> cumplir(
     String ventaId, {
     required DateTime ahora,
     required String idDeLaCita,
     Set<String>? entregaIds,
     DateTime? nuevaFecha,
+    String? agendaId,
   }) => _db.transaction(() async {
     final venta = await _ventaViva(ventaId);
     final previas = await _vivas(ventaId);
@@ -312,41 +352,87 @@ final class EntregaLocalDataSourceDrift {
       throw const EntregaAjenaException();
     }
     final espacioId = await _espacioDe(venta.espacioPersonaId);
+    final pendientes = [
+      for (final fila in previas)
+        if (fila.pendiente) fila,
+    ];
+    final reparto = await _reparto(ventaId, previas);
+
+    // Lo que se pide entregar y el alcance: los grupos (citas) de eso. Lo de otra cita no se toca.
+    final laCita = agendaId == null
+        ? null
+        : reparto.citas.where((c) => c.id == agendaId).firstOrNull;
+    final Set<String>? pedidas;
+    if (entregaIds != null) {
+      pedidas = entregaIds;
+    } else if (agendaId != null) {
+      pedidas = {
+        if (laCita != null)
+          for (final e in reparto.filasDe(laCita, previas)) e.id,
+      };
+    } else {
+      pedidas = null;
+    }
+    final fechas = {
+      for (final e in pendientes)
+        if (pedidas == null || pedidas.contains(e.id)) _ms(e.fechaPrevista),
+    };
+    final alcance = [
+      for (final e in pendientes)
+        if (pedidas == null || fechas.contains(_ms(e.fechaPrevista))) e,
+    ];
+    final citas = [
+      for (final c in reparto.citas)
+        if (pedidas == null ||
+            c.id == laCita?.id ||
+            reparto.filasDe(c, previas).any((e) => alcance.any((a) => a.id == e.id)))
+          c,
+    ];
 
     // Solo lo que falta entregar del neto (decisión del 30/10, «Devol. s/ent»): un libro devuelto sin
     // entregarse no se marca, aunque su fila siga pendiente; una fila devuelta en parte se entrega con
     // lo que queda.
     final neto = await _pendienteNeto(ventaId, [
-      for (final fila in previas)
-        if (fila.pendiente) (id: fila.id, productoId: fila.productoId, cantidad: fila.cantidad),
+      for (final fila in pendientes)
+        (id: fila.id, productoId: fila.productoId, cantidad: fila.cantidad),
     ]);
     final aEntregar = [
-      for (final fila in previas)
-        if (neto.containsKey(fila.id) && (entregaIds == null || entregaIds.contains(fila.id))) fila,
+      for (final fila in alcance)
+        if (neto.containsKey(fila.id) && (pedidas == null || pedidas.contains(fila.id))) fila,
     ];
-    if (aEntregar.isEmpty && neto.isEmpty && previas.any((f) => f.pendiente)) {
+
+    Future<List<Agenda>> cumplirLas(Iterable<Agenda> cuales) async {
+      final cerradas = <Agenda>[];
+      for (final c in cuales) {
+        cerradas.add(
+          await _escribirCita(
+            c.id,
+            AgendasCompanion(
+              estado: Value(EstadoAgenda.cumplida.codigo),
+              updatedAt: Value(instanteMs(ahora)),
+            ),
+          ),
+        );
+      }
+      return cerradas;
+    }
+
+    if (aEntregar.isEmpty && alcance.isNotEmpty && !alcance.any((f) => neto.containsKey(f.id))) {
       // Hay filas pendientes pero todo lo que tenían se devolvió sin entregarse: no hay nada que
       // entregar y no es «ya estaba entregada». La visita de la entrega ya no hace falta: su cita se
       // cierra (CUMPLIDA, como cuando no queda nada pendiente) para que no quede programada para
       // siempre. Las filas no se tocan (decisión del 30/10, «Devol. s/ent»).
-      var cita = await _citaViva(ventaId);
-      if (cita != null) {
-        cita = await _escribirCita(
-          cita.id,
-          AgendasCompanion(
-            estado: Value(EstadoAgenda.cumplida.codigo),
-            updatedAt: Value(instanteMs(ahora)),
-          ),
-        );
-      }
+      final cerradas = await cumplirLas(citas);
       return EntregaCumplida(
         entregas: previas,
         entregadas: const [],
-        cita: cita,
-        citaCumplida: cita != null,
+        cita: cerradas.firstOrNull,
+        citaCumplida: cerradas.isNotEmpty,
+        otrasCitasCumplidas: [for (final c in cerradas.skip(1)) c.id],
         direccion: espacioId == null ? '' : await _direccionDe(espacioId),
         colorDeLaCasa: espacioId == null ? null : await _colorDelEspacio(espacioId),
         todoDevuelto: true,
+        quedaPendiente: pedidas == null ? null : alcance.isNotEmpty,
       );
     }
     if (aEntregar.isEmpty) {
@@ -355,10 +441,11 @@ final class EntregaLocalDataSourceDrift {
       return EntregaCumplida(
         entregas: previas,
         entregadas: const [],
-        cita: await _citaViva(ventaId),
+        cita: laCita ?? citas.firstOrNull,
         direccion: espacioId == null ? '' : await _direccionDe(espacioId),
         colorDeLaCasa: espacioId == null ? null : await _colorDelEspacio(espacioId),
         yaEstaba: true,
+        quedaPendiente: pedidas == null ? null : alcance.isNotEmpty,
       );
     }
 
@@ -368,7 +455,7 @@ final class EntregaLocalDataSourceDrift {
       );
     }
     final restantes = [
-      for (final fila in previas)
+      for (final fila in alcance)
         if (neto.containsKey(fila.id) && !aEntregar.any((e) => e.id == fila.id)) fila,
     ];
     final cuando = nuevaFecha == null ? null : instanteMs(nuevaFecha);
@@ -380,44 +467,63 @@ final class EntregaLocalDataSourceDrift {
       );
     }
 
-    var cita = await _citaViva(ventaId);
+    var cita = laCita ?? citas.firstOrNull;
     var cumplida = false;
     var conFechaNueva = false;
-    final sigueConFecha = restantes.isNotEmpty && cuando != null;
-    if (!sigueConFecha) {
+    var otras = <String>[];
+    if (restantes.isEmpty || cuando == null) {
       // Nada pendiente, o lo que queda quedó sin fecha: la visita de la entrega se hizo.
-      if (cita != null) {
+      final primera = cita;
+      final cerradas = await cumplirLas([
+        ?primera,
+        for (final c in citas)
+          if (c.id != primera?.id) c,
+      ]);
+      if (cerradas.isNotEmpty) {
+        cita = cerradas.first;
+        cumplida = true;
+        otras = [for (final c in cerradas.skip(1)) c.id];
+      }
+    } else {
+      // Lo que queda tiene fecha nueva. Si otra cita de la venta ya está a esa hora, es la misma visita
+      // y lo que queda pasa a ella; si no, la cita de estos libros se mueve (o se crea una).
+      final enEsaHora = reparto.citas
+          .where((c) => !citas.contains(c) && c.fechaProgramada.isAtSameMomentAs(cuando))
+          .firstOrNull;
+      final propia = cita;
+      if (enEsaHora != null) {
+        otras = [for (final c in await cumplirLas(citas)) c.id];
+        cita = enEsaHora;
+      } else if (propia != null) {
+        otras = [
+          for (final c in await cumplirLas([
+            for (final c in citas)
+              if (c.id != propia.id) c,
+          ]))
+            c.id,
+        ];
         cita = await _escribirCita(
-          cita.id,
+          propia.id,
           AgendasCompanion(
-            estado: Value(EstadoAgenda.cumplida.codigo),
+            fechaProgramada: Value(cuando),
+            entregaId: Value(restantes.first.id),
             updatedAt: Value(instanteMs(ahora)),
           ),
         );
-        cumplida = true;
+        conFechaNueva = true;
+      } else if (espacioId != null) {
+        // Lo que quedó salió de una entrega que no tenía cita (inmediata parcial, o la cita se
+        // canceló a mano): la fecha nueva le agenda una.
+        cita = await _crearCita(
+          id: idDeLaCita,
+          venta: venta,
+          espacioId: espacioId,
+          cuando: cuando,
+          ancla: restantes.first,
+          ahora: ahora,
+        );
+        conFechaNueva = true;
       }
-    } else if (cita != null) {
-      cita = await _escribirCita(
-        cita.id,
-        AgendasCompanion(
-          fechaProgramada: Value(cuando),
-          entregaId: Value(restantes.first.id),
-          updatedAt: Value(instanteMs(ahora)),
-        ),
-      );
-      conFechaNueva = true;
-    } else if (espacioId != null) {
-      // Lo que quedó salió de una entrega que no tenía cita (inmediata parcial, o la cita se
-      // canceló a mano): la fecha nueva le agenda una.
-      cita = await _crearCita(
-        id: idDeLaCita,
-        venta: venta,
-        espacioId: espacioId,
-        cuando: cuando,
-        ancla: restantes.first,
-        ahora: ahora,
-      );
-      conFechaNueva = true;
     }
 
     final color = espacioId == null
@@ -433,8 +539,11 @@ final class EntregaLocalDataSourceDrift {
       cita: cita,
       citaCumplida: cumplida,
       citaConFechaNueva: conFechaNueva,
+      otrasCitasCumplidas: otras,
       direccion: espacioId == null ? '' : await _direccionDe(espacioId),
       colorDeLaCasa: color,
+      // Lo de otra cita de la venta no cuenta como «quedó pendiente» de esta.
+      quedaPendiente: pedidas == null ? null : alcance.any((f) => !aEntregar.contains(f)),
     );
   });
 
@@ -488,23 +597,17 @@ final class EntregaLocalDataSourceDrift {
     return salida.stream;
   }
 
-  /// Una lectura de lo pendiente (ver [observarPendientes]).
+  /// Una lectura de lo pendiente (ver [observarPendientes]): una [EntregaPendiente] por **grupo** de
+  /// libros de cada venta, con su fecha y su cita (decisión de Cristian del 11/11, «Entrega cita»: lo
+  /// que se sumó a una venta puede tener su propia cita).
   Future<List<EntregaPendiente>> _pendientes(String? espacioPersonaId) async {
     final entregas = _db.entregas;
     final ventas = _db.ventas;
-    final agendas = _db.agendas;
     final vinculos = _db.espacioPersonas;
     final consulta =
         _db.select(entregas).join([
             innerJoin(ventas, ventas.id.equalsExp(entregas.ventaId)),
             leftOuterJoin(vinculos, vinculos.id.equalsExp(ventas.espacioPersonaId)),
-            leftOuterJoin(
-              agendas,
-              agendas.ventaId.equalsExp(ventas.id) &
-                  agendas.tipo.equals(TipoAgenda.entrega.codigo) &
-                  agendas.estado.equals(EstadoAgenda.programada.codigo) &
-                  agendas.deletedAt.isNull(),
-            ),
           ])
           ..where(
             entregas.pendiente.equals(true) &
@@ -516,53 +619,52 @@ final class EntregaLocalDataSourceDrift {
           )
           ..orderBy([OrderingTerm.asc(entregas.createdAt), OrderingTerm.asc(entregas.id)]);
     final filas = await consulta.get();
-    final porVenta = <String, _VentaPendiente>{};
-    final filasPorVenta = <String, List<({String id, String productoId, int cantidad})>>{};
+    final ventasLeidas = <String, ({VentaFila venta, String? espacioId})>{};
+    final filasPorVenta = <String, List<Entrega>>{};
     for (final fila in filas) {
       final venta = fila.readTable(ventas);
-      final entrega = fila.readTable(entregas);
-      final cita = fila.readTableOrNull(agendas);
-      final acumulada = porVenta.putIfAbsent(
+      ventasLeidas.putIfAbsent(
         venta.id,
-        () => _VentaPendiente(
-          venta.id,
-          venta.espacioPersonaId,
-          venta.fecha,
-          fila.readTableOrNull(vinculos)?.espacioId,
-          venta.numeroTalonario,
-        ),
+        () => (venta: venta, espacioId: fila.readTableOrNull(vinculos)?.espacioId),
       );
-      final propias = filasPorVenta.putIfAbsent(venta.id, () => []);
-      if (!propias.any((e) => e.id == entrega.id)) {
-        propias.add((id: entrega.id, productoId: entrega.productoId, cantidad: entrega.cantidad));
-      }
-      final fecha = entrega.fechaPrevista;
-      if (fecha != null && (acumulada.fecha == null || fecha.isBefore(acumulada.fecha!))) {
-        acumulada.fecha = fecha;
-      }
-      final agendaId = acumulada.agendaId;
-      if (cita != null && (agendaId == null || cita.id.compareTo(agendaId) < 0)) {
-        acumulada.agendaId = cita.id;
-      }
+      filasPorVenta
+          .putIfAbsent(venta.id, () => [])
+          .add(EntregaModel.desdeFila(fila.readTable(entregas)));
     }
+    final grupos = <_VentaPendiente>[];
     for (final MapEntry(key: ventaId, value: propias) in filasPorVenta.entries) {
-      final neto = await _pendienteNeto(ventaId, propias);
-      final acumulada = porVenta[ventaId]!;
+      final neto = await _pendienteNeto(ventaId, [
+        for (final e in propias) (id: e.id, productoId: e.productoId, cantidad: e.cantidad),
+      ]);
+      final reparto = await _reparto(ventaId, propias);
+      final (:venta, :espacioId) = ventasLeidas[ventaId]!;
+      final porFecha = <int?, _VentaPendiente>{};
       for (final e in propias) {
         final cantidad = neto[e.id];
         if (cantidad == null) continue;
-        acumulada.lineas[e.id] = LineaPendiente(
+        porFecha
+            .putIfAbsent(
+              _ms(e.fechaPrevista),
+              () => _VentaPendiente(
+                venta.id,
+                venta.espacioPersonaId,
+                venta.fecha,
+                espacioId,
+                venta.numeroTalonario,
+                fecha: e.fechaPrevista,
+                agendaId: reparto.citaDe(e)?.id,
+              ),
+            )
+            .lineas[e.id] = LineaPendiente(
           entregaId: e.id,
           productoId: e.productoId,
           cantidad: cantidad,
         );
       }
+      grupos.addAll(porFecha.values);
     }
-    final lista = [
-      for (final v in porVenta.values)
-        if (v.lineas.isNotEmpty) v,
-    ]..sort(_VentaPendiente.comparar);
-    return [for (final v in lista) v.aEntidad()];
+    grupos.sort(_VentaPendiente.comparar);
+    return [for (final g in grupos) g.aEntidad()];
   }
 
   /// Cuánto de cada fila pendiente de [ventaId] falta entregar de verdad, `entrega.id` → cantidad:
@@ -612,8 +714,8 @@ final class EntregaLocalDataSourceDrift {
     return espacio == null || espacio.deletedAt != null ? null : espacio.id;
   }
 
-  /// La cita `ENTREGA` `PROGRAMADA` más antigua de la venta, o `null`.
-  Future<Agenda?> _citaViva(String ventaId) async {
+  /// Las citas `ENTREGA` `PROGRAMADA` de la venta, de la más antigua a la más nueva.
+  Future<List<Agenda>> _citasVivas(String ventaId) async {
     final filas =
         await (_db.select(_db.agendas)
               ..where(
@@ -623,10 +725,25 @@ final class EntregaLocalDataSourceDrift {
                     a.estado.equals(EstadoAgenda.programada.codigo) &
                     a.deletedAt.isNull(),
               )
-              ..orderBy([(a) => OrderingTerm.asc(a.createdAt), (a) => OrderingTerm.asc(a.id)])
-              ..limit(1))
+              ..orderBy([(a) => OrderingTerm.asc(a.createdAt), (a) => OrderingTerm.asc(a.id)]))
             .get();
-    return filas.isEmpty ? null : AgendaLocalDataSourceDrift.desdeFila(filas.first);
+    return [for (final f in filas) AgendaLocalDataSourceDrift.desdeFila(f)];
+  }
+
+  /// Las citas vivas de la venta, cada una con su grupo de las [filas] pendientes
+  /// ([ReglasDeEntrega.repartirCitas]).
+  Future<_Reparto> _reparto(String ventaId, List<Entrega> filas) async {
+    final citas = await _citasVivas(ventaId);
+    return _Reparto(
+      citas,
+      ReglasDeEntrega.repartirCitas(
+        [for (final c in citas) (id: c.id, fecha: c.fechaProgramada.millisecondsSinceEpoch)],
+        [
+          for (final e in filas)
+            if (e.pendiente) _ms(e.fechaPrevista),
+        ],
+      ),
+    );
   }
 
   /// Agenda la entrega de [venta] para [cuando], apuntando a la fila [ancla], y encola el alta.
@@ -793,15 +910,56 @@ final class EntregaLocalDataSourceDrift {
   );
 }
 
-/// Lo que se junta de una venta mientras se recorren las filas de la consulta de pendientes.
+/// Las citas vivas de entrega de una venta con el grupo de libros pendientes de cada una (ver
+/// [ReglasDeEntrega.repartirCitas]).
+final class _Reparto {
+  _Reparto(this.citas, this._fechaDe);
+
+  /// De la más antigua a la más nueva.
+  final List<Agenda> citas;
+
+  /// Por id de cita, la fecha (ms) de su grupo; una cita sin grupo no figura.
+  final Map<String, int?> _fechaDe;
+
+  /// Las filas pendientes de [filas] que son de [cita]: las de su grupo y, si no tiene grupo porque
+  /// otra cita de la venta está a la misma hora (se movió a esa hora en la Agenda), las de esa hora:
+  /// es la misma visita, así que «Entregado hoy» de cualquiera de las dos entrega esos libros y las
+  /// cierra a las dos (revisión y QA de #709). Vacío si no hay nada pendiente para ella.
+  List<Entrega> filasDe(Agenda cita, List<Entrega> filas) {
+    final fecha = _fechaDe.containsKey(cita.id)
+        ? _fechaDe[cita.id]
+        : cita.fechaProgramada.millisecondsSinceEpoch;
+    return [
+      for (final e in filas)
+        if (e.pendiente && _ms(e.fechaPrevista) == fecha) e,
+    ];
+  }
+
+  /// La cita del grupo de [fila], o `null` si no tiene (sin fecha, o la cita se canceló a mano).
+  Agenda? citaDe(Entrega fila) {
+    final fecha = _ms(fila.fechaPrevista);
+    if (fecha == null) return null;
+    for (final c in citas) {
+      if (_fechaDe.containsKey(c.id) && _fechaDe[c.id] == fecha) return c;
+    }
+    return null;
+  }
+}
+
+int? _ms(DateTime? instante) => instante?.millisecondsSinceEpoch;
+
+/// Lo que se junta de un grupo de libros pendientes de una venta (los de una misma fecha prevista y
+/// su cita) mientras se recorren las filas de la consulta de pendientes.
 final class _VentaPendiente {
   _VentaPendiente(
     this.ventaId,
     this.espacioPersonaId,
     this.vendidaEl,
     this.espacioId,
-    this.numeroTalonario,
-  );
+    this.numeroTalonario, {
+    this.fecha,
+    this.agendaId,
+  });
 
   final String ventaId;
   final String espacioPersonaId;
@@ -809,8 +967,8 @@ final class _VentaPendiente {
   final String? espacioId;
   final String numeroTalonario;
   final lineas = <String, LineaPendiente>{};
-  DateTime? fecha;
-  String? agendaId;
+  final DateTime? fecha;
+  final String? agendaId;
 
   EntregaPendiente aEntidad() => EntregaPendiente(
     ventaId: ventaId,

@@ -236,7 +236,12 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     final destino = ref.read(registrarEntregaDesdeLaFichaProvider);
     if (destino == null) return;
     if (frenaPorCuentaRestringida(context, ref)) return;
-    await destino((personaId: widget.personaId, espacioId: widget.espacioId, ventaId: null));
+    await destino((
+      personaId: widget.personaId,
+      espacioId: widget.espacioId,
+      ventaId: null,
+      fechaPrevista: null,
+    ));
   });
 
   /// «Entregar» en la tarjeta de una entrega pendiente (32B·01, HU-VEN-005): el mismo destino que
@@ -250,6 +255,8 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
       personaId: widget.personaId,
       espacioId: widget.espacioId,
       ventaId: entrega.ventaId,
+      // La fecha de la tarjeta: si la venta tiene dos entregas (una por cita), se abre esta.
+      fechaPrevista: entrega.pendiente ? entrega.fecha : null,
     ));
   });
   Future<void> _darDeBaja(FichaDePersona ficha) => _unaAlaVez(() async {
