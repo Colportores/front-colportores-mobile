@@ -853,7 +853,7 @@ void main() {
       final lecturas = <ClaveDeLaCasa>[];
       extras.addAll(overridesHojaCasa(lecturas: lecturas));
       await montar(tester, conMapa: true);
-      const clave = (ubicacionId: 'ub-1', tipo: TipoUbicacion.casa);
+      const clave = (ubicacionId: 'ub-1', tipo: TipoUbicacion.casa, espacioId: null);
       final suscripcion = contenedor(tester).listen(contextoDeLaCasaProvider(clave), (_, _) {});
       addTearDown(suscripcion.close);
       await tester.pump();

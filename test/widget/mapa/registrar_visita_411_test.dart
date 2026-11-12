@@ -467,14 +467,14 @@ void main() {
     });
 
     testWidgets(
-      'dado un edificio sin depto elegido, cuando se abre, avisa que todavía no se puede y '
-      'no abre la hoja',
+      'dado un edificio sin depto elegido, cuando se abre, avisa que el depto se elige en la '
+      'lista del edificio (#452) y no abre la hoja',
       (tester) async {
         final a = await montarQuePaso(tester, espacioId: null);
 
         expect(_hoja, findsNothing);
         expect(
-          find.text('Todavía no se pueden registrar visitas en un edificio desde acá.'),
+          find.text('Elegí el depto en la lista del edificio para registrar la visita.'),
           findsOneWidget,
         );
         expect(a.resultados, [false]);

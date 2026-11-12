@@ -292,7 +292,9 @@ void main() {
 
   group('QA #304 r2 · la línea «El departamento 3B queda como…» y el aviso a 200 %', () {
     for (final (nombre, tamano, escala) in _tamanos) {
-      for (final (destino, linea) in [('Casa', _lineaCasa), ('Negocio', _lineaNegocio)]) {
+      // A Negocio el depto sigue con su número (Cristian, 09/11, «Negocio mapa»): la línea es solo
+      // de Casa.
+      for (final (destino, linea) in [('Casa', _lineaCasa)]) {
         testWidgets('un depto «3B», Edificio → $destino: la línea se ve sin scroll, no bloquea y '
             'cumple las guías en $nombre', (tester) async {
           final handle = tester.ensureSemantics();
@@ -336,20 +338,22 @@ void main() {
       await _capturar(tester, 'r2_negocio_a_casa_2_deptos_360x640_2x');
     });
 
-    testWidgets('la línea cambia de «casa» a «negocio» y se va al volver a Edificio', (
-      tester,
-    ) async {
-      final repo = _edificioFalso(1, numeroDepto: '3B');
-      await _montar(tester, repo);
+    testWidgets(
+      'la línea de «casa» se va al pasar a Negocio (el depto sigue con su número, 09/11) y '
+      'al volver a Edificio',
+      (tester) async {
+        final repo = _edificioFalso(1, numeroDepto: '3B');
+        await _montar(tester, repo);
 
-      await _tocar(tester, find.text('Casa'));
-      expect(find.text(_lineaCasa), findsOneWidget);
-      await _tocar(tester, find.text('Negocio'));
-      expect(find.text(_lineaCasa), findsNothing);
-      expect(find.text(_lineaNegocio), findsOneWidget);
-      await _tocar(tester, find.text('Edificio'));
-      expect(find.textContaining('queda como el espacio'), findsNothing);
-    });
+        await _tocar(tester, find.text('Casa'));
+        expect(find.text(_lineaCasa), findsOneWidget);
+        await _tocar(tester, find.text('Negocio'));
+        expect(find.text(_lineaCasa), findsNothing);
+        expect(find.text(_lineaNegocio), findsNothing);
+        await _tocar(tester, find.text('Edificio'));
+        expect(find.textContaining('queda como el espacio'), findsNothing);
+      },
+    );
 
     testWidgets('si el depto no tiene número no hay línea y se puede guardar', (tester) async {
       final sinNumero = _edificioFalso(1);
@@ -416,7 +420,7 @@ void main() {
       final repo = _edificioFalso(1);
       await _montar(tester, repo);
       repo.espacios = 3;
-      await _tocar(tester, find.text('Negocio'));
+      await _tocar(tester, find.text('Casa'));
       await tester.enterText(find.byType(TextField).at(0), 'Av. Brasil');
       await tester.enterText(find.byType(TextField).at(1), '1238');
       await _asentar(tester);
@@ -625,7 +629,7 @@ void main() {
       );
       await _montar(tester, repositorio);
 
-      await _tocar(tester, find.text('Negocio'));
+      await _tocar(tester, find.text('Casa'));
 
       expect(find.text(_aviso2), findsOneWidget);
       expect(_habilitado(tester, _guardar), isFalse);

@@ -119,6 +119,7 @@ Future<bool> mostrarHojaQuePaso(
   required Future<SalidaDeOpcion> Function(OpcionQuePaso opcion) alElegir,
   CobroOfrecido? cobro,
   VentaOfrecida? venta,
+  String titulo = TextosRegistrarVisita.titulo,
 }) async {
   final resultado = await showModalBottomSheet<bool>(
     context: context,
@@ -132,6 +133,7 @@ Future<bool> mostrarHojaQuePaso(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (_) => HojaQuePaso(
+      titulo: titulo,
       direccion: direccion,
       ofrecidas: ofrecidas,
       cobro: cobro,
@@ -155,8 +157,11 @@ class HojaQuePaso extends StatefulWidget {
     required this.alElegir,
     this.cobro,
     this.venta,
+    this.titulo = TextosRegistrarVisita.titulo,
   });
 
+  /// «¿Qué pasó?» (C·06) o, en un depto, «¿Qué pasó en el 2A?» (N·07).
+  final String titulo;
   final String direccion;
   final Set<OpcionQuePaso> ofrecidas;
   final CobroOfrecido? cobro;
@@ -322,7 +327,7 @@ class _HojaQuePasoState extends State<HojaQuePaso> {
             const SizedBox(height: 16),
             Semantics(
               header: true,
-              child: Text(TextosRegistrarVisita.titulo, style: theme.textTheme.headlineSmall),
+              child: Text(widget.titulo, style: theme.textTheme.headlineSmall),
             ),
             const SizedBox(height: 6),
             Text(

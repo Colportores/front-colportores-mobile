@@ -16,9 +16,14 @@ import '../services/saldos_de_personas.dart';
 /// espacio, las personas, lo que debe cada una, cuándo fue su última entrevista y la nota más
 /// reciente.
 ///
-/// - Una casa o un negocio tiene un solo espacio (el que crea el alta): ese es el contexto. Un
-///   **edificio** no: el contexto es siempre el depto (39, «Reglas comunes») y sin uno elegido no hay
-///   espacio ni personas.
+/// - Una casa tiene un solo espacio (el que crea el alta): ese es el contexto. Si tiene más de uno
+///   activo (un pull que llegó antes de que la unión la pasara a edificio) no se elige ninguno: es como
+///   un edificio sin depto elegido. Un **edificio** no: el
+///   contexto es siempre el depto (39, «Reglas comunes») y sin uno elegido no hay espacio ni personas.
+///   Un **negocio** es como un edificio en toda la app (decisión de Cristian, 09/11, «Negocio mapa»):
+///   también elige su espacio (C·09) aunque tenga uno solo.
+/// - Con [call]`(espacioId:)` el contexto es ese espacio (el depto elegido en C·09, que la hoja muestra
+///   como una casa, C·10), sea cual sea el tipo.
 /// - Emite cuando cambian las personas (un alta, una baja) o la nota, con los saldos ya leídos de
 ///   esas personas. Un saldo que no se puede leer no frena nada: esa persona queda sin saldo (no se
 ///   afirma lo que no se sabe).
@@ -46,15 +51,19 @@ final class ObservarContextoDeLaCasaUseCase {
   final CambiosDeLoQueSeDebe _cambios;
 
   /// El contexto de la ubicación [ubicacionId], que es de tipo [tipo] (el tipo decide si hay un solo
-  /// espacio o un depto por elegir).
-  Stream<ContextoDeLaCasa> call({required String ubicacionId, required TipoUbicacion tipo}) {
+  /// espacio o un depto por elegir). Con [espacioId] (el depto elegido) el contexto es ese espacio.
+  Stream<ContextoDeLaCasa> call({
+    required String ubicacionId,
+    required TipoUbicacion tipo,
+    String? espacioId,
+  }) {
     late final StreamController<ContextoDeLaCasa> salida;
     var cancelado = false;
     StreamSubscription<List<PersonaDelEspacio>>? alPersonas;
     StreamSubscription<NotaDelLugar?>? alNota;
     StreamSubscription<void>? alosCambios;
 
-    String? espacioId;
+    var elegido = espacioId;
     List<PersonaDelEspacio>? personas;
     var saldos = const <String, int>{};
     var entrevistas = const <String, DateTime>{};
@@ -74,7 +83,7 @@ final class ObservarContextoDeLaCasaUseCase {
       if (cancelado || lista == null || !notaLeida) return;
       salida.add(
         ContextoDeLaCasa(
-          espacioId: espacioId,
+          espacioId: elegido,
           personas: lista,
           saldosCentavos: saldos,
           ultimaEntrevistaDe: entrevistas,
@@ -158,13 +167,15 @@ final class ObservarContextoDeLaCasaUseCase {
 
     Future<void> empezar() async {
       try {
-        if (tipo != TipoUbicacion.edificio) {
+        if (elegido == null && tipo == TipoUbicacion.casa) {
           final lectura = await _espacios.listar(ubicacionId);
           final lista = lectura.fold<List<Espacio>>((falla) => throw falla, (todos) => todos);
-          if (lista.isNotEmpty) espacioId = lista.first.id;
+          // Más de un espacio activo: la hoja la muestra como un edificio y el contexto es el depto que
+          // se elija; no se toma uno por el colportor (P1 de `452-qa-261111-1635`).
+          if (lista.length == 1) elegido = lista.single.id;
         }
         if (cancelado) return;
-        final id = espacioId;
+        final id = elegido;
         if (id == null) {
           personas = const [];
         } else {

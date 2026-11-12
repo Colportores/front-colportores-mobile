@@ -18,6 +18,7 @@ import '../../jornada/domain/usecases/obtener_jornada_activa_use_case.dart';
 import '../../jornada/presentation/providers/jornada_providers.dart';
 import '../domain/entities/eleccion_de_cita.dart';
 import '../domain/entities/eleccion_de_venta.dart';
+import '../domain/entities/ubicacion.dart' show TipoUbicacion;
 import 'formato_ubicaciones.dart';
 import 'providers/hoja_casa_providers.dart';
 import 'providers/personas_providers.dart';
@@ -82,6 +83,12 @@ abstract final class FlujoRegistrarVisita {
       return false;
     }
     final direccion = FormatoUbicaciones.direccion(lugar.ubicacion);
+    // En un edificio o un negocio todo es por depto: «¿Qué pasó en el 2A?» y «Grecia 3307 · Piso 2»
+    // (vista 39, N·07).
+    final enDepto =
+        lugar.ubicacion.tipo == TipoUbicacion.edificio ||
+        (lugar.espacio.numeroDepto?.trim().isNotEmpty ?? false);
+    final piso = lugar.espacio.piso?.trim() ?? '';
 
     final programar = contenedor.read(programarEntrevistaDesdeLaCasaProvider);
     final entrevistaDada = contenedor.read(entrevistaDadaDesdeLaCasaProvider);
@@ -328,7 +335,10 @@ abstract final class FlujoRegistrarVisita {
 
     final resuelta = await mostrarHojaQuePaso(
       context,
-      direccion: direccion,
+      titulo: enDepto
+          ? TextosRegistrarVisita.tituloDelDepto(lugar.espacio.numeroDepto)
+          : TextosRegistrarVisita.titulo,
+      direccion: enDepto && piso.isNotEmpty ? '$direccion · Piso $piso' : direccion,
       ofrecidas: ofrecidas,
       cobro: cobro == null ? null : (persona: cobro.nombre, saldoCentavos: cobro.saldoCentavos),
       venta: venta == null || venta.isEmpty

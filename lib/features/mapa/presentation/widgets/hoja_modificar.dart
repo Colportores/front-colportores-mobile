@@ -78,12 +78,12 @@ abstract final class TextosModificar {
   static const abrirDeNuevo = 'Abrir de nuevo';
 
   /// S17, decisión de Cristian del 07/10: «El departamento 3B queda como el espacio de la casa,
-  /// sin número.» (o «del negocio»). Solo informa; la pone el cambio de tipo a Casa o Negocio con
-  /// un único depto que tiene número.
-  static String deptoSinNumero(String numeroDepto, TipoUbicacion tipoNuevo) {
-    final lugar = tipoNuevo == TipoUbicacion.negocio ? 'del negocio' : 'de la casa';
-    return 'El departamento $numeroDepto queda como el espacio $lugar, sin número.';
-  }
+  /// sin número.» Solo informa; la pone el cambio de tipo a Casa con un único depto que tiene número.
+  ///
+  /// Solo al pasar de Edificio a Casa: un negocio es como un edificio y el depto conserva su número
+  /// (P1 de `452-rev-261111-1650`, por «Negocio mapa» del 09/11).
+  static String deptoSinNumero(String numeroDepto) =>
+      'El departamento $numeroDepto queda como el espacio de la casa, sin número.';
 
   /// «2 espacios», «1 espacio», «Sin espacios».
   static String espacios(int n) => switch (n) {
@@ -113,7 +113,7 @@ String mensajeFallaEdicion(Failure falla) => switch (falla) {
 /// «Dar de baja».
 ///
 /// - «Guardar cambios» se habilita recién cuando hay un cambio; los campos cambiados dicen «Editado».
-/// - Pasar a un solo espacio (de edificio a casa o negocio, de negocio a casa) con dos o más
+/// - Pasar a un solo espacio (de edificio o de negocio a casa; de edificio a negocio ya no, decisión del 09/11) con dos o más
 ///   espacios no se puede (S17): el aviso lo dice y el botón queda sin efecto. Con un solo depto sí,
 ///   sin paso de más: el depto pasa a ser el espacio de la casa o del negocio y, si tenía número,
 ///   una línea informativa avisa que queda sin número. El aviso de bloqueo y esa línea se llevan a
@@ -345,7 +345,7 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
                     key: _claveAvisoTipo,
                     color: ColoresAlta.gris,
                     glyph: 'i',
-                    texto: TextosModificar.deptoSinNumero(deptoSinNumero, estado.tipo!),
+                    texto: TextosModificar.deptoSinNumero(deptoSinNumero),
                   ),
                 ],
                 const SizedBox(height: 14),

@@ -76,7 +76,7 @@ void main() {
 
   test('el color de la casa no arma su propia condición de cobro: usa CobroValido', () {
     final fuente = File(
-      'lib/features/mapa/data/services/house_status_updater_drift.dart',
+      'lib/features/mapa/data/services/hechos_del_color_drift.dart',
     ).readAsStringSync();
 
     expect(fuente, contains('CobroValido.cobradoDe'));

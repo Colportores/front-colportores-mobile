@@ -66,14 +66,24 @@ abstract final class TextosRegistrarVisita {
   static const casaNoEstaMas =
       'Esta casa ya no está en tu teléfono. Cerrá esta hoja y volvé a abrir la casa.';
 
-  /// «Registrar visita» sobre un edificio: el depto se elige antes (#452) y todavía no está.
-  static const edificioSinDepto =
-      'Todavía no se pueden registrar visitas en un edificio desde acá.';
+  /// «¿Qué pasó en el 2A?» (vista 39, N·07): «¿Qué pasó?» en un depto, con su número. A confirmar (mapa
+  /// §2: texto): un depto sin número (el canvas no lo dibuja) dice «¿Qué pasó en este depto?».
+  static String tituloDelDepto(String? numeroDepto) {
+    final numero = numeroDepto?.trim() ?? '';
+    return numero.isEmpty ? '¿Qué pasó en este depto?' : '¿Qué pasó en el $numero?';
+  }
 
-  /// «+ Agendar» sobre un edificio (hoja de la casa y selector de la pestaña Agenda): el depto se
-  /// elige antes (#452) y todavía no está.
+  /// «Registrar visita» sin el depto elegido (en un edificio todo es por depto, vista 39 C·09). Desde
+  /// la hoja de la casa ya no pasa: el depto se elige en la lista de deptos. A confirmar (mapa §2:
+  /// texto): dice cómo seguir.
+  static const edificioSinDepto =
+      'Elegí el depto en la lista del edificio para registrar la visita.';
+
+  /// «+ Agendar» de la pestaña Agenda sobre un edificio, o un negocio con más de un espacio: la cita es
+  /// de un depto, y el depto se elige en la hoja del edificio (vista 39, C·09 → C·10 «+ Agendar»). A
+  /// confirmar (mapa §2: texto): dice cómo seguir.
   static const edificioSinDeptoParaAgendar =
-      'Todavía no se puede agendar en un edificio desde acá.';
+      'Para agendar en un edificio, tocalo en el Mapa, elegí el depto y tocá «+ Agendar».';
 
   /// El resultado se deshizo.
   static String seDeshizo(String direccion) => 'Se deshizo. $direccion vuelve a como estaba.';

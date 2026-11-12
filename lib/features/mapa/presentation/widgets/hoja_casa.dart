@@ -12,9 +12,11 @@ import '../../../ventas/presentation/textos_venta_que_crece.dart';
 import '../../../ventas/presentation/widgets/fila_sumar_un_libro.dart';
 import '../../domain/entities/contexto_de_la_casa.dart';
 import '../../domain/entities/eleccion_de_cita.dart';
+import '../../domain/entities/espacio.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/entities/persona.dart';
 import '../../domain/entities/ubicacion.dart' show TipoUbicacion;
+import '../../domain/services/agrupador_espacios.dart';
 import '../../domain/services/cercania_de_la_casa.dart';
 import '../formato_espacios.dart' show TextosEspacios;
 import '../formato_hoja_casa.dart';
@@ -23,12 +25,15 @@ import '../formato_ubicaciones.dart';
 import '../pages/alta_persona_page.dart';
 import '../pages/modificar_ubicacion_page.dart'
     show UbicacionBajaRealizada, UbicacionExistenteElegida;
+import '../providers/espacios_providers.dart';
 import '../providers/hoja_casa_providers.dart';
 import '../textos_personas.dart' show FormatoPersonas, TextosPersonas;
 import '../textos_registrar_visita.dart';
 import 'bajas_de_personas.dart';
+import 'deptos_de_la_casa.dart';
 import 'estados_hoja_casa.dart';
 import 'hoja_con_quien.dart' show mostrarHojaConQuienParaProgramar;
+import 'hoja_depto.dart' show SalidaHojaDepto, VerDeptoElegido, mostrarHojaDepto;
 import 'hoja_ubicacion.dart' show abridorEdicionUbicacionProvider;
 import 'pestanas_hoja_casa.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta;
@@ -62,8 +67,8 @@ import 'visitas_agendadas_de_la_casa.dart';
 /// aviso de la reactivación va dentro de la hoja. Con la casa de baja se ven y no se reactivan
 /// (#679). Historial y Notas llegan con sus issues (#446 y
 /// #447) por [pestanaHistorialDeLaCasaProvider] y [pestanaNotasDeLaCasaProvider]: mientras no estén,
-/// la pestaña no se ofrece. En un edificio sin depto elegido no hay espacio ni personas: se ve el
-/// resumen.
+/// la pestaña no se ofrece. Un edificio o un negocio sin depto elegido muestra sus deptos (C·09) a
+/// cualquier altura.
 ///
 /// **Visitas agendadas** (23B·10, #491): entre la nota y «Registrar visita» —lo mismo en la hoja
 /// arriba, antes de las pestañas— va la lista de las visitas `PROGRAMADA` de la casa
@@ -85,6 +90,16 @@ import 'visitas_agendadas_de_la_casa.dart';
 /// toque, o dos botones seguidos, abren una sola vez; si la acción falla la hoja avisa y los botones
 /// vuelven a poder tocarse.
 ///
+/// **Edificio y negocio: todo es por depto** (vista 39, N·04 a N·07, C·09 y C·10; un negocio es como un
+/// edificio en toda la app, decisión de Cristian del 09/11, «Negocio mapa»): la hoja muestra sus deptos
+/// ([DeptosDeLaCasa]), cada uno con el color y el símbolo de su estado, y «+ Agregar depto», que abre el
+/// alta del depto de la vista 11 (N·05) y vuelve a la lista. Tocar un depto lo abre como una casa
+/// (C·10): «‹  Grecia 3313 · Depto 3B», con «Registrar visita», sus personas, sus visitas agendadas,
+/// «+ Agendar» y, con la hoja arriba, las mismas pestañas que una casa. Un edificio **recién
+/// registrado** ([HojaCasa.recienRegistrada]) arranca sumando deptos (N·04) y, con «Seguir», eligiendo
+/// uno (N·06): ahí tocar un depto abre directamente «¿Qué pasó?» para ese depto (N·07). El atrás va de a
+/// un paso (de C·10 a la lista, de N·06 a N·04) y recién después cierra la hoja.
+///
 /// **Tras guardar, vuelve al mapa** (decisión de Cristian, 05/11, «Tras guardar»): cuando una acción de
 /// la hoja se guarda —el resultado de la visita, el fin de la entrevista, una venta, un cobro, una
 /// agenda— la hoja se cierra y queda el mapa libre, con la casa a la vista y su color nuevo
@@ -99,6 +114,8 @@ class HojaCasa extends ConsumerStatefulWidget {
     this.arriba = false,
     this.colportorId,
     this.alAbrirOtra,
+    this.recienRegistrada = false,
+    this.atras,
   });
 
   final ItemListaUbicacion item;
@@ -123,6 +140,16 @@ class HojaCasa extends ConsumerStatefulWidget {
   /// cerrar la suya antes de abrir la otra). Sin él, la hoja solo se cierra.
   final ValueChanged<String>? alAbrirOtra;
 
+  /// La ubicación se acaba de registrar desde el mapa (vista 41, «Registrar»): un edificio arranca
+  /// sumando sus deptos (N·04) y, con «Seguir», eligiendo uno (N·06). Un negocio sigue el alta de
+  /// siempre (HU-UBI-007) y abre sus deptos como uno que ya estaba (C·09).
+  final bool recienRegistrada;
+
+  /// Dónde deja la hoja su atrás de a un paso (de C·10 a C·09, de N·06 a N·04), cuando quien la monta
+  /// ya maneja el atrás del teléfono (el mapa, que con él cierra la hoja): `null` en el valor = el atrás
+  /// cierra la hoja. Sin esto, la hoja lo maneja con su propio `PopScope` (la hoja modal de la Lista).
+  final ValueNotifier<VoidCallback?>? atras;
+
   @override
   ConsumerState<HojaCasa> createState() => _HojaCasaState();
 }
@@ -143,6 +170,70 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
 
   /// Para llevar a la vista el aviso de una falla si la hoja estaba desplazada.
   final _claveFalla = GlobalKey();
+
+  /// El depto elegido en la lista de deptos (C·09): la hoja lo muestra como una casa (C·10).
+  Espacio? _depto;
+
+  /// El edificio recién registrado ya pasó de sumar deptos (N·04) a elegir uno (N·06).
+  bool _eligiendo = false;
+
+  /// Lo último que la hoja dejó en [HojaCasa.atras] (al irse, lo saca solo si sigue siendo suyo).
+  VoidCallback? _atrasDejado;
+
+  final _desplazamiento = ScrollController();
+
+  @override
+  void dispose() {
+    final atras = widget.atras;
+    if (atras != null && identical(atras.value, _atrasDejado)) atras.value = null;
+    _desplazamiento.dispose();
+    super.dispose();
+  }
+
+  /// Un edificio o un negocio: la hoja muestra sus deptos y cada depto es como una casa. Una casa con
+  /// más de un espacio activo (un pull que llegó antes de que la unión la pasara a edificio) también:
+  /// la app no elige por el colportor (P1 de `452-qa-261111-1635`, regla del 25/10 en #452). No cambia
+  /// nada de lo guardado.
+  bool get _conDeptos => switch (widget.item.ubicacion.tipo) {
+    TipoUbicacion.edificio || TipoUbicacion.negocio => true,
+    TipoUbicacion.casa => _casaConVariosEspacios,
+  };
+
+  /// La casa tiene más de un espacio activo (mientras no se sabe, no).
+  bool get _casaConVariosEspacios =>
+      (ref.watch(espaciosDeUbicacionProvider(widget.item.ubicacion.id)).value?.length ?? 0) > 1;
+
+  /// En qué paso está la lista de deptos.
+  PasoDeptos get _paso {
+    if (!widget.recienRegistrada || widget.item.ubicacion.tipo != TipoUbicacion.edificio) {
+      return PasoDeptos.existente;
+    }
+    return _eligiendo ? PasoDeptos.eligiendo : PasoDeptos.agregando;
+  }
+
+  /// El paso para atrás que tiene la hoja, o `null` si el atrás la cierra.
+  VoidCallback? get _pasoAtras {
+    if (_depto != null) return _volverALosDeptos;
+    if (_paso == PasoDeptos.eligiendo) return () => _cambiarDePaso(() => _eligiendo = false);
+    return null;
+  }
+
+  /// Cambia lo que muestra la hoja (otro depto, otro paso): sin el aviso ni la persona guardada de antes,
+  /// en la pestaña Personas y desde arriba.
+  void _cambiarDePaso(VoidCallback cambio) {
+    setState(() {
+      cambio();
+      _falla = null;
+      _guardada = null;
+      _pestana = PestanaHojaCasa.personas;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _desplazamiento.hasClients) _desplazamiento.jumpTo(0);
+    });
+  }
+
+  /// La «‹» de C·10 y el atrás del teléfono: de vuelta a la lista de deptos.
+  void _volverALosDeptos() => _cambiarDePaso(() => _depto = null);
 
   Future<void> _correr(FutureOr<void> Function() accion, String textoSiFalla) async {
     if (_enCurso) return;
@@ -200,9 +291,53 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
 
   @override
   Widget build(BuildContext context) {
+    final direccion = FormatoUbicaciones.direccion(widget.item.ubicacion);
+    final depto = _depto;
+    final (cabecera, cuerpo) = _conDeptos && depto == null
+        ? _deptos(direccion)
+        : _casa(direccion, depto);
+    final hoja = SingleChildScrollView(
+      controller: _desplazamiento,
+      child: Semantics(
+        container: true,
+        // Cada pieza (el título, la ✕, la persona, la nota, los botones) es su propio nodo: sin esto
+        // el lector de pantalla las leería como una sola cosa y «Registrar visita» no sería un botón.
+        explicitChildNodes: true,
+        liveRegion: true,
+        label: TextosMapaUbicaciones.vistaPrevia,
+        child: Padding(
+          key: ClavesMapaUbicaciones.vistaPrevia,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [cabecera, const SizedBox(height: 10), cuerpo],
+          ),
+        ),
+      ),
+    );
+    final pasoAtras = _pasoAtras;
+    final atras = widget.atras;
+    if (atras != null) {
+      // Lo lee quien maneja el atrás del teléfono (el mapa) cuando lo tocan: nadie escucha el cambio.
+      _atrasDejado = pasoAtras;
+      atras.value = pasoAtras;
+      return hoja;
+    }
+    return PopScope(
+      canPop: pasoAtras == null,
+      onPopInvokedWithResult: (salio, _) {
+        if (!salio) _pasoAtras?.call();
+      },
+      child: hoja,
+    );
+  }
+
+  /// La hoja de una casa (C·01 y C·02) o, con [depto], la de un depto como una casa (C·10).
+  (Widget, Widget) _casa(String direccion, Espacio? depto) {
     final item = widget.item;
     final ubicacion = item.ubicacion;
-    final clave = (ubicacionId: ubicacion.id, tipo: ubicacion.tipo);
+    final clave = (ubicacionId: ubicacion.id, tipo: ubicacion.tipo, espacioId: depto?.id);
     final contexto = ref.watch(contextoDeLaCasaProvider(clave));
     final cuerpo = contexto.when(
       skipLoadingOnReload: true,
@@ -219,26 +354,37 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
               colportorId: widget.colportorId,
               alReactivar: widget.alReactivar,
               ahora: widget.ahora,
-              alRegistrarVisita: _registrarVisita(datos),
+              agendasDelEspacio: depto?.id,
+              alRegistrarVisita: _registrarVisita(datos.espacioId),
               alAgendar: _agendar(datos),
               alCobrar: _cobrar(datos),
               alAbrirFicha: _abrirFicha(datos),
               alAgregarPersona: _agregarPersona(datos),
-              bajas: [
-                for (final pieza in piezasDeBajas(
-                  espacioId: datos.espacioId!,
-                  // Con la casa de baja las bajas se ven y no se reactivan.
-                  puedeReactivar: !item.esBaja,
-                  ahora: widget.ahora,
-                  // La hoja ya trae su aire a los costados.
-                  margen: 0,
-                ))
-                  pieza(),
-              ],
+              bajas: _bajas(datos.espacioId!),
               alElegirPestana: (pestana) => setState(() {
                 _pestana = pestana;
                 _guardada = null;
               }),
+            )
+          : depto != null && datos.espacioId != null
+          ? _ResumenDelDepto(
+              item: item,
+              contexto: datos,
+              ocupado: _enCurso,
+              falla: _falla,
+              claveFalla: _claveFalla,
+              guardada: _guardada,
+              alReactivar: widget.alReactivar,
+              ahora: widget.ahora,
+              colportorId: widget.colportorId,
+              alRegistrarVisita: _registrarVisita(datos.espacioId),
+              alAgendar: _agendar(datos),
+              alCobrar: _cobrar(datos),
+              alSumar: _sumarUnLibro(datos),
+              alAbrirFicha: _abrirFicha(datos),
+              alAgregarPersona: _agregarPersona(datos),
+              bajas: _bajas(datos.espacioId!),
+              agendasDelEspacio: depto.id,
             )
           : _Resumen(
               item: item,
@@ -249,59 +395,180 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
               alReactivar: widget.alReactivar,
               ahora: widget.ahora,
               colportorId: widget.colportorId,
-              alRegistrarVisita: _registrarVisita(datos),
+              alRegistrarVisita: _registrarVisita(datos.espacioId),
               alAgendar: _agendar(datos),
               alCobrar: _cobrar(datos),
               alSumar: _sumarUnLibro(datos),
             ),
       error: (_, _) => AvisoHojaCasa.errorAlLeer(
         alReintentar: () => ref.invalidate(contextoDeLaCasaProvider(clave)),
+        lugar: depto != null
+            ? TextosEstadosHojaCasa.esteDepto
+            : TextosEstadosHojaCasa.esteLugar(ubicacion.tipo),
       ),
       loading: () => const CargandoHojaCasa(),
     );
     // Con el contexto sin llegar (cargando o error) el subtítulo va vacío (canvas, E·01 y E·02); una
     // casa de baja ya sabe qué decir.
     final leido = contexto.asData?.value;
-    final subtitulo = leido == null
-        ? ''
-        : FormatoHojaCasa.subtitulo(
-            item,
-            widget.ahora,
-            // Solo se sabe en una casa o negocio con su espacio leído; un edificio se nombra como
-            // siempre.
-            sinSaldo:
-                leido.espacioId != null &&
-                leido.personas.every((p) => leido.saldoDe(p.persona.id) == null),
-          );
-    return SingleChildScrollView(
-      child: Semantics(
-        container: true,
-        // Cada pieza (el título, la ✕, la persona, la nota, los botones) es su propio nodo: sin esto
-        // el lector de pantalla las leería como una sola cosa y «Registrar visita» no sería un botón.
-        explicitChildNodes: true,
-        liveRegion: true,
-        label: TextosMapaUbicaciones.vistaPrevia,
-        child: Padding(
-          key: ClavesMapaUbicaciones.vistaPrevia,
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _Cabecera(
-                direccion: FormatoUbicaciones.direccion(ubicacion),
-                subtitulo: subtitulo,
-                alCerrar: widget.alCerrar,
-                tipo: ubicacion.tipo,
-                alEditar: _editarCasa(),
-              ),
-              const SizedBox(height: 10),
-              cuerpo,
-            ],
-          ),
-        ),
-      ),
+    final String subtitulo;
+    if (leido == null) {
+      subtitulo = '';
+    } else if (depto != null) {
+      // C·10: «Cobranza pendiente · piso 3», el estado del depto y no el del edificio.
+      final resumen = ref.watch(resumenDeLosDeptosProvider(_claveResumen)).value?[depto.id];
+      subtitulo = FormatoDeptosDeLaCasa.subtituloDelDepto(depto, resumen, widget.ahora);
+    } else {
+      subtitulo = FormatoHojaCasa.subtitulo(
+        item,
+        widget.ahora,
+        // Solo se sabe en una casa con su espacio leído.
+        sinSaldo:
+            leido.espacioId != null &&
+            leido.personas.every((p) => leido.saldoDe(p.persona.id) == null),
+      );
+    }
+    final cabecera = _Cabecera(
+      direccion: depto == null ? direccion : FormatoDeptosDeLaCasa.tituloDelDepto(direccion, depto),
+      subtitulo: subtitulo,
+      alCerrar: widget.alCerrar,
+      tipo: ubicacion.tipo,
+      // En el depto (C·10) el título es el depto: el edificio se edita desde su lista (C·09).
+      alEditar: depto == null ? _editarCasa() : null,
+      alVolver: depto == null ? null : _volverALosDeptos,
     );
+    return (cabecera, cuerpo);
+  }
+
+  ClaveResumenDeLosDeptos get _claveResumen =>
+      (ubicacionId: widget.item.ubicacion.id, colportorId: widget.colportorId);
+
+  /// La hoja de un edificio o un negocio con sus deptos (C·09) o, recién registrado, sumándolos (N·04)
+  /// y eligiendo uno (N·06).
+  (Widget, Widget) _deptos(String direccion) {
+    final item = widget.item;
+    final ubicacion = item.ubicacion;
+    final espacios = ref.watch(espaciosDeUbicacionProvider(ubicacion.id));
+    final resumenes = ref.watch(resumenDeLosDeptosProvider(_claveResumen));
+    final paso = _paso;
+    final distancia = item.distanciaMetros;
+    final lejos = !item.esBaja && CercaniaDeLaCasa.estaLejos(distancia);
+    final cuerpo = espacios.when(
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
+      data: (todos) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        spacing: 10,
+        children: [
+          if (item.esBaja)
+            AvisoHojaCasa.dadaDeBaja(alReactivar: widget.alReactivar, tipo: ubicacion.tipo),
+          if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
+          if (_falla != null)
+            AvisoAlta(key: _claveFalla, color: ColoresAlta.rojo, glyph: '!', texto: _falla!),
+          DeptosDeLaCasa(
+            espacios: [for (final grupo in AgrupadorEspacios.porPiso(todos)) ...grupo.espacios],
+            resumenes: resumenes.hasError ? null : resumenes.value,
+            paso: paso,
+            ahora: widget.ahora,
+            ocupado: _enCurso,
+            alElegir: _elegirDepto(),
+            alAgregar: _agregarDepto(),
+            alSeguir: paso == PasoDeptos.agregando
+                ? () => _cambiarDePaso(() => _eligiendo = true)
+                : null,
+            // «Volver» de N·04 cierra la hoja como la ✕ (P1 de `452-impl-261111-1400`).
+            alVolver: paso == PasoDeptos.agregando ? widget.alCerrar : null,
+          ),
+        ],
+      ),
+      error: (_, _) => ErrorDeptosDeLaCasa(
+        alReintentar: () => ref.invalidate(espaciosDeUbicacionProvider(ubicacion.id)),
+      ),
+      loading: () => const CargandoHojaCasa(),
+    );
+    final cabecera = _Cabecera(
+      direccion: paso == PasoDeptos.agregando
+          ? TextosDeptosDeLaCasa.edificioEn(direccion)
+          : direccion,
+      // N·04 no lleva línea abajo (el canvas pone ahí «Sumá los deptos…», que va en el cuerpo); con los
+      // deptos sin leer, vacía (E·01 y E·02).
+      subtitulo: paso == PasoDeptos.agregando || !espacios.hasValue
+          ? ''
+          : FormatoDeptosDeLaCasa.subtitulo(
+              item,
+              cantidad: espacios.value?.length,
+              recienRegistrado: paso != PasoDeptos.existente,
+            ),
+      alCerrar: widget.alCerrar,
+      tipo: ubicacion.tipo,
+      alEditar: _editarCasa(),
+    );
+    return (cabecera, cuerpo);
+  }
+
+  /// Las bajas de personas del espacio [espacioId] (32D·04), con la casa de baja solo para ver.
+  List<Widget> _bajas(String espacioId) => [
+    for (final pieza in piezasDeBajas(
+      espacioId: espacioId,
+      // Con la casa de baja las bajas se ven y no se reactivan.
+      puedeReactivar: !widget.item.esBaja,
+      ahora: widget.ahora,
+      // La hoja ya trae su aire a los costados.
+      margen: 0,
+    ))
+      pieza(),
+  ];
+
+  /// Tocar un depto: en un edificio que ya estaba (C·09) lo abre como una casa (C·10); recién
+  /// registrado (N·04 y N·06) abre «¿Qué pasó?» para ese depto (N·07), como «Registrar visita» (sin
+  /// destino, o con la casa de baja, no se toca).
+  ValueChanged<Espacio>? _elegirDepto() {
+    if (_paso == PasoDeptos.existente) {
+      return (espacio) {
+        // Una acción a la vez: con otra abierta, el toque no cambia la hoja de abajo.
+        if (_enCurso) return;
+        _cambiarDePaso(() => _depto = espacio);
+      };
+    }
+    if (ref.watch(registrarVisitaDesdeLaCasaProvider) == null || widget.item.esBaja) return null;
+    return (espacio) => _registrarVisita(espacio.id)?.call();
+  }
+
+  /// «+ Agregar depto» (N·04, N·06 y C·09): el alta del depto de la vista 11 (N·05) con la ubicación
+  /// puesta; al volver, la lista se vuelve a leer. Con «Ver depto 2A ›» del número repetido (11·03), en
+  /// un edificio que ya estaba se abre ese depto (C·10); recién registrado, el depto ya está a la vista
+  /// en la lista. `null` si no se ofrece: la casa de baja o sin saber quién es el colportor. Con la
+  /// cuenta restringida no se abre.
+  VoidCallback? _agregarDepto() {
+    final colportorId = widget.colportorId;
+    if (colportorId == null || widget.item.esBaja) return null;
+    // Una casa con varios espacios se muestra como un edificio, pero no se le suman deptos: eso cambiaría
+    // lo guardado (P1 de `452-qa-261111-1635`).
+    if (widget.item.ubicacion.tipo == TipoUbicacion.casa) return null;
+    return () => _correr(() async {
+      if (frenaPorCuentaRestringida(context, ref)) return;
+      final ubicacionId = widget.item.ubicacion.id;
+      SalidaHojaDepto? salida;
+      try {
+        salida = await mostrarHojaDepto(
+          context,
+          ubicacion: widget.item.ubicacion,
+          colportorId: colportorId,
+        );
+      } finally {
+        // «Agregar y cargar otro» suma deptos sin cerrar: se vuelve a leer siempre.
+        if (mounted) ref.invalidate(espaciosDeUbicacionProvider(ubicacionId));
+      }
+      if (!mounted || _paso != PasoDeptos.existente) return;
+      if (salida case VerDeptoElegido(:final espacioId)) {
+        final todos = await ref.read(espaciosDeUbicacionProvider(ubicacionId).future);
+        if (!mounted) return;
+        for (final espacio in todos) {
+          if (espacio.id == espacioId) _cambiarDePaso(() => _depto = espacio);
+        }
+      }
+    }, TextosDeptosDeLaCasa.noPudimosAbrirAlta);
   }
 
   /// Lo que hace «Editar casa», o `null` si no se ofrece: sin saber quién es el colportor, o con la
@@ -336,15 +603,16 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
     }, TextosEspacios.noPudimosAbrirEdicion);
   }
 
-  /// Lo que hace «Registrar visita», o `null` si no se ofrece: sin destino enganchado, o con la casa
-  /// de baja (no se registra nada en una casa dada de baja).
-  VoidCallback? _registrarVisita(ContextoDeLaCasa contexto) {
+  /// Lo que hace «Registrar visita» en el espacio [espacioId] (el de la casa, o el depto elegido), o
+  /// `null` si no se ofrece: sin destino enganchado, o con la casa de baja (no se registra nada en una
+  /// casa dada de baja).
+  VoidCallback? _registrarVisita(String? espacioId) {
     final destino = ref.watch(registrarVisitaDesdeLaCasaProvider);
     if (destino == null || widget.item.esBaja) return null;
     return () => _correr(() async {
       final resuelta = await destino((
         ubicacionId: widget.item.ubicacion.id,
-        espacioId: contexto.espacioId,
+        espacioId: espacioId,
         agendaId: null,
       ));
       // Se guardó o siguió a otro flujo: la hoja de la casa se va y el mapa queda libre, con el color
@@ -481,9 +749,13 @@ class _Cabecera extends StatelessWidget {
     required this.alCerrar,
     required this.alEditar,
     required this.tipo,
+    this.alVolver,
   });
 
   final String direccion;
+
+  /// La «‹» de C·10 («‹  Grecia 3313 · Depto 3B»), que vuelve a la lista de deptos; `null` = no va.
+  final VoidCallback? alVolver;
 
   /// El tipo de la ubicación: el rótulo de «Editar …» lo sigue (casa, edificio o negocio).
   final TipoUbicacion tipo;
@@ -502,6 +774,31 @@ class _Cabecera extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (alVolver != null)
+              Semantics(
+                button: true,
+                label: TextosDeptosDeLaCasa.volverALosDeptos,
+                onTap: alVolver,
+                child: ExcludeSemantics(
+                  child: InkResponse(
+                    key: ClavesDeptosDeLaCasa.volver,
+                    onTap: alVolver,
+                    radius: 24,
+                    // 48×48 dp: la zona de toque mínima (QA #705).
+                    child: const SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '‹',
+                          style: TextStyle(fontSize: 30, height: 1, color: ColoresLista.tinta),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             Expanded(
               // Con el botón la fila mide lo mismo que la ✕ (48 dp) y la dirección queda centrada en
               // ella (lo mismo que 12 dp de aire arriba), así que el botón no le suma alto; sin él, el
@@ -634,7 +931,8 @@ class _Resumen extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: 10,
       children: [
-        if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar),
+        if (item.esBaja)
+          AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar, tipo: item.ubicacion.tipo),
         if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
         if (colportorId != null && !item.esBaja)
           AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
@@ -696,7 +994,11 @@ class _Arriba extends ConsumerWidget {
     required this.alAgregarPersona,
     required this.bajas,
     required this.alElegirPestana,
+    this.agendasDelEspacio,
   });
+
+  /// Con un depto elegido (C·10), las visitas agendadas que se ven son solo las de ese depto.
+  final String? agendasDelEspacio;
 
   final ItemListaUbicacion item;
   final ContextoDeLaCasa contexto;
@@ -744,7 +1046,8 @@ class _Arriba extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: 10,
       children: [
-        if (item.esBaja) AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar),
+        if (item.esBaja)
+          AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar, tipo: item.ubicacion.tipo),
         if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
         if (colportorId != null && !item.esBaja)
           AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
@@ -756,6 +1059,7 @@ class _Arriba extends ConsumerWidget {
             colportorId: colportorId!,
             ubicacionId: item.ubicacion.id,
             ahora: ahora,
+            espacioId: agendasDelEspacio,
           ),
         if (alRegistrarVisita != null)
           BotonRegistrarVisita(alPresionar: alRegistrarVisita!, ocupado: ocupado),
@@ -789,6 +1093,128 @@ class _Arriba extends ConsumerWidget {
         // Hasta que llegue la pestaña Notas (#447) la nota más reciente del lugar sigue a la vista, como
         // en el resumen: subir la hoja no puede esconder lo que ya se veía.
         if (notas == null && nota != null) FilaNotaDelLugar(nota: nota),
+      ],
+    );
+  }
+}
+
+/// El depto como una casa (C·10 «Depto: como una casa»): los avisos que correspondan, «Registrar
+/// visita», «PERSONAS» con todas las personas del depto («$ Cobrar» en la que debe, «+ Agregar
+/// persona»), «Sumar un libro» de la que tiene una venta abierta, las visitas agendadas del depto y
+/// «+ Agendar». La nota del depto («NOTA DEL DEPTO» con «Editar») llega con #290.
+class _ResumenDelDepto extends ConsumerWidget {
+  const _ResumenDelDepto({
+    required this.item,
+    required this.contexto,
+    required this.ocupado,
+    required this.falla,
+    required this.claveFalla,
+    required this.guardada,
+    required this.alReactivar,
+    required this.ahora,
+    required this.colportorId,
+    required this.alRegistrarVisita,
+    required this.alAgendar,
+    required this.alCobrar,
+    required this.alSumar,
+    required this.alAbrirFicha,
+    required this.alAgregarPersona,
+    required this.bajas,
+    required this.agendasDelEspacio,
+  });
+
+  /// El depto: las visitas agendadas que se ven son solo las suyas.
+  final String agendasDelEspacio;
+
+  final ItemListaUbicacion item;
+  final ContextoDeLaCasa contexto;
+  final bool ocupado;
+  final String? falla;
+  final GlobalKey claveFalla;
+  final String? guardada;
+  final FutureOr<void> Function()? alReactivar;
+  final DateTime ahora;
+  final String? colportorId;
+  final VoidCallback? alRegistrarVisita;
+  final VoidCallback? alAgendar;
+  final VoidCallback? Function(String personaId) alCobrar;
+  final VoidCallback? Function(String personaId) alSumar;
+  final VoidCallback? Function(Persona persona) alAbrirFicha;
+  final VoidCallback? alAgregarPersona;
+  final List<Widget> bajas;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final distancia = item.distanciaMetros;
+    final lejos = !item.esBaja && CercaniaDeLaCasa.estaLejos(distancia);
+    final destacada = contexto.personaDestacada;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      spacing: 10,
+      children: [
+        if (item.esBaja)
+          AvisoHojaCasa.dadaDeBaja(alReactivar: alReactivar, tipo: item.ubicacion.tipo),
+        if (lejos && distancia != null) AvisoHojaCasa.lejos(metros: distancia),
+        if (colportorId != null && !item.esBaja)
+          AvisoErrorVisitasAgendadas(colportorId: colportorId!, ubicacionId: item.ubicacion.id),
+        if (falla != null)
+          AvisoAlta(key: claveFalla, color: ColoresAlta.rojo, glyph: '!', texto: falla!),
+        if (alRegistrarVisita != null)
+          BotonRegistrarVisita(alPresionar: alRegistrarVisita!, ocupado: ocupado),
+        Semantics(
+          header: true,
+          child: const Text(
+            TextosDeptosDeLaCasa.personas,
+            key: ClavesDeptosDeLaCasa.personas,
+            style: TextStyle(
+              fontFamily: 'JetBrainsMono',
+              fontSize: 11,
+              letterSpacing: 1.4,
+              color: ColoresAlta.gris,
+            ),
+          ),
+        ),
+        PestanaPersonasDeLaCasa(
+          filas: [
+            for (final p in contexto.personas)
+              (
+                persona: p,
+                saldoCentavos: contexto.saldoDe(p.persona.id),
+                cuota: contexto.cuotaQueTocaDe(p.persona.id),
+                detalle: switch (contexto.ultimaEntrevistaDe[p.persona.id]) {
+                  final fecha? => TextosPestanasHojaCasa.entrevistaDada(fecha),
+                  null => null,
+                },
+                alCobrar: alCobrar(p.persona.id),
+                alAbrir: alAbrirFicha(p.persona),
+              ),
+          ],
+          alAgregar: alAgregarPersona,
+          ocupada: ocupado,
+          guardada: guardada,
+          ahora: ahora,
+          bajas: bajas,
+        ),
+        // 42B·09A, como en la casa: la persona que más debe (o la primera), si tiene una venta abierta.
+        if (destacada != null &&
+            !item.esBaja &&
+            alSumar(destacada.persona.id) != null &&
+            (ref.watch(ventasAbiertasDeProvider(destacada.persona.id)).value?.isNotEmpty ?? false))
+          FilaSumarUnLibro(
+            personaId: destacada.persona.id,
+            nombre: destacada.persona.nombre,
+            alTocar: alSumar(destacada.persona.id),
+            ocupada: ocupado,
+          ),
+        if (colportorId != null && !item.esBaja)
+          VisitasAgendadasDeLaCasa(
+            colportorId: colportorId!,
+            ubicacionId: item.ubicacion.id,
+            ahora: ahora,
+            espacioId: agendasDelEspacio,
+          ),
+        if (alAgendar != null) BotonAgendarDeLaCasa(alPresionar: alAgendar!, ocupado: ocupado),
       ],
     );
   }
