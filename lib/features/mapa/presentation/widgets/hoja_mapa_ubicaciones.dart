@@ -1,13 +1,19 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../agenda/domain/entities/tipo_agenda.dart';
+import '../../../agenda/domain/services/armador_agendados.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
+import '../formato_agendados.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../mapa_base/modelo_mapa_base.dart' show ColoresMapa;
+import '../providers/hoja_agendados_provider.dart';
 import '../providers/mapa_ubicaciones_state.dart';
 import 'estados_hoja_casa.dart' show ElegirUbicacionDelPunto;
+import 'hoja_agendados.dart';
 import 'hoja_casa.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
 import 'piezas_lista_ubicaciones.dart';
@@ -40,10 +46,14 @@ enum AlturaHoja {
     AlturaHoja.mitad => TextosMapaUbicaciones.alturaMitad,
   };
 
-  /// El alto de la hoja minimizada: el asa y la pestaña (canvas: 104 dp; el asa mide 48 dp para ser
-  /// un objetivo táctil, así que son 108). Con el texto muy grande la pestaña crece y la hoja con ella.
-  static double altoMinimizada(TextScaler escala) =>
-      altoAsa + 6 + math.max(48.0, escala.scale(14.5) * 1.4 + 12) + 6;
+  /// El alto de la hoja minimizada: el asa y las pestañas (canvas: 104 dp; el asa mide 48 dp para ser
+  /// un objetivo táctil, así que son 108). Con el texto muy grande las pestañas crecen y la hoja con
+  /// ellas; en una hoja de [ancho] dp donde «Cercanía» y «Agendados» no entran lado a lado, van una
+  /// debajo de la otra ([MedidaPestanas.enUnaFila]).
+  static double altoMinimizada(TextScaler escala, {double? ancho}) {
+    final filas = ancho == null || MedidaPestanas.enUnaFila(escala, ancho) ? 1 : 2;
+    return altoAsa + 6 + filas * MedidaPestanas.alto(escala) + 6;
+  }
 
   /// El alto de esta altura en una pantalla de [pantalla] dp de alto, con [disponible] dp para el
   /// mapa y la hoja (la hoja nunca tapa más del 70 % de eso: el mapa sigue a la vista).
@@ -56,8 +66,9 @@ enum AlturaHoja {
     required double disponible,
     required TextScaler escala,
     double reserva = 0,
+    double? ancho,
   }) {
-    final minimo = altoMinimizada(escala);
+    final minimo = altoMinimizada(escala, ancho: ancho);
     final base = switch (this) {
       AlturaHoja.minimizada => minimo,
       AlturaHoja.tercio => pantalla / 3,
@@ -68,8 +79,29 @@ enum AlturaHoja {
   }
 }
 
-/// La hoja del mapa de ubicaciones (vista 06): la pestaña «Cercanía N» y, debajo, la lista de las
-/// ubicaciones de la más cercana a la más lejana, o la hoja de la casa que se tocó (vista 39, C·01).
+/// La medida de las pestañas «Cercanía» y «Agendados» de la hoja.
+abstract final class MedidaPestanas {
+  /// El alto de una pestaña: 48 dp de objetivo táctil, o lo que pida el texto grande.
+  static double alto(TextScaler escala) => math.max(48.0, escala.scale(14.5) * 1.4 + 12);
+
+  /// ¿Entran las dos pestañas lado a lado en una hoja de [ancho] dp? Se estima con la más larga
+  /// («▦ Agendados 99», letras de ~0,58 em de Inter semibold) contra la mitad del ancho; si no
+  /// entran, van una debajo de la otra para no recortar el texto (AA, texto al 200 %).
+  static bool enUnaFila(TextScaler escala, double ancho) {
+    final necesita =
+        escala.scale(15) + // el glifo
+        8 +
+        escala.scale(14.5) * 0.58 * TextosAgendados.agendados.length +
+        8 +
+        escala.scale(12) * 0.62 * 2 + // la cuenta
+        12; // el relleno de la pestaña
+    return necesita <= (ancho - 40 - 6) / 2;
+  }
+}
+
+/// La hoja del mapa de ubicaciones (vista 06): las pestañas «Cercanía N» y «Agendados N» y, debajo,
+/// la lista de las ubicaciones de la más cercana a la más lejana o las visitas agendadas (06C·03,
+/// [ContenidoAgendados]), o la hoja de la casa que se tocó (vista 39, C·01).
 /// Si el toque cayó sobre varias ubicaciones que ni el zoom máximo separa, primero se elige cuál
 /// (vista 39, E·06). Se arrastra
 /// entre las tres [AlturaHoja]; tocar el asa también la cambia (para quien no puede arrastrar).
@@ -91,6 +123,11 @@ class HojaMapaUbicaciones extends StatefulWidget {
     this.colportorId,
     this.recienRegistrada,
     this.atrasDeLaHoja,
+    this.hojaDelMapa = const HojaDelMapaState(),
+    this.agendados = const AsyncLoading<VistaAgendados>(),
+    this.alElegirPestana,
+    this.alElegirTipoAgendados,
+    this.alReintentarAgendados,
   });
 
   final MapaUbicacionesState estado;
@@ -123,6 +160,15 @@ class HojaMapaUbicaciones extends StatefulWidget {
   /// Dónde deja la hoja de la casa su atrás de a un paso ([HojaCasa.atras]).
   final ValueNotifier<VoidCallback?>? atrasDeLaHoja;
 
+  /// La pestaña elegida y el chip de tipo de «Agendados».
+  final HojaDelMapaState hojaDelMapa;
+
+  /// Las visitas agendadas ya armadas (06C·03): cargando, el error de la lectura o la hoja.
+  final AsyncValue<VistaAgendados> agendados;
+  final ValueChanged<PestanaHojaMapa>? alElegirPestana;
+  final ValueChanged<TipoAgenda?>? alElegirTipoAgendados;
+  final VoidCallback? alReintentarAgendados;
+
   @override
   State<HojaMapaUbicaciones> createState() => _HojaMapaUbicacionesState();
 }
@@ -141,6 +187,7 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
     disponible: widget.alturaDisponible,
     escala: MediaQuery.textScalerOf(context),
     reserva: widget.reservaLibre,
+    ancho: MediaQuery.sizeOf(context).width,
   );
 
   void _alEmpezarArrastre(DragStartDetails detalle) {
@@ -209,7 +256,13 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
             alSoltar: _alSoltar,
             alCancelar: _alCancelarArrastre,
           ),
-          if (!conVistaPrevia) _PestanaCercania(estado: estado),
+          if (!conVistaPrevia)
+            _Pestanas(
+              estado: estado,
+              elegida: widget.hojaDelMapa.pestana,
+              agendados: widget.agendados,
+              alElegir: widget.alElegirPestana,
+            ),
           if (altura != AlturaHoja.minimizada)
             Expanded(
               child: conVistaPrevia
@@ -232,6 +285,14 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
                             alElegir: widget.alElegirDelPunto,
                             alCerrar: widget.alCerrarVistaPrevia,
                           ))
+                  : widget.hojaDelMapa.enAgendados
+                  ? ContenidoAgendados(
+                      agendados: widget.agendados,
+                      tipo: widget.hojaDelMapa.tipo,
+                      ahora: widget.ahora,
+                      alElegirTipo: (tipo) => widget.alElegirTipoAgendados?.call(tipo),
+                      alReintentar: () => widget.alReintentarAgendados?.call(),
+                    )
                   : _Contenido(
                       estado: estado,
                       ahora: widget.ahora,
@@ -337,16 +398,57 @@ class _Asa extends StatelessWidget {
   }
 }
 
-/// La pestaña «Cercanía N» (canvas): la única de esta semana. «Agendados» llega con las visitas
-/// (HU-VIS-001 y HU-VIS-002), así que por ahora no se ofrece.
-class _PestanaCercania extends StatelessWidget {
-  const _PestanaCercania({required this.estado});
+/// Las pestañas «◎ Cercanía N» y «▦ Agendados N» (canvas 06C·01 y 06C·03): la elegida, en blanco
+/// sobre el gris. Cada una es un botón de 48 dp que el lector de pantalla lee con su cuenta y si está
+/// elegida.
+class _Pestanas extends StatelessWidget {
+  const _Pestanas({
+    required this.estado,
+    required this.elegida,
+    required this.agendados,
+    required this.alElegir,
+  });
 
   final MapaUbicacionesState estado;
+  final PestanaHojaMapa elegida;
+  final AsyncValue<VistaAgendados> agendados;
+  final ValueChanged<PestanaHojaMapa>? alElegir;
 
   @override
   Widget build(BuildContext context) {
     final lista = estado.lista;
+    final alElegir = this.alElegir;
+    // Con un error no se muestra una cuenta vieja: no se sabe si está al día.
+    final cuentaAgendados = agendados.hasError ? null : agendados.value?.cuentas.todas;
+    final escala = MediaQuery.textScalerOf(context);
+    final alto = MedidaPestanas.alto(escala);
+    final cercania = _Pestana(
+      key: ClavesMapaUbicaciones.pestanaCercania,
+      glifo: '◎',
+      texto: TextosMapaUbicaciones.cercania,
+      cuenta: lista?.total,
+      cargando: estado.cargando,
+      etiqueta: estado.cargando
+          ? '${TextosMapaUbicaciones.cercania}. ${TextosMapaUbicaciones.cargando}'
+          : FormatoMapaUbicaciones.cuentaCercania(lista?.total),
+      alto: alto,
+      elegida: elegida == PestanaHojaMapa.cercania,
+      alPresionar: alElegir == null ? null : () => alElegir(PestanaHojaMapa.cercania),
+    );
+    final deAgendados = _Pestana(
+      key: ClavesAgendados.pestana,
+      glifo: '▦',
+      texto: TextosAgendados.agendados,
+      cuenta: cuentaAgendados,
+      cargando: !agendados.hasError && !agendados.hasValue,
+      etiqueta: FormatoAgendados.cuentaAgendados(cuentaAgendados),
+      alto: alto,
+      elegida: elegida == PestanaHojaMapa.agendados,
+      alPresionar: alElegir == null ? null : () => alElegir(PestanaHojaMapa.agendados),
+    );
+    // Lado a lado como en el canvas; si no entran (texto grande, teléfono angosto), una debajo de la
+    // otra: el alto de la hoja minimizada ya lo cuenta (`AlturaHoja.altoMinimizada`).
+    final enUnaFila = MedidaPestanas.enUnaFila(escala, MediaQuery.sizeOf(context).width);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
       child: Container(
@@ -355,59 +457,104 @@ class _PestanaCercania extends StatelessWidget {
           color: ColoresLista.filaBaja,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Semantics(
-          header: true,
-          container: true,
-          label: estado.cargando
-              ? '${TextosMapaUbicaciones.cercania}. ${TextosMapaUbicaciones.cargando}'
-              : FormatoMapaUbicaciones.cuentaCercania(lista?.total),
-          excludeSemantics: true,
-          child: Container(
-            key: ClavesMapaUbicaciones.pestanaCercania,
-            constraints: const BoxConstraints(minHeight: 48),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(11),
-              boxShadow: const [
-                BoxShadow(color: Color(0x2E0E1A2B), blurRadius: 3, offset: Offset(0, 1)),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('◎', style: TextStyle(fontSize: 15, color: ColoresMapa.aroSeleccion)),
-                const SizedBox(width: 8),
-                const Flexible(
-                  child: Text(
-                    TextosMapaUbicaciones.cercania,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w600,
-                      color: ColoresMapa.aroSeleccion,
-                    ),
+        child: enUnaFila
+            ? Row(
+                children: [
+                  Expanded(child: cercania),
+                  Expanded(child: deAgendados),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [cercania, deAgendados],
+              ),
+      ),
+    );
+  }
+}
+
+class _Pestana extends StatelessWidget {
+  const _Pestana({
+    super.key,
+    required this.glifo,
+    required this.texto,
+    required this.cuenta,
+    required this.cargando,
+    required this.etiqueta,
+    required this.alto,
+    required this.elegida,
+    required this.alPresionar,
+  });
+
+  final String glifo;
+  final String texto;
+  final int? cuenta;
+  final bool cargando;
+  final String etiqueta;
+
+  /// [MedidaPestanas.alto]: el mismo que cuenta la hoja minimizada.
+  final double alto;
+  final bool elegida;
+  final VoidCallback? alPresionar;
+
+  @override
+  Widget build(BuildContext context) {
+    // La elegida en el azul de la selección; la otra en el gris de la lista (AA sobre el gris claro).
+    final color = elegida ? ColoresMapa.aroSeleccion : ColoresLista.grisTexto;
+    return Semantics(
+      header: elegida,
+      button: alPresionar != null,
+      selected: elegida,
+      container: true,
+      label: etiqueta,
+      onTap: alPresionar,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: alPresionar,
+        child: Container(
+          height: alto,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: elegida
+              ? BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(11),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x2E0E1A2B), blurRadius: 3, offset: Offset(0, 1)),
+                  ],
+                )
+              : null,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(glifo, style: TextStyle(fontSize: 15, color: color)),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  texto,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: color,
                   ),
                 ),
-                const SizedBox(width: 8),
-                if (lista != null)
-                  Text(
-                    '${lista.total}',
-                    style: const TextStyle(
-                      fontFamily: 'JetBrainsMono',
-                      fontSize: 12,
-                      color: ColoresMapa.aroSeleccion,
-                    ),
-                  )
-                else if (estado.cargando)
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              if (cuenta != null)
+                Text(
+                  '$cuenta',
+                  style: TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12, color: color),
+                )
+              else if (cargando)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
           ),
         ),
       ),

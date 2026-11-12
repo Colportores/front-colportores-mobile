@@ -79,6 +79,7 @@ final class PuntoMapa extends Equatable {
     this.letra,
     this.etiqueta,
     this.variante,
+    this.atenuado = false,
   });
 
   /// Identifica al punto cuando el colportor lo toca (`MapaBase.alTocarPunto`).
@@ -98,8 +99,12 @@ final class PuntoMapa extends Equatable {
   /// visita».
   final VarianteMarcador? variante;
 
+  /// Se dibuja tenue (canvas 06C·03, opacidad .3): con la hoja «Agendados» del mapa, las casas que no
+  /// tienen una visita agendada. Un grupo se ve tenue si todas las casas que junta lo están.
+  final bool atenuado;
+
   @override
-  List<Object?> get props => [id, coordenadas, estilo, letra, etiqueta, variante];
+  List<Object?> get props => [id, coordenadas, estilo, letra, etiqueta, variante, atenuado];
 }
 
 /// El radio de precisión del GPS: un círculo en metros alrededor de [centro].

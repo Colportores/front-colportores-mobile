@@ -705,6 +705,10 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
   /// La entidad de una fila de `agenda`: la usan las cuotas del plan (HU-COB-004), que son citas.
   static Agenda desdeFila(AgendaFila fila) => _aAgenda(fila);
 
+  /// La entidad de una fila de `visita`: la usa la unión rechazada que se deshace para reenviar una
+  /// visita que vuelve a B con su persona (#696).
+  static Visita visitaDesdeFila(VisitaFila fila) => _aVisita(fila);
+
   /// La fila de [agenda] lista para insertar.
   static AgendasCompanion aFila(Agenda agenda) => _aFilaAgenda(agenda);
 
