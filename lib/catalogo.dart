@@ -79,6 +79,9 @@ final specsDeLaApp = <SyncSpec>[
   // `campania` las baja cualquier autenticado (RLS de lectura abierta); `campania_colportor` baja
   // solo las inscripciones propias (backend-supabase 0014: `columna_duenio`). La app nunca las escribe.
   SyncSpec.pull('ciudad'),
+  // `pais` (V1: solo Uruguay), como `ciudad`: el contrato la lista entre las entidades `pull` y el
+  // servidor ya la sirve (backend-supabase 0002). Hoy ninguna pantalla la lee (P1 de #181, 12/11).
+  SyncSpec.pull('pais'),
   SyncSpec.pull('campania'),
   SyncSpec.pull('campania_colportor'),
 

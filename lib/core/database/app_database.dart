@@ -26,6 +26,7 @@ import '../../features/mapa/data/datasources/espacios_table.dart';
 import '../../features/mapa/data/datasources/geojson_converter.dart';
 import '../../features/mapa/data/datasources/house_status_table.dart';
 import '../../features/mapa/data/datasources/notas_table.dart';
+import '../../features/mapa/data/datasources/paises_table.dart';
 import '../../features/mapa/data/datasources/pares_duplicados_table.dart';
 import '../../features/mapa/data/datasources/personas_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
@@ -91,6 +92,7 @@ part 'app_database.g.dart';
     ParametrosGlobales,
     Stocks,
     Ciudades,
+    Paises,
     Campanias,
     CampaniasColportor,
     Ventas,
@@ -184,7 +186,8 @@ class AppDatabase extends _$AppDatabase {
   ///   local: si el servidor rechaza su trabajo, la unión se deshace y el par queda separado
   ///   (decisión de Cristian, 10/11, «Unión rech.»; HU-UBI-006, #679).
   /// - 37: `sync_fuera_del_area`, la marca del motor de las casas que salieron del área del colportor
-  ///   (contrato-sync-engine §2.1): el pull de `ubicacion`, `espacio` y `house_status` (I2, #181).
+  ///   (contrato-sync-engine §2.1): el pull de `ubicacion`, `espacio` y `house_status` (I2, #181); y
+  ///   `pais`, la réplica del catálogo de países que el contrato lista como `pull` (P1 de #181).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
@@ -524,10 +527,11 @@ class AppDatabase extends _$AppDatabase {
     from35To36: (m, esquema) async {
       await m.createTable(esquema.ubicacionUnionLocal);
     },
-    // Solo crea la marca de «fuera del área» del motor, vacía: nada de lo guardado cambia. La llena
-    // el pull de las casas (#181).
+    // Solo crea la marca de «fuera del área» del motor y la réplica de `pais`, vacías: nada de lo
+    // guardado cambia. La marca la llena el pull de las casas y `pais`, el del catálogo (#181).
     from36To37: (m, esquema) async {
       await m.createTable(esquema.syncFueraDelArea);
+      await m.createTable(esquema.pais);
     },
   );
 }

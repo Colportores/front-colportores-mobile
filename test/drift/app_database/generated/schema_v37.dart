@@ -14119,6 +14119,437 @@ class CiudadCompanion extends UpdateCompanion<CiudadData> {
   }
 }
 
+class Pais extends Table with TableInfo<Pais, PaisData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  Pais(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> nombre = GeneratedColumn<String>(
+    'nombre',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> isoCode = GeneratedColumn<String>(
+    'iso_code',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
+    'sync_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    nombre,
+    isoCode,
+    createdAt,
+    updatedAt,
+    createdBy,
+    deletedAt,
+    syncVersion,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pais';
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PaisData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PaisData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      nombre: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}nombre'],
+      )!,
+      isoCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}iso_code'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      ),
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      syncVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sync_version'],
+      )!,
+    );
+  }
+
+  @override
+  Pais createAlias(String alias) {
+    return Pais(attachedDatabase, alias);
+  }
+
+  @override
+  List<String> get customConstraints => const ['PRIMARY KEY(id)'];
+  @override
+  bool get dontWriteConstraints => true;
+}
+
+class PaisData extends DataClass implements Insertable<PaisData> {
+  final String id;
+  final String nombre;
+  final String isoCode;
+  final int createdAt;
+  final int updatedAt;
+  final String? createdBy;
+  final int? deletedAt;
+  final int syncVersion;
+  const PaisData({
+    required this.id,
+    required this.nombre,
+    required this.isoCode,
+    required this.createdAt,
+    required this.updatedAt,
+    this.createdBy,
+    this.deletedAt,
+    required this.syncVersion,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['nombre'] = Variable<String>(nombre);
+    map['iso_code'] = Variable<String>(isoCode);
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || createdBy != null) {
+      map['created_by'] = Variable<String>(createdBy);
+    }
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
+    map['sync_version'] = Variable<int>(syncVersion);
+    return map;
+  }
+
+  PaisCompanion toCompanion(bool nullToAbsent) {
+    return PaisCompanion(
+      id: Value(id),
+      nombre: Value(nombre),
+      isoCode: Value(isoCode),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      createdBy: createdBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdBy),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      syncVersion: Value(syncVersion),
+    );
+  }
+
+  factory PaisData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PaisData(
+      id: serializer.fromJson<String>(json['id']),
+      nombre: serializer.fromJson<String>(json['nombre']),
+      isoCode: serializer.fromJson<String>(json['isoCode']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      createdBy: serializer.fromJson<String?>(json['createdBy']),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
+      syncVersion: serializer.fromJson<int>(json['syncVersion']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'nombre': serializer.toJson<String>(nombre),
+      'isoCode': serializer.toJson<String>(isoCode),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'createdBy': serializer.toJson<String?>(createdBy),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
+      'syncVersion': serializer.toJson<int>(syncVersion),
+    };
+  }
+
+  PaisData copyWith({
+    String? id,
+    String? nombre,
+    String? isoCode,
+    int? createdAt,
+    int? updatedAt,
+    Value<String?> createdBy = const Value.absent(),
+    Value<int?> deletedAt = const Value.absent(),
+    int? syncVersion,
+  }) => PaisData(
+    id: id ?? this.id,
+    nombre: nombre ?? this.nombre,
+    isoCode: isoCode ?? this.isoCode,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    syncVersion: syncVersion ?? this.syncVersion,
+  );
+  PaisData copyWithCompanion(PaisCompanion data) {
+    return PaisData(
+      id: data.id.present ? data.id.value : this.id,
+      nombre: data.nombre.present ? data.nombre.value : this.nombre,
+      isoCode: data.isoCode.present ? data.isoCode.value : this.isoCode,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      syncVersion: data.syncVersion.present
+          ? data.syncVersion.value
+          : this.syncVersion,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PaisData(')
+          ..write('id: $id, ')
+          ..write('nombre: $nombre, ')
+          ..write('isoCode: $isoCode, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncVersion: $syncVersion')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    nombre,
+    isoCode,
+    createdAt,
+    updatedAt,
+    createdBy,
+    deletedAt,
+    syncVersion,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PaisData &&
+          other.id == this.id &&
+          other.nombre == this.nombre &&
+          other.isoCode == this.isoCode &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.createdBy == this.createdBy &&
+          other.deletedAt == this.deletedAt &&
+          other.syncVersion == this.syncVersion);
+}
+
+class PaisCompanion extends UpdateCompanion<PaisData> {
+  final Value<String> id;
+  final Value<String> nombre;
+  final Value<String> isoCode;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<String?> createdBy;
+  final Value<int?> deletedAt;
+  final Value<int> syncVersion;
+  final Value<int> rowid;
+  const PaisCompanion({
+    this.id = const Value.absent(),
+    this.nombre = const Value.absent(),
+    this.isoCode = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.syncVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PaisCompanion.insert({
+    required String id,
+    required String nombre,
+    required String isoCode,
+    required int createdAt,
+    required int updatedAt,
+    this.createdBy = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.syncVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       nombre = Value(nombre),
+       isoCode = Value(isoCode),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<PaisData> custom({
+    Expression<String>? id,
+    Expression<String>? nombre,
+    Expression<String>? isoCode,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<String>? createdBy,
+    Expression<int>? deletedAt,
+    Expression<int>? syncVersion,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (nombre != null) 'nombre': nombre,
+      if (isoCode != null) 'iso_code': isoCode,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (createdBy != null) 'created_by': createdBy,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (syncVersion != null) 'sync_version': syncVersion,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PaisCompanion copyWith({
+    Value<String>? id,
+    Value<String>? nombre,
+    Value<String>? isoCode,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<String?>? createdBy,
+    Value<int?>? deletedAt,
+    Value<int>? syncVersion,
+    Value<int>? rowid,
+  }) {
+    return PaisCompanion(
+      id: id ?? this.id,
+      nombre: nombre ?? this.nombre,
+      isoCode: isoCode ?? this.isoCode,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      createdBy: createdBy ?? this.createdBy,
+      deletedAt: deletedAt ?? this.deletedAt,
+      syncVersion: syncVersion ?? this.syncVersion,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (nombre.present) {
+      map['nombre'] = Variable<String>(nombre.value);
+    }
+    if (isoCode.present) {
+      map['iso_code'] = Variable<String>(isoCode.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
+    if (syncVersion.present) {
+      map['sync_version'] = Variable<int>(syncVersion.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PaisCompanion(')
+          ..write('id: $id, ')
+          ..write('nombre: $nombre, ')
+          ..write('isoCode: $isoCode, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncVersion: $syncVersion, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class Campania extends Table with TableInfo<Campania, CampaniaData> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -21383,6 +21814,7 @@ class DatabaseAtV37 extends GeneratedDatabase {
   late final ParametroGlobal parametroGlobal = ParametroGlobal(this);
   late final Stock stock = Stock(this);
   late final Ciudad ciudad = Ciudad(this);
+  late final Pais pais = Pais(this);
   late final Campania campania = Campania(this);
   late final CampaniaColportor campaniaColportor = CampaniaColportor(this);
   late final Venta venta = Venta(this);
@@ -21579,6 +22011,7 @@ class DatabaseAtV37 extends GeneratedDatabase {
     parametroGlobal,
     stock,
     ciudad,
+    pais,
     campania,
     campaniaColportor,
     venta,

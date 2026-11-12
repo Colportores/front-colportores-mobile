@@ -30266,6 +30266,7 @@ final class Schema37 extends i0.VersionedSchema {
     parametroGlobal,
     stock,
     ciudad,
+    pais,
     campania,
     campaniaColportor,
     venta,
@@ -30962,6 +30963,26 @@ final class Schema37 extends i0.VersionedSchema {
     ),
     alias: null,
   );
+  late final Shape55 pais = Shape55(
+    source: i0.VersionedTable(
+      entityName: 'pais',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_181,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
   late final Shape28 campania = Shape28(
     source: i0.VersionedTable(
       entityName: 'campania',
@@ -31279,13 +31300,13 @@ final class Schema37 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape55 syncFueraDelArea = Shape55(
+  late final Shape56 syncFueraDelArea = Shape56(
     source: i0.VersionedTable(
       entityName: 'sync_fuera_del_area',
       withoutRowId: false,
       isStrict: false,
       tableConstraints: ['PRIMARY KEY(entidad, fila_id)'],
-      columns: [_column_181, _column_182, _column_183],
+      columns: [_column_182, _column_183, _column_184],
       attachedDatabase: database,
     ),
     alias: null,
@@ -31442,6 +31463,35 @@ final class Schema37 extends i0.VersionedSchema {
 
 class Shape55 extends i0.VersionedTable {
   Shape55({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get nombre =>
+      columnsByName['nombre']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get isoCode =>
+      columnsByName['iso_code']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get createdAt =>
+      columnsByName['created_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get updatedAt =>
+      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get createdBy =>
+      columnsByName['created_by']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get deletedAt =>
+      columnsByName['deleted_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get syncVersion =>
+      columnsByName['sync_version']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<String> _column_181(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'iso_code',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+
+class Shape56 extends i0.VersionedTable {
+  Shape56({required super.source, required super.alias}) : super.aliased();
   i1.GeneratedColumn<String> get entidad =>
       columnsByName['entidad']! as i1.GeneratedColumn<String>;
   i1.GeneratedColumn<String> get filaId =>
@@ -31450,7 +31500,7 @@ class Shape55 extends i0.VersionedTable {
       columnsByName['confirmada']! as i1.GeneratedColumn<int>;
 }
 
-i1.GeneratedColumn<String> _column_181(String aliasedName) =>
+i1.GeneratedColumn<String> _column_182(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'entidad',
       aliasedName,
@@ -31458,7 +31508,7 @@ i1.GeneratedColumn<String> _column_181(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NOT NULL',
     );
-i1.GeneratedColumn<String> _column_182(String aliasedName) =>
+i1.GeneratedColumn<String> _column_183(String aliasedName) =>
     i1.GeneratedColumn<String>(
       'fila_id',
       aliasedName,
@@ -31466,7 +31516,7 @@ i1.GeneratedColumn<String> _column_182(String aliasedName) =>
       type: i1.DriftSqlType.string,
       $customConstraints: 'NOT NULL',
     );
-i1.GeneratedColumn<int> _column_183(String aliasedName) =>
+i1.GeneratedColumn<int> _column_184(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'confirmada',
       aliasedName,

@@ -2328,9 +2328,10 @@ void main() {
   });
 
   test('dado lo guardado en la versión 36, cuando migra a la 37, se conserva todo y la marca de '
-      '«fuera del área» queda vacía (#181)', () async {
-    // #181: solo se suma `sync_fuera_del_area`, la marca del motor. Las casas, la cola y los
-    // watermarks no se tocan: lo que esperaba subir sigue esperando (convenciones §9).
+      '«fuera del área» y la réplica de `pais` quedan vacías (#181)', () async {
+    // #181: solo se suman `sync_fuera_del_area`, la marca del motor, y `pais`, la réplica del
+    // catálogo (P1, 12/11). Las casas, la cola y los watermarks no se tocan: lo que esperaba subir
+    // sigue esperando (convenciones §9).
     const job = v36.SyncQueueData(
       id: 'q-1',
       clientOpId: 'op-1',
@@ -2371,6 +2372,13 @@ void main() {
           reason: 'una fila por entidad e id',
         );
         expect(await nuevo.select(nuevo.syncFueraDelArea).get(), hasLength(1));
+
+        expect(await nuevo.select(nuevo.pais).get(), isEmpty);
+        await nuevo.customStatement(
+          'INSERT INTO pais (id, nombre, iso_code, created_at, updated_at, sync_version) '
+          "VALUES ('pai-uy', 'Uruguay', 'UY', 1, 1, 1)",
+        );
+        expect(await nuevo.select(nuevo.pais).get(), hasLength(1));
       },
     );
   });

@@ -3591,6 +3591,115 @@
       "references": [],
       "type": "table",
       "data": {
+        "name": "pais",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "nombre",
+            "getter_name": "nombre",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "iso_code",
+            "getter_name": "isoCode",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "created_at",
+            "getter_name": "createdAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "updated_at",
+            "getter_name": "updatedAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "created_by",
+            "getter_name": "createdBy",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "deleted_at",
+            "getter_name": "deletedAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "sync_version",
+            "getter_name": "syncVersion",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [],
+        "explicit_pk": [
+          "id"
+        ]
+      }
+    },
+    {
+      "id": 29,
+      "references": [],
+      "type": "table",
+      "data": {
         "name": "campania",
         "was_declared_in_moor": false,
         "columns": [
@@ -3706,7 +3815,7 @@
       }
     },
     {
-      "id": 29,
+      "id": 30,
       "references": [],
       "type": "table",
       "data": {
@@ -3837,7 +3946,7 @@
       }
     },
     {
-      "id": 30,
+      "id": 31,
       "references": [],
       "type": "table",
       "data": {
@@ -4002,7 +4111,7 @@
       }
     },
     {
-      "id": 31,
+      "id": 32,
       "references": [],
       "type": "table",
       "data": {
@@ -4171,7 +4280,7 @@
       }
     },
     {
-      "id": 32,
+      "id": 33,
       "references": [],
       "type": "table",
       "data": {
@@ -4367,7 +4476,7 @@
       }
     },
     {
-      "id": 33,
+      "id": 34,
       "references": [],
       "type": "table",
       "data": {
@@ -4530,7 +4639,7 @@
       }
     },
     {
-      "id": 34,
+      "id": 35,
       "references": [],
       "type": "table",
       "data": {
@@ -4669,7 +4778,7 @@
       }
     },
     {
-      "id": 35,
+      "id": 36,
       "references": [],
       "type": "table",
       "data": {
@@ -4877,7 +4986,7 @@
       }
     },
     {
-      "id": 36,
+      "id": 37,
       "references": [],
       "type": "table",
       "data": {
@@ -5123,7 +5232,7 @@
       }
     },
     {
-      "id": 37,
+      "id": 38,
       "references": [],
       "type": "table",
       "data": {
@@ -5228,7 +5337,7 @@
       }
     },
     {
-      "id": 38,
+      "id": 39,
       "references": [],
       "type": "table",
       "data": {
@@ -5279,7 +5388,7 @@
       }
     },
     {
-      "id": 39,
+      "id": 40,
       "references": [],
       "type": "table",
       "data": {
@@ -5386,7 +5495,7 @@
       }
     },
     {
-      "id": 40,
+      "id": 41,
       "references": [],
       "type": "table",
       "data": {
@@ -5438,7 +5547,7 @@
       }
     },
     {
-      "id": 41,
+      "id": 42,
       "references": [
         0
       ],
@@ -5461,7 +5570,7 @@
       }
     },
     {
-      "id": 42,
+      "id": 43,
       "references": [
         1
       ],
@@ -5484,7 +5593,7 @@
       }
     },
     {
-      "id": 43,
+      "id": 44,
       "references": [
         2
       ],
@@ -5503,7 +5612,7 @@
       }
     },
     {
-      "id": 44,
+      "id": 45,
       "references": [
         4
       ],
@@ -5522,7 +5631,7 @@
       }
     },
     {
-      "id": 45,
+      "id": 46,
       "references": [
         5
       ],
@@ -5541,7 +5650,7 @@
       }
     },
     {
-      "id": 46,
+      "id": 47,
       "references": [
         6
       ],
@@ -5564,7 +5673,7 @@
       }
     },
     {
-      "id": 47,
+      "id": 48,
       "references": [
         8
       ],
@@ -5587,7 +5696,7 @@
       }
     },
     {
-      "id": 48,
+      "id": 49,
       "references": [
         9
       ],
@@ -5614,7 +5723,7 @@
       }
     },
     {
-      "id": 49,
+      "id": 50,
       "references": [
         9
       ],
@@ -5637,7 +5746,7 @@
       }
     },
     {
-      "id": 50,
+      "id": 51,
       "references": [
         9
       ],
@@ -5660,7 +5769,7 @@
       }
     },
     {
-      "id": 51,
+      "id": 52,
       "references": [
         13
       ],
@@ -5679,7 +5788,7 @@
       }
     },
     {
-      "id": 52,
+      "id": 53,
       "references": [
         13
       ],
@@ -5698,7 +5807,7 @@
       }
     },
     {
-      "id": 53,
+      "id": 54,
       "references": [
         14
       ],
@@ -5721,7 +5830,7 @@
       }
     },
     {
-      "id": 54,
+      "id": 55,
       "references": [
         15
       ],
@@ -5744,7 +5853,7 @@
       }
     },
     {
-      "id": 55,
+      "id": 56,
       "references": [
         15
       ],
@@ -5763,7 +5872,7 @@
       }
     },
     {
-      "id": 56,
+      "id": 57,
       "references": [
         15
       ],
@@ -5782,7 +5891,7 @@
       }
     },
     {
-      "id": 57,
+      "id": 58,
       "references": [
         15
       ],
@@ -5801,7 +5910,7 @@
       }
     },
     {
-      "id": 58,
+      "id": 59,
       "references": [
         16
       ],
@@ -5824,7 +5933,7 @@
       }
     },
     {
-      "id": 59,
+      "id": 60,
       "references": [
         16
       ],
@@ -5843,7 +5952,7 @@
       }
     },
     {
-      "id": 60,
+      "id": 61,
       "references": [
         16
       ],
@@ -5862,7 +5971,7 @@
       }
     },
     {
-      "id": 61,
+      "id": 62,
       "references": [
         17
       ],
@@ -5881,7 +5990,7 @@
       }
     },
     {
-      "id": 62,
+      "id": 63,
       "references": [
         19
       ],
@@ -5900,7 +6009,7 @@
       }
     },
     {
-      "id": 63,
+      "id": 64,
       "references": [
         22
       ],
@@ -5919,7 +6028,7 @@
       }
     },
     {
-      "id": 64,
+      "id": 65,
       "references": [
         23
       ],
@@ -5938,7 +6047,7 @@
       }
     },
     {
-      "id": 65,
+      "id": 66,
       "references": [
         23
       ],
@@ -5957,7 +6066,7 @@
       }
     },
     {
-      "id": 66,
+      "id": 67,
       "references": [
         23
       ],
@@ -5976,7 +6085,7 @@
       }
     },
     {
-      "id": 67,
+      "id": 68,
       "references": [
         24
       ],
@@ -5995,7 +6104,7 @@
       }
     },
     {
-      "id": 68,
+      "id": 69,
       "references": [
         24
       ],
@@ -6014,7 +6123,7 @@
       }
     },
     {
-      "id": 69,
+      "id": 70,
       "references": [
         26
       ],
@@ -6033,13 +6142,13 @@
       }
     },
     {
-      "id": 70,
+      "id": 71,
       "references": [
-        29
+        30
       ],
       "type": "index",
       "data": {
-        "on": 29,
+        "on": 30,
         "name": "campania_colportor_usuario_idx",
         "sql": null,
         "unique": false,
@@ -6052,13 +6161,13 @@
       }
     },
     {
-      "id": 71,
+      "id": 72,
       "references": [
-        30
+        31
       ],
       "type": "index",
       "data": {
-        "on": 30,
+        "on": 31,
         "name": "venta_colportor_idx",
         "sql": null,
         "unique": false,
@@ -6075,25 +6184,6 @@
       }
     },
     {
-      "id": 72,
-      "references": [
-        30
-      ],
-      "type": "index",
-      "data": {
-        "on": 30,
-        "name": "venta_espacio_persona_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "espacio_persona_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
       "id": 73,
       "references": [
         31
@@ -6101,12 +6191,12 @@
       "type": "index",
       "data": {
         "on": 31,
-        "name": "venta_item_venta_idx",
+        "name": "venta_espacio_persona_idx",
         "sql": null,
         "unique": false,
         "columns": [
           {
-            "column": "venta_id",
+            "column": "espacio_persona_id",
             "order_by": null
           }
         ]
@@ -6120,7 +6210,7 @@
       "type": "index",
       "data": {
         "on": 32,
-        "name": "cobranza_venta_idx",
+        "name": "venta_item_venta_idx",
         "sql": null,
         "unique": false,
         "columns": [
@@ -6139,7 +6229,7 @@
       "type": "index",
       "data": {
         "on": 33,
-        "name": "entrega_venta_idx",
+        "name": "cobranza_venta_idx",
         "sql": null,
         "unique": false,
         "columns": [
@@ -6158,7 +6248,7 @@
       "type": "index",
       "data": {
         "on": 34,
-        "name": "devolucion_venta_idx",
+        "name": "entrega_venta_idx",
         "sql": null,
         "unique": false,
         "columns": [
@@ -6177,6 +6267,25 @@
       "type": "index",
       "data": {
         "on": 35,
+        "name": "devolucion_venta_idx",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "venta_id",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 78,
+      "references": [
+        36
+      ],
+      "type": "index",
+      "data": {
+        "on": 36,
         "name": "deposito_ticket_idx",
         "sql": null,
         "unique": false,
@@ -6439,6 +6548,15 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE TABLE IF NOT EXISTS \"ciudad\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"lat_centro\" REAL NOT NULL, \"lon_centro\" REAL NOT NULL, \"departamento\" TEXT NULL, \"zoom_inicial\" INTEGER NOT NULL DEFAULT 13, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
+        }
+      ]
+    },
+    {
+      "name": "pais",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"pais\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"iso_code\" TEXT NOT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
         }
       ]
     },
