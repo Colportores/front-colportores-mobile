@@ -147,6 +147,20 @@ void main() {
       expect(find.text('ana.gomez@gmail.com'), findsOneWidget, reason: 'la cuenta en la tarjeta');
     });
 
+    testWidgets('dado que conecta desde el asistente (#707, «Resp. vacío»), cuando queda '
+        'conectado, no sube el teléfono vacío y la búsqueda ve solo lo que había', (tester) async {
+      // Si se pidiera, saldría bien: así se notaría que se subió.
+      arnes.primerRespaldo.resultado = true;
+      await abrirAsistente(tester, arnes);
+      arnes.servicio.busqueda = RespaldoEncontrado(respaldoDePrueba);
+
+      await tocar(tester, cta);
+
+      expect(arnes.drive.google.conexiones, 1);
+      expect(arnes.primerRespaldo.llamadas, 0);
+      expect(tester.widget<Text>(titulo).data, 'Encontramos un respaldo');
+    });
+
     testWidgets('doble toque: Google se abre una sola vez y el botón dice «Conectando…»', (
       tester,
     ) async {
@@ -673,6 +687,19 @@ void main() {
       expect(arnes.drive.google.conexiones, 1);
       expect(arnes.servicio.busquedas, 2);
     });
+
+    testWidgets(
+      'dado que prueba con otra cuenta, cuando conecta, no sube el teléfono vacío (#707)',
+      (tester) async {
+        arnes.primerRespaldo.resultado = true;
+        await abrirAsistente(tester, arnes);
+
+        await tocar(tester, cta);
+
+        expect(arnes.drive.google.conexiones, 1);
+        expect(arnes.primerRespaldo.llamadas, 0);
+      },
+    );
 
     testWidgets('doble toque en «Probar con otra cuenta»: una sola conexión', (tester) async {
       await abrirAsistente(tester, arnes);

@@ -251,6 +251,10 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
 
   /// 34·02: abre la pantalla de Google. Con el permiso, sigue con la búsqueda. Una sola conexión a la
   /// vez.
+  ///
+  /// Sin el respaldo de confirmación (#707, «Resp. vacío», decisión del 12/11 por el precedente de
+  /// Cristian del 11/11): el teléfono todavía está vacío y subirlo sumaría un respaldo que la
+  /// búsqueda contaría como uno más. Vale también para «Probar con otra cuenta» (34·09).
   Future<void> conectarDrive() async {
     if (state.conectando) return;
     state = state.copyWith(conectando: true, avisoDeDrive: () => null);
@@ -259,7 +263,9 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
       // El estado de Drive cuelga de la sesión: se espera a tenerla para no abrir Google sin saber
       // de quién es la cuenta.
       await ref.read(sesionProvider.future);
-      resultado = await ref.read(estadoRespaldoDriveProvider.notifier).conectar();
+      resultado = await ref
+          .read(estadoRespaldoDriveProvider.notifier)
+          .conectar(conPrimerRespaldo: false);
     } on Object {
       resultado = const DriveNoQuedoConectado(FailureDriveNoConectado());
     }
