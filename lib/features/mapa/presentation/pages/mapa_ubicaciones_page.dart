@@ -25,12 +25,14 @@ import '../../domain/value_objects/area_mapa.dart';
 import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../../domain/value_objects/modo_seguimiento.dart';
+import '../formato_fuera_del_area.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
 import '../mapa_base/mapa_base.dart';
 import '../mapa_base/marcador_estado.dart' show VarianteMarcador;
 import '../mapa_base/modelo_mapa_base.dart';
 import '../providers/alta_ubicacion_notifier.dart';
+import '../providers/fuera_del_area_providers.dart';
 import '../providers/hoja_agendados_provider.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import '../providers/mapa_base_providers.dart';
@@ -46,6 +48,7 @@ import '../widgets/aviso_mapa.dart';
 import '../widgets/hoja_mapa_ubicaciones.dart';
 import '../widgets/mapa_alta.dart';
 import '../widgets/piezas_alta.dart' show PinAlta;
+import '../widgets/piezas_fuera_del_area.dart';
 import '../widgets/piezas_mapa_ubicaciones.dart';
 import 'alta_ubicacion_page.dart';
 
@@ -74,6 +77,12 @@ import 'alta_ubicacion_page.dart';
 /// La hoja tiene dos pestañas: «Cercanía» y «Agendados» (06C·03, #407: las visitas de la Agenda
 /// sobre el mapa, con sus chips de tipo y sus grupos por día). Con «Agendados» el mapa atenúa las
 /// casas que no tienen una visita de la lista ([PuntoMapa.atenuado]).
+///
+/// **Casas fuera del área** (#713, HU-SYNC-011, R-UB12): las que el motor marcó fuera del área del
+/// colportor se dibujan con un aro ámbar ([PuntoMapa.fueraDelArea]) y llevan la etiqueta «FUERA DE TU
+/// ÁREA» en «Cercanía» y en su hoja. En «Referencias» el colportor elige verlas u ocultarlas; ocultas,
+/// no se dibujan ni están en «Cercanía» (la elegida sí: nunca se oculta lo que se está mirando) y el
+/// mapa dice cuántas hay con «Ver». Es solo visual: no se borra ni se encola nada.
 class MapaUbicacionesPage extends ConsumerStatefulWidget {
   const MapaUbicacionesPage({
     super.key,
@@ -134,7 +143,14 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
 
   /// Lo último que se le preguntó a [CuadradosDelMapa] y lo que contestó: la misma cámara, vista y
   /// lista no se vuelven a calcular. [_cuadradosPintados] es lo que se dibujó en el último cuadro.
-  ({CamaraMapa camara, Size vista, double reserva, ListaUbicaciones lista})? _entradaCuadrados;
+  ({
+    CamaraMapa camara,
+    Size vista,
+    double reserva,
+    ListaUbicaciones lista,
+    FueraDelAreaEnElMapa fuera,
+  })?
+  _entradaCuadrados;
   var _cuadradosCalculados = false;
   var _cuadradosPintados = false;
 
@@ -342,6 +358,34 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     _ => null,
   };
 
+  /// Las casas fuera del área del mapa y si el colportor las ve (#713).
+  FueraDelAreaEnElMapa get _fuera => ref.read(fueraDelAreaEnElMapaProvider(widget.colportorId));
+
+  /// Las casas de [estado] que el mapa dibuja: todas menos las fuera del área que el colportor ocultó
+  /// (la elegida siempre se dibuja).
+  List<ItemListaUbicacion> _visibles(MapaUbicacionesState estado, [FueraDelAreaEnElMapa? fuera]) {
+    final items = estado.lista?.items ?? const <ItemListaUbicacion>[];
+    final cuales = fuera ?? _fuera;
+    if (cuales.ocultas == 0) return items;
+    final elegida = estado.seleccionadaId;
+    return [
+      for (final item in items)
+        if (!cuales.oculta(item.ubicacion.id, elegida: elegida)) item,
+    ];
+  }
+
+  /// «Ver» del aviso de las casas fuera del área ocultas: vuelven a dibujarse, y se anuncia.
+  void _verFueraDelArea() {
+    ref.read(verFueraDelAreaProvider.notifier).ver();
+    unawaited(
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        TextosFueraDelArea.anuncioVisibles,
+        Directionality.of(context),
+      ),
+    );
+  }
+
   /// ¿[punto] se ve en la parte del mapa que la hoja no tapa? Con un margen: un marcador pegado al
   /// borde no cuenta como «a la vista».
   bool _estaALaVista(Coordenadas punto) {
@@ -384,8 +428,10 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
       return;
     }
     _encuadre = _Encuadre.todas;
+    // Las ocultas (#713) no cuentan: el mapa encuadra lo que dibuja.
+    final visibles = _visibles(estado);
     final camara = ProyeccionMercator.camaraQueAjusta(
-      [for (final item in lista.items) item.ubicacion.coordenadas],
+      [for (final item in visibles.isEmpty ? lista.items : visibles) item.ubicacion.coordenadas],
       ancho: _tamano.width,
       alto: _tamano.height,
       margen: 56,
@@ -568,17 +614,26 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     final lista = estado.lista;
     if (camara == null || lista == null || _tamano.isEmpty) return false;
     final reserva = _altoHoja(_altura);
+    final fuera = _fuera;
     final previa = _entradaCuadrados;
     if (previa != null &&
         previa.camara == camara &&
         previa.vista == _tamano &&
         previa.reserva == reserva &&
-        identical(previa.lista, lista)) {
+        identical(previa.lista, lista) &&
+        previa.fuera == fuera) {
       return _cuadradosCalculados;
     }
-    _entradaCuadrados = (camara: camara, vista: _tamano, reserva: reserva, lista: lista);
+    _entradaCuadrados = (
+      camara: camara,
+      vista: _tamano,
+      reserva: reserva,
+      lista: lista,
+      fuera: fuera,
+    );
+    // Solo cuentan las casas que se dibujan: una oculta (#713) no tapa a ninguna.
     return _cuadradosCalculados = CuadradosDelMapa.entranTodos(
-      casas: [for (final item in lista.items) item.ubicacion.coordenadas],
+      casas: [for (final item in _visibles(estado, fuera)) item.ubicacion.coordenadas],
       camara: camara,
       ancho: _tamano.width,
       alto: _tamano.height,
@@ -631,7 +686,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     return UbicacionesEnElPunto.elegibles(
       tocada: id,
       todas: [
-        for (final item in lista.items)
+        // Una casa oculta (#713) no se dibuja: no está entre las que se eligen.
+        for (final item in _visibles(ref.read(_proveedor)))
           (id: item.ubicacion.id, coordenadas: item.ubicacion.coordenadas),
       ],
       zoom: camara.zoom,
@@ -801,7 +857,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     if (_abriendoReferencias) return;
     _abriendoReferencias = true;
     try {
-      await mostrarReferenciasMapa(context);
+      await mostrarReferenciasMapa(context, colportorId: widget.colportorId);
     } finally {
       _abriendoReferencias = false;
     }
@@ -830,10 +886,12 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
   // ---------------------------------------------------------------- dibujo
 
   /// Los marcadores del mapa. Con [agendadas] (la hoja en «Agendados», 06C·03) las casas que no están
-  /// entre ellas se ven tenues; la elegida nunca.
+  /// entre ellas se ven tenues; la elegida nunca. Las fuera del área ([fuera], #713) llevan su aro, y
+  /// si el colportor las ocultó no se dibujan (salvo la elegida).
   List<PuntoMapa> _puntos(
     MapaUbicacionesState estado, {
     required bool cuadrados,
+    required FueraDelAreaEnElMapa fuera,
     AltaUbicacionState? alta,
     Set<String>? agendadas,
   }) {
@@ -841,7 +899,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     final candidatas = alta?.candidatas ?? const <CandidataDuplicado>[];
     final ids = {for (final c in candidatas) c.ubicacion.id};
     return [
-      for (final item in estado.lista?.items ?? const <ItemListaUbicacion>[])
+      for (final item in _visibles(estado, fuera))
         if (!ids.contains(item.ubicacion.id))
           _punto(
             item,
@@ -851,6 +909,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                 agendadas != null &&
                 item.ubicacion.id != seleccionada &&
                 !agendadas.contains(item.ubicacion.id),
+            fueraDelArea: fuera.ids.contains(item.ubicacion.id),
           ),
       for (var i = 0; i < candidatas.length; i++)
         _puntoCandidata(candidatas[i], i, varias: candidatas.length > 1, alta: alta!),
@@ -891,6 +950,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     required bool seleccionada,
     required bool cuadrados,
     bool atenuado = false,
+    bool fueraDelArea = false,
   }) {
     final ubicacion = item.ubicacion;
     final variante = VarianteMarcador.de(
@@ -915,6 +975,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
           ? null
           : FormatoMapaUbicaciones.etiquetaPuerta(ubicacion),
       atenuado: atenuado,
+      fueraDelArea: fueraDelArea,
     );
   }
 
@@ -957,6 +1018,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     final zonas = ref.watch(zonasParaElMapaProvider(widget.colportorId));
     final hojaDelMapa = ref.watch(hojaDelMapaProvider(widget.colportorId));
     final agendados = _agendados(hojaDelMapa.tipo);
+    final fuera = ref.watch(fueraDelAreaEnElMapaProvider(widget.colportorId));
     ref.listen(navegacionInicioProvider.select((n) => n.intencion), (_, intencion) {
       if (intencion != null) _atenderIntencion();
     });
@@ -1001,6 +1063,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
         alta,
         hojaDelMapa,
         agendados,
+        fuera,
       ),
     );
   }
@@ -1016,6 +1079,7 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
     AltaUbicacionState? alta,
     HojaDelMapaState hojaDelMapa,
     AsyncValue<VistaAgendados> agendados,
+    FueraDelAreaEnElMapa fuera,
   ) {
     final lectura = estado.lectura;
     final modo = ref.watch(ubicacionColportorProvider.select((g) => g.modo));
@@ -1043,7 +1107,11 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
               key: _claveMapa,
               child: Semantics(
                 // Las zonas son capas del estilo, no widgets: el lector de pantalla las oye acá.
-                label: [TextosMapaUbicaciones.mapa, ?zonas.paraElLector].join('. '),
+                label: [
+                  TextosMapaUbicaciones.mapa,
+                  ?zonas.paraElLector,
+                  ?FormatoFueraDelArea.paraElLector(fuera.cantidad, ver: fuera.ver),
+                ].join('. '),
                 container: true,
                 child: MapaBase(
                   fuente: ref.watch(fuenteMapaProvider(ambito)),
@@ -1054,7 +1122,13 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                   zoomMinimo: MapaAlta.zoomMinimo,
                   zoomMaximo: MapaAlta.zoomMaximo,
                   agruparPuntos: true,
-                  puntos: _puntos(estado, cuadrados: cuadrados, alta: alta, agendadas: agendadas),
+                  puntos: _puntos(
+                    estado,
+                    cuadrados: cuadrados,
+                    fuera: fuera,
+                    alta: alta,
+                    agendadas: agendadas,
+                  ),
                   zonas: zonas.dibujo,
                   precision: lectura != null
                       ? CirculoPrecision(
@@ -1125,6 +1199,10 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                             // La brújula (41E·03C) va debajo de «Referencias» y, como el chip, se
                             // corre mientras el aviso ocupa el borde de arriba (#294; confirmado
                             // para la brújula el 11/11 en #697).
+                            // Debajo va el aviso de las casas fuera del área ocultas (#713), con
+                            // «Ver»: con el texto grande se parte en renglones, hasta el borde
+                            // izquierdo (solo él tiene tope de ancho: el chip y la brújula miden
+                            // lo suyo, como siempre).
                             if (!avisoVisible)
                               Positioned(
                                 top: 8,
@@ -1149,6 +1227,20 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                                             )
                                           : const SizedBox.shrink(),
                                     ),
+                                    if (fuera.ocultas > 0)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 10),
+                                        child: ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            maxWidth: math.max(0, restricciones.maxWidth - 28),
+                                          ),
+                                          child: AvisoFueraDelAreaOcultas(
+                                            key: ClavesFueraDelArea.avisoMapa,
+                                            cantidad: fuera.ocultas,
+                                            alVer: _verFueraDelArea,
+                                          ),
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -1240,6 +1332,8 @@ class _MapaUbicacionesPageState extends ConsumerState<MapaUbicacionesPage>
                       alReintentarAgendados: () => ref.invalidate(
                         agendaLeidaProvider(_claveAgenda(ref.read(relojAgendaProvider)())),
                       ),
+                      fueraDelArea: fuera,
+                      alVerFueraDelArea: _verFueraDelArea,
                     ),
                   ],
                 ),

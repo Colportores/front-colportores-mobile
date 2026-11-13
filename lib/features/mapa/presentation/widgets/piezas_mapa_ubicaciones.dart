@@ -1,15 +1,21 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/estado_casa.dart';
 import '../../domain/value_objects/modo_seguimiento.dart';
+import '../formato_fuera_del_area.dart';
 import '../formato_lista_ubicaciones.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../mapa_base/marcador_estado.dart' show MarcadorEstado, VarianteMarcador;
 import '../mapa_base/modelo_mapa_base.dart' show ColoresMapa;
+import '../providers/fuera_del_area_providers.dart';
 import '../providers/lista_ubicaciones_state.dart' show EstadoGpsLista;
 import 'piezas_alta.dart' show ColoresAlta, PinAlta;
+import 'piezas_fuera_del_area.dart';
 import 'piezas_lista_ubicaciones.dart';
 
 /// Las claves con que los tests (y el QA) encuentran lo que dibuja el mapa de ubicaciones.
@@ -562,24 +568,32 @@ class ChipReferencias extends StatelessWidget {
   }
 }
 
-/// Abre la leyenda «Referencias». Devuelve cuando se cierra.
-Future<void> mostrarReferenciasMapa(BuildContext context) => showModalBottomSheet<void>(
-  context: context,
-  isScrollControlled: true,
-  useSafeArea: true,
-  showDragHandle: true,
-  backgroundColor: Colors.white,
-  shape: const RoundedRectangleBorder(
-    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-  ),
-  builder: (_) => const HojaReferenciasMapa(),
-);
+/// Abre la leyenda «Referencias». Devuelve cuando se cierra. Con [colportorId], si tiene casas fuera
+/// del área, la leyenda ofrece verlas u ocultarlas (#713).
+Future<void> mostrarReferenciasMapa(BuildContext context, {String? colportorId}) =>
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => HojaReferenciasMapa(colportorId: colportorId),
+    );
 
 /// La leyenda de los marcadores de la vista 06. El canvas la dibuja entera y la marca «PROPUESTA»
 /// (con los ocho estados de la visita y la venta). Desde la vista 39 (HU-VIS-005) el mapa dibuja los
 /// ocho —el color y el símbolo de cada estado—, y acá van todos, con los rótulos de la lista.
+///
+/// Al final, si el colportor tiene casas fuera del área (#713), la marca que las distingue (el aro
+/// ámbar) y el interruptor para verlas u ocultarlas en el mapa (solo visual: no se borra nada).
 class HojaReferenciasMapa extends StatelessWidget {
-  const HojaReferenciasMapa({super.key});
+  const HojaReferenciasMapa({super.key, this.colportorId});
+
+  /// El colportor del mapa: sin él no se sabe cuántas casas fuera del área tiene (no hay interruptor).
+  final String? colportorId;
 
   @override
   Widget build(BuildContext context) {
@@ -633,6 +647,7 @@ class HojaReferenciasMapa extends StatelessWidget {
               muestra: _MuestraTuUbicacion(),
               texto: TextosMapaUbicaciones.leyendaTuUbicacion,
             ),
+            if (colportorId case final id?) _FueraDelAreaEnReferencias(colportorId: id),
             const SizedBox(height: 4),
             Align(
               alignment: Alignment.centerRight,
@@ -659,7 +674,12 @@ class HojaReferenciasMapa extends StatelessWidget {
 }
 
 class _FilaReferencia extends StatelessWidget {
-  const _FilaReferencia({required this.muestra, required this.texto, this.etiquetaMuestra});
+  const _FilaReferencia({
+    super.key,
+    required this.muestra,
+    required this.texto,
+    this.etiquetaMuestra,
+  });
 
   final Widget muestra;
   final String texto;
@@ -683,6 +703,60 @@ class _FilaReferencia extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Las casas fuera del área en la leyenda (#713), solo si el colportor tiene alguna en su mapa (si no,
+/// el mapa no dibuja la marca y no hay nada que explicar): la fila del aro ámbar y «Mostrar las casas
+/// fuera de tu área». Cambiar el interruptor solo cambia lo que se ve: no se borra ni se encola nada.
+/// Se anuncia cómo quedó.
+class _FueraDelAreaEnReferencias extends ConsumerWidget {
+  const _FueraDelAreaEnReferencias({required this.colportorId});
+
+  final String colportorId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fuera = ref.watch(fueraDelAreaEnElMapaProvider(colportorId));
+    if (fuera.cantidad == 0) return const SizedBox.shrink();
+    final interruptor = SwitchListTile(
+      key: ClavesFueraDelArea.interruptor,
+      contentPadding: EdgeInsets.zero,
+      value: fuera.ver,
+      activeTrackColor: ColoresAlta.azul,
+      title: Text(
+        TextosFueraDelArea.mostrar,
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        FormatoFueraDelArea.detalleInterruptor(fuera.cantidad),
+        style: const TextStyle(fontFamily: 'Inter', fontSize: 13, color: ColoresAlta.gris),
+      ),
+      onChanged: (ver) {
+        ref.read(verFueraDelAreaProvider.notifier).elegir(valor: ver);
+        unawaited(
+          SemanticsService.sendAnnouncement(
+            View.of(context),
+            ver ? TextosFueraDelArea.anuncioVisibles : TextosFueraDelArea.anuncioOcultas,
+            Directionality.of(context),
+          ),
+        );
+      },
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const _FilaReferencia(
+          key: ClavesFueraDelArea.leyenda,
+          muestra: AroFueraDelArea(
+            interior: InsigniaEstadoCasa(estado: EstadoCasa.sinVisita, tamano: 14),
+          ),
+          texto: TextosFueraDelArea.leyenda,
+        ),
+        interruptor,
+      ],
     );
   }
 }

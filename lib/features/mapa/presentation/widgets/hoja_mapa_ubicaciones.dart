@@ -10,12 +10,14 @@ import '../../domain/entities/lista_ubicaciones.dart';
 import '../formato_agendados.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../mapa_base/modelo_mapa_base.dart' show ColoresMapa;
+import '../providers/fuera_del_area_providers.dart';
 import '../providers/hoja_agendados_provider.dart';
 import '../providers/mapa_ubicaciones_state.dart';
 import 'estados_hoja_casa.dart' show ElegirUbicacionDelPunto;
 import 'hoja_agendados.dart';
 import 'hoja_casa.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
+import 'piezas_fuera_del_area.dart';
 import 'piezas_lista_ubicaciones.dart';
 import 'piezas_mapa_ubicaciones.dart';
 
@@ -126,6 +128,8 @@ class HojaMapaUbicaciones extends StatefulWidget {
     this.alElegirPestana,
     this.alElegirTipoAgendados,
     this.alReintentarAgendados,
+    this.fueraDelArea = const FueraDelAreaEnElMapa(),
+    this.alVerFueraDelArea,
   });
 
   final MapaUbicacionesState estado;
@@ -160,6 +164,11 @@ class HojaMapaUbicaciones extends StatefulWidget {
   final ValueChanged<PestanaHojaMapa>? alElegirPestana;
   final ValueChanged<TipoAgenda?>? alElegirTipoAgendados;
   final VoidCallback? alReintentarAgendados;
+
+  /// Las casas fuera del área del colportor (#713): llevan su etiqueta y, si las ocultó, no están en
+  /// «Cercanía» y la lista empieza con el aviso de cuántas hay y «Ver» ([alVerFueraDelArea]).
+  final FueraDelAreaEnElMapa fueraDelArea;
+  final VoidCallback? alVerFueraDelArea;
 
   @override
   State<HojaMapaUbicaciones> createState() => _HojaMapaUbicacionesState();
@@ -269,6 +278,9 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
                             arriba: altura == AlturaHoja.mitad,
                             colportorId: widget.colportorId,
                             alAbrirOtra: widget.alElegir,
+                            fueraDelArea: widget.fueraDelArea.ids.contains(
+                              seleccionada.ubicacion.id,
+                            ),
                           )
                         : _ElegirDelPunto(
                             candidatas: candidatas,
@@ -290,6 +302,8 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
                       alReintentar: widget.alReintentar,
                       alActivarGps: widget.alActivarGps,
                       alRegistrar: widget.alRegistrar,
+                      fueraDelArea: widget.fueraDelArea,
+                      alVerFueraDelArea: widget.alVerFueraDelArea,
                     ),
             ),
         ],
@@ -562,6 +576,8 @@ class _Contenido extends StatelessWidget {
     required this.alReintentar,
     required this.alActivarGps,
     required this.alRegistrar,
+    required this.fueraDelArea,
+    required this.alVerFueraDelArea,
   });
 
   final MapaUbicacionesState estado;
@@ -570,6 +586,8 @@ class _Contenido extends StatelessWidget {
   final VoidCallback alReintentar;
   final VoidCallback alActivarGps;
   final VoidCallback alRegistrar;
+  final FueraDelAreaEnElMapa fueraDelArea;
+  final VoidCallback? alVerFueraDelArea;
 
   @override
   Widget build(BuildContext context) {
@@ -580,17 +598,39 @@ class _Contenido extends StatelessWidget {
     if (lista.sinUbicaciones) {
       return _VistaVacia(soloBajas: lista.soloBajas, alRegistrar: alRegistrar);
     }
+    // #713: las casas fuera del área que el colportor ocultó no están en la lista; el aviso de
+    // arriba dice cuántas son y las vuelve a mostrar.
+    final elegida = estado.seleccionadaId;
+    final items = fueraDelArea.ocultas == 0
+        ? lista.items
+        : [
+            for (final item in lista.items)
+              if (!fueraDelArea.oculta(item.ubicacion.id, elegida: elegida)) item,
+          ];
+    final alVer = alVerFueraDelArea;
     final cabeceras = <Widget>[
       if (estado.fallaLectura) _BannerError(alReintentar: alReintentar),
+      if (fueraDelArea.ocultas > 0 && alVer != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: AvisoFueraDelAreaOcultas(
+              key: ClavesFueraDelArea.avisoHoja,
+              cantidad: fueraDelArea.ocultas,
+              alVer: alVer,
+            ),
+          ),
+        ),
       if (estado.gps == EstadoGpsLista.sinGps) _AvisoGps(alActivar: alActivarGps),
       if (estado.gps == EstadoGpsLista.buscando && estado.lectura == null) const _BuscandoGps(),
     ];
     return ListView.builder(
       padding: EdgeInsets.zero,
-      itemCount: cabeceras.length + lista.items.length,
+      itemCount: cabeceras.length + items.length,
       itemBuilder: (context, indice) {
         if (indice < cabeceras.length) return cabeceras[indice];
-        final item = lista.items[indice - cabeceras.length];
+        final item = items[indice - cabeceras.length];
         final id = item.ubicacion.id;
         return FilaUbicacionLista(
           key: ClavesMapaUbicaciones.fila(id),
@@ -599,6 +639,7 @@ class _Contenido extends StatelessWidget {
           ahora: ahora,
           alTocar: () => alElegir(id),
           conFlecha: false,
+          fueraDelArea: fueraDelArea.ids.contains(id),
         );
       },
     );
