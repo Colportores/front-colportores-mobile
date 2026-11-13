@@ -22,6 +22,10 @@ abstract final class ColoresMapa {
 
   /// El aro exterior del marcador seleccionado (vista 06).
   static const aroSeleccion = Color(0xFF002856);
+
+  /// El aro de una casa fuera del área del colportor (#713, R-UB12): el ámbar oscuro de los avisos
+  /// del alta (`ColoresAlta.ambar`), 6:1 sobre la tierra del mapa.
+  static const fueraDelArea = Color(0xFF7A5A12);
 }
 
 /// Cómo se dibuja un [PuntoMapa].
@@ -80,6 +84,7 @@ final class PuntoMapa extends Equatable {
     this.etiqueta,
     this.variante,
     this.atenuado = false,
+    this.fueraDelArea = false,
   });
 
   /// Identifica al punto cuando el colportor lo toca (`MapaBase.alTocarPunto`).
@@ -103,8 +108,22 @@ final class PuntoMapa extends Equatable {
   /// tienen una visita agendada. Un grupo se ve tenue si todas las casas que junta lo están.
   final bool atenuado;
 
+  /// La casa quedó fuera del área del colportor (#713, R-UB12): se dibuja con un aro ámbar
+  /// alrededor, que la distingue sin depender solo del color (es una forma de más). Agrupada no se
+  /// distingue: la marca aparece al acercar.
+  final bool fueraDelArea;
+
   @override
-  List<Object?> get props => [id, coordenadas, estilo, letra, etiqueta, variante, atenuado];
+  List<Object?> get props => [
+    id,
+    coordenadas,
+    estilo,
+    letra,
+    etiqueta,
+    variante,
+    atenuado,
+    fueraDelArea,
+  ];
 }
 
 /// El radio de precisión del GPS: un círculo en metros alrededor de [centro].

@@ -6,6 +6,7 @@ import '../domain/entities/estado_casa.dart';
 import '../domain/entities/lista_ubicaciones.dart';
 import '../domain/entities/motivo_baja.dart';
 import '../domain/services/ciudades_para_alta.dart';
+import 'formato_fuera_del_area.dart';
 import 'formato_ubicaciones.dart';
 import 'providers/lista_ubicaciones_state.dart';
 
@@ -131,10 +132,18 @@ abstract final class FormatoListaUbicaciones {
   }
 
   /// La etiqueta de lector de pantalla de una fila.
-  static String etiquetaFila(ItemListaUbicacion item, ListaUbicaciones lista, DateTime ahora) {
+  ///
+  /// [fueraDelArea]: la casa quedó fuera del área del colportor (#713) y la fila lo dice.
+  static String etiquetaFila(
+    ItemListaUbicacion item,
+    ListaUbicaciones lista,
+    DateTime ahora, {
+    bool fueraDelArea = false,
+  }) {
     final partes = [
       FormatoUbicaciones.direccion(item.ubicacion),
       if (item.esBaja) 'Baja',
+      if (fueraDelArea) TextosFueraDelArea.etiquetaLector,
       meta(item, ahora),
       derecha(item, lista, ahora),
     ];

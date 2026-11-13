@@ -32,6 +32,7 @@ import 'hoja_con_quien.dart' show mostrarHojaConQuienParaProgramar;
 import 'hoja_ubicacion.dart' show abridorEdicionUbicacionProvider;
 import 'pestanas_hoja_casa.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta;
+import 'piezas_fuera_del_area.dart' show EtiquetaFueraDelArea;
 import 'piezas_hoja_casa.dart';
 import 'piezas_lista_ubicaciones.dart' show ColoresLista;
 import 'piezas_mapa_ubicaciones.dart' show ClavesMapaUbicaciones;
@@ -99,6 +100,7 @@ class HojaCasa extends ConsumerStatefulWidget {
     this.arriba = false,
     this.colportorId,
     this.alAbrirOtra,
+    this.fueraDelArea = false,
   });
 
   final ItemListaUbicacion item;
@@ -122,6 +124,10 @@ class HojaCasa extends ConsumerStatefulWidget {
   /// anfitrión (el mapa o la Lista) reemplaza esta hoja por la de esa otra ubicación (él sabe cómo
   /// cerrar la suya antes de abrir la otra). Sin él, la hoja solo se cierra.
   final ValueChanged<String>? alAbrirOtra;
+
+  /// La casa quedó fuera del área del colportor (#713, R-UB12): bajo la cabecera va la etiqueta
+  /// «FUERA DE TU ÁREA». La casa se usa igual (no se borra nada).
+  final bool fueraDelArea;
 
   @override
   ConsumerState<HojaCasa> createState() => _HojaCasaState();
@@ -295,6 +301,10 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
                 tipo: ubicacion.tipo,
                 alEditar: _editarCasa(),
               ),
+              if (widget.fueraDelArea) ...[
+                const SizedBox(height: 6),
+                const Align(alignment: Alignment.centerLeft, child: EtiquetaFueraDelArea()),
+              ],
               const SizedBox(height: 10),
               cuerpo,
             ],
