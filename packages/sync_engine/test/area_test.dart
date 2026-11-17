@@ -91,6 +91,31 @@ PullDelta _pagina(
 
 Map<String, Object?> _ubi(String id) => {'id': id, 'sync_version': 1};
 
+/// Corre [antes] una vez, cuando el motor ya tiene el delta y le pide al store
+/// que lo aplique: es el momento en que una escritura de la app podía colarse
+/// entre el filtro del motor y la transacción.
+class _EscribeAntesDeAplicar extends InMemoryLocalStore {
+  Future<void> Function()? antes;
+
+  @override
+  Future<void> applyDelta(
+    Map<String, List<Map<String, Object?>>> delta, {
+    required String scope,
+    required String? watermark,
+    PullNotices notices = PullNotices.none,
+    UnappliedRows? unapplied,
+  }) async {
+    final f = antes;
+    antes = null;
+    if (f != null) await f();
+    return super.applyDelta(delta,
+        scope: scope,
+        watermark: watermark,
+        notices: notices,
+        unapplied: unapplied);
+  }
+}
+
 void main() {
   test('out_of_area marca, no borra', () async {
     final t = _Guion([
@@ -282,6 +307,104 @@ void main() {
       'u2',
     ], reason: 'u1 tiene lo que escribió el colportor y el servidor no vio');
     await motor.dispose();
+  });
+
+  group('lo que no subió se decide dentro de la transacción (#714)', () {
+    test(
+        'una escritura que llega mientras el delta ya está en camino no queda '
+        'pisada por el eco, y no se cuenta como bajada', () async {
+      final t = _Guion([
+        _pagina(
+          'w1',
+          rows: {
+            'ubicacion': [
+              {'id': 'u1', 'calle': 'el eco', 'sync_version': 4},
+              {'id': 'u2', 'calle': 'otra', 'sync_version': 1},
+            ],
+          },
+        ),
+      ]);
+      final store = _EscribeAntesDeAplicar();
+      final cola = InMemoryJobStore();
+      final motor = SyncEngine(
+        specs: SpecRegistry(
+          [SyncSpec.push('ubicacion', alsoPull: true)],
+          allEntities: {'ubicacion'},
+        ),
+        transport: t,
+        jobs: cola,
+        store: store,
+      );
+      // La colportora corrige la dirección justo cuando el delta ya bajó y
+      // todavía no se aplicó: la fila y su job entran juntos.
+      store.antes = () async {
+        await motor.stage('ubicacion', Op.update, {
+          'id': 'u1',
+          'calle': 'corregida',
+        }, syncVersion: 4);
+        await cola.claimPending(limit: 10);
+      };
+
+      final resultado = await motor.trigger(SyncTrigger.realtime);
+
+      expect(store.rows['ubicacion']!.map((f) => f['id']), ['u2'],
+          reason: 'u1 tiene lo que la colportora escribió y el servidor no vio');
+      expect(resultado.pulled, 1, reason: 'u1 no se aplicó');
+      await motor.dispose();
+    });
+
+    test('la marca, la espera y lo protegido van por la PK de la entidad', () async {
+      final t = _Guion([
+        _pagina(
+          'w1',
+          rows: {
+            'house_status': [
+              for (final id in ['ub-1', 'ub-2', 'ub-3'])
+                {'ubicacion_id': id, 'sync_version': 1},
+            ],
+          },
+        ),
+        _pagina(
+          'r1',
+          rows: {
+            'house_status': [
+              {'ubicacion_id': 'ub-2', 'sync_version': 2},
+              {'ubicacion_id': 'ub-3', 'sync_version': 2},
+            ],
+          },
+          areaReset: {'house_status'},
+        ),
+      ]);
+      final store = InMemoryLocalStore(
+          pkFieldPorEntidad: const {'house_status': 'ubicacion_id'});
+      final cola = InMemoryJobStore();
+      final motor = SyncEngine(
+        specs: SpecRegistry(
+          [SyncSpec.push('house_status', pk: 'ubicacion_id', alsoPull: true)],
+          allEntities: {'house_status'},
+        ),
+        transport: t,
+        jobs: cola,
+        store: store,
+      );
+      await motor.syncNow();
+      // ub-3 cambió de color en el teléfono y todavía no subió.
+      await motor.stage('house_status', Op.update,
+          {'ubicacion_id': 'ub-3', 'color': 'VENTA'},
+          syncVersion: 1);
+      await cola.claimPending(limit: 10);
+
+      await motor.trigger(SyncTrigger.realtime);
+
+      expect(store.fueraDelArea['house_status'], {'ub-1'});
+      expect(
+          store.rows['house_status']!
+              .where((f) => f['ubicacion_id'] == 'ub-3')
+              .map((f) => f['sync_version']),
+          [1],
+          reason: 'el pull no pisa el color que no subió');
+      await motor.dispose();
+    });
   });
 
   group('el cable', () {

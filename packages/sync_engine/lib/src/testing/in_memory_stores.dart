@@ -334,6 +334,13 @@ class InMemoryJobStore implements JobStorePort {
 /// nada **ni avanza el watermark**, que es el escenario que hay que poder
 /// probar sin una DB real.
 class InMemoryLocalStore implements LocalStorePort {
+  /// [pkFieldPorEntidad] es la PK de las entidades que no usan `id`
+  /// (`house_status` → `ubicacion_id`), como en `FakeSyncTransport`: la marca,
+  /// la espera y las filas protegidas se buscan por ella, igual que en Drift.
+  InMemoryLocalStore({this.pkFieldPorEntidad = const {}});
+
+  final Map<String, String> pkFieldPorEntidad;
+
   final Map<String, List<Map<String, Object?>>> rows = {};
   final Map<String, String> watermarks = {};
 
@@ -359,23 +366,43 @@ class InMemoryLocalStore implements LocalStorePort {
     required String scope,
     required String? watermark,
     PullNotices notices = PullNotices.none,
+    UnappliedRows? unapplied,
   }) async {
     if (failOnApply) {
       throw StateError('la transacción local falló');
     }
-    // A diferencia del de Drift, este no sabe qué filas tienen escrituras sin
-    // aplicar: todas las que tiene quedan a la espera.
+    // Todo se calcula antes de escribir nada: si [unapplied] falla, el store
+    // queda como estaba, igual que con una transacción.
+    final espera = <String, Set<String>>{};
     for (final entidad in notices.areaReset) {
-      (aLaEspera[entidad] ??= {}).addAll([
+      final ids = [
         for (final f in rows[entidad] ?? const <Map<String, Object?>>[])
-          '${f['id']}'
-      ]);
+          _pkDe(entidad, f)
+      ];
+      final ocupadas = unapplied == null || ids.isEmpty
+          ? const <String>{}
+          : await unapplied(entidad, ids);
+      espera[entidad] = {...ids}..removeAll(ocupadas);
     }
+    final aplicar = <String, List<Map<String, Object?>>>{};
     for (final MapEntry(key: entity, value: filas) in delta.entries) {
+      final ids = [for (final f in filas) _pkDe(entity, f)];
+      final ocupadas = unapplied == null || ids.isEmpty
+          ? const <String>{}
+          : await unapplied(entity, ids);
+      aplicar[entity] = [
+        for (final f in filas)
+          if (!ocupadas.contains(_pkDe(entity, f))) f
+      ];
+    }
+    for (final MapEntry(key: entidad, value: ids) in espera.entries) {
+      (aLaEspera[entidad] ??= {}).addAll(ids);
+    }
+    for (final MapEntry(key: entity, value: filas) in aplicar.entries) {
       (rows[entity] ??= []).addAll(filas);
       for (final f in filas) {
-        aLaEspera[entity]?.remove('${f['id']}');
-        fueraDelArea[entity]?.remove('${f['id']}');
+        aLaEspera[entity]?.remove(_pkDe(entity, f));
+        fueraDelArea[entity]?.remove(_pkDe(entity, f));
       }
     }
     for (final MapEntry(key: entidad, value: ids)
@@ -392,6 +419,10 @@ class InMemoryLocalStore implements LocalStorePort {
     if (watermark != null) watermarks[scope] = watermark;
     applies++;
   }
+
+  /// El valor de la PK de [entidad] en [fila], como texto.
+  String _pkDe(String entidad, Map<String, Object?> fila) =>
+      '${fila[pkFieldPorEntidad[entidad] ?? 'id']}';
 
   @override
   Future<String?> watermarkOf(String scope) async => watermarks[scope];

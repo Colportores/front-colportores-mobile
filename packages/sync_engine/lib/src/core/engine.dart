@@ -1579,7 +1579,10 @@ class SyncEngine {
   ///
   /// Las filas con escrituras locales todavía sin aplicar no se pisan (ver
   /// [JobStorePort.withUnapplied]): sube la escritura, y si choca, el LWW de
-  /// §5.4 aplica la fila del servidor.
+  /// §5.4 aplica la fila del servidor. El store lo pregunta **dentro** de la
+  /// transacción que aplica el delta ([LocalStorePort.applyDelta]): si el
+  /// motor filtrara antes, una escritura que entrara entre el filtro y la
+  /// transacción quedaría pisada por el eco que ya venía en camino (#714).
   Future<void> _pullInto(
     String scope,
     List<String> entities,
@@ -1591,20 +1594,36 @@ class SyncEngine {
     while (true) {
       final delta =
           await _transport.pull(entities: entities, watermark: watermark);
-      final filas = await _sinLoQueNoSubio(delta.rows);
       final avisos = PullNotices(
         outOfArea: delta.outOfArea,
         areaReset: delta.areaReset,
         complete: !delta.hasMore,
       );
+      // Lo que el store dejó sin escribir, para no contarlo como bajado.
+      final salteadas = <String, Set<String>>{};
       if (delta.rows.values.any((l) => l.isNotEmpty) ||
           !avisos.isEmpty ||
           delta.watermark != watermark) {
-        await _store.applyDelta(filas,
-            scope: scope, watermark: delta.watermark, notices: avisos);
+        await _store.applyDelta(
+          delta.rows,
+          scope: scope,
+          watermark: delta.watermark,
+          notices: avisos,
+          unapplied: (entidad, pks) async {
+            final ocupadas = await _sinAplicar(entidad, pks);
+            (salteadas[entidad] ??= {}).addAll(ocupadas);
+            return ocupadas;
+          },
+        );
       }
-      for (final MapEntry(key: entidad, value: lista) in filas.entries) {
-        contador[entidad] = (contador[entidad] ?? 0) + lista.length;
+      for (final MapEntry(key: entidad, value: lista) in delta.rows.entries) {
+        final fuera = salteadas[entidad] ?? const <String>{};
+        final bajadas = fuera.isEmpty
+            ? lista.length
+            : lista
+                .where((f) => !fuera.contains('${f[_specs.of(entidad).pk]}'))
+                .length;
+        contador[entidad] = (contador[entidad] ?? 0) + bajadas;
       }
       // Si el watermark no avanzó, la próxima request es idéntica a esta: un
       // `has_more` que nunca baja es un bug del servidor, y un cliente que le
@@ -1616,29 +1635,14 @@ class SyncEngine {
     }
   }
 
-  /// [rows] sin las filas de entidades `push` que tienen escrituras locales
-  /// todavía sin aplicar en el servidor.
-  Future<Map<String, List<Map<String, Object?>>>> _sinLoQueNoSubio(
-      Map<String, List<Map<String, Object?>>> rows) async {
-    final salida = <String, List<Map<String, Object?>>>{};
-    for (final MapEntry(key: entidad, value: lista) in rows.entries) {
-      final spec = _specs.of(entidad);
-      if (spec.policy != SyncPolicy.push || lista.isEmpty) {
-        salida[entidad] = lista;
-        continue;
-      }
-      final ocupadas = await _jobs.withUnapplied(entidad, [
-        for (final f in lista)
-          if (f[spec.pk] case final pk?) '$pk'
-      ]);
-      salida[entidad] = ocupadas.isEmpty
-          ? lista
-          : [
-              for (final f in lista)
-                if (!ocupadas.contains('${f[spec.pk]}')) f
-            ];
+  /// De [pks], las filas de [entidad] con escrituras locales todavía sin
+  /// aplicar en el servidor. Solo una entidad `push` las tiene: un catálogo
+  /// (`pull`) no se escribe en el teléfono.
+  Future<Set<String>> _sinAplicar(String entidad, List<String> pks) async {
+    if (pks.isEmpty || _specs.of(entidad).policy != SyncPolicy.push) {
+      return const {};
     }
-    return salida;
+    return _jobs.withUnapplied(entidad, pks);
   }
 
   /// Lleva la cuenta de si la sesión sirve, para que un refresh roto no sea

@@ -2,6 +2,8 @@
 // columna y por nombre. La prueba de que eso está bien es la identidad: la fila del cloud
 // (`Modelo.toJson()`, la forma con la que viaja) aplicada por `applyDelta` se lee igual que el
 // modelo, con los mismos DAOs y conversores que usa la app.
+import 'dart:async';
+
 import 'package:colportores_mobile/catalogo.dart';
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
@@ -16,7 +18,7 @@ import 'package:colportores_mobile/features/mapa/data/datasources/zona_local_dat
 import 'package:colportores_mobile/features/mapa/data/models/campania_ciudad_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/zona_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/zona_vertice_model.dart';
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_engine/port_contracts.dart';
@@ -588,5 +590,129 @@ void main() {
         expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
       },
     );
+  });
+
+  group('lo que no subió se pregunta dentro de la transacción (#714)', () {
+    Map<String, Object?> ubi(String id, {String calle = 'del servidor', int version = 4}) => {
+      ..._ubicacion,
+      'id': id,
+      'calle': calle,
+      'sync_version': version,
+    };
+
+    Future<String?> calleDe(String id) async =>
+        (await (db.select(db.ubicaciones)..where((u) => u.id.equals(id))).getSingle()).calle;
+
+    test('lo que unapplied nombra no se escribe ni sale de la marca', () async {
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u1', calle: 'mía', version: 3), ubi('u2', version: 3)],
+        },
+        scope: 'replica',
+        watermark: 'w0',
+      );
+      await store.applyDelta(
+        const {},
+        scope: 'replica',
+        watermark: 'w1',
+        notices: const PullNotices(
+          outOfArea: {
+            'ubicacion': ['u1'],
+          },
+        ),
+      );
+      final preguntas = <String>[];
+
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u1'), ubi('u2')],
+        },
+        scope: 'replica',
+        watermark: 'w2',
+        unapplied: (entidad, pks) async {
+          preguntas.add('$entidad: ${pks.join(',')}');
+          return {'u1'};
+        },
+      );
+
+      expect(preguntas, ['ubicacion: u1,u2']);
+      expect(await calleDe('u1'), 'mía');
+      expect(await calleDe('u2'), 'del servidor');
+      expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+      expect(await store.watermarkOf('replica'), 'w2');
+    });
+
+    test('una escritura de la app que llega mientras se aplica el delta queda después, entera: '
+        'el eco no la pisa', () async {
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u1', calle: 'vieja', version: 3)],
+        },
+        scope: 'replica',
+        watermark: 'w0',
+      );
+      final cola = DriftJobStore(db);
+      final adentro = Completer<void>();
+      final seguir = Completer<void>();
+      final aplicar = store.applyDelta(
+        {
+          'ubicacion': [ubi('u1', calle: 'el eco')],
+        },
+        scope: 'replica',
+        watermark: 'w1',
+        unapplied: (entidad, pks) async {
+          adentro.complete();
+          await seguir.future;
+          return cola.withUnapplied(entidad, pks);
+        },
+      );
+      await adentro.future;
+      // La colportora corrige la dirección: la fila y su job, en su transacción (la de la app).
+      final corregir = db.transaction(() async {
+        await (db.update(db.ubicaciones)..where((u) => u.id.equals('u1'))).write(
+          const UbicacionesCompanion(calle: Value('corregida')),
+        );
+        await cola.append(
+          SyncJob(
+            clientOpId: 'op-u1',
+            entity: 'ubicacion',
+            op: Op.update,
+            payload: ubi('u1', calle: 'corregida', version: 4),
+            createdAt: DateTime.utc(2026, 10, 16),
+            rowPk: 'u1',
+          ),
+        );
+      });
+      await pumpEventQueue();
+      seguir.complete();
+
+      await aplicar;
+      await corregir;
+
+      expect(await calleDe('u1'), 'corregida');
+      expect(await cola.withUnapplied('ubicacion', ['u1']), {'u1'});
+    });
+
+    test('area_reset: lo que unapplied nombra no queda a la espera ni termina afuera', () async {
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u1'), ubi('u2'), ubi('u3')],
+        },
+        scope: 'replica',
+        watermark: 'w0',
+      );
+
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u3')],
+        },
+        scope: 'replica',
+        watermark: 'r1',
+        notices: const PullNotices(areaReset: {'ubicacion'}),
+        unapplied: (entidad, pks) async => pks.toSet().intersection({'u2'}),
+      );
+
+      expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+    });
   });
 }
