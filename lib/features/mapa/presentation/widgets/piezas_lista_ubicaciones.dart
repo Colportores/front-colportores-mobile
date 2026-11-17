@@ -8,6 +8,7 @@ import '../../domain/entities/ubicacion.dart';
 import '../formato_lista_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
 import '../mapa_base/marcador_estado.dart';
+import 'piezas_fuera_del_area.dart';
 
 /// Los colores de la lista (vista 05) que el tema no cubre. Los demás salen de `Theme.of(context)`.
 abstract final class ColoresLista {
@@ -188,6 +189,7 @@ class FilaUbicacionLista extends StatelessWidget {
     this.alReactivar,
     this.conFlecha = true,
     this.seleccionada = false,
+    this.fueraDelArea = false,
   });
 
   final ItemListaUbicacion item;
@@ -208,6 +210,10 @@ class FilaUbicacionLista extends StatelessWidget {
   /// La baja sobre la que está abierta la hoja de «Reactivar» (canvas 09·03): se ve cuál se está por
   /// reactivar.
   final bool seleccionada;
+
+  /// La casa quedó fuera del área del colportor (#713): lleva la etiqueta «FUERA DE TU ÁREA» (el mapa
+  /// la marca con el aro ámbar).
+  final bool fueraDelArea;
 
   @override
   Widget build(BuildContext context) {
@@ -257,6 +263,7 @@ class FilaUbicacionLista extends StatelessWidget {
                     ),
                   ),
                   if (esBaja) const _EtiquetaBaja(),
+                  if (fueraDelArea) const EtiquetaFueraDelArea(),
                 ],
               ),
               const SizedBox(height: 3),
@@ -309,7 +316,7 @@ class FilaUbicacionLista extends StatelessWidget {
       button: tocable,
       selected: seleccionada,
       enabled: !esBaja || reactivable,
-      label: FormatoListaUbicaciones.etiquetaFila(item, lista, ahora),
+      label: FormatoListaUbicaciones.etiquetaFila(item, lista, ahora, fueraDelArea: fueraDelArea),
       hint: reactivable ? 'Tocá para reactivar' : null,
       onTap: tocable ? alPresionar : null,
       child: ExcludeSemantics(
