@@ -23,21 +23,26 @@ void main() {
   setUp(() => marcas = StreamController<Set<String>>.broadcast());
   tearDown(() => marcas.close());
 
-  Future<void> montar(WidgetTester tester, Set<String> iniciales, {double escala = 1}) =>
-      montarLista(
-        tester,
-        repo: RepoListaFalso([
-          filaLista('u1', numero: '101'),
-          filaLista('u2', numero: '102', metrosAlNorte: 20),
-        ]),
-        escala: escala,
-        masOverrides: [
-          idsFueraDelAreaProvider.overrideWith((ref) async* {
-            yield iniciales;
-            yield* marcas.stream;
-          }),
-        ],
-      );
+  Future<void> montar(
+    WidgetTester tester,
+    Set<String> iniciales, {
+    double escala = 1,
+    bool casaAbreSuHoja = false,
+  }) => montarLista(
+    tester,
+    casaAbreSuHoja: casaAbreSuHoja,
+    repo: RepoListaFalso([
+      filaLista('u1', numero: '101'),
+      filaLista('u2', numero: '102', metrosAlNorte: 20),
+    ]),
+    escala: escala,
+    masOverrides: [
+      idsFueraDelAreaProvider.overrideWith((ref) async* {
+        yield iniciales;
+        yield* marcas.stream;
+      }),
+    ],
+  );
 
   ProviderContainer contenedor(WidgetTester tester) =>
       ProviderScope.containerOf(tester.element(_fila('u1')));
@@ -92,5 +97,25 @@ void main() {
 
     expect(_etiquetaEn('u1'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('la hoja de la casa abierta desde la fila marcada lleva la misma etiqueta (decisión '
+      'del 17/11, P1 del QA de #718)', (tester) async {
+    await montar(tester, {'u1'}, casaAbreSuHoja: true);
+
+    await tester.tap(find.text('Av. Italia 101'));
+    await asentarLista(tester, 14);
+    // La de la fila y la de la hoja.
+    expect(find.byType(EtiquetaFueraDelArea), findsNWidgets(2));
+  });
+
+  testWidgets('la hoja de una casa del área abierta desde la Lista no lleva la etiqueta', (
+    tester,
+  ) async {
+    await montar(tester, {'u1'}, casaAbreSuHoja: true);
+
+    await tester.tap(find.text('Av. Italia 102'));
+    await asentarLista(tester, 14);
+    expect(find.byType(EtiquetaFueraDelArea), findsOneWidget, reason: 'solo la de la fila de u1');
   });
 }
