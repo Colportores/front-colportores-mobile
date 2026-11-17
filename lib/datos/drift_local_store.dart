@@ -37,18 +37,36 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
   /// (`confirmada = false`), salvo lo que tiene escrituras en la cola sin terminar: eso el servidor
   /// todavía no lo vio, no salió de ningún lado. Lo que vuelve a bajar sale de la espera y de la
   /// marca; lo que sigue a la espera cuando llega la última página, quedó afuera.
+  ///
+  /// [unapplied] se pregunta acá adentro, en la transacción: el `DriftJobStore` del motor usa esta
+  /// misma DB, así que su consulta corre en ella, y la escritura de la app (fila y job en otra
+  /// transacción) queda entera antes o entera después del delta (#714).
   @override
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> rows, {
     required String scope,
     required String? watermark,
     PullNotices notices = PullNotices.none,
+    UnappliedRows? unapplied,
   }) => transaction(() async {
     for (final entidad in notices.areaReset) {
-      await _ponerALaEspera(_tabla(entidad));
+      await _ponerALaEspera(_tabla(entidad), unapplied);
     }
-    for (final MapEntry(key: entidad, value: filas) in rows.entries) {
+    for (final MapEntry(key: entidad, value: todas) in rows.entries) {
       final tabla = _tabla(entidad);
+      final pk = _pkDe(tabla);
+      final ocupadas = unapplied == null || todas.isEmpty
+          ? const <String>{}
+          : await unapplied(entidad, [
+              for (final fila in todas)
+                if (fila[pk] case final id?) '$id',
+            ]);
+      final filas = ocupadas.isEmpty
+          ? todas
+          : [
+              for (final fila in todas)
+                if (!ocupadas.contains('${fila[pk]}')) fila,
+            ];
       for (final fila in filas) {
         // `<Never>`: la tabla llega como `TableInfo<Table, Object?>` y Drift verifica en runtime
         // el tipo de su fila; un insertable de `Never` es subtipo de cualquiera.
@@ -56,7 +74,7 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
       }
       final ids = [
         for (final fila in filas)
-          if (fila[_pkDe(tabla)] case final id?) '$id',
+          if (fila[pk] case final id?) '$id',
       ];
       for (var i = 0; i < ids.length; i += 500) {
         final tramo = ids.sublist(i, i + 500 > ids.length ? ids.length : i + 500);
@@ -87,8 +105,9 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
   });
 
   /// Con un `area_reset` de [tabla]: todo lo que el teléfono tiene de ella pasa a esperar volver a
-  /// bajar, menos lo que ya se sabe afuera y lo que tiene escrituras en la cola sin terminar.
-  Future<void> _ponerALaEspera(TableInfo<Table, Object?> tabla) async {
+  /// bajar, menos lo que ya se sabe afuera y lo que tiene escrituras en la cola sin terminar: las de
+  /// su propio job y las que [unapplied] nombra (un espacio que movió una unión todavía sin subir).
+  Future<void> _ponerALaEspera(TableInfo<Table, Object?> tabla, UnappliedRows? unapplied) async {
     final pk = _pkDe(tabla);
     final entidad = tabla.actualTableName;
     await customStatement(
@@ -98,6 +117,22 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
       "AND q.state <> 'DONE')",
       [entidad, entidad],
     );
+    if (unapplied == null) return;
+    final aLaEspera = [
+      for (final f in await (select(
+        syncFueraDelArea,
+      )..where((f) => f.entidad.equals(entidad) & f.confirmada.equals(false))).get())
+        f.filaId,
+    ];
+    if (aLaEspera.isEmpty) return;
+    final ocupadas = (await unapplied(entidad, aLaEspera)).toList();
+    for (var i = 0; i < ocupadas.length; i += 500) {
+      final tramo = ocupadas.sublist(i, i + 500 > ocupadas.length ? ocupadas.length : i + 500);
+      await (delete(syncFueraDelArea)..where(
+            (f) => f.entidad.equals(entidad) & f.confirmada.equals(false) & f.filaId.isIn(tramo),
+          ))
+          .go();
+    }
   }
 
   /// La PK de [tabla] (una sola columna en toda tabla del sync).
