@@ -332,9 +332,8 @@ class _HojaFiltrosListaState extends ConsumerState<HojaFiltrosLista> {
                     onChanged: (v) => setState(() => _bajas = v),
                     title: Text('Mostrar bajas', style: theme.textTheme.bodyLarge),
                     activeTrackColor: theme.colorScheme.primary,
-                    inactiveTrackColor: ColoresLista.grisBorde,
-                    inactiveThumbColor: Colors.white,
-                    trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+                    // Apagado: el borde y el pulgar del `switchTheme` (gris, ~5,4:1; WCAG 1.4.11,
+                    // decisión del 17/11 en #715). Sin colores propios que le ganen al tema.
                   ),
                 ],
               ),
