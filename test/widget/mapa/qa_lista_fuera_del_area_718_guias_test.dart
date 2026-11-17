@@ -23,23 +23,26 @@ void main() {
   for (final MapEntry(key: nombreTamano, value: tamano) in tamanos715.entries) {
     for (final escala in [1.0, 2.0]) {
       for (final MapEntry(key: nombre, value: ids) in marcadas.entries) {
-        testWidgets('Lista · $nombre · $nombreTamano · texto $escala: tamaños de toque, etiquetas y '
-            'contraste', (tester) async {
-          final semantica = tester.ensureSemantics();
-          await montarLista(
-            tester,
-            repo: RepoListaFalso(casas),
-            tamano: tamano,
-            escala: escala,
-            masOverrides: [FueraDelAreaFalsas715(ids).sobrescribe],
-          );
+        testWidgets(
+          'Lista · $nombre · $nombreTamano · texto $escala: tamaños de toque, etiquetas y '
+          'contraste',
+          (tester) async {
+            final semantica = tester.ensureSemantics();
+            await montarLista(
+              tester,
+              repo: RepoListaFalso(casas),
+              tamano: tamano,
+              escala: escala,
+              masOverrides: [FueraDelAreaFalsas715(ids).sobrescribe],
+            );
 
-          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-          await expectLater(tester, meetsGuideline(textContrastGuideline));
-          semantica.dispose();
-        });
+            await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+            await expectLater(tester, meetsGuideline(textContrastGuideline));
+            semantica.dispose();
+          },
+        );
       }
     }
   }

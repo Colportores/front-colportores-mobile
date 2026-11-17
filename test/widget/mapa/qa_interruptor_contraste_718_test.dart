@@ -97,7 +97,11 @@ void main() {
         final m = await _medir(tester, find.byKey(const Key('s')));
 
         expect(_contraste(m.borde, m.fondo), greaterThanOrEqualTo(3), reason: 'borde ${m.borde}');
-        expect(_contraste(m.pulgar, m.fondo), greaterThanOrEqualTo(3), reason: 'pulgar ${m.pulgar}');
+        expect(
+          _contraste(m.pulgar, m.fondo),
+          greaterThanOrEqualTo(3),
+          reason: 'pulgar ${m.pulgar}',
+        );
         // El pulgar se distingue de su pista (la forma del estado: pulgar a la izquierda).
         expect(
           _contraste(m.pulgar, m.pista),

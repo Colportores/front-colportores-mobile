@@ -157,9 +157,7 @@ void main() {
             }
             _sinPalabrasPartidas(
               tester,
-              find
-                  .descendant(of: _todasLasEtiquetas.first, matching: find.byType(Text))
-                  .first,
+              find.descendant(of: _todasLasEtiquetas.first, matching: find.byType(Text)).first,
               escala,
             );
             await capturar715(tester, 'lista $nombre $nombreTamano x$escala');
@@ -181,14 +179,7 @@ void main() {
       expect('Fuera de tu área'.allMatches(nodo.label).length, 1);
       expect(nodo.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
       // La etiqueta visual no suma un nodo tocable ni uno propio dentro de la fila.
-      expect(
-        tester
-            .getSemantics(_fila('u1'))
-            .getSemanticsData()
-            .flagsCollection
-            .isButton,
-        isTrue,
-      );
+      expect(tester.getSemantics(_fila('u1')).getSemanticsData().flagsCollection.isButton, isTrue);
       semantica.dispose();
     });
 
@@ -300,7 +291,9 @@ void main() {
         tester,
         repo: RepoListaFalso(casas715()),
         montadaCambiante: montada,
-        masOverrides: [FueraDelAreaFalsas715({'u3'}).sobrescribe],
+        masOverrides: [
+          FueraDelAreaFalsas715({'u3'}).sobrescribe,
+        ],
       );
       expect(_etiquetaEn('u3'), findsOneWidget);
 
