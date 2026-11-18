@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../textos_deposito.dart';
 
@@ -162,9 +163,8 @@ enum OrigenDeLaFoto { camara, galeria }
 
 /// La hoja «Sacar foto» / «Elegir de la galería». Devuelve el origen elegido, o `null` si se cierra.
 Future<OrigenDeLaFoto?> mostrarHojaOrigenDeLaFoto(BuildContext context) =>
-    showModalBottomSheet<OrigenDeLaFoto>(
+    mostrarHojaInferior<OrigenDeLaFoto>(
       context: context,
-      useSafeArea: true,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(

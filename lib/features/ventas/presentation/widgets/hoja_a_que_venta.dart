@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart' show ColoresAlta;
 import '../../domain/entities/venta_abierta.dart';
@@ -16,10 +17,9 @@ Future<VentaAbierta?> mostrarHojaAQueVenta(
   BuildContext context, {
   required List<VentaAbierta> ventas,
   required String subtitulo,
-}) => showModalBottomSheet<VentaAbierta>(
+}) => mostrarHojaInferior<VentaAbierta>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

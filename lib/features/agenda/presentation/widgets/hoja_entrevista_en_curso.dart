@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../jornada/presentation/formato_jornada.dart';
 import 'textos_entrevista.dart';
@@ -16,10 +17,9 @@ Future<bool?> mostrarHojaEntrevistaEnCurso(
   required String notaInicial,
   required ValueChanged<String> alEscribirNota,
   DateTime Function()? reloj,
-}) => showModalBottomSheet<bool>(
+}) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: false,
   barrierColor: Colors.transparent,
   backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
