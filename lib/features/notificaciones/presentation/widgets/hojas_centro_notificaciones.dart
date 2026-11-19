@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import 'textos_centro_notificaciones.dart';
 
@@ -23,10 +24,9 @@ ShapeBorder get _formaDeLaHoja =>
 Future<AccionMenuCentro?> mostrarMenuCentroNotificaciones(
   BuildContext context, {
   required bool haySinLeer,
-}) => showModalBottomSheet<AccionMenuCentro>(
+}) => mostrarHojaInferior<AccionMenuCentro>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: false,
   backgroundColor: Colors.white,
   shape: _formaDeLaHoja,
@@ -40,10 +40,9 @@ Future<bool?> mostrarHojaBorrarTodasLasNotificaciones(
   BuildContext context, {
   required int cantidad,
   required Future<bool> Function() borrar,
-}) => showModalBottomSheet<bool>(
+}) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   enableDrag: false,
   showDragHandle: false,
   backgroundColor: Colors.white,

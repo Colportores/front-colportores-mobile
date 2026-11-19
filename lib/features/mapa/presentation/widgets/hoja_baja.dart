@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../domain/entities/motivo_baja.dart';
 import '../../domain/entities/pendientes_ubicacion.dart';
@@ -124,10 +125,9 @@ Future<SalidaHojaBaja?> mostrarHojaBaja(
   BuildContext context, {
   required Ubicacion ubicacion,
   bool ofreceIrALaCobranza = false,
-}) => showModalBottomSheet<SalidaHojaBaja>(
+}) => mostrarHojaInferior<SalidaHojaBaja>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // Sin arrastrar para cerrar: mientras la baja se escribe la hoja no se puede cerrar de costado (el
   // arrastre no pasa por el `PopScope`). Las salidas son «Cancelar», el atrás y el toque afuera.
   enableDrag: false,

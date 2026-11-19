@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../providers/respaldo_drive_providers.dart';
@@ -13,10 +14,9 @@ import 'aviso_drive.dart';
 /// intento ([DriveQuedoConectado], o [DriveNoQuedoConectado] con [FailureDriveCancelado] si la
 /// persona cerró la pantalla de Google), o `null` si tocó «Ahora no».
 Future<ResultadoConexionDrive?> mostrarHojaConectarDrive(BuildContext context) =>
-    showModalBottomSheet<ResultadoConexionDrive>(
+    mostrarHojaInferior<ResultadoConexionDrive>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
       enableDrag: false,
       showDragHandle: false,
       backgroundColor: Colors.white,
@@ -27,10 +27,9 @@ Future<ResultadoConexionDrive?> mostrarHojaConectarDrive(BuildContext context) =
     );
 
 /// Abre la hoja «¿Desconectar Google Drive?» (16D·05). Devuelve `true` si quedó desconectado.
-Future<bool?> mostrarHojaDesconectarDrive(BuildContext context) => showModalBottomSheet<bool>(
+Future<bool?> mostrarHojaDesconectarDrive(BuildContext context) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   enableDrag: false,
   showDragHandle: false,
   backgroundColor: Colors.white,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../agenda/domain/entities/visita.dart' show TipoResultadoVisita;
 import '../../domain/entities/evento_de_la_casa.dart';
 import '../textos_baja_persona.dart' show FormatoBajaPersona;
@@ -34,10 +35,9 @@ Future<AccionDelDetalle?> mostrarHojaDetalleDeVisita(
   required String direccion,
   required DateTime ahora,
   bool conVerLaVenta = false,
-}) => showModalBottomSheet<AccionDelDetalle>(
+}) => mostrarHojaInferior<AccionDelDetalle>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../domain/entities/ciudad_consultable.dart';
 import '../formato_precios.dart';
 import 'piezas_precios.dart';
@@ -16,10 +17,9 @@ Future<CiudadConsultable?> mostrarHojaOtraCiudad(
   required List<CiudadConsultable> ciudades,
   required CiudadConsultable? actual,
   Map<String, String> marcas = const {},
-}) => showModalBottomSheet<CiudadConsultable>(
+}) => mostrarHojaInferior<CiudadConsultable>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   barrierColor: _scrim,
   shape: const RoundedRectangleBorder(

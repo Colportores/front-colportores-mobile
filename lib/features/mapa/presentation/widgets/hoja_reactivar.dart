@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/entities/motivo_baja.dart';
@@ -93,10 +94,9 @@ Future<SalidaHojaReactivar?> mostrarHojaReactivar(
   required ItemListaUbicacion item,
   String? ultimaVisita,
   bool ofreceAbrirExistente = false,
-}) => showModalBottomSheet<SalidaHojaReactivar>(
+}) => mostrarHojaInferior<SalidaHojaReactivar>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // Sin arrastrar para cerrar: mientras reactiva, la hoja no se puede cerrar de costado.
   enableDrag: false,
   backgroundColor: Colors.white,

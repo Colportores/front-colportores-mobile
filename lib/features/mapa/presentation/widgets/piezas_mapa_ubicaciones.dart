@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../domain/entities/estado_casa.dart';
 import '../../domain/value_objects/modo_seguimiento.dart';
 import '../formato_lista_ubicaciones.dart';
@@ -563,10 +564,9 @@ class ChipReferencias extends StatelessWidget {
 }
 
 /// Abre la leyenda «Referencias». Devuelve cuando se cierra.
-Future<void> mostrarReferenciasMapa(BuildContext context) => showModalBottomSheet<void>(
+Future<void> mostrarReferenciasMapa(BuildContext context) => mostrarHojaInferior<void>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: true,
   backgroundColor: Colors.white,
   shape: const RoundedRectangleBorder(
