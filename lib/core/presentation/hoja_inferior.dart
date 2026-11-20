@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
+import 'hoja_segura.dart';
+
 /// Abre una hoja inferior modal que nunca queda bajo la barra de navegación del sistema (#717).
 ///
 /// En Android 15 o más la app se dibuja de borde a borde: la barra de navegación (los tres botones o
 /// la línea de gestos) flota sobre la parte de abajo de la pantalla. `showModalBottomSheet` con
 /// `useSafeArea: true` cuida solo el borde de arriba, así que, sin esto, los botones del pie de una
 /// hoja quedaban tapados por esa barra. Acá la hoja se abre siempre con `useSafeArea: true` y su
-/// contenido se envuelve en un `SafeArea`: el fondo de la hoja sigue llegando hasta el borde de la
-/// pantalla y los botones quedan encima de la barra. Si el contenido ya traía su propio `SafeArea`
+/// contenido se envuelve en un [HojaSegura] (#722): el fondo de la hoja sigue llegando hasta el borde
+/// de la pantalla y los botones quedan encima de la barra. Si el contenido ya traía su propio `SafeArea`
 /// no se suma otro margen (el de afuera ya le quitó el inset al de adentro).
 ///
 /// Toda hoja inferior de la app se abre por acá, no con `showModalBottomSheet`: un test de
@@ -35,7 +37,5 @@ Future<T?> mostrarHojaInferior<T>({
   backgroundColor: backgroundColor,
   barrierColor: barrierColor,
   shape: shape,
-  builder: conBarraInferior
-      ? (contexto) => SafeArea(top: false, child: builder(contexto))
-      : builder,
+  builder: conBarraInferior ? (contexto) => HojaSegura(child: builder(contexto)) : builder,
 );
