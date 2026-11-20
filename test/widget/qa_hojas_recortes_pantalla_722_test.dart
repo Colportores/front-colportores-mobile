@@ -4,7 +4,7 @@
 //
 // - La hoja de filtros de la Lista (05B·01): su «Ver N ubicaciones» queda a 22 dp del borde, sin
 //   `SafeArea` ni `HojaSegura`; con la barra de gestos (34 dp) o la de 3 botones (48 dp) queda pegado
-//   o tapado. Hallazgo H1: los tests van con `QA_HALLAZGOS=true` (sin esa define se saltean).
+//   o tapado. Hallazgo H1: arreglado, los tests corren siempre.
 // - Las hojas que ya traían `SafeArea` propio, con la misma medición.
 // - El teclado abierto sobre una hoja envuelta (la engine informa `padding.bottom` en 0 con el
 //   teclado arriba): el campo y los botones quedan sobre el teclado, sin relleno de más.
@@ -31,8 +31,6 @@ import '../helpers/hojas_recortes_pantalla_722_arnes.dart';
 import '../helpers/lista_ubicaciones_falsos.dart' show RepoListaFalso, filaLista;
 import 'mapa/lista_ubicaciones_arnes.dart';
 
-/// Los hallazgos del QA se corren con `--dart-define=QA_HALLAZGOS=true`; sin la define se saltean.
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 const _capturas = bool.fromEnvironment('QA_CAPTURAS');
 
 /// Los teléfonos del PR más uno chico (320×568 con barra de 3 botones y texto 2,0).
@@ -101,9 +99,7 @@ void main() {
     await _cargarIconos();
   });
 
-  // skip: QA #722 — H1: la hoja de filtros de la Lista (05B·01) no usa HojaSegura ni SafeArea: «Ver N
-  // ubicaciones» queda 12 dp (iPhone) o 26 dp (Android 3 botones) bajo la barra del sistema. El implementador
-  // saca el skip (la define) cuando la arregla.
+  // H1 (arreglado): `mostrarHojaFiltrosLista` envuelve la hoja en `HojaSegura`.
   group('H1 · filtros de la Lista (05B·01): «Ver N ubicaciones» arriba de la barra', () {
     for (final t in _telefonos) {
       testWidgets(t.nombre, (tester) async {
@@ -116,7 +112,7 @@ void main() {
           isEmpty,
           reason: 'la hoja de filtros no usa HojaSegura ni SafeArea (hoja_filtros_lista.dart)',
         );
-      }, skip: !_hallazgos);
+      });
     }
   });
 

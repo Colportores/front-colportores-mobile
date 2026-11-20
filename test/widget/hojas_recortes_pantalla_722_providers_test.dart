@@ -5,7 +5,12 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/consulta_lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/contexto_de_la_casa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart'
+    show ciudadesParaAltaProvider;
+import 'package:colportores_mobile/features/mapa/presentation/providers/lista_ubicaciones_state.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_filtros_lista.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/mostrar_hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_hoja_casa.dart'
     show ClavesHojaCasa;
@@ -18,6 +23,7 @@ import 'package:colportores_mobile/features/tiles/presentation/widgets/hoja_suge
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/alta_ubicacion_falsos.dart' show CiudadesFalsas;
 import '../helpers/alta_ubicacion_qa_arnes.dart' show cargarFuentesReales;
 import '../helpers/cobrar_desde_la_casa_arnes.dart';
 import '../helpers/cobro_arnes.dart' show ventaDelCobro;
@@ -140,6 +146,24 @@ void main() {
         }
         final arriba = await controlesFueraDelAreaSegura(tester, t);
         expect([...resumen, ...arriba], isEmpty);
+      });
+
+      testWidgets('Filtros de la Lista (Ver N ubicaciones)', (tester) async {
+        await montarHojaRecortada(
+          tester,
+          t,
+          HojaAbrible(
+            'Filtros de la Lista',
+            (c) => mostrarHojaFiltrosLista(
+              c,
+              colportorId: 'col-1',
+              actuales: const FiltrosLista(orden: OrdenListaUbicaciones.recientes),
+              posicion: null,
+            ),
+            overrides: [ciudadesParaAltaProvider.overrideWithValue(CiudadesFalsas())],
+          ),
+        );
+        expect(await controlesFueraDelAreaSegura(tester, t), isEmpty);
       });
 
       testWidgets('Conectar Google Drive', (tester) async {
