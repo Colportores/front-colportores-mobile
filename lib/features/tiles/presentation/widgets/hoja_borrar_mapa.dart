@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_segura.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../textos_mapas_offline.dart';
 
@@ -12,7 +13,7 @@ Future<bool?> mostrarHojaBorrarMapa(BuildContext context, {required String nombr
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (_) => HojaBorrarMapa(nombre: nombre),
+      builder: (_) => HojaSegura(child: HojaBorrarMapa(nombre: nombre)),
     );
 
 class HojaBorrarMapa extends StatelessWidget {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_segura.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/consulta_lista_ubicaciones.dart';
@@ -37,8 +38,9 @@ Future<FiltrosLista?> mostrarHojaFiltrosLista(
   backgroundColor: Colors.white,
   barrierColor: _scrim,
   shape: _bordeHoja,
-  builder: (_) =>
-      HojaFiltrosLista(colportorId: colportorId, actuales: actuales, posicion: posicion),
+  builder: (_) => HojaSegura(
+    child: HojaFiltrosLista(colportorId: colportorId, actuales: actuales, posicion: posicion),
+  ),
 );
 
 /// Abre el menú del orden (vista 05: «Última actualización ▾» / «Por cercanía ▾»). «Por cercanía»

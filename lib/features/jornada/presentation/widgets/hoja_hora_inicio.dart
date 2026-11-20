@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../core/presentation/hoja_segura.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../formato_jornada.dart';
 
@@ -35,14 +36,16 @@ Future<HoraElegida?> mostrarHojaHoraInicio(
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) => HojaHoraInicio(
-    ahora: ahora,
-    margenMinutos: margenMinutos,
-    minutosAtras: minutosAtras,
-    pregunta: pregunta,
-    etiquetaCampo: etiquetaCampo,
-    mostrarRelativo: mostrarRelativo,
-    notaDeHora: notaDeHora,
+  builder: (_) => HojaSegura(
+    child: HojaHoraInicio(
+      ahora: ahora,
+      margenMinutos: margenMinutos,
+      minutosAtras: minutosAtras,
+      pregunta: pregunta,
+      etiquetaCampo: etiquetaCampo,
+      mostrarRelativo: mostrarRelativo,
+      notaDeHora: notaDeHora,
+    ),
   ),
 );
 

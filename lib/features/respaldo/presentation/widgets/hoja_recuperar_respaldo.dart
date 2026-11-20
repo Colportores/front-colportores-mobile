@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_segura.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../textos_recuperacion.dart';
 
@@ -19,7 +20,7 @@ Future<bool?> mostrarHojaRecuperarRespaldo(BuildContext context, {required Strin
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => HojaRecuperarRespaldo(cuentaDrive: cuentaDrive),
+      builder: (_) => HojaSegura(child: HojaRecuperarRespaldo(cuentaDrive: cuentaDrive)),
     );
 
 /// La hoja de 16G·02. «Empezar» es la acción principal y «Ahora no» la secundaria, como en el

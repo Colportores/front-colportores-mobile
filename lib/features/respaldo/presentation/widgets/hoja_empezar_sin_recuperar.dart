@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_segura.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../textos_recuperacion.dart';
 
@@ -16,7 +17,7 @@ Future<bool?> mostrarHojaEmpezarSinRecuperar(BuildContext context) => showModalB
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) => const HojaEmpezarSinRecuperar(),
+  builder: (_) => const HojaSegura(child: HojaEmpezarSinRecuperar()),
 );
 
 /// La hoja. «Volver» es la acción principal (la segura: no se pierde nada por volver); «Empezar sin
