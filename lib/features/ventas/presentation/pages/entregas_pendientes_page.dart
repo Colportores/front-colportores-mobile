@@ -130,35 +130,39 @@ class _Grupos extends ConsumerWidget {
         if (e.sinFecha) e,
     ];
 
-    Widget grupo(String rotulo, TonoDeEntrega tono, List<EntregaPendiente> items) => Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        RotuloDeSeccion(rotulo),
-        const SizedBox(height: 7),
-        for (final entrega in items) ...[
-          _Tarjeta(
-            entrega: entrega,
-            tono: tono,
-            nombres: nombres,
-            alAbrir: () => alMarcar(entrega),
-            alPonerFecha: tono == TonoDeEntrega.sinFecha ? () => alPonerFecha(entrega) : null,
+    // Rótulos y tarjetas, en una sola lista para que se construya perezosa: con cientos de
+    // entregas solo se arman (y piden su rótulo a la base) las que se ven.
+    final filas = <Widget Function()>[];
+    void grupo(String rotulo, TonoDeEntrega tono, List<EntregaPendiente> items) {
+      if (items.isEmpty) return;
+      filas.add(
+        () => Padding(padding: const EdgeInsets.only(bottom: 7), child: RotuloDeSeccion(rotulo)),
+      );
+      for (final entrega in items) {
+        filas.add(
+          () => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _Tarjeta(
+              entrega: entrega,
+              tono: tono,
+              nombres: nombres,
+              alAbrir: () => alMarcar(entrega),
+              alPonerFecha: tono == TonoDeEntrega.sinFecha ? () => alPonerFecha(entrega) : null,
+            ),
           ),
-          const SizedBox(height: 8),
-        ],
-      ],
-    );
+        );
+      }
+    }
 
-    return ListView(
+    grupo(TextosEntregaDiferida.atrasadas, TonoDeEntrega.atrasada, atrasadas);
+    grupo(TextosEntregaDiferida.proximas, TonoDeEntrega.proxima, proximas);
+    grupo(TextosEntregaDiferida.sinFecha, TonoDeEntrega.sinFecha, sinFecha);
+
+    return ListView.builder(
       key: const Key('entregas_lista'),
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      children: [
-        if (atrasadas.isNotEmpty)
-          grupo(TextosEntregaDiferida.atrasadas, TonoDeEntrega.atrasada, atrasadas),
-        if (proximas.isNotEmpty)
-          grupo(TextosEntregaDiferida.proximas, TonoDeEntrega.proxima, proximas),
-        if (sinFecha.isNotEmpty)
-          grupo(TextosEntregaDiferida.sinFecha, TonoDeEntrega.sinFecha, sinFecha),
-      ],
+      itemCount: filas.length,
+      itemBuilder: (context, i) => filas[i](),
     );
   }
 }
