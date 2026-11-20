@@ -130,14 +130,21 @@ class _NotasBorradasPageState extends ConsumerState<NotasBorradasPage> {
         for (final n in notas.requireValue)
           if (RetencionNotasBorradas.estaEnBorradas(n, ahora)) n,
       ];
-      cuerpo = ListView(
+      // El encabezado, el rótulo y las notas en una sola lista, para que se construya perezosa
+      // (#720): las borradas se guardan 90 días y pueden ser decenas.
+      cuerpo = ListView.builder(
         padding: const EdgeInsets.only(bottom: 16),
-        children: [
-          encabezado,
-          if (borradas.isEmpty)
-            const VacioNotas(titulo: TextosNotas.sinBorradas, ayuda: TextosNotas.sinBorradasAyuda)
-          else ...[
-            Padding(
+        itemCount: borradas.isEmpty ? 2 : 2 + borradas.length,
+        itemBuilder: (context, i) {
+          if (i == 0) return encabezado;
+          if (borradas.isEmpty) {
+            return const VacioNotas(
+              titulo: TextosNotas.sinBorradas,
+              ayuda: TextosNotas.sinBorradasAyuda,
+            );
+          }
+          if (i == 1) {
+            return Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
               child: Semantics(
                 header: true,
@@ -151,17 +158,17 @@ class _NotasBorradasPageState extends ConsumerState<NotasBorradasPage> {
                   ),
                 ),
               ),
-            ),
-            for (final nota in borradas)
-              TarjetaNota.borrada(
-                key: ValueKey('borrada_${nota.id}'),
-                nota: nota,
-                ahora: ahora,
-                conPlazo: true,
-                alRestaurar: soloLectura ? null : () => _restaurar(nota),
-              ),
-          ],
-        ],
+            );
+          }
+          final nota = borradas[i - 2];
+          return TarjetaNota.borrada(
+            key: ValueKey('borrada_${nota.id}'),
+            nota: nota,
+            ahora: ahora,
+            conPlazo: true,
+            alRestaurar: soloLectura ? null : () => _restaurar(nota),
+          );
+        },
       );
     }
 
