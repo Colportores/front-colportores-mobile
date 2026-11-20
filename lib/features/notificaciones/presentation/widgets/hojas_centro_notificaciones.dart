@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_segura.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import 'textos_centro_notificaciones.dart';
 
@@ -30,7 +31,7 @@ Future<AccionMenuCentro?> mostrarMenuCentroNotificaciones(
   showDragHandle: false,
   backgroundColor: Colors.white,
   shape: _formaDeLaHoja,
-  builder: (_) => _MenuCentro(haySinLeer: haySinLeer),
+  builder: (_) => HojaSegura(child: _MenuCentro(haySinLeer: haySinLeer)),
 );
 
 /// La confirmación de «Borrar todas» (24C·03). [borrar] hace el borrado y dice si salió bien: con
@@ -48,7 +49,9 @@ Future<bool?> mostrarHojaBorrarTodasLasNotificaciones(
   showDragHandle: false,
   backgroundColor: Colors.white,
   shape: _formaDeLaHoja,
-  builder: (_) => HojaBorrarTodasLasNotificaciones(cantidad: cantidad, borrar: borrar),
+  builder: (_) => HojaSegura(
+    child: HojaBorrarTodasLasNotificaciones(cantidad: cantidad, borrar: borrar),
+  ),
 );
 
 class _MarcoDeLaHoja extends StatelessWidget {

@@ -189,39 +189,44 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
           elevation: 8,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           clipBehavior: Clip.antiAlias,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              ubicacion.when(
-                loading: () => _Cuerpo(
-                  controlador: controlador,
-                  alCerrar: _cerrar,
-                  hijos: const [
-                    _Mensaje(clave: ClavesHojaUbicacion.cargando, texto: TextosEspacios.cargando),
-                  ],
+          // El contenido (y el aviso «reactivado» de abajo) queda sobre la barra de gestos / de 3 botones
+          // (#722); el fondo blanco de la hoja llega hasta el borde de la pantalla.
+          child: SafeArea(
+            top: false,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ubicacion.when(
+                  loading: () => _Cuerpo(
+                    controlador: controlador,
+                    alCerrar: _cerrar,
+                    hijos: const [
+                      _Mensaje(clave: ClavesHojaUbicacion.cargando, texto: TextosEspacios.cargando),
+                    ],
+                  ),
+                  error: (_, _) => _Cuerpo(
+                    controlador: controlador,
+                    alCerrar: _cerrar,
+                    hijos: [
+                      _ErrorLectura(
+                        texto: TextosEspacios.errorUbicacion,
+                        alReintentar: () =>
+                            ref.invalidate(ubicacionDeLaHojaProvider(widget.ubicacionId)),
+                      ),
+                    ],
+                  ),
+                  data: (u) => u == null
+                      ? _Cuerpo(
+                          controlador: controlador,
+                          alCerrar: _cerrar,
+                          hijos: const [_Mensaje(texto: TextosEspacios.errorUbicacion)],
+                        )
+                      : _contenido(context, u, controlador),
                 ),
-                error: (_, _) => _Cuerpo(
-                  controlador: controlador,
-                  alCerrar: _cerrar,
-                  hijos: [
-                    _ErrorLectura(
-                      texto: TextosEspacios.errorUbicacion,
-                      alReintentar: () =>
-                          ref.invalidate(ubicacionDeLaHojaProvider(widget.ubicacionId)),
-                    ),
-                  ],
-                ),
-                data: (u) => u == null
-                    ? _Cuerpo(
-                        controlador: controlador,
-                        alCerrar: _cerrar,
-                        hijos: const [_Mensaje(texto: TextosEspacios.errorUbicacion)],
-                      )
-                    : _contenido(context, u, controlador),
-              ),
-              if (_reactivado case final aviso?)
-                Positioned(left: 12, right: 12, bottom: 12, child: _tarjetaReactivado(aviso)),
-            ],
+                if (_reactivado case final aviso?)
+                  Positioned(left: 12, right: 12, bottom: 12, child: _tarjetaReactivado(aviso)),
+              ],
+            ),
           ),
         );
       },

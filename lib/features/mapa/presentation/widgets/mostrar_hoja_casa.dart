@@ -172,7 +172,9 @@ class _AlturasDeLaListaState extends State<_AlturasDeLaLista> {
             alSoltar: _alSoltar,
             alCancelar: () => _arrastre = 0,
           ),
-          Expanded(child: widget.hoja(_arriba)),
+          // La hoja se queda dentro del borde seguro de abajo (barra de gestos / de 3 botones, #722); el fondo
+          // blanco llega hasta el borde de la pantalla.
+          Expanded(child: SafeArea(top: false, child: widget.hoja(_arriba))),
         ],
       ),
     );

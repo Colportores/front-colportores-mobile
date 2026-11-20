@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_segura.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart' show ColoresAlta;
 import '../../domain/entities/venta_abierta.dart';
@@ -24,7 +25,9 @@ Future<VentaAbierta?> mostrarHojaAQueVenta(
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) => HojaAQueVenta(ventas: ventas, subtitulo: subtitulo),
+  builder: (_) => HojaSegura(
+    child: HojaAQueVenta(ventas: ventas, subtitulo: subtitulo),
+  ),
 );
 
 /// La hoja de «¿A qué venta lo sumás?». Ver [mostrarHojaAQueVenta].

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_segura.dart';
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../textos_devolucion.dart';
 
@@ -159,7 +160,7 @@ Future<bool?> mostrarHojaConfirmarDevolucion(
   useSafeArea: true,
   backgroundColor: Colors.white,
   shape: _formaHoja,
-  builder: (_) => HojaConfirmarDevolucion(datos: datos),
+  builder: (_) => HojaSegura(child: HojaConfirmarDevolucion(datos: datos)),
 );
 
 class HojaConfirmarDevolucion extends StatefulWidget {

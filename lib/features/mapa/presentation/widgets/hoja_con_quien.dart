@@ -5,6 +5,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_segura.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/eleccion_de_entrevista.dart';
@@ -115,8 +116,13 @@ Future<Object?> _abrir(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) =>
-        HojaConQuien(espacioId: espacioId, colportorId: colportorId, paraProgramar: paraProgramar),
+    builder: (_) => HojaSegura(
+      child: HojaConQuien(
+        espacioId: espacioId,
+        colportorId: colportorId,
+        paraProgramar: paraProgramar,
+      ),
+    ),
   );
 }
 
@@ -145,8 +151,13 @@ Future<EleccionDeVenta?> mostrarHojaConQuienVende(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) =>
-        HojaConQuien(espacioId: espacioId, colportorId: colportorId, entrevistadas: entrevistadas),
+    builder: (_) => HojaSegura(
+      child: HojaConQuien(
+        espacioId: espacioId,
+        colportorId: colportorId,
+        entrevistadas: entrevistadas,
+      ),
+    ),
   );
   return switch (r) {
     EleccionDeEntrevista(:final persona?) => VenderA(persona),

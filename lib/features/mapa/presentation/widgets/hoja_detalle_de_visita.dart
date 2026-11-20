@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_segura.dart';
 import '../../../agenda/domain/entities/visita.dart' show TipoResultadoVisita;
 import '../../domain/entities/evento_de_la_casa.dart';
 import '../textos_baja_persona.dart' show FormatoBajaPersona;
@@ -42,11 +43,13 @@ Future<AccionDelDetalle?> mostrarHojaDetalleDeVisita(
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) => HojaDetalleDeVisita(
-    evento: evento,
-    direccion: direccion,
-    ahora: ahora,
-    conVerLaVenta: conVerLaVenta && evento is VentaDeLaCasa,
+  builder: (_) => HojaSegura(
+    child: HojaDetalleDeVisita(
+      evento: evento,
+      direccion: direccion,
+      ahora: ahora,
+      conVerLaVenta: conVerLaVenta && evento is VentaDeLaCasa,
+    ),
   ),
 );
 

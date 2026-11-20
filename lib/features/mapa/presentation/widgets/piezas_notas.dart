@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_segura.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/nota_de_texto.dart';
 import '../textos_notas.dart';
@@ -356,7 +357,7 @@ class HojaOpcionesNota extends StatefulWidget {
         isScrollControlled: true,
         useSafeArea: true,
         showDragHandle: true,
-        builder: (_) => HojaOpcionesNota(titulo: titulo),
+        builder: (_) => HojaSegura(child: HojaOpcionesNota(titulo: titulo)),
       );
 
   @override

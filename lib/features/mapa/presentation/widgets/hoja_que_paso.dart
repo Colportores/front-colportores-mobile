@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_segura.dart';
 import '../textos_registrar_visita.dart';
 import 'piezas_alta.dart';
 
@@ -131,12 +132,14 @@ Future<bool> mostrarHojaQuePaso(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) => HojaQuePaso(
-      direccion: direccion,
-      ofrecidas: ofrecidas,
-      cobro: cobro,
-      venta: venta,
-      alElegir: alElegir,
+    builder: (_) => HojaSegura(
+      child: HojaQuePaso(
+        direccion: direccion,
+        ofrecidas: ofrecidas,
+        cobro: cobro,
+        venta: venta,
+        alElegir: alElegir,
+      ),
     ),
   );
   return resultado ?? false;
