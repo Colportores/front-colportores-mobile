@@ -5,21 +5,27 @@ import 'dart:async';
 
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
+import 'package:colportores_mobile/core/notificaciones/fakes/permiso_alarmas_exactas_en_memoria.dart';
 import 'package:colportores_mobile/core/notificaciones/fakes/permiso_notificaciones_sistema_en_memoria.dart';
 import 'package:colportores_mobile/core/notificaciones/notificaciones_providers.dart';
 import 'package:colportores_mobile/core/notificaciones/permiso_notificaciones_sistema.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/agenda/data/recordatorios/fakes/recordatorios_en_memoria.dart';
+import 'package:colportores_mobile/features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
+import 'package:colportores_mobile/features/notificaciones/data/repositories/preferencias_recordatorios_repository_impl.dart';
 import 'package:colportores_mobile/features/notificaciones/presentation/providers/notificaciones_providers.dart';
+import 'package:colportores_mobile/features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'agendas_para_recordar_falsas.dart';
 import 'db_local_repository_en_memoria.dart';
 
 /// El teléfono: lo que dice el sistema, lo que la app recuerda, la sesión y la conexión.
@@ -30,10 +36,23 @@ final class Telefono {
   final PermisoNotificacionesSistemaEnMemoria sistema;
   final recuerdo = PermisoNotificacionesRepositoryEnMemoria();
   final sesionGuardada = AuthLocalDataSourceEnMemoria();
+
+  /// «Alarmas y recordatorios» (HU-NOT-002, «Aviso exacto»): sin el concepto salvo que el test diga.
+  final alarmas = PermisoAlarmasExactasEnMemoria();
   final conexion = _Conexion();
 
+  /// Las preferencias de los recordatorios (HU-NOT-004), los recordatorios del teléfono y las agendas
+  /// que esperan el suyo.
+  final preferencias = PreferenciasRecordatoriosRepositoryEnMemoria();
+  final recordatorios = RecordatoriosEnMemoria();
+  final agendas = AgendasParaRecordarEnMemoria();
+
   List<Override> get overrides => [
+    preferenciasRecordatoriosRepositoryProvider.overrideWithValue(preferencias),
+    recordatoriosProvider.overrideWithValue(recordatorios),
+    agendasParaRecordarProvider.overrideWithValue(agendas),
     permisoNotificacionesSistemaProvider.overrideWithValue(sistema),
+    permisoAlarmasExactasProvider.overrideWithValue(alarmas),
     permisoNotificacionesRepositoryProvider.overrideWithValue(recuerdo),
     monitorConectividadProvider.overrideWithValue(conexion),
   ];
@@ -71,7 +90,9 @@ const textoToast = 'Notificaciones activadas.';
 const textoToastSinConexion =
     'Activadas. Los recordatorios ya funcionan; los avisos de tu coordinador empiezan a llegar '
     'cuando haya conexión.';
-const textoAviso = 'Notificaciones desactivadas. Activá en Configuración.';
+const textoAviso = 'Las notificaciones están apagadas. Podés activarlas en configuración.';
+const textoApagadas =
+    'Las notificaciones están apagadas en el teléfono. Estas opciones valen cuando las actives.';
 const textoBloqueadas =
     'Las notificaciones están bloqueadas en los ajustes del teléfono. Desde la app no las '
     'podemos activar.';
@@ -79,7 +100,12 @@ const textoBloqueadas =
 /// Abre la app entera con la sesión de `ana@example.com` ya iniciada (o la inicia la primera vez) y
 /// la DB local lista. Un `ProviderScope` nuevo cada vez: «cerrar y volver a abrir la app» con el
 /// mismo [telefono].
-Future<void> abrirApp(WidgetTester tester, Telefono telefono, {bool iniciarSesion = true}) async {
+Future<void> abrirApp(
+  WidgetTester tester,
+  Telefono telefono, {
+  bool iniciarSesion = true,
+  List<Override> extra = const [],
+}) async {
   _tamanoDeTelefonoSiNoSeFijo(tester);
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpWidget(
@@ -92,6 +118,7 @@ Future<void> abrirApp(WidgetTester tester, Telefono telefono, {bool iniciarSesio
         ),
         authLocalDataSourceProvider.overrideWithValue(telefono.sesionGuardada),
         ...telefono.overrides,
+        ...extra,
       ],
       child: const ColportoresApp(),
     ),

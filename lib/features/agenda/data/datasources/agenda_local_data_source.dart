@@ -1,4 +1,7 @@
 import '../../domain/entities/agenda.dart';
+import '../../domain/entities/cambios_de_agenda.dart';
+import '../../domain/entities/detalle_de_agenda.dart';
+import '../../domain/entities/misionero_dejado.dart';
 import '../../domain/entities/motivo_rechazo_agenda.dart';
 import '../../domain/entities/nota_de_campo.dart';
 import '../../domain/entities/visita.dart';
@@ -10,6 +13,10 @@ typedef AgendaAgendada = ({Agenda agenda, bool yaEstaba});
 /// Resultado de [AgendaLocalDataSource.cancelar]: la agenda como quedó y si esta llamada escribió
 /// (`false` si ya estaba cancelada).
 typedef AgendaCancelada = ({Agenda agenda, bool escribio});
+
+/// Resultado de [AgendaLocalDataSource.modificar]: la agenda como quedó y si esta llamada escribió
+/// (`false` si ya tenía esos valores).
+typedef AgendaEditada = ({Agenda agenda, bool escribio});
 
 /// Resultado de [AgendaLocalDataSource.registrarVisita]: la visita guardada, si ya estaba, si la
 /// agenda indicada no servía, por qué se guardó sin ella, si la agenda sirve pero el resultado no la
@@ -48,21 +55,41 @@ abstract interface class AgendaLocalDataSource {
   /// escribe nada. Si estaba cumplida o no existe, lanza [AgendaRechazadaException].
   Future<AgendaCancelada> cancelar(String agendaId, {required DateTime ahora});
 
+  /// Aplica [cambios] a la agenda `PROGRAMADA` (HU-VIS-003) en una transacción: la fila (tipo, día y
+  /// hora, franja), su job de sync, la nota (local-only: se crea, se cambia o se da de baja), el
+  /// `audit_log` local y el color de la casa. Si nada cambia, no escribe nada (`escribio: false`).
+  /// Lanza [AgendaRechazadaException] si la agenda no existe o ya no está programada.
+  Future<AgendaEditada> modificar(CambiosDeAgenda cambios, {required DateTime ahora});
+
+  /// La agenda [id] con su nota y la visita que la cerró, o `null` si no está en el teléfono o está
+  /// dada de baja.
+  Future<DetalleDeAgenda?> obtenerDetalle(String id);
+
   /// Guarda [visita] y su [nota] opcional. Con [agendaId], la agenda que la visita cumple pasa a
   /// `CUMPLIDA` y apunta a la visita, en la misma transacción. Si ya hay una visita con ese `id`,
   /// no escribe nada y la devuelve con `yaEstaba: true`.
   ///
   /// Un resultado que no cumple la agenda (`TipoResultadoVisita.cumpleLaAgenda`, hoy `NO_CONTESTO`)
   /// guarda la visita y pasa la agenda a `NO_CUMPLIDA` (apuntando a la visita), sin crear una agenda
-  /// cumplida de más: `agendaNoCumplida: true`.
+  /// cumplida de más: `agendaNoCumplida: true`. Una **cuota del plan** (`Agenda.esCuota`) es la
+  /// excepción (decisión del 03/11, #608): «No contestó» guarda la visita y deja la cuota `PROGRAMADA`,
+  /// sin tocarla (`agendaNoCumplida: false`, `agendaAfectadaId: null`).
   ///
   /// Lanza [AgendaRechazadaException] si el espacio de la visita, o su persona (si la hay), no están
   /// en el teléfono. Si la agenda no existe, es de otra casa o de otra persona, o ya no está
   /// programada, la visita se guarda igual como espontánea, sin tocar esa agenda, y el resultado trae
   /// el motivo en `agendaIgnorada`.
-  Future<VisitaRegistrada> registrarVisita(Visita visita, {String? agendaId, NotaDeCampo? nota});
+  ///
+  /// [misioneros] son los que se dejaron sin venta («Lo que dejaste», #608): se guardan y se encolan
+  /// en la misma transacción, después de la visita de la que cuelgan.
+  Future<VisitaRegistrada> registrarVisita(
+    Visita visita, {
+    String? agendaId,
+    NotaDeCampo? nota,
+    List<MisioneroDejado> misioneros = const [],
+  });
 
-  /// Deshace [visitaId] (el «Deshacer» de R·01): da de baja la visita y sus notas, vuelve a
+  /// Deshace [visitaId] (el «Deshacer» de R·01): da de baja la visita, sus notas y sus misioneros, vuelve a
   /// `PROGRAMADA` la agenda existente que la visita cumplió o no cumplió ([agendaAfectadaId]) o da de
   /// baja la que creó ([agendaCreadaId]), y recalcula el color de la casa, todo en una transacción.
   /// Si ya estaba deshecha, no escribe nada (`escribio: false`). Lanza [AgendaRechazadaException] si

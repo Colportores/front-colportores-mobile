@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import 'estado_casa.dart';
 import 'ubicacion.dart';
 
 /// Por qué dos ubicaciones son un posible duplicado (HU-UBI-006, regla del 29/09 en #207).
@@ -57,6 +58,8 @@ final class CandidataDuplicado extends Equatable {
     required this.motivo,
     required this.distanciaMetros,
     required this.admiteConservarAmbos,
+    this.estado,
+    this.cantidadEspacios,
   });
 
   final Ubicacion ubicacion;
@@ -71,8 +74,34 @@ final class CandidataDuplicado extends Equatable {
   /// duplicado.
   final bool admiteConservarAmbos;
 
+  /// El estado de visita de la casa candidata según `house_status` (vista 04: "Entrevista
+  /// agendada"); una casa sin fila es [EstadoCasa.sinVisita]. `null` = no se sabe (quien arma la
+  /// candidata no lo leyó, como el criterio puro): la tarjeta no dibuja nada en su lugar.
+  final EstadoCasa? estado;
+
+  /// Los espacios sin baja de la candidata (vista 04: "2 espacios"); `null` = no se sabe.
+  final int? cantidadEspacios;
+
+  /// Esta candidata con lo que la tarjeta muestra de su casa: el estado de visita y los espacios.
+  CandidataDuplicado conResumen({required EstadoCasa estado, required int cantidadEspacios}) =>
+      CandidataDuplicado(
+        ubicacion: ubicacion,
+        motivo: motivo,
+        distanciaMetros: distanciaMetros,
+        admiteConservarAmbos: admiteConservarAmbos,
+        estado: estado,
+        cantidadEspacios: cantidadEspacios,
+      );
+
   @override
-  List<Object?> get props => [ubicacion, motivo, distanciaMetros, admiteConservarAmbos];
+  List<Object?> get props => [
+    ubicacion,
+    motivo,
+    distanciaMetros,
+    admiteConservarAmbos,
+    estado,
+    cantidadEspacios,
+  ];
 }
 
 /// Un par de ubicaciones propias que el scan de duplicados propone revisar (HU-UBI-006, vista 10).

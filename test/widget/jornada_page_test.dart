@@ -1250,16 +1250,9 @@ void main() {
       expect(find.text('14:25 · hace 10 min'), findsNothing);
     });
 
-    testWidgets(
-      'el backup solo se dispara con Wi-Fi disponible y batería ≥ 30 %',
-      // skip: issue #76 — bloqueado por #74. `DisparadorBackupPendiente` (el stub de
-      // HU-SYNC-005 que usa hoy `disparadorBackupProvider`) no mira Wi-Fi ni batería: siempre
-      // "dispara" (en los hechos, solo loguea que se pidió). La condición real llega con el
-      // motor de sync (carril aparte); hasta entonces este criterio de la HU no se puede
-      // verificar ni cumplir.
-      skip: true,
-      (tester) async {},
-    );
+    // «El backup solo se dispara con Wi-Fi y batería ≥ 30 %» (HU-JOR-002): el cierre pide el
+    // respaldo (`finalizar_jornada_use_case_test`, `disparador_backup_respaldo_test`) y las
+    // condiciones las pone `ServicioRespaldoMotor` (`servicio_respaldo_motor_test`, #185).
 
     testWidgets('después de finalizar se puede iniciar otra jornada, y el resumen se va', (
       tester,

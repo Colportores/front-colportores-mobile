@@ -11,6 +11,9 @@
 // **misma** API sobre el crypto del OS: cuando entre, no cambia ni el
 // algoritmo ni el formato del bloque, solo quién hace las cuentas.
 
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart' as hash;
 import 'package:cryptography/cryptography.dart';
 
 import 'backup_codec.dart';
@@ -26,7 +29,8 @@ class AesGcmCrypto extends CompressingCrypto {
   /// que arma el adaptador —Keystore, o derivada de algo que el colportor
   /// sabe— y **no** de este archivo: ver la nota sobre RF-AL04 más abajo.
   AesGcmCrypto(List<int> clave, {super.isolateThreshold})
-      : _clave = SecretKey(List<int>.unmodifiable(clave)) {
+      : _clave = SecretKey(List<int>.unmodifiable(clave)),
+        _bytes = List<int>.unmodifiable(clave) {
     if (clave.length != 32) {
       throw ArgumentError.value(
         clave.length,
@@ -38,6 +42,48 @@ class AesGcmCrypto extends CompressingCrypto {
   }
 
   final SecretKey _clave;
+
+  /// Los bytes de la clave, solo para derivar [keyId].
+  final List<int> _bytes;
+
+  /// La etiqueta del identificador de llave. Es lo que separa a [keyId] de
+  /// cualquier otro uso de la misma clave: no se reutiliza para nada más.
+  static const etiquetaKeyId = 'colportores/backup/key-id/v1';
+
+  /// Cuántos bytes del HMAC se dejan en el identificador (128 bits: sobra para
+  /// no chocar y no es la clave ni permite reconstruirla).
+  static const _largoKeyId = 16;
+
+  /// El identificador de esta llave: HMAC-SHA256 de [etiquetaKeyId] con la
+  /// clave, recortado y en hexadecimal. De un solo sentido: de él no se puede
+  /// volver a la clave. La misma clave da siempre el mismo identificador,
+  /// también si se recuperó en otro teléfono.
+  @override
+  Future<String> keyId() async {
+    final mac = hash.Hmac(hash.sha256, _bytes).convert(utf8.encode(etiquetaKeyId));
+    return mac.bytes
+        .take(_largoKeyId)
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join();
+  }
+
+  /// La etiqueta de la llave de la firma de las anotaciones del respaldo. Distinta
+  /// de [etiquetaKeyId] y de la llave del cifrado: la firma no reutiliza la llave
+  /// que cifra.
+  static const etiquetaFirma = 'colportores/backup/firma/v1';
+
+  /// HMAC-SHA256 de [mensaje] con una llave derivada de la clave del usuario
+  /// (HMAC-SHA256 de [etiquetaFirma] con la clave), en hexadecimal (64
+  /// caracteres: entra en un par de `appProperties` de Drive, que limita a 124
+  /// bytes la clave y el valor juntos). De un solo sentido: de la firma no se
+  /// vuelve a la clave.
+  @override
+  Future<String> sign(String mensaje) async {
+    final llaveDeFirma =
+        hash.Hmac(hash.sha256, _bytes).convert(utf8.encode(etiquetaFirma)).bytes;
+    final mac = hash.Hmac(hash.sha256, llaveDeFirma).convert(utf8.encode(mensaje));
+    return mac.bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
 
   static final _aes = AesGcm.with256bits();
 

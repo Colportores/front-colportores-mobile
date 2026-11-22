@@ -650,7 +650,14 @@ void main() {
 
       await _tocarGuardar(tester);
 
-      expect(find.text('Contraseña actualizada. Iniciá sesión.'), findsOneWidget);
+      // Decisión del 29/10 en #542: avisa que las otras sesiones se cierran al volver a entrar.
+      expect(
+        find.text(
+          'Contraseña actualizada. Iniciá sesión ahora: al entrar cerramos tus sesiones en los otros '
+          'teléfonos.',
+        ),
+        findsOneWidget,
+      );
     });
   });
 
@@ -1317,11 +1324,11 @@ void main() {
       expect(tester.widget<FilledButton>(_guardar).onPressed, isNull);
     });
 
-    testWidgets('contraseña larguísima con espacios y símbolos: se acepta tal cual', (
+    testWidgets('contraseña larga (64 bytes) con espacios y símbolos: se acepta tal cual', (
       tester,
     ) async {
       await _montar(tester);
-      final larga = 'Aa1 ${'ñ#' * 120}';
+      final larga = 'Aa1 ${'ñ#' * 20}';
 
       await _completar(tester, larga);
       await _tocarGuardar(tester);

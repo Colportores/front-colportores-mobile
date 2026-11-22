@@ -24,8 +24,8 @@ final class UbicacionConResumen extends Equatable {
   /// fila no conoce el estado (los tests de las pantallas).
   final EstadoCasa? estado;
 
-  /// La hora de la entrevista agendada, para [EstadoCasa.entrevistaAgendada]. Sin agenda local
-  /// todavía, siempre `null`.
+  /// La hora de la próxima entrevista agendada (la `PROGRAMADA` más cercana que todavía no pasó),
+  /// para [EstadoCasa.entrevistaAgendada]. Sin entrevista agendada, `null`: la línea no se muestra.
   final DateTime? proximaEntrevista;
 
   /// El motivo con que se dio de baja (`audit_log` local), si la ubicación está de baja y el

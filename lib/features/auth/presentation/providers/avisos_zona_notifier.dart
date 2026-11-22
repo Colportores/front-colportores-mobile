@@ -57,16 +57,23 @@ class AvisosZona extends _$AvisosZona {
     try {
       final repositorio = ref.read(zonasAvisadasRepositoryProvider);
       final avisadas = {...await repositorio.leer(), ..._cerradas};
-      final resultado = DetectorAvisosZona.detectar(avisadas: avisadas, actuales: inscripciones);
+      final resultado = DetectorAvisosZona.detectar(
+        avisadas: avisadas,
+        actuales: inscripciones,
+        mostrados: state,
+      );
       await repositorio.anotar(resultado.silenciosas);
       // Lo anotado en silencio también cuenta como «ya avisado» en esta sesión: si no, lo cerrado
       // antes (por ejemplo, la zona vieja de una inscripción dada de baja) ganaría sobre lo nuevo.
       _cerradas.addAll(resultado.silenciosas);
       // Mientras se escribía, la persona pudo cerrar un aviso de esta misma lista: no reaparece.
-      final vigentes = [
-        for (final aviso in resultado.avisos)
-          if (!_estaCerrado(aviso)) aviso,
-      ];
+      final vigentes = <AvisoZona>[];
+      for (final aviso in resultado.avisos) {
+        // Un aviso que reemplaza al que se estaba leyendo es otro aviso: lo que se cerró antes de esa
+        // inscripción ya no cuenta (si no, «Ya no tenés zona» heredaría el cierre de uno anterior).
+        if (_reemplazaAlQueSeLee(aviso)) _cerradas.remove(aviso.inscripcionId);
+        if (!_estaCerrado(aviso)) vigentes.add(aviso);
+      }
       if (ref.mounted && !listEquals(state, vigentes)) state = vigentes;
     } on Object catch (e) {
       AppLogger.instance.warn(
@@ -77,6 +84,10 @@ class AvisosZona extends _$AvisosZona {
       );
     }
   }
+
+  bool _reemplazaAlQueSeLee(AvisoZona aviso) => state.any(
+    (enLaFranja) => enLaFranja.inscripcionId == aviso.inscripcionId && enLaFranja != aviso,
+  );
 
   bool _estaCerrado(AvisoZona aviso) =>
       _cerradas.containsKey(aviso.inscripcionId) && _cerradas[aviso.inscripcionId] == aviso.zonaId;

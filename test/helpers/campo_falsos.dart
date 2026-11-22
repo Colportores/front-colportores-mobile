@@ -30,6 +30,7 @@ Future<void> sembrarUbicacion(
   String tipo = 'CASA',
   double lat = -34.9,
   double lon = -56.16,
+  String ciudadId = 'ciu-1',
   DateTime? borrada,
 }) => db
     .into(db.ubicaciones)
@@ -39,7 +40,7 @@ Future<void> sembrarUbicacion(
         tipo: tipo,
         lat: lat,
         lon: lon,
-        ciudadId: 'ciu-1',
+        ciudadId: ciudadId,
         createdAt: t0,
         updatedAt: t0,
         deletedAt: Value(borrada),
@@ -84,6 +85,21 @@ Future<void> sembrarVinculo(
       ),
     );
 
+/// Una jornada del colportor `col-1` (por defecto `jor-1`): las visitas con `jornada_id` la exigen en
+/// el teléfono (la FK de `visita.jornada_id`).
+Future<void> sembrarJornada(AppDatabase db, {String id = 'jor-1', DateTime? borrada}) => db
+    .into(db.jornadas)
+    .insert(
+      JornadasCompanion.insert(
+        id: id,
+        colportorId: 'col-1',
+        inicio: t0,
+        createdAt: t0,
+        updatedAt: t0,
+        deletedAt: Value(borrada),
+      ),
+    );
+
 /// Una casa con un espacio y una persona: `ub-1` → `esp-1` → `ep-1`.
 Future<void> sembrarCasa(AppDatabase db) async {
   await sembrarUbicacion(db);
@@ -111,17 +127,22 @@ Agenda agendaDe(
   String? visitaId,
   bool esEstricta = false,
   String? slot,
+  String? ventaId,
+  String? entregaId,
+  DateTime? fecha,
 }) => Agenda(
   id: id,
   espacioId: espacio,
   espacioPersonaId: vinculo,
   tipo: tipo,
-  fechaProgramada: DateTime.utc(2026, 10, 25, 14),
+  fechaProgramada: fecha ?? DateTime.utc(2026, 10, 25, 14),
   slotCodigo: slot,
   esEstricta: esEstricta,
   estado: estado,
   colportorId: 'col-1',
   visitaId: visitaId,
+  ventaId: ventaId,
+  entregaId: entregaId,
   auditoria: auditoriaDe(creada: creada, borrada: borrada),
 );
 

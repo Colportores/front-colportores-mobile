@@ -5,6 +5,7 @@ import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dar
 import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local_data_source.dart';
 import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/misionero_dejado.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/motivo_rechazo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
@@ -313,6 +314,7 @@ void main() {
     test(
       'sin agenda: guarda la visita, la encola entera y pinta la casa según el resultado',
       () async {
+        await sembrarJornada(db);
         final r = await local.registrarVisita(
           visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, jornadaId: 'jor-1'),
         );
@@ -773,6 +775,28 @@ void main() {
       expect((await agendas()).single.estado, 'CUMPLIDA');
     });
 
+    test(
+      'una visita de cobranza sin cobro y sin agendaId (decisión del 03/11): la cita de cobranza '
+      'de la casa sigue «Programada» y no se crea otra',
+      () async {
+        await local.agendar(agendaDe('age-1', tipo: TipoAgenda.cobranza));
+        encolador.encolados.clear();
+
+        final r = await local.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.cobranza, creada: t1),
+        );
+
+        expect([r.agendaCreadaId, r.agendaAfectadaId, r.agendaNoCumplida], [null, null, false]);
+        final agenda = (await agendas()).single;
+        expect(
+          [agenda.id, agenda.estado, agenda.visitaId, agenda.deletedAt],
+          ['age-1', 'PROGRAMADA', null, null],
+        );
+        expect((await visitas()).single.tipoResultado, 'COBRANZA');
+        expect(cola(), ['visita:insert']);
+      },
+    );
+
     test('un «No contestó» y un rechazo sin cita siguen creando su agenda espontánea', () async {
       final noContesto = await local.registrarVisita(
         visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: t1),
@@ -873,6 +897,214 @@ void main() {
 
       expect(bien.escribio, isTrue);
       expect((await agendas()).single.estado, 'PROGRAMADA');
+    });
+  });
+
+  group('las horas de la entrevista (#466) y lo que dejó sin venta (#608)', () {
+    MisioneroDejado dejado(
+      String id,
+      String producto, {
+      int cantidad = 1,
+      String visita = 'vis-1',
+    }) => MisioneroDejado(
+      id: id,
+      visitaId: visita,
+      productoId: producto,
+      cantidad: cantidad,
+      auditoria: auditoriaDe(),
+    );
+    Future<List<VisitaMisioneroFila>> dejados() => db.select(db.visitaMisioneros).get();
+    final entrada = DateTime.utc(2026, 10, 23, 13, 20);
+
+    test('la visita guarda las horas y las sube con ella; vuelven igual al leerla', () async {
+      final visita = Visita(
+        id: 'vis-1',
+        espacioId: 'esp-1',
+        espacioPersonaId: 'ep-1',
+        fecha: t0,
+        tipoResultado: TipoResultadoVisita.entrevista,
+        colportorId: 'col-1',
+        entrevistaEntrada: entrada,
+        entrevistaSalida: t0,
+        auditoria: auditoriaDe(),
+      );
+
+      await local.registrarVisita(visita);
+
+      final fila = (await visitas()).single;
+      expect([fila.entrevistaEntrada, fila.entrevistaSalida], [entrada, t0]);
+      final payload = encolador.encolados.first.payload;
+      expect(payload['entrevista_entrada'], '2026-10-23T13:20:00.000Z');
+      expect(payload['entrevista_salida'], '2026-10-23T13:45:10.123Z');
+      expect(await local.obtenerVisita('vis-1'), visita);
+    });
+
+    test('sin horas, las columnas quedan vacías y suben en null', () async {
+      await local.registrarVisita(visitaDe('vis-1'));
+
+      final fila = (await visitas()).single;
+      expect([fila.entrevistaEntrada, fila.entrevistaSalida], [null, null]);
+      final payload = encolador.encolados.first.payload;
+      expect([payload['entrevista_entrada'], payload['entrevista_salida']], [null, null]);
+    });
+
+    test(
+      'los misioneros se guardan y se encolan justo después de su visita, sin colportor',
+      () async {
+        await local.registrarVisita(
+          visitaDe('vis-1'),
+          misioneros: [dejado('vm-1', 'p-camino', cantidad: 2), dejado('vm-2', 'p-paz')],
+        );
+
+        expect([
+          for (final f in await dejados()) (f.id, f.productoId, f.cantidad, f.visitaId),
+        ], unorderedEquals([('vm-1', 'p-camino', 2, 'vis-1'), ('vm-2', 'p-paz', 1, 'vis-1')]));
+        expect(cola().take(3), [
+          'visita:insert',
+          'visita_misionero:insert',
+          'visita_misionero:insert',
+        ]);
+        final payload = encolador.encolados[1].payload;
+        expect(payload['visita_id'], 'vis-1');
+        expect(payload['producto_id'], 'p-camino');
+        expect(payload['cantidad'], 2);
+        expect(payload.containsKey('colportor_id'), isFalse);
+      },
+    );
+
+    test(
+      'un renglón inválido (otra visita, cantidad 0 o producto repetido) no deja nada',
+      () async {
+        for (final malos in [
+          [dejado('vm-1', 'p-camino', visita: 'vis-otra')],
+          [dejado('vm-1', 'p-camino', cantidad: 0)],
+          [dejado('vm-1', 'p-camino'), dejado('vm-2', 'p-camino')],
+        ]) {
+          await expectLater(
+            local.registrarVisita(visitaDe('vis-1'), misioneros: malos),
+            throwsArgumentError,
+          );
+          expect(await visitas(), isEmpty);
+          expect(await dejados(), isEmpty);
+          expect(encolador.encolados, isEmpty, reason: 'se valida antes de escribir');
+        }
+      },
+    );
+
+    test('si falla el encolado de un misionero, no queda ni la visita ni lo que dejó', () async {
+      encolador
+        ..fallarCon = StateError('motor apagado')
+        ..fallarDespuesDe = 1;
+
+      await expectLater(
+        local.registrarVisita(visitaDe('vis-1'), misioneros: [dejado('vm-1', 'p-camino')]),
+        throwsStateError,
+      );
+
+      expect(await visitas(), isEmpty);
+      expect(await dejados(), isEmpty);
+    });
+
+    test('el mismo envío dos veces (doble tap): los misioneros no se duplican', () async {
+      final misioneros = [dejado('vm-1', 'p-camino')];
+      await local.registrarVisita(visitaDe('vis-1'), misioneros: misioneros);
+      final r = await local.registrarVisita(visitaDe('vis-1'), misioneros: misioneros);
+
+      expect(r.yaEstaba, isTrue);
+      expect(await dejados(), hasLength(1));
+      expect(cola().where((c) => c == 'visita_misionero:insert'), hasLength(1));
+    });
+
+    test(
+      'reintento con los mismos ids y otras cantidades (la visita ya estaba): queda lo que se ve',
+      () async {
+        await local.registrarVisita(
+          visitaDe('vis-1'),
+          misioneros: [dejado('vm-1', 'p-camino', cantidad: 2), dejado('vm-2', 'p-paz')],
+        );
+        encolador.encolados.clear();
+
+        // Ana cambió las cantidades después de que fallara lo de después de guardar la visita: la paz
+        // sigue igual, el camino pasa a 3 y suma la familia. Los ids del reintento son nuevos.
+        final r = await local.registrarVisita(
+          visitaDe('vis-1'),
+          misioneros: [
+            dejado('vm-3', 'p-camino', cantidad: 3),
+            dejado('vm-4', 'p-paz'),
+            dejado('vm-5', 'p-familia'),
+          ],
+        );
+
+        expect(r.yaEstaba, isTrue);
+        final vivos = [
+          for (final f in await dejados())
+            if (f.deletedAt == null) (f.id, f.productoId, f.cantidad),
+        ];
+        expect(
+          vivos,
+          unorderedEquals([
+            ('vm-2', 'p-paz', 1),
+            ('vm-3', 'p-camino', 3),
+            ('vm-5', 'p-familia', 1),
+          ]),
+        );
+        // La baja del camino viejo sube antes que el renglón nuevo (índice único del servidor); la
+        // paz no se toca.
+        expect(cola(), [
+          'visita_misionero:delete',
+          'visita_misionero:insert',
+          'visita_misionero:insert',
+        ]);
+        expect(encolador.encolados.first.payload['id'], 'vm-1');
+        expect(cola().where((c) => c.startsWith('visita:')), isEmpty);
+      },
+    );
+
+    test('reintento con «No dejé nada» después de guardar misioneros: se dan de baja', () async {
+      await local.registrarVisita(
+        visitaDe('vis-1'),
+        misioneros: [dejado('vm-1', 'p-camino', cantidad: 2)],
+      );
+      encolador.encolados.clear();
+
+      await local.registrarVisita(visitaDe('vis-1'));
+
+      expect((await dejados()).single.deletedAt, isNotNull);
+      expect(cola(), ['visita_misionero:delete']);
+    });
+
+    test('reintento sobre una visita deshecha: no se toca lo que dejó', () async {
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', creada: t1),
+        misioneros: [dejado('vm-1', 'p-camino')],
+      );
+      await local.deshacerVisita('vis-1', agendaCreadaId: r.agendaCreadaId, ahora: t2);
+      encolador.encolados.clear();
+
+      await local.registrarVisita(
+        visitaDe('vis-1', creada: t1),
+        misioneros: [dejado('vm-9', 'p-paz')],
+      );
+
+      expect(encolador.encolados, isEmpty);
+      expect((await dejados()).where((f) => f.deletedAt == null), isEmpty);
+    });
+
+    test('al deshacer la visita, lo que dejó se da de baja y sube la baja', () async {
+      final r = await local.registrarVisita(
+        visitaDe('vis-1', creada: t1),
+        misioneros: [dejado('vm-1', 'p-camino', cantidad: 3)],
+      );
+      encolador.encolados.clear();
+
+      await local.deshacerVisita('vis-1', agendaCreadaId: r.agendaCreadaId, ahora: t2);
+
+      final fila = (await dejados()).single;
+      expect(fila.deletedAt, t2);
+      final baja = encolador.encolados.singleWhere((e) => e.entidad == 'visita_misionero');
+      expect(baja.operacion.name, 'delete');
+      expect(baja.payload['id'], 'vm-1');
+      expect(baja.payload['deleted_at'], isNotNull);
     });
   });
 

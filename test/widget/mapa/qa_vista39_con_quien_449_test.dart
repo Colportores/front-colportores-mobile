@@ -294,7 +294,7 @@ void main() {
       expect(resultado.elegida, isNull);
     });
 
-    // skip: QA #449 — un segundo toque en el disparador durante la lectura previa abre dos hojas
+    // QA #449 — un segundo toque en el disparador durante la lectura previa no abre dos hojas.
     testWidgets(
       'un segundo toque en «abrir» mientras la primera lectura todavía no terminó no abre '
       'dos hojas',
@@ -311,7 +311,6 @@ void main() {
         expect(find.byType(HojaConQuien), findsOneWidget);
         expect(resultado.abiertas, 1);
       },
-      skip: true,
     );
 
     testWidgets('dos veces «Volver» seguidas en C·07: un solo cierre', (tester) async {

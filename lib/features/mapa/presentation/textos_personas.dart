@@ -1,6 +1,10 @@
+import '../../agenda/domain/entities/visita.dart';
 import '../domain/entities/espacio.dart';
+import '../domain/entities/estado_casa.dart';
 import '../domain/entities/persona.dart';
 import '../domain/entities/ubicacion.dart';
+import '../domain/entities/ultima_visita_del_espacio.dart';
+import 'formato_lista_ubicaciones.dart';
 import 'formato_ubicaciones.dart';
 
 /// Los textos de las vistas de personas (32A, alta de persona, y 11·04, los clientes del depto). Los
@@ -10,7 +14,21 @@ abstract final class TextosPersonas {
   // Alta de persona (32A).
   static const altaRotulo = 'NUEVA PERSONA';
   static const altaTitulo = 'Nueva persona';
+
+  /// Bajo el título cuando el alta se abre para poder registrar una venta (entrevista sin nombre, #669).
+  static const altaParaVender =
+      'Para registrar la venta, anotá a quién se la hacés. Con el nombre alcanza.';
   static const privacidad = 'Estos datos solo viven en tu celular. Nunca se suben a la nube.';
+
+  /// «No volver a mostrar» del aviso de privacidad (canvas, `Bloques` · banner «lock»; decisión de
+  /// Cristian, 23/10, «Aviso privado»). Los dos textos de abajo no están en el canvas (mapa §2: texto):
+  /// lo que queda donde estaba el aviso, que dice cómo volver a verlo, y la falla al guardar la
+  /// preferencia.
+  static const noVolverAMostrar = 'No volver a mostrar';
+  static const avisoEscondido =
+      'Listo, no vas a ver más este aviso. Para volver a verlo, andá a Configuración y activá '
+      '«Mostrar el aviso de privacidad».';
+  static const noPudimosGuardarElAviso = 'No pudimos guardar tu elección. Probá de nuevo.';
   static const etiquetaNombre = 'NOMBRE';
   static const etiquetaApellido = 'APELLIDO (OPCIONAL)';
   static const etiquetaTelefono = 'TELÉFONO (OPCIONAL)';
@@ -31,6 +49,10 @@ abstract final class TextosPersonas {
 
   // Los clientes del depto (11·04).
   static const agregarCliente = '+ Agregar cliente';
+
+  /// «Editar» del encabezado (canvas 11·04): la edición del depto.
+  static const editar = 'Editar';
+
   static const sinTelefono = 'Sin teléfono';
   static const notaDePrivacidad =
       'Los datos de los clientes quedan solo en tu celular. Al coordinador le llega el estado de las '
@@ -48,6 +70,13 @@ abstract final class TextosPersonas {
   static const cargando = 'Cargando los clientes';
 
   static String clientes(int cantidad) => 'CLIENTES · $cantidad';
+
+  // El estado de la última visita y «Registrar visita» (11·04, HU-VIS-005, #151).
+  static const registrarVisita = 'Registrar visita';
+
+  /// A confirmar (mapa §2: texto): lo que dice el encabezado del depto que todavía no tiene ninguna
+  /// visita. El canvas solo dibuja el depto con una entrevista hecha.
+  static const sinVisitas = 'Sin visitas todavía';
 }
 
 /// Cómo se escribe una persona y su espacio en las vistas de personas.
@@ -106,6 +135,20 @@ abstract final class FormatoPersonas {
   static String? pisoDelEspacio(Espacio espacio) {
     final piso = espacio.piso?.trim() ?? '';
     return piso.isEmpty ? null : 'Piso $piso';
+  }
+
+  /// «Entrevista hecha · 20/09»: el resultado de la última visita del depto y el día (canvas 11·04). Los
+  /// rótulos de «Entrevista hecha», «No contestó» y «Rechazó» son los de la lista (vista 05); «Venta» y
+  /// «Cobranza» son los resultados de la HU-VIS-005 (mapa §2: texto: el canvas no los dibuja).
+  static String ultimaVisita(UltimaVisitaDelEspacio ultima) {
+    final rotulo = switch (ultima.resultado) {
+      TipoResultadoVisita.entrevista => FormatoListaUbicaciones.estado(EstadoCasa.entrevistaHecha),
+      TipoResultadoVisita.noContesto => FormatoListaUbicaciones.estado(EstadoCasa.noContesto),
+      TipoResultadoVisita.rechazo => FormatoListaUbicaciones.estado(EstadoCasa.rechazo),
+      TipoResultadoVisita.venta => 'Venta',
+      TipoResultadoVisita.cobranza => 'Cobranza',
+    };
+    return '$rotulo · ${FormatoListaUbicaciones.diaMes(ultima.fecha)}';
   }
 
   /// «Mataojo 2044 · Depto 3B»: dónde está la persona que se da de alta.

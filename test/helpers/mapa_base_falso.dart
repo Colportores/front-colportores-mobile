@@ -184,7 +184,7 @@ class _VistaMapaFalsaState extends State<VistaMapaFalsa> implements PuertoVistaM
     final nuevo = ProyeccionMercator.aPixeles(bajoLosDedos, zoom);
     final centro = ProyeccionMercator.aCoordenadas(nuevo.x - foco.dx, nuevo.y - foco.dy, zoom);
     _focoPrevio = foco;
-    final camara = CamaraMapa(centro: centro, zoom: zoom);
+    final camara = CamaraMapa(centro: centro, zoom: zoom, rumbo: _camara.rumbo);
     _poner(camara);
     widget.eventos.camaraMovida(camara);
   }
@@ -213,6 +213,7 @@ class _VistaMapaFalsaState extends State<VistaMapaFalsa> implements PuertoVistaM
       final camara = CamaraMapa(
         centro: ProyeccionMercator.aCoordenadas(enMundo.x - foco.dx, enMundo.y - foco.dy, zoom),
         zoom: zoom,
+        rumbo: inicio.rumbo,
       );
       _poner(camara);
       widget.eventos.camaraMovida(camara);

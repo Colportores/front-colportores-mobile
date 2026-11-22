@@ -11,6 +11,7 @@ import '../../domain/services/validador_persona.dart';
 import '../../domain/usecases/registrar_persona_use_case.dart';
 import '../providers/personas_providers.dart';
 import '../textos_personas.dart';
+import '../widgets/dialogos_modificar.dart';
 import '../widgets/piezas_alta.dart';
 import '../widgets/piezas_persona.dart';
 
@@ -30,7 +31,12 @@ import '../widgets/piezas_persona.dart';
 /// Devuelve la [Persona] guardada (o `null` si se cerró sin guardar), para que quien la abrió avise
 /// «Guardamos a Jorge en este teléfono.» (A·05).
 class AltaPersonaPage extends ConsumerStatefulWidget {
-  const AltaPersonaPage({super.key, required this.espacioId, required this.colportorId});
+  const AltaPersonaPage({
+    super.key,
+    required this.espacioId,
+    required this.colportorId,
+    this.ayuda,
+  });
 
   /// El espacio al que se agrega la persona.
   final String espacioId;
@@ -38,14 +44,19 @@ class AltaPersonaPage extends ConsumerStatefulWidget {
   /// UUID del usuario con la sesión iniciada (`created_by`).
   final String colportorId;
 
-  /// Abre el alta encima de la pantalla actual.
+  /// Una línea bajo el título que dice para qué se pide el nombre en este paso (por ejemplo, antes de
+  /// una venta). `null` = el alta de siempre, sin línea.
+  final String? ayuda;
+
+  /// Abre el alta encima de la pantalla actual. [ayuda] es la línea opcional bajo el título.
   static Future<Persona?> abrir(
     BuildContext context, {
     required String espacioId,
     required String colportorId,
+    String? ayuda,
   }) => Navigator.of(context).push<Persona>(
     MaterialPageRoute(
-      builder: (_) => AltaPersonaPage(espacioId: espacioId, colportorId: colportorId),
+      builder: (_) => AltaPersonaPage(espacioId: espacioId, colportorId: colportorId, ayuda: ayuda),
     ),
   );
 
@@ -84,9 +95,47 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
   /// Los ids del alta, creados con el primer intento y repetidos en los siguientes.
   IdsAltaPersona? _ids;
 
+  /// Se está preguntando si se descarta (un segundo toque en la ✕ no abre otro aviso).
+  var _preguntando = false;
+
+  /// Lo que valía [_hayCambios] en el último cuadro: el atrás del sistema se decide con eso.
+  var _habiaCambios = false;
+
+  /// Hay algo escrito que se perdería al salir (HU-UBI-011: el alta de persona pregunta como las
+  /// notas, #679). Los espacios solos no cuentan.
+  bool get _hayCambios =>
+      [_nombre, _apellido, _telefono, _nota].any((c) => c.text.trim().isNotEmpty);
+
+  void _alCambiarElTexto() {
+    final hay = _hayCambios;
+    if (hay != _habiaCambios && mounted) setState(() => _habiaCambios = hay);
+  }
+
+  /// La ✕ y el atrás del sistema: sin nada escrito cierran directo; con texto sin guardar preguntan
+  /// «¿Descartar lo que escribiste?» (#679).
+  Future<void> _salir() async {
+    if (_enviando || _preguntando) return;
+    if (!_hayCambios) {
+      Navigator.of(context).pop();
+      return;
+    }
+    _preguntando = true;
+    bool descartar;
+    try {
+      descartar = await confirmarDescartarLoEscrito(context);
+    } finally {
+      _preguntando = false;
+    }
+    if (!mounted || !descartar || _enviando) return;
+    Navigator.of(context).pop();
+  }
+
   @override
   void initState() {
     super.initState();
+    for (final c in [_nombre, _apellido, _telefono, _nota]) {
+      c.addListener(_alCambiarElTexto);
+    }
     _focoNombre.addListener(() {
       if (!_focoNombre.hasFocus && !_nombreTocado) setState(() => _nombreTocado = true);
     });
@@ -199,8 +248,11 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
     final conFalla = _falla != null;
 
     return PopScope(
-      // Mientras se guarda no se sale: el resultado se perdería.
-      canPop: !_enviando,
+      // Mientras se guarda no se sale (el resultado se perdería) y con texto sin guardar se pregunta.
+      canPop: !_enviando && !_hayCambios,
+      onPopInvokedWithResult: (salio, _) {
+        if (!salio && !_enviando) unawaited(_salir());
+      },
       child: Scaffold(
         body: SafeArea(
           child: Column(
@@ -212,7 +264,7 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
                   child: IconButton(
                     tooltip: TextosPersonas.cerrar,
                     constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                    onPressed: _enviando ? null : () => Navigator.of(context).maybePop(),
+                    onPressed: _enviando ? null : () => unawaited(_salir()),
                     icon: const Icon(Icons.close),
                   ),
                 ),
@@ -241,6 +293,14 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
                           style: theme.textTheme.headlineSmall,
                         ),
                       ),
+                      if (widget.ayuda != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.ayuda!,
+                          key: ClavesAltaPersona.ayuda,
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
                       if (donde != null) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -251,7 +311,7 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
                         ),
                       ],
                       const SizedBox(height: 16),
-                      const AvisoPrivacidadPersona(),
+                      AvisoPrivacidadPersona(colportorId: widget.colportorId),
                       const SizedBox(height: 20),
                       CampoPersona(
                         etiqueta: TextosPersonas.etiquetaNombre,
@@ -334,4 +394,9 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
       ),
     );
   }
+}
+
+/// Las claves del alta de persona, para los tests.
+abstract final class ClavesAltaPersona {
+  static const ayuda = Key('alta_persona_ayuda');
 }

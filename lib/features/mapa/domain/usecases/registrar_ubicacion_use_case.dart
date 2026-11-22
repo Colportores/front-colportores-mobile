@@ -207,6 +207,7 @@ final class RegistrarUbicacionUseCase
       espacio: espacio,
       origen: punto.origen,
       duplicados: crearIgual ? _criterio.alSeguirIgual : _criterio,
+      justificacion: crearIgual ? _texto(params.justificacionDuplicado) : null,
     );
   }
 

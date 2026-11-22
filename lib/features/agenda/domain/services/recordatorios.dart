@@ -17,6 +17,10 @@ enum ResultadoRecordatorio {
   /// con la anticipación real (#409).
   yaPaso,
 
+  /// La persona apagó «Recordatorios de agenda» (HU-NOT-004): no se programó y, si había un
+  /// recordatorio anterior de esa agenda, se canceló.
+  apagados,
+
   /// El teléfono no pudo programarlo (falló la plataforma). El recordatorio anterior de esa agenda,
   /// si lo había, se canceló: ya no tiene la hora buena.
   noSePudo,
@@ -58,6 +62,21 @@ abstract interface class ToquesDeRecordatorios {
 abstract interface class AnticipacionRecordatorios {
   /// Los minutos elegidos; quien los usa los acota a `AnticipacionRecordatorio.acotar`.
   Future<int> minutos();
+}
+
+/// Si «Recordatorios de agenda» está prendido (HU-NOT-004). Apagado, no se programa ninguno y los ya
+/// programados se cancelan.
+abstract interface class RecordatoriosActivados {
+  Future<bool> estan();
+}
+
+/// [RecordatoriosActivados] que dice siempre que sí: el default mientras no haya preferencias
+/// guardadas.
+final class RecordatoriosSiempreActivados implements RecordatoriosActivados {
+  const RecordatoriosSiempreActivados();
+
+  @override
+  Future<bool> estan() async => true;
 }
 
 /// [AnticipacionRecordatorios] que vale siempre lo mismo: los 30 minutos de default mientras la

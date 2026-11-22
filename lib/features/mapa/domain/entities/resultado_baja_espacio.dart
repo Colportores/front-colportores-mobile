@@ -24,10 +24,11 @@ final class BajaRequiereConfirmacion extends ResultadoBajaEspacio {
 
   final int personas;
 
-  /// Texto literal del criterio de aceptación "Baja de espacio con personas".
+  /// Texto literal del criterio de aceptación "Baja de espacio con personas"; con una sola persona
+  /// va en singular.
   String get aviso =>
-      'Este espacio tiene $personas personas. Sus datos se conservarán pero el espacio quedará '
-      'marcado como baja.';
+      'Este espacio tiene $personas ${personas == 1 ? 'persona' : 'personas'}. Sus datos se '
+      'conservarán pero el espacio quedará marcado como baja.';
 
   @override
   List<Object?> get props => [personas];

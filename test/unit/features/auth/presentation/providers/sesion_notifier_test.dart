@@ -12,14 +12,18 @@ import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
+import 'package:colportores_mobile/features/auth/data/datasources/fakes/recuperacion_password_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/reloj_sesion_en_almacen.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/sesion_usuario_local_data_source.dart';
 import 'package:colportores_mobile/features/auth/data/models/sesion_model.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/bloqueo_reenvio_verificacion_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/cierre_forzado_repository_impl.dart';
+import 'package:colportores_mobile/features/auth/data/repositories/recuperacion_password_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/data/repositories/ultimo_correo_repository_impl.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/cierre_forzado.dart';
+import 'package:colportores_mobile/features/auth/domain/entities/enlace_recuperacion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/motivo_expiracion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/reenvios_guardados.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/resultado_cierre_sesion.dart';
@@ -33,6 +37,7 @@ import 'package:colportores_mobile/features/auth/domain/repositories/ultimo_corr
 import 'package:colportores_mobile/features/auth/domain/services/reloj_sesion.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/aviso_sesion_notifier.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/recuperacion_password_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/reingreso_sesion_notifier.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:dartz/dartz.dart';
@@ -468,6 +473,174 @@ void main() {
         expect(remote.revocaciones, hasLength(1));
       },
     );
+
+    test('dado que al cambiar la contraseña no se cerraron las otras sesiones, cuando entra con la '
+        'nueva, las cierra una vez y la sesión de este teléfono sigue (#542)', () async {
+      final recuperacion = RecuperacionPasswordEnMemoria()
+        ..simularEnlace(EnlaceRecuperacion.valido)
+        ..usuarioId = await _idDe('ana@example.com', 'secreto123')
+        ..fallaAlCerrarSesiones = const SinConexionException();
+      final repoRecuperacion = RecuperacionPasswordRepositoryImpl(
+        recuperacion,
+        logger: loggerMudo(),
+      );
+      await repoRecuperacion.cerrarTodasLasSesiones();
+      expect(repoRecuperacion.otrasSesionesSinCerrar, isTrue);
+      final conPendiente = ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(local),
+          databaseHelperProvider.overrideWithValue(helper),
+          recuperacionPasswordRepositoryProvider.overrideWithValue(repoRecuperacion),
+        ],
+      );
+      addTearDown(conPendiente.dispose);
+      await conPendiente.read(sesionProvider.future);
+
+      // Sin red al entrar no hay login: nada se reintenta antes de tiempo.
+      expect(recuperacion.otrasSesionesCerradas, 0);
+
+      final falla = await conPendiente
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      await pumpEventQueue();
+
+      expect(falla, isNull);
+      expect(recuperacion.otrasSesionesCerradas, 1);
+      expect(repoRecuperacion.otrasSesionesSinCerrar, isFalse);
+      expect(conPendiente.read(sesionProvider).value, isNotNull);
+
+      await conPendiente.read(sesionProvider.notifier).cerrarSesion();
+      await conPendiente
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      await pumpEventQueue();
+      expect(recuperacion.otrasSesionesCerradas, 1, reason: 'resuelto: no se repite');
+    });
+
+    test(
+      'dado que la marca es de ana, cuando entra luis en el mismo teléfono, no se cierran sesiones '
+      'ni se consume la marca, y al entrar ana sí (#542)',
+      () async {
+        final recuperacion = RecuperacionPasswordEnMemoria()
+          ..simularEnlace(EnlaceRecuperacion.valido)
+          ..usuarioId = await _idDe('ana@example.com', 'secreto123')
+          ..fallaAlCerrarSesiones = const SinConexionException();
+        final repoRecuperacion = RecuperacionPasswordRepositoryImpl(
+          recuperacion,
+          logger: loggerMudo(),
+        );
+        await repoRecuperacion.cerrarTodasLasSesiones();
+        final remotoDeDos = AuthRemoteDataSourceEnMemoria(
+          credenciales: const {'ana@example.com': 'secreto123', 'luis@example.com': 'otra12345'},
+        );
+        final conPendiente = ProviderContainer(
+          overrides: [
+            authRemoteDataSourceProvider.overrideWithValue(remotoDeDos),
+            authLocalDataSourceProvider.overrideWithValue(local),
+            databaseHelperProvider.overrideWithValue(helper),
+            recuperacionPasswordRepositoryProvider.overrideWithValue(repoRecuperacion),
+          ],
+        );
+        addTearDown(conPendiente.dispose);
+        await conPendiente.read(sesionProvider.future);
+
+        final falla = await conPendiente
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: 'luis@example.com', password: 'otra12345');
+        await pumpEventQueue();
+
+        expect(falla, isNull);
+        expect(recuperacion.otrasSesionesCerradas, 0);
+        expect(repoRecuperacion.otrasSesionesSinCerrar, isTrue);
+
+        await conPendiente.read(sesionProvider.notifier).cerrarSesion();
+        await conPendiente
+            .read(sesionProvider.notifier)
+            .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+        await pumpEventQueue();
+
+        expect(recuperacion.otrasSesionesCerradas, 1);
+        expect(repoRecuperacion.otrasSesionesSinCerrar, isFalse);
+      },
+    );
+
+    // QA de #556: el cierre de sesión no toca la marca (ni la consume ni la deja colgada).
+    test('dado que el reintento de ana falla, cuando cierra sesión y vuelve a entrar, la marca '
+        'sigue, se reintenta y se consume una sola vez (#542)', () async {
+      final recuperacion = RecuperacionPasswordEnMemoria()
+        ..simularEnlace(EnlaceRecuperacion.valido)
+        ..usuarioId = await _idDe('ana@example.com', 'secreto123')
+        ..fallaAlCerrarSesiones = const SinConexionException()
+        ..fallaAlCerrarLasOtras = const SinConexionException();
+      final repoRecuperacion = RecuperacionPasswordRepositoryImpl(
+        recuperacion,
+        logger: loggerMudo(),
+      );
+      await repoRecuperacion.cerrarTodasLasSesiones();
+      final conPendiente = ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(local),
+          databaseHelperProvider.overrideWithValue(helper),
+          recuperacionPasswordRepositoryProvider.overrideWithValue(repoRecuperacion),
+        ],
+      );
+      addTearDown(conPendiente.dispose);
+      await conPendiente.read(sesionProvider.future);
+      final notifier = conPendiente.read(sesionProvider.notifier);
+
+      await notifier.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      await pumpEventQueue();
+      expect(repoRecuperacion.otrasSesionesSinCerrar, isTrue, reason: 'el reintento falló');
+
+      await notifier.cerrarSesion();
+      expect(repoRecuperacion.otrasSesionesSinCerrar, isTrue, reason: 'cerrar sesión no la borra');
+
+      recuperacion.fallaAlCerrarLasOtras = null;
+      await notifier.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      await pumpEventQueue();
+      expect(recuperacion.otrasSesionesCerradas, 1);
+      expect(repoRecuperacion.otrasSesionesSinCerrar, isFalse);
+
+      await notifier.cerrarSesion();
+      await notifier.iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      await pumpEventQueue();
+      expect(recuperacion.otrasSesionesCerradas, 1, reason: 'resuelto: no se repite');
+    });
+
+    test('dado que el reintento de las otras sesiones falla, cuando entra, igual entra y la marca '
+        'sigue para el próximo login (#542)', () async {
+      final recuperacion = RecuperacionPasswordEnMemoria()
+        ..simularEnlace(EnlaceRecuperacion.valido)
+        ..usuarioId = await _idDe('ana@example.com', 'secreto123')
+        ..fallaAlCerrarSesiones = const SinConexionException()
+        ..fallaAlCerrarLasOtras = const SinConexionException();
+      final repoRecuperacion = RecuperacionPasswordRepositoryImpl(
+        recuperacion,
+        logger: loggerMudo(),
+      );
+      await repoRecuperacion.cerrarTodasLasSesiones();
+      final conPendiente = ProviderContainer(
+        overrides: [
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(local),
+          databaseHelperProvider.overrideWithValue(helper),
+          recuperacionPasswordRepositoryProvider.overrideWithValue(repoRecuperacion),
+        ],
+      );
+      addTearDown(conPendiente.dispose);
+      await conPendiente.read(sesionProvider.future);
+
+      final falla = await conPendiente
+          .read(sesionProvider.notifier)
+          .iniciarSesion(email: 'ana@example.com', password: 'secreto123');
+      await pumpEventQueue();
+
+      expect(falla, isNull);
+      expect(conPendiente.read(sesionProvider).value, isNotNull);
+      expect(repoRecuperacion.otrasSesionesSinCerrar, isTrue);
+    });
 
     test('el cierre sin red solo deja el aviso del login si quien cierra lo pide', () async {
       await iniciarSesion();
@@ -2508,4 +2681,10 @@ void main() {
       );
     });
   });
+}
+
+/// El id de usuario que el remoto en memoria le da a [email] (es el mismo en cada instancia).
+Future<String> _idDe(String email, String password) async {
+  final remoto = AuthRemoteDataSourceEnMemoria(credenciales: {email: password});
+  return (await remoto.iniciarSesion(email: email, password: password)).usuarioId;
 }

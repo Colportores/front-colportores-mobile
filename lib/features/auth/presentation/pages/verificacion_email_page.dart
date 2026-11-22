@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/reenvios_guardados.dart';
 import '../../domain/services/validador_email.dart';
@@ -537,8 +538,7 @@ class _VerificacionEmailPageState extends ConsumerState<VerificacionEmailPage>
     return switch (failure) {
       FailureSinConexion() => 'Necesitás conexión para $accion. Conectate y probá de nuevo.',
       FailureInesperado() => '$noPudimos Probá de nuevo en unos minutos.',
-      FailureServidor(:final mensaje) when mensaje == const FailureServidor().mensaje =>
-        '$noPudimos Probá de nuevo en unos minutos.',
+      final FailureServidor servidor => mensajeDeServidor(servidor, noPudimos: noPudimos),
       _ => failure.mensaje,
     };
   }
@@ -1036,10 +1036,11 @@ class _CampoEmail extends StatelessWidget {
           decoration: InputDecoration(
             hintText: 'lucia.silva@correo.com',
             errorText: errorText,
-            // El aviso del email (el de #353 mide 62 caracteres) pasa a más de un renglón: sin esto
-            // se corta con puntos suspensivos (WCAG 1.4.4). 6 es lo que miden los avisos del email a
-            // 320 dp de ancho y texto al 300 %. Igual que el resto de los campos de auth.
-            errorMaxLines: 6,
+            // El aviso del email pasa a más de un renglón: sin esto se corta con puntos suspensivos
+            // (WCAG 1.4.4). El más largo, el del email incompleto (#700, 72 caracteres), mide 7
+            // renglones a 320 dp de ancho y texto al 300 %; 8 deja uno de margen. Igual que el login
+            // y el registro.
+            errorMaxLines: 8,
             // Área de toque mínima de 48 (accesibilidad, #115): en el tema claro el campo queda
             // en 41.
             constraints: const BoxConstraints(minHeight: 48),

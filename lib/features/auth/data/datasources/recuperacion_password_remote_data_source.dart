@@ -22,6 +22,11 @@ abstract interface class RecuperacionPasswordRemoteDataSource {
   /// Revoca todas las sesiones de la cuenta (scope global), incluida la de este cliente.
   Future<void> cerrarTodasLasSesiones();
 
+  /// Revoca las sesiones de la cuenta en **los otros** dispositivos (scope `others`) y deja la de
+  /// este cliente. Es el reintento de [cerrarTodasLasSesiones] cuando esa no contestó: se llama
+  /// con la sesión nueva ya abierta, que no puede cerrarse.
+  Future<void> cerrarLasOtrasSesiones();
+
   /// Suelta la sesión de recuperación de este cliente sin cambiar la contraseña.
   Future<void> abandonarRecuperacion();
 }

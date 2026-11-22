@@ -4,15 +4,20 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../../respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import '../../data/datasources/fakes/jornada_local_data_source_en_memoria.dart';
 import '../../data/datasources/jornada_local_data_source.dart';
 import '../../data/datasources/jornada_local_data_source_drift.dart';
 import '../../data/repositories/jornada_repository_impl.dart';
-import '../../data/services/disparador_backup_pendiente.dart';
+import '../../data/repositories/jornadas_abiertas_repository_impl.dart';
+import '../../data/services/disparador_backup_respaldo.dart';
 import '../../domain/repositories/jornada_repository.dart';
+import '../../domain/repositories/jornadas_abiertas_repository.dart';
 import '../../domain/services/disparador_backup.dart';
+import '../../domain/usecases/finalizar_jornada_anterior_use_case.dart';
 import '../../domain/usecases/finalizar_jornada_use_case.dart';
 import '../../domain/usecases/iniciar_jornada_use_case.dart';
+import '../../domain/usecases/jornadas_por_cerrar_use_case.dart';
 import '../../domain/usecases/obtener_jornada_activa_use_case.dart';
 
 part 'jornada_providers.g.dart';
@@ -60,10 +65,11 @@ IniciarJornadaUseCase iniciarJornadaUseCase(Ref ref) => IniciarJornadaUseCase(
 ObtenerJornadaActivaUseCase obtenerJornadaActivaUseCase(Ref ref) =>
     ObtenerJornadaActivaUseCase(ref.watch(jornadaRepositoryProvider));
 
-/// El backup automático que se pide al cerrar la jornada (HU-SYNC-005). Hasta que exista, solo
-/// registra el pedido ([DisparadorBackupPendiente], TODO(#74)).
+/// El backup automático que se pide al cerrar la jornada (HU-JOR-002 → HU-SYNC-005): lo hace el
+/// respaldo en Drive si hay Wi-Fi y batería ≥ 30 %, y si no, queda para la próxima vuelta a la app.
 @Riverpod(keepAlive: true)
-DisparadorBackup disparadorBackup(Ref ref) => DisparadorBackupPendiente();
+DisparadorBackup disparadorBackup(Ref ref) =>
+    DisparadorBackupRespaldo(ref.watch(servicioRespaldoProvider));
 
 @Riverpod(keepAlive: true)
 FinalizarJornadaUseCase finalizarJornadaUseCase(Ref ref) => FinalizarJornadaUseCase(
@@ -80,3 +86,34 @@ FinalizarJornadaUseCase finalizarJornadaUseCase(Ref ref) => FinalizarJornadaUseC
     rastro,
   ),
 );
+
+/// Todas las jornadas abiertas del colportor (HU-JOR-002, «Jornada que quedó abierta»): lo que sale de
+/// una recuperación de dispositivo con dos abiertas.
+@Riverpod(keepAlive: true)
+JornadasAbiertasRepository jornadasAbiertasRepository(Ref ref) =>
+    JornadasAbiertasRepositoryImpl(ref.watch(jornadaLocalDataSourceProvider));
+
+/// Las jornadas abiertas que tienen otra después, para preguntar a qué hora terminó cada una.
+@Riverpod(keepAlive: true)
+JornadasPorCerrarUseCase jornadasPorCerrarUseCase(Ref ref) => JornadasPorCerrarUseCase(
+  ref.watch(jornadasAbiertasRepositoryProvider),
+  ref.watch(jornadaRepositoryProvider),
+);
+
+/// Cierra una jornada abierta que tiene otra después, con la hora que eligió la persona.
+@Riverpod(keepAlive: true)
+FinalizarJornadaAnteriorUseCase finalizarJornadaAnteriorUseCase(Ref ref) =>
+    FinalizarJornadaAnteriorUseCase(
+      ref.watch(jornadasAbiertasRepositoryProvider),
+      ref.watch(jornadaRepositoryProvider),
+      ref.watch(disparadorBackupProvider),
+      ahora: ref.watch(relojJornadaProvider),
+      alFallarBackup: (error, rastro) => AppLogger.instance.error(
+        LogModulo.backup,
+        'BACKUP_PEDIDO_FAIL',
+        'no se pudo pedir el backup al cerrar la jornada',
+        const {},
+        error,
+        rastro,
+      ),
+    );

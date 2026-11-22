@@ -195,7 +195,7 @@ void main() {
       '320×568 · 1×: con el teclado la hoja crece lo justo para que el campo entre entero '
       'sobre «Registrar», que sigue fijo',
       (tester) async {
-        await abrirEn(tester, EstadoAlta.gpsPreciso, tamano: _telefono320x568);
+        await abrirEn(tester, EstadoAlta.sinGps, tamano: _telefono320x568);
         final cerrada = tester.getRect(_hoja).height;
         await abrirTeclado(tester);
         const cuerpo = 568 - tecladoAbierto;
@@ -205,7 +205,7 @@ void main() {
         expect(abierta, lessThanOrEqualTo(cuerpo * .8 + .5));
         expect(abierta, lessThan(cerrada + 200), reason: 'y es una hoja, no la pantalla');
         expect(
-          _enLoQueSeDesplaza(find.text(TextosAlta.elegiElTipo)),
+          _enLoQueSeDesplaza(find.text(TextosAlta.marcaElPunto)),
           isTrue,
           reason: 'el motivo no entra debajo del botón: queda al final de lo que se desplaza',
         );
@@ -227,15 +227,15 @@ void main() {
       '360×640 · 1×: con el teclado, «Registrar» sigue fijo con el motivo debajo (como en el canvas) '
       'y la hoja crece apenas, lo que ese motivo pide',
       (tester) async {
-        await abrirEn(tester, EstadoAlta.gpsPreciso, teclado: tecladoAbierto);
+        await abrirEn(tester, EstadoAlta.sinGps, teclado: tecladoAbierto);
         const cuerpo = 640 - tecladoAbierto;
         final hoja = tester.getRect(_hoja);
         expect(hoja.height, lessThanOrEqualTo(cuerpo * .8 + .5));
         expect(hoja.height, lessThan(cuerpo * .62 + 20), reason: 'crece apenas');
         expect(_enLoQueSeDesplaza(botonRegistrarFijo), isFalse);
-        expect(_enLoQueSeDesplaza(find.text(TextosAlta.elegiElTipo)), isFalse);
+        expect(_enLoQueSeDesplaza(find.text(TextosAlta.marcaElPunto)), isFalse);
         expect(
-          tester.getRect(find.text(TextosAlta.elegiElTipo)).top,
+          tester.getRect(find.text(TextosAlta.marcaElPunto)).top,
           greaterThanOrEqualTo(tester.getRect(botonRegistrarFijo).bottom),
         );
       },
@@ -245,7 +245,7 @@ void main() {
         'debajo del motivo, y la hoja no desborda ni pasa del 80 %', (tester) async {
       await abrirEn(
         tester,
-        EstadoAlta.gpsPreciso,
+        EstadoAlta.sinGps,
         tamano: _telefono320x568,
         escala: 3,
         teclado: tecladoAbierto,
@@ -254,7 +254,7 @@ void main() {
 
       expect(tester.getRect(_hoja).height, closeTo(cuerpo * .8, .5), reason: 'pide todo el 80 %');
       expect(_enLoQueSeDesplaza(botonRegistrarFijo), isTrue, reason: 'el botón va al final');
-      expect(_enLoQueSeDesplaza(find.text(TextosAlta.elegiElTipo)), isTrue);
+      expect(_enLoQueSeDesplaza(find.text(TextosAlta.marcaElPunto)), isTrue);
       await tester.enterText(campoNumero, '1240');
       await asentar(tester);
       expect(tester.takeException(), isNull);
@@ -278,7 +278,7 @@ void main() {
     testWidgets('al cerrar el teclado «Registrar» vuelve a quedar fijo al pie, donde estaba', (
       tester,
     ) async {
-      await abrirEn(tester, EstadoAlta.gpsPreciso, tamano: _telefono320x568, escala: 3);
+      await abrirEn(tester, EstadoAlta.sinGps, tamano: _telefono320x568, escala: 3);
       final antes = tester.getRect(botonRegistrarFijo);
       await abrirTeclado(tester);
       expect(_enLoQueSeDesplaza(botonRegistrarFijo), isTrue);
@@ -294,7 +294,7 @@ void main() {
     for (final escala in [1.0, 1.15, 1.3, 1.5, 2.0]) {
       testWidgets('360×640 · texto ${_x(escala)}: con el teclado el campo y el motivo no se cortan '
           'aunque el botón mida más de 52 dp', (tester) async {
-        await abrirEn(tester, EstadoAlta.gpsPreciso, escala: escala, teclado: tecladoAbierto);
+        await abrirEn(tester, EstadoAlta.sinGps, escala: escala, teclado: tecladoAbierto);
         final boton = tester.getSize(botonRegistrarFijo).height;
         expect(boton, greaterThanOrEqualTo(52));
         if (escala >= 1.3) {
@@ -315,7 +315,7 @@ void main() {
           lessThanOrEqualTo(1),
           reason: 'con un botón de ${boton.toStringAsFixed(1)} dp el campo se corta',
         );
-        final motivo = find.text(TextosAlta.elegiElTipo);
+        final motivo = find.text(TextosAlta.marcaElPunto);
         if (_enLoQueSeDesplaza(motivo)) {
           await tester.ensureVisible(motivo);
           await tester.pump();
@@ -332,13 +332,13 @@ void main() {
         '360×640 · texto ${_x(escala)} sin teclado: «Registrar» y su motivo entran enteros '
         'en la hoja',
         (tester) async {
-          await abrirEn(tester, EstadoAlta.gpsPreciso, escala: escala);
+          await abrirEn(tester, EstadoAlta.sinGps, escala: escala);
           final hoja = tester.getRect(_hoja);
           final boton = tester.getRect(botonRegistrarFijo);
 
           expect(tester.takeException(), isNull);
           expect(boton.bottom, lessThanOrEqualTo(hoja.bottom));
-          final motivo = find.text(TextosAlta.elegiElTipo);
+          final motivo = find.text(TextosAlta.marcaElPunto);
           if (!_enLoQueSeDesplaza(motivo)) {
             expect(tester.getRect(motivo).bottom, lessThanOrEqualTo(hoja.bottom - 20 + .5));
           }
@@ -350,9 +350,9 @@ void main() {
   group('#324 · 03 · tocar «Registrar» apagado dice por qué', () {
     for (final (nombre, tamano, escala, estado, motivo)
         in <(String, Size, double, EstadoAlta, String)>[
-          ('320×568', _telefono320x568, 1.0, EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo),
+          ('320×568', _telefono320x568, 1.0, EstadoAlta.sinGps, TextosAlta.marcaElPunto),
           ('320×568', _telefono320x568, 1.0, EstadoAlta.gpsImpreciso, TextosAlta.elegiPrecision),
-          ('360×640', telefonoChico, 2.0, EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo),
+          ('360×640', telefonoChico, 2.0, EstadoAlta.sinGps, TextosAlta.marcaElPunto),
           ('360×640', telefonoChico, 1.0, EstadoAlta.gpsImpreciso, TextosAlta.elegiPrecision),
         ]) {
       testWidgets(
@@ -425,12 +425,12 @@ void main() {
 
     testWidgets('sin teclado también: anuncia el motivo y no registra', (tester) async {
       final anuncios = _escucharAnuncios(tester);
-      final m = await abrirEn(tester, EstadoAlta.gpsPreciso);
+      final m = await abrirEn(tester, EstadoAlta.sinGps);
 
       await tester.tap(botonRegistrarFijo);
       await asentar(tester);
 
-      expect(anuncios, [TextosAlta.elegiElTipo]);
+      expect(anuncios, [TextosAlta.marcaElPunto]);
       expect(m.repo.llamadas, isEmpty);
     });
 
@@ -439,11 +439,7 @@ void main() {
     ) async {
       final anuncios = _escucharAnuncios(tester);
       final m = await abrirEn(tester, EstadoAlta.gpsPreciso, teclado: tecladoAbierto);
-      await tester.ensureVisible(find.text('Casa'));
-      await tester.pump();
-      await tester.tap(find.text('Casa'));
-      await asentar(tester);
-      expect(registrarHabilitado(tester), isTrue);
+      expect(registrarHabilitado(tester), isTrue, reason: '«Casa» ya viene elegida (#665)');
 
       await tester.tap(botonRegistrarFijo);
       await tester.tap(botonRegistrarFijo, warnIfMissed: false);
@@ -457,8 +453,6 @@ void main() {
       final anuncios = _escucharAnuncios(tester);
       final m = await abrirEn(tester, EstadoAlta.gpsPreciso);
       m.repo.bloqueo = Completer<void>();
-      await tester.tap(find.text('Casa'));
-      await asentar(tester);
       await tester.tap(botonRegistrarFijo);
       await tester.pump();
       expect(find.text(TextosAlta.registrando), findsOneWidget);
@@ -473,17 +467,17 @@ void main() {
       'el motivo va en la etiqueta del botón apagado, sin pista, para el lector de pantalla',
       (tester) async {
         final semantica = tester.ensureSemantics();
-        await abrirEn(tester, EstadoAlta.gpsPreciso, teclado: tecladoAbierto);
+        await abrirEn(tester, EstadoAlta.gpsImpreciso, teclado: tecladoAbierto);
 
         // El nodo del botón junta lo suyo con lo del texto: `getSemanticsData` da lo juntado.
         SemanticsData datos() => tester.getSemantics(botonRegistrarFijo).getSemanticsData();
         final apagado = datos();
-        expect(apagado.label, '${TextosAlta.registrar}. ${TextosAlta.elegiElTipo}');
+        expect(apagado.label, '${TextosAlta.registrar}. ${TextosAlta.elegiPrecision}');
         expect(apagado.hint, isEmpty, reason: 'las pistas se pueden apagar en VoiceOver (#355)');
 
-        await tester.ensureVisible(find.text('Casa'));
+        await tester.ensureVisible(find.text(TextosAlta.continuar));
         await tester.pump();
-        await tester.tap(find.text('Casa'));
+        await tester.tap(find.text(TextosAlta.continuar));
         await asentar(tester);
         expect(datos().hint, isEmpty, reason: 'habilitado no hay pista');
         expect(datos().label, TextosAlta.registrar, reason: 'habilitado, solo el nombre');
@@ -493,17 +487,17 @@ void main() {
 
     // Decisión del 16/10 en #355: una sola forma para Android y para iOS, sin rama por plataforma.
     testWidgets(
-      '«Registrar» apagado dice "Registrar. Elegí el tipo de ubicación para registrar." en la '
+      '«Registrar» apagado dice "Registrar. Marcá el punto en el mapa para registrar." en la '
       'etiqueta y sin pista, igual en Android e iOS',
       (tester) async {
         final semantica = tester.ensureSemantics();
-        await abrirEn(tester, EstadoAlta.gpsPreciso);
+        await abrirEn(tester, EstadoAlta.sinGps);
 
         final nodo = tester.getSemantics(botonRegistrarFijo);
         expect(
           nodo,
           isSemantics(
-            label: 'Registrar. Elegí el tipo de ubicación para registrar.',
+            label: 'Registrar. Marcá el punto en el mapa para registrar.',
             isButton: true,
             hasEnabledState: true,
             isEnabled: false,
@@ -515,7 +509,7 @@ void main() {
           reason: 'sin pista: con «Hablar pistas» apagado no se leería',
         );
         expect(
-          find.text(TextosAlta.elegiElTipo),
+          find.text(TextosAlta.marcaElPunto),
           findsOneWidget,
           reason: 'el motivo se sigue viendo',
         );
@@ -530,11 +524,8 @@ void main() {
   group('#345 · 03 · el motivo de «Registrar» apagado se lee una sola vez', () {
     for (final (estado, motivo, tamano, escala, teclado)
         in <(EstadoAlta, String, Size, double, double)>[
-          (EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo, telefonoChico, 1.0, 0.0),
-          (EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo, telefonoChico, 2.0, tecladoAbierto),
           (EstadoAlta.gpsImpreciso, TextosAlta.elegiPrecision, telefonoChico, 1.0, tecladoAbierto),
           (EstadoAlta.sinGps, TextosAlta.marcaElPunto, telefonoChico, 1.0, 0.0),
-          (EstadoAlta.numeroEditado, TextosAlta.elegiElTipo, telefonoChico, 1.0, 0.0),
           (EstadoAlta.sinGpsSinConexion, TextosAlta.marcaElPunto, telefonoChico, 1.0, 0.0),
           (EstadoAlta.sinCiudades, TextosAlta.marcaElPunto, telefonoChico, 1.0, 0.0),
           (EstadoAlta.sinGps, TextosAlta.marcaElPunto, _telefono320x568, 2.0, tecladoAbierto),
@@ -577,37 +568,36 @@ void main() {
 
     testWidgets('habilitado no queda ninguna lectura del motivo, ni el texto', (tester) async {
       final semantica = tester.ensureSemantics();
-      await abrirEn(tester, EstadoAlta.gpsPreciso);
-      expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 1);
+      await abrirEn(tester, EstadoAlta.gpsImpreciso);
+      expect(_lecturasDe(tester, TextosAlta.elegiPrecision), 1);
 
-      await tester.ensureVisible(find.text('Casa'));
+      await tester.ensureVisible(find.text(TextosAlta.continuar));
       await tester.pump();
-      await tester.tap(find.text('Casa'));
+      await tester.tap(find.text(TextosAlta.continuar));
       await asentar(tester);
 
       expect(registrarHabilitado(tester), isTrue);
-      expect(find.text(TextosAlta.elegiElTipo), findsNothing);
-      expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 0);
+      expect(find.text(TextosAlta.elegiPrecision), findsNothing);
+      expect(_lecturasDe(tester, TextosAlta.elegiPrecision), 0);
       semantica.dispose();
     });
 
     testWidgets(
-      'cuando el motivo cambia (de la precisión al tipo) sigue habiendo una sola lectura, '
-      'la del motivo nuevo',
+      'cuando se decide la precisión el motivo se va y no queda ninguna lectura (el tipo ya '
+      'viene en «Casa», #665: no hay un motivo nuevo)',
       (tester) async {
         final semantica = tester.ensureSemantics();
         await abrirEn(tester, EstadoAlta.gpsImpreciso);
         expect(_lecturasDe(tester, TextosAlta.elegiPrecision), 1);
-        expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 0);
 
         await tester.ensureVisible(find.text(TextosAlta.continuar));
         await tester.pump();
         await tester.tap(find.text(TextosAlta.continuar));
         await asentar(tester);
 
-        expect(find.text(TextosAlta.elegiElTipo), findsOneWidget);
+        expect(registrarHabilitado(tester), isTrue);
+        expect(find.text(TextosAlta.elegiPrecision), findsNothing);
         expect(_lecturasDe(tester, TextosAlta.elegiPrecision), 0);
-        expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 1);
         semantica.dispose();
       },
     );
@@ -616,14 +606,12 @@ void main() {
       final semantica = tester.ensureSemantics();
       final m = await abrirEn(tester, EstadoAlta.gpsPreciso);
       m.repo.bloqueo = Completer<void>();
-      await tester.tap(find.text('Casa'));
-      await asentar(tester);
       await tester.tap(botonRegistrarFijo);
       await tester.pump();
 
       expect(find.text(TextosAlta.registrando), findsOneWidget);
-      expect(_lecturasDe(tester, TextosAlta.elegiElTipo), 0);
-      expect(find.text(TextosAlta.elegiElTipo), findsNothing);
+      expect(_lecturasDe(tester, TextosAlta.marcaElPunto), 0);
+      expect(find.text(TextosAlta.marcaElPunto), findsNothing);
       m.repo.bloqueo!.complete();
       await asentar(tester);
       semantica.dispose();

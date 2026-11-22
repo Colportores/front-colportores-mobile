@@ -6,12 +6,18 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../data/datasources/persona_local_data_source_drift.dart';
 import '../../data/datasources/ubicacion_local_data_source_drift.dart';
+import '../../data/datasources/ultima_visita_de_la_ubicacion_drift.dart';
+import '../../data/datasources/ultima_visita_del_espacio_drift.dart';
 import '../../data/repositories/espacio_repository_impl.dart';
 import '../../data/repositories/persona_repository_impl.dart';
 import '../../domain/entities/persona_del_espacio.dart';
+import '../../domain/entities/ultima_visita_del_espacio.dart';
 import '../../domain/repositories/espacio_repository.dart';
 import '../../domain/repositories/persona_repository.dart';
 import '../../domain/services/contador_personas_espacio.dart';
+import '../../domain/services/cuotas_de_personas.dart';
+import '../../domain/services/lector_ultima_visita_de_la_ubicacion.dart';
+import '../../domain/services/lector_ultima_visita_del_espacio.dart';
 import '../../domain/services/saldos_de_personas.dart';
 import '../../domain/usecases/registrar_persona_use_case.dart';
 
@@ -75,10 +81,49 @@ final personasDelEspacioProvider = StreamProvider.autoDispose
       (ref, espacioId) => ref.watch(personaRepositoryProvider).observarDelEspacio(espacioId),
     );
 
+Duration? _sinReintentos(int intento, Object error) => null;
+
+/// De dónde sale la última visita de un espacio (el estado del encabezado de la ficha del depto, vista
+/// 11·04, #151). Sin la DB local abierta no hay de dónde: lanza, y quien lo lee no dice ningún estado.
+final lectorUltimaVisitaDelEspacioProvider = Provider<LectorUltimaVisitaDelEspacio>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return UltimaVisitaDelEspacioDrift(db);
+});
+
+/// La última visita de [espacioId], al día cuando se registra o se deshace una; `null` si no tiene
+/// ninguna. Una falla de lectura sale como error del provider (el encabezado no afirma nada).
+final ultimaVisitaDelEspacioProvider = StreamProvider.autoDispose
+    .family<UltimaVisitaDelEspacio?, String>(
+      (ref, espacioId) => ref.watch(lectorUltimaVisitaDelEspacioProvider).observar(espacioId),
+      retry: _sinReintentos,
+    );
+
+/// La última visita de cualquier espacio de la ubicación (el renglón «Última visita» de «Reactivar»,
+/// vista 09·03, #330). Sin DB abierta no hay dónde leer: lanza, y quien lo pide no dibuja el renglón.
+final lectorUltimaVisitaDeLaUbicacionProvider = Provider<LectorUltimaVisitaDeLaUbicacion>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return UltimaVisitaDeLaUbicacionDrift(db);
+});
+
 /// De dónde sale lo que debe cada persona (la línea «Saldo» de «¿Con quién?»). Sin ventas locales
 /// todavía (S9) no hay fuente: [SaldosDePersonasSinFuente]. Un test o el S9 lo reemplazan.
 final saldosDePersonasProvider = Provider<SaldosDePersonas>(
   (ref) => const SaldosDePersonasSinFuente(),
+);
+
+/// De dónde sale el día de la cuota que toca de cada persona que debe (la línea «Debe $ 1.200 · cuota
+/// sáb 26/10» de la hoja de la casa). `main.dart` lo reemplaza por `CuotasDePersonasLocal` (las citas de
+/// cobranza de los planes, HU-COB-004); sin fuente (los tests) la fila dice solo lo que debe.
+final cuotasDePersonasProvider = Provider<CuotasDePersonas>(
+  (ref) => const CuotasDePersonasSinFuente(),
+);
+
+/// Cuándo vuelve a leer la hoja de la casa lo que debe cada persona: un aviso por cada cambio en las
+/// ventas, los cobros o las cuotas. Sin fuente (los tests) lee una sola vez.
+final cambiosDeLoQueSeDebeProvider = Provider<CambiosDeLoQueSeDebe>(
+  (ref) => sinCambiosDeLoQueSeDebe,
 );
 
 /// Lo que debe cada persona de [espacioId], en centavos, por `persona.id`. Una falla al leerlo no

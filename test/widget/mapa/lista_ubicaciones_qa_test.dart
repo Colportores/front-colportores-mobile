@@ -7,7 +7,6 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
-import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion_con_resumen.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/lista_ubicaciones_page.dart';
@@ -197,11 +196,11 @@ void main() {
       expect(find.text('Necesita GPS'), findsOneWidget);
       return false;
     },
-    'hoja de ciudades (sin adaptador real)': (tester, tam, escala) async {
+    'hoja de ciudades (que no se pueden leer)': (tester, tam, escala) async {
       await montarLista(
         tester,
         repo: RepoListaFalso(_hoy()),
-        ciudades: CiudadesParaAltaSinFuente(),
+        ciudades: const CiudadesQueNoSePuedenLeer(),
         tamano: tam,
         escala: escala,
       );

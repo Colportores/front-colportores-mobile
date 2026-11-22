@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
-import '../../../../core/usecases/use_case.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
@@ -17,6 +16,8 @@ import '../../domain/usecases/registrar_ubicacion_use_case.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../../domain/value_objects/punto_capturado.dart';
 import 'alta_ubicacion_providers.dart';
+import 'lista_ubicaciones_state.dart' show EstadoGpsLista;
+import 'ubicacion_colportor_provider.dart';
 
 /// Con qué se abre el alta (vista 03).
 final class ParametrosAlta extends Equatable {
@@ -95,6 +96,25 @@ enum OrigenCiudad {
   noSePudoLeer,
 }
 
+/// En qué paso está el alta sobre el mapa principal (vista 41, #655). La vista 03 (pantalla propia)
+/// no pasa de [posicion]: sus hojas de ciudad y de duplicado son modales aparte.
+enum PasoAlta {
+  /// N·01 (41A·01 a 41A·03): el pin sobre el mapa, con «Confirmar posición».
+  posicion,
+
+  /// N·02 «¿Qué hay acá?» (41A·04 a 41A·06): tipo, ciudad, calle y número, con «Registrar».
+  queHayAca,
+
+  /// «Elegí la ciudad» (41A·04B): se abre solo al tocar la ciudad en N·02.
+  ciudad,
+
+  /// El aviso de duplicado al registrar (41B·01, 41B·02 y 41B·04): las candidatas sobre el mapa.
+  duplicado,
+
+  /// «Crear igual» con la justificación (41B·03).
+  crearIgual,
+}
+
 /// Todo lo que muestra el alta de ubicación (vista 03).
 final class AltaUbicacionState extends Equatable {
   const AltaUbicacionState({
@@ -104,7 +124,7 @@ final class AltaUbicacionState extends Equatable {
     this.punto,
     this.origen = OrigenCoordenadas.gps,
     this.precisionDecidida = false,
-    this.tipo,
+    this.tipo = TipoUbicacion.casa,
     this.ciudad,
     this.origenCiudad = OrigenCiudad.buscando,
     this.calle = const CampoDireccion(),
@@ -114,6 +134,10 @@ final class AltaUbicacionState extends Equatable {
     this.movimientosCamara = 0,
     this.guardando = false,
     this.falla,
+    this.paso = PasoAlta.posicion,
+    this.candidatas = const [],
+    this.resaltada,
+    this.calleActualizada = false,
   });
 
   final EstadoGps gps;
@@ -129,7 +153,9 @@ final class AltaUbicacionState extends Equatable {
   /// El colportor ya vio el aviso de baja precisión y eligió «Ajustar manualmente» o «Continuar».
   final bool precisionDecidida;
 
-  final TipoUbicacion? tipo;
+  /// El tipo del alta. Arranca en «Casa» (decisión de Cristian, 05/11, #665): el colportor lo cambia
+  /// solo si el lugar es otro. Siempre hay uno elegido, así que nunca falta para registrar.
+  final TipoUbicacion tipo;
 
   final CiudadCatalogo? ciudad;
   final OrigenCiudad origenCiudad;
@@ -157,6 +183,25 @@ final class AltaUbicacionState extends Equatable {
   /// Por qué falló el último intento de registrar.
   final Failure? falla;
 
+  /// El paso del alta sobre el mapa principal (vista 41).
+  final PasoAlta paso;
+
+  /// Las ubicaciones que parecen la misma, de la más cercana a la más lejana (41B). Vacía fuera de
+  /// [PasoAlta.duplicado] y [PasoAlta.crearIgual].
+  final List<CandidataDuplicado> candidatas;
+
+  /// La candidata cuya fila se tocó: su marcador queda resaltado, sin mover el mapa (41B·02).
+  final String? resaltada;
+
+  /// La calle se actualizó sola al mover el pin («✓ Calle actualizada», 41A·05). Se apaga cuando la
+  /// colportora la escribe.
+  final bool calleActualizada;
+
+  /// Se puede ofrecer «Crear igual»: todas las candidatas lo admiten (HU-UBI-001, D1). Con una de la
+  /// misma dirección a menos de 100 m solo queda «Abrir la existente» (41B·04).
+  bool get admiteCrearIgual =>
+      candidatas.isNotEmpty && candidatas.every((c) => c.admiteConservarAmbos);
+
   /// La precisión que muestra la vista: la del GPS, o `null` si el punto se marcó a mano.
   double? get precisionMetros => origen == OrigenCoordenadas.gps ? lectura?.precisionMetros : null;
 
@@ -169,8 +214,8 @@ final class AltaUbicacionState extends Equatable {
   /// «Registrar» espera a que el colportor elija «Ajustar manualmente» o «Continuar».
   bool get necesitaDecisionPrecision => esImpreciso && !precisionDecidida;
 
-  /// Los datos mínimos del alta: punto, tipo y ciudad.
-  bool get estaCompleto => punto != null && tipo != null && ciudad != null;
+  /// Los datos mínimos del alta: punto y ciudad (el tipo siempre está elegido, arranca en «Casa»).
+  bool get estaCompleto => punto != null && ciudad != null;
 
   bool get puedeRegistrar => !guardando && estaCompleto && !necesitaDecisionPrecision;
 
@@ -197,6 +242,11 @@ final class AltaUbicacionState extends Equatable {
     bool? guardando,
     Failure? falla,
     bool borrarFalla = false,
+    PasoAlta? paso,
+    List<CandidataDuplicado>? candidatas,
+    String? resaltada,
+    bool borrarResaltada = false,
+    bool? calleActualizada,
   }) => AltaUbicacionState(
     gps: gps ?? this.gps,
     motivoSinGps: borrarMotivo ? null : (motivoSinGps ?? this.motivoSinGps),
@@ -214,6 +264,10 @@ final class AltaUbicacionState extends Equatable {
     movimientosCamara: movimientosCamara ?? this.movimientosCamara,
     guardando: guardando ?? this.guardando,
     falla: borrarFalla ? null : (falla ?? this.falla),
+    paso: paso ?? this.paso,
+    candidatas: candidatas ?? this.candidatas,
+    resaltada: borrarResaltada ? null : (resaltada ?? this.resaltada),
+    calleActualizada: calleActualizada ?? this.calleActualizada,
   );
 
   @override
@@ -234,6 +288,10 @@ final class AltaUbicacionState extends Equatable {
     movimientosCamara,
     guardando,
     falla,
+    paso,
+    candidatas,
+    resaltada,
+    calleActualizada,
   ];
 }
 
@@ -264,7 +322,7 @@ final class AltaFallida extends ResultadoRegistroAlta {
   final Failure falla;
 }
 
-/// No hizo nada: ya había un registro en curso (doble toque) o falta tipo, punto o ciudad.
+/// No hizo nada: ya había un registro en curso (doble toque) o falta punto o ciudad.
 final class AltaIgnorada extends ResultadoRegistroAlta {
   const AltaIgnorada();
 }
@@ -285,15 +343,15 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
   Timer? _espera;
   int _secuencia = 0;
 
-  /// Cuál es la última lectura del GPS que se pidió: una lectura que llega cuando ya se pidió otra
-  /// se ignora, para que el pin y la lectura que se guarda sean siempre la misma.
-  int _secuenciaGps = 0;
   String? _idAlta;
   final _log = AppLogger.instance;
 
   @override
   AltaUbicacionState build() {
     ref.onDispose(() => _espera?.cancel());
+    // El GPS es el del colportor, uno solo (#651): el alta no pide el permiso ni lee por su cuenta,
+    // refleja lo que él sabe y se entera de las lecturas que llegan después.
+    ref.listen(ubicacionColportorProvider, (_, nueva) => _seguirAlGps(nueva));
     final inicial = parametros.puntoInicial;
     unawaited(Future<void>(() => ref.mounted ? _arrancar() : null));
     if (inicial == null) return const AltaUbicacionState();
@@ -306,67 +364,92 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
 
   Future<void> _arrancar() async {
     if (parametros.puntoInicial != null) _programarEnriquecimiento(inmediato: true);
-    await _leerGps();
+    final ubicacion = ref.read(ubicacionColportorProvider);
+    // «Mapa libre» (#670): sin el seguimiento prendido la última lectura puede ser de hace un rato (la
+    // colportora caminó desde que miró el mapa). El pin parte de una lectura nueva: el permiso ya
+    // está dado (hay lectura), así que no sale ningún diálogo. Si la lectura falla, se parte de la
+    // última buena. Con el pin ya puesto a mano (dedo mantenido en el mapa) no hace falta esperar.
+    if (parametros.puntoInicial == null &&
+        ubicacion.lectura != null &&
+        ubicacion.lecturaViva == null) {
+      state = state.copyWith(gps: EstadoGps.buscando, borrarMotivo: true);
+      await ref.read(ubicacionColportorProvider.notifier).refrescar();
+      if (!ref.mounted) return;
+    }
+    _seguirAlGps(ref.read(ubicacionColportorProvider));
   }
 
   // ---------------------------------------------------------------- GPS
 
-  /// Pide una lectura al GPS. Pueden quedar dos en vuelo (por ejemplo «Activar GPS» y, al volver de
-  /// los ajustes, el reintento automático): **gana la última que se pidió**, aunque la anterior
-  /// llegue después. Así el pin, el chip de precisión y el aviso de baja precisión salen de la misma
-  /// lectura, y es la que `registrar` guarda.
-  Future<void> _leerGps() async {
-    if (!ref.mounted) return;
-    final numero = ++_secuenciaGps;
-    state = state.copyWith(gps: EstadoGps.buscando, borrarMotivo: true);
-    final resultado = await ref.read(capturarPosicionGpsUseCaseProvider)(const NoParams());
-    if (!ref.mounted || numero != _secuenciaGps) return;
-    resultado.fold<void>(
-      (falla) {
-        final motivo = falla is FailureGpsNoDisponible ? falla.motivo : MotivoSinGps.sinSenal;
-        state = state.copyWith(gps: EstadoGps.sinGps, motivoSinGps: motivo);
+  /// Refleja lo que dice el GPS del colportor ([ubicacionColportorProvider]): el pin, el chip de
+  /// precisión y el aviso de baja precisión salen de la misma lectura, y es la que `registrar`
+  /// guarda. Sin lectura todavía (el mapa no se abrió) el alta muestra «sin GPS» con «Activar GPS»,
+  /// sin pedir nada.
+  void _seguirAlGps(UbicacionColportorState ubicacion) {
+    final lectura = ubicacion.lectura;
+    if (lectura != null) {
+      // Si el colportor ya puso el pin (tap largo, toque en el mapa) la lectura no lo mueve.
+      final sinPunto = state.punto == null;
+      // Con el mapa siguiendo a la colportora (#670) la lectura se mueve sola mientras el alta está
+      // abierta. El pin que salió de una lectura se queda con ella —«Registrar» guarda ese punto y su
+      // precisión, no una posición que el pin no muestra—; «Volver a mi ubicación» lo lleva a la
+      // posición de ahora.
+      final pinDeUnaLectura = !sinPunto && state.origen == OrigenCoordenadas.gps;
+      state = state.copyWith(
+        gps: EstadoGps.conLectura,
+        lectura: pinDeUnaLectura && state.lectura != null ? null : lectura,
+        borrarMotivo: true,
+        punto: sinPunto ? lectura.coordenadas : null,
+        origen: sinPunto ? OrigenCoordenadas.gps : null,
+        movimientosCamara: sinPunto ? state.movimientosCamara + 1 : null,
+      );
+      if (sinPunto) _programarEnriquecimiento(inmediato: true);
+      return;
+    }
+    switch (ubicacion.gps) {
+      case EstadoGpsLista.buscando:
+        state = state.copyWith(gps: EstadoGps.buscando, borrarMotivo: true);
+      case EstadoGpsLista.sinPedir || EstadoGpsLista.sinGps || EstadoGpsLista.conLectura:
+        state = state.copyWith(
+          gps: EstadoGps.sinGps,
+          motivoSinGps: ubicacion.motivoSinGps,
+          borrarMotivo: ubicacion.motivoSinGps == null,
+        );
         // Sin GPS y sin punto la ciudad sale de la zona asignada o de la campaña (vista 03). Con un
         // punto ya puesto (tap largo, toque en el mapa) la propone el enriquecimiento del punto.
         if (state.punto == null && state.origenCiudad == OrigenCiudad.buscando) {
           unawaited(_proponerCiudad(null, _secuencia));
         }
-      },
-      (lectura) {
-        // Si el colportor ya puso el pin (tap largo, toque en el mapa) la lectura no lo mueve.
-        final sinPunto = state.punto == null;
-        state = state.copyWith(
-          gps: EstadoGps.conLectura,
-          lectura: lectura,
-          borrarMotivo: true,
-          punto: sinPunto ? lectura.coordenadas : null,
-          origen: sinPunto ? OrigenCoordenadas.gps : null,
-          movimientosCamara: sinPunto ? state.movimientosCamara + 1 : null,
-        );
-        if (sinPunto) _programarEnriquecimiento(inmediato: true);
-      },
-    );
+    }
   }
 
-  /// «Activar GPS»: pide el permiso o abre el ajuste que corresponda y vuelve a leer.
-  Future<void> activarGps() async {
-    final motivo = state.motivoSinGps;
-    if (motivo != null) await ref.read(activadorGpsProvider).activar(motivo);
-    await _leerGps();
-  }
+  /// «Activar GPS»: pide el permiso o abre el ajuste que corresponda y vuelve a leer (lo hace el GPS
+  /// del colportor; el alta se entera por [_seguirAlGps]).
+  Future<void> activarGps() => ref.read(ubicacionColportorProvider.notifier).activarGps();
 
   /// Al volver a la app después de los ajustes: si seguía sin GPS, se vuelve a intentar.
-  Future<void> reintentarGpsSiHaceFalta() async {
-    if (state.gps == EstadoGps.sinGps) await _leerGps();
-  }
+  Future<void> reintentarGpsSiHaceFalta() =>
+      ref.read(ubicacionColportorProvider.notifier).reintentarGpsSiHaceFalta();
 
-  /// «Volver a mi ubicación»: el pin vuelve a la última lectura del GPS.
-  void volverAMiUbicacion() {
-    final lectura = state.lectura;
+  /// «Volver a mi ubicación»: el pin vuelve a la posición de ahora. Con el seguimiento prendido (#670)
+  /// ya es la de ahora; sin él se lee otra vez (la colportora caminó desde la última lectura). Si la
+  /// lectura falla se queda con la última buena; sin ninguna, el GPS queda como lo dejó la falla.
+  /// Dos toques seguidos: gana el último.
+  Future<void> volverAMiUbicacion() async {
+    final numero = ++_secuenciaVolver;
+    final gps = ref.read(ubicacionColportorProvider.notifier);
+    var lectura = ref.read(ubicacionColportorProvider).lecturaViva;
     if (lectura == null) {
-      unawaited(_leerGps());
-      return;
+      final resultado = await gps.refrescar();
+      if (!ref.mounted || numero != _secuenciaVolver) return;
+      lectura = resultado.fold(
+        (_) => ref.read(ubicacionColportorProvider).lectura,
+        (nueva) => nueva,
+      );
     }
+    if (lectura == null) return;
     state = state.copyWith(
+      lectura: lectura,
       punto: lectura.coordenadas,
       origen: OrigenCoordenadas.gps,
       precisionDecidida: false,
@@ -374,6 +457,10 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
     );
     _programarEnriquecimiento();
   }
+
+  /// Cuál fue el último «Volver a mi ubicación»: una lectura que llega cuando ya se tocó otra vez se
+  /// ignora.
+  int _secuenciaVolver = 0;
 
   /// «Ajustar manualmente» y «Continuar» del aviso de baja precisión: los dos dejan registrar; el
   /// primero además invita a mover el mapa (el texto «Mové el mapa para ajustar el punto»).
@@ -383,7 +470,7 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
 
   /// El colportor movió el mapa: el pin (fijo en el centro) queda en [punto], marcado a mano.
   void moverPunto(Coordenadas punto) {
-    if (state.guardando) return;
+    if (state.guardando || state.paso != PasoAlta.posicion) return;
     if (state.punto == punto && state.origen == OrigenCoordenadas.manual) return;
     state = state.copyWith(punto: punto, origen: OrigenCoordenadas.manual);
     _programarEnriquecimiento();
@@ -391,7 +478,7 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
 
   /// El colportor tocó el mapa donde está el lugar: el mapa se centra ahí.
   void marcarPunto(Coordenadas punto) {
-    if (state.guardando) return;
+    if (state.guardando || state.paso != PasoAlta.posicion) return;
     state = state.copyWith(
       punto: punto,
       origen: OrigenCoordenadas.manual,
@@ -406,6 +493,7 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
 
   void editarCalle(String texto) => state = state.copyWith(
     calle: CampoDireccion(texto, texto.trim().isEmpty ? FuenteCampo.vacio : FuenteCampo.editado),
+    calleActualizada: false,
     borrarFalla: true,
   );
 
@@ -430,8 +518,15 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
 
   /// «Cambiar»: la ciudad la elige el colportor de la lista de su campaña. Desde ahí no se pisa al
   /// mover el punto ni con una propuesta que todavía venga en camino (se descarta al llegar).
-  void elegirCiudad(CiudadCatalogo ciudad) =>
-      state = state.copyWith(ciudad: ciudad, origenCiudad: OrigenCiudad.elegida, borrarFalla: true);
+  ///
+  /// En el alta sobre el mapa vuelve a N·02 con la ciudad elegida (41A·04B): elegirla no mueve el
+  /// mapa ni el pin.
+  void elegirCiudad(CiudadCatalogo ciudad) => state = state.copyWith(
+    ciudad: ciudad,
+    origenCiudad: OrigenCiudad.elegida,
+    borrarFalla: true,
+    paso: state.paso == PasoAlta.ciudad ? PasoAlta.queHayAca : null,
+  );
 
   /// «Reintentar» del aviso de ciudad: vuelve a pedir la propuesta.
   Future<void> reintentarCiudad() async {
@@ -439,6 +534,72 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
     if (origen != OrigenCiudad.noSePudoLeer && origen != OrigenCiudad.sinCiudades) return;
     state = state.copyWith(origenCiudad: OrigenCiudad.buscando);
     await _proponerCiudad(state.punto, _secuencia);
+  }
+
+  // ---------------------------------------------------------------- los pasos (vista 41)
+
+  /// «Confirmar posición» (N·01 → N·02). No hace nada sin punto, mientras guarda o si falta decidir
+  /// la baja precisión (41A·03). Devuelve si pasó a N·02.
+  bool confirmarPosicion() {
+    if (state.guardando || state.punto == null || state.paso != PasoAlta.posicion) return false;
+    if (state.necesitaDecisionPrecision) return false;
+    state = state.copyWith(paso: PasoAlta.queHayAca, borrarFalla: true);
+    return true;
+  }
+
+  /// «Continuar» del aviso de baja precisión (41A·03): sigue a N·02 con ese punto.
+  bool continuarConBajaPrecision() {
+    if (state.guardando || state.punto == null || state.paso != PasoAlta.posicion) return false;
+    decidirPrecision();
+    return confirmarPosicion();
+  }
+
+  /// Tocó la ciudad en N·02: «Elegí la ciudad» (41A·04B).
+  void abrirCiudades() {
+    if (state.guardando || state.paso != PasoAlta.queHayAca) return;
+    state = state.copyWith(paso: PasoAlta.ciudad);
+  }
+
+  /// «Crear igual» del aviso de duplicado: pide la justificación (41B·03).
+  void irACrearIgual() {
+    if (state.guardando || state.paso != PasoAlta.duplicado || !state.admiteCrearIgual) return;
+    state = state.copyWith(paso: PasoAlta.crearIgual, borrarFalla: true);
+  }
+
+  /// Tocó la fila de una candidata (41B·02): su marcador queda resaltado. El mapa no se mueve.
+  void resaltar(String ubicacionId) {
+    if (!state.candidatas.any((c) => c.ubicacion.id == ubicacionId)) return;
+    state = state.copyWith(resaltada: ubicacionId);
+  }
+
+  /// Un paso atrás: el atrás del teléfono, «Volver» o «Cancelar». Devuelve `false` si el alta ya
+  /// estaba en N·01: ahí el atrás la cierra (no se guardó nada). Mientras guarda no hace nada (y
+  /// devuelve `true`: el alta no se cierra).
+  ///
+  /// - N·02 → N·01 con el pin donde estaba y lo escrito;
+  /// - «Elegí la ciudad» → N·02, sin cambiar la ciudad;
+  /// - el aviso de duplicado → N·01 con el pin donde estaba (41B·01, «Cancelar»);
+  /// - «Crear igual» → el aviso de duplicado.
+  bool atras() {
+    if (state.guardando) return true;
+    switch (state.paso) {
+      case PasoAlta.posicion:
+        return false;
+      case PasoAlta.queHayAca:
+        state = state.copyWith(paso: PasoAlta.posicion, borrarFalla: true);
+      case PasoAlta.ciudad:
+        state = state.copyWith(paso: PasoAlta.queHayAca);
+      case PasoAlta.duplicado:
+        state = state.copyWith(
+          paso: PasoAlta.posicion,
+          candidatas: const [],
+          borrarResaltada: true,
+          borrarFalla: true,
+        );
+      case PasoAlta.crearIgual:
+        state = state.copyWith(paso: PasoAlta.duplicado, borrarFalla: true);
+    }
+    return true;
   }
 
   // ---------------------------------------------------------------- dirección y ciudad del punto
@@ -462,7 +623,20 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
     if (punto == null || !ref.mounted) return;
     final direccion = ref.read(geocodificadorInversoProvider).direccionDe(punto);
     if (state.origenCiudad != OrigenCiudad.elegida) unawaited(_proponerCiudad(punto, secuencia));
-    final dir = await direccion;
+    DireccionDelPunto? dir;
+    try {
+      dir = await direccion;
+    } on Object catch (e, st) {
+      // Sin la dirección del mapa la colportora la escribe: el alta no se traba por eso.
+      _log.error(
+        LogModulo.map,
+        'DIRECCION_PUNTO_FAIL',
+        'no se pudo leer la dirección',
+        const {},
+        e,
+        st,
+      );
+    }
     if (!ref.mounted || secuencia != _secuencia) return;
     _aplicarDireccion(dir);
   }
@@ -537,12 +711,18 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
         calleAnterior.fuente == FuenteCampo.delMapa &&
         calle.fuente == FuenteCampo.delMapa &&
         calle.texto != calleAnterior.texto;
+    // «✓ Calle actualizada» (41A·05) sigue mientras la calle sea la que el mapa puso.
+    final sigueActualizada =
+        state.calleActualizada &&
+        calle.fuente == FuenteCampo.delMapa &&
+        calle.texto == calleAnterior.texto;
     state = state.copyWith(
       calle: calle,
       numero: aplicar(numeroAnterior, nuevoNumero),
       propuesta: dir,
       borrarPropuesta: dir == null,
       avisosCalle: cambioLaCalle ? state.avisosCalle + 1 : null,
+      calleActualizada: cambioLaCalle || sigueActualizada,
     );
   }
 
@@ -555,7 +735,7 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
     final punto = state.punto;
     final tipo = state.tipo;
     final ciudad = state.ciudad;
-    if (state.guardando || punto == null || tipo == null || ciudad == null) {
+    if (state.guardando || punto == null || ciudad == null) {
       return const AltaIgnorada();
     }
     if (justificacion == null && state.necesitaDecisionPrecision) return const AltaIgnorada();
@@ -594,10 +774,25 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
               // para que no se pueda tocar otra vez.
               return AltaCreada(ubicacion);
             case AltaConBajaPrecision():
-              state = state.copyWith(guardando: false, precisionDecidida: false);
+              // En el alta sobre el mapa vuelve a N·01: ahí está el aviso con sus dos salidas.
+              state = state.copyWith(
+                guardando: false,
+                precisionDecidida: false,
+                paso: state.paso == PasoAlta.posicion ? null : PasoAlta.posicion,
+              );
               return const AltaIgnorada();
             case AltaConDuplicados(:final candidatas):
-              state = state.copyWith(guardando: false);
+              final ordenadas = [...candidatas]
+                ..sort((a, b) => a.distanciaMetros.compareTo(b.distanciaMetros));
+              // En el alta sobre el mapa pasa al aviso de duplicado (41B); en la vista 03 (que no
+              // sale de N·01) su hoja aparte lo muestra.
+              final sobreElMapa = state.paso != PasoAlta.posicion;
+              state = state.copyWith(
+                guardando: false,
+                paso: sobreElMapa ? PasoAlta.duplicado : null,
+                candidatas: sobreElMapa ? ordenadas : null,
+                borrarResaltada: true,
+              );
               return AltaConCandidatas(candidatas);
           }
         },

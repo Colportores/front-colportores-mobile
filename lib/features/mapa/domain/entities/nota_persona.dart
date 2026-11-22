@@ -1,12 +1,13 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../../core/domain/entities/auditoria.dart';
+import 'nota_de_texto.dart';
 
 /// Una nota de una persona (esquema-datos.md §`nota`, `target_type = PERSONA`; HU-UBI-012).
 ///
 /// **local-only — PII**: el texto es lo más sensible del módulo (puede hablar de deudas o de la
 /// familia) y nunca sale del teléfono ni va a los logs.
-class NotaPersona extends Equatable {
+class NotaPersona extends Equatable implements NotaDeTexto {
   const NotaPersona({
     required this.id,
     required this.personaId,
@@ -14,15 +15,19 @@ class NotaPersona extends Equatable {
     required this.auditoria,
   });
 
+  @override
   final String id;
 
   /// FK a `persona.id` (`nota.target_id`).
   final String personaId;
 
+  @override
   final String texto;
 
+  @override
   final Auditoria auditoria;
 
+  @override
   bool get estaBorrada => auditoria.estaBorrada;
 
   /// Apagado por la misma razón que `Persona.stringify`: `'$nota'` o un log con la nota imprimiría el

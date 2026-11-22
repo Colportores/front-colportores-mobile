@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
-/// Las pestañas de la barra inferior, en el orden del diseño (vista 20, #229).
+/// Las pestañas de la barra inferior, en el orden del diseño (vista 20, #229; la sexta, «Cuenta»,
+/// es la de Mi Cuenta, vista 33: decisión de Cristian, 23/10, «Barra o menú»).
 enum PestanaInicio {
   hoy('Hoy', Icons.home_outlined, Icons.home),
   mapa('Mapa', Icons.map_outlined, Icons.map),
   lista('Lista', Icons.format_list_bulleted, Icons.format_list_bulleted),
   agenda('Agenda', Icons.calendar_month_outlined, Icons.calendar_month),
-  ventas('Ventas', Icons.payments_outlined, Icons.payments);
+  ventas('Ventas', Icons.payments_outlined, Icons.payments),
+  cuenta('Cuenta', Icons.account_balance_wallet_outlined, Icons.account_balance_wallet);
 
   const PestanaInicio(this.etiqueta, this.icono, this.iconoActivo);
 
@@ -15,15 +17,17 @@ enum PestanaInicio {
   final IconData iconoActivo;
 }
 
-/// Las pestañas que una cuenta pendiente de asignación no puede abrir (todas menos «Hoy»).
+/// Las pestañas que una cuenta pendiente de asignación no puede abrir (todas menos «Hoy»). Sin
+/// campaña no hay ventas ni cobros: Mi Cuenta no tiene qué mostrar.
 const modulosDeCampo = {
   PestanaInicio.mapa,
   PestanaInicio.lista,
   PestanaInicio.agenda,
   PestanaInicio.ventas,
+  PestanaInicio.cuenta,
 };
 
-/// La barra inferior Hoy · Mapa · Lista · Agenda · Ventas. La arma la pantalla principal (#229) y
+/// La barra inferior Hoy · Mapa · Lista · Agenda · Ventas · Cuenta. La arma la pantalla principal (#229) y
 /// la reutiliza Configuración (vista 16), donde ninguna pestaña está activa ([seleccionada] `null`).
 ///
 /// Con la cuenta pendiente de asignación (vista 18) los módulos de campo van [bloqueadas]: se ven

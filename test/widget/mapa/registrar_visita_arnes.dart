@@ -5,6 +5,9 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/agenda/presentation/providers/agenda_providers.dart';
+import 'package:colportores_mobile/features/jornada/data/datasources/fakes/jornada_local_data_source_en_memoria.dart';
+import 'package:colportores_mobile/features/jornada/data/datasources/jornada_local_data_source.dart';
+import 'package:colportores_mobile/features/jornada/presentation/providers/jornada_providers.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/espacio_repository.dart';
@@ -61,7 +64,8 @@ EspacioConUbicacion casaGrecia({bool baja = false}) => (
 /// Monta la pantalla con el botón «registrar visita» y, si [abrir], lo toca.
 ///
 /// [personas] siembra las personas de la casa; [saldos] lo que deben; [programar], [entrevistaDada] y
-/// [cobrar] activan los hooks de esas opciones (sin ellos la opción no se ofrece).
+/// [cobrar] activan los hooks de esas opciones (sin ellos la opción no se ofrece). [jornadas] son las
+/// jornadas locales de la colportora (sin ellas, ninguna abierta).
 Future<ArnesQuePaso> montarQuePaso(
   WidgetTester tester, {
   AgendaRepositorioFalso? repo,
@@ -73,7 +77,9 @@ Future<ArnesQuePaso> montarQuePaso(
   bool programar = false,
   bool entrevistaDada = false,
   bool cobrar = false,
+  JornadaLocalDataSource? jornadas,
   String? espacioId = 'esp-1',
+  String? agendaId,
   String? colportorId = 'col-1',
   double escala = 1,
   bool lector = false,
@@ -113,6 +119,9 @@ Future<ArnesQuePaso> montarQuePaso(
           ),
         ),
         saldosDePersonasProvider.overrideWithValue(SaldosFalsos(saldos)),
+        jornadaLocalDataSourceProvider.overrideWithValue(
+          jornadas ?? JornadaLocalDataSourceEnMemoria(),
+        ),
         if (programar)
           programarEntrevistaDesdeLaCasaProvider.overrideWithValue((c) async {
             enganches.citas.add(c);
@@ -147,6 +156,7 @@ Future<ArnesQuePaso> montarQuePaso(
                     final r = await FlujoRegistrarVisita.abrir(context, (
                       ubicacionId: 'ub-1',
                       espacioId: espacioId,
+                      agendaId: agendaId,
                     ), colportorId: colportorId);
                     arnes.resultados.add(r);
                   } on Object catch (e) {

@@ -193,6 +193,12 @@ void main() {
 
 class _CryptoNeutro extends CompressingCrypto {
   @override
+  Future<String> keyId() async => 'neutro';
+
+  @override
+  Future<String> sign(String mensaje) async => 'firma-neutra';
+
+  @override
   Future<List<int>> encryptBytes(List<int> plaintext) async => plaintext;
 
   @override

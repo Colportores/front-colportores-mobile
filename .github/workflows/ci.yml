@@ -16,6 +16,7 @@ env:
   # tool/riverpod_lint_plugin y analysis_options.yaml declara `riverpod_lint: ^3.1.9` (ver #87).
   FLUTTER_VERSION: "3.44.0"
 
+# Solo los checks que gatean el merge. Los compilados (APK/AAB) y las publicaciones salen de staging.yml y production.yml.
 jobs:
   # Formato, análisis, motor y proveedores de auth: ~5 min, en paralelo con los tests.
   estatico:
@@ -63,16 +64,19 @@ jobs:
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
         run: bash scripts/check_auth_providers.sh
 
-  # La suite de la app partida en 5 tandas (23/10: en un solo job tardaba 14-18 min y rozaba el límite).
+  # La suite de la app partida en tandas (23/10: en un solo job tardaba 14-18 min y rozaba el límite).
   # Cada tanda sube su lcov; el job `cobertura` los junta y verifica los umbrales.
+  # 10/11: con 5 tandas cada una tardaba 21-30 min y varias se cortaban por el límite de 30 min
+  # («exceeded the maximum execution time»). Pasa a 6 tandas y 50 min de margen.
+  # Ningún ruleset exige los checks `test (n/…)`; el que mira la tubería es `cobertura`.
   tests:
-    name: test (${{ matrix.tanda }}/5)
+    name: test (${{ matrix.tanda }}/6)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
-        tanda: [1, 2, 3, 4, 5]
+        tanda: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
 
@@ -85,9 +89,9 @@ jobs:
       - run: flutter pub get
       - run: dart run build_runner build
 
-      # --shard-index va de 0 a 4.
-      - name: flutter test (tanda ${{ matrix.tanda }} de 5)
-        run: flutter test --coverage --total-shards 5 --shard-index $(( ${{ matrix.tanda }} - 1 ))
+      # --shard-index va de 0 a 5. Si se cambia la cantidad, tocar también `matrix.tanda` y el `name`.
+      - name: flutter test (tanda ${{ matrix.tanda }} de 6)
+        run: flutter test --coverage --total-shards 6 --shard-index $(( ${{ matrix.tanda }} - 1 ))
 
       - uses: actions/upload-artifact@v4
         with:
@@ -143,39 +147,4 @@ jobs:
         with:
           name: coverage
           path: coverage/lcov.info
-          retention-days: 7
-
-  build-android:
-    name: build apk (debug)
-    needs: cobertura
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          # `maplibre_gl` (el mapa, #286) compila su parte de Android con Java 21.
-          java-version: "21"
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      - run: flutter pub get
-      - run: dart run build_runner build
-
-      # Con las variables cargadas el APK sale apuntando a Supabase; sin ellas, con los fakes.
-      - run: >-
-          flutter build apk --debug
-          --dart-define=SUPABASE_URL=${{ vars.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ vars.SUPABASE_ANON_KEY }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: app-debug.apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 7

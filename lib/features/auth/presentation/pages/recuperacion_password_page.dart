@@ -243,7 +243,11 @@ class _RecuperacionPasswordPageState extends ConsumerState<RecuperacionPasswordP
               _erroresCampo = campos;
             case Failure():
               // HU-AUTH-004, "Error - sin conectividad" (#94).
-              _errorGeneral = mensajePara(failure, accion: 'solicitar la recuperación');
+              _errorGeneral = mensajePara(
+                failure,
+                accion: 'solicitar la recuperación',
+                noPudimos: 'No pudimos enviar el enlace.',
+              );
           }
         });
       },

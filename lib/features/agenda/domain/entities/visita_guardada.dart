@@ -48,7 +48,8 @@ final class VisitaGuardada extends Equatable {
 
   /// `true` si la agenda indicada sirve pero el resultado no la cumple (`NO_CONTESTO`): la visita se
   /// guardó y la agenda pasó a `NO_CUMPLIDA` (decisión del 23/10, «No cumplida»). Nunca es `true`
-  /// junto con [agendaIgnorada].
+  /// junto con [agendaIgnorada], ni con una cuota del plan: «No contestó» sobre una cuota no la cierra
+  /// (decisión del 03/11, #608).
   final bool agendaNoCumplida;
 
   /// La agenda que creó la visita espontánea (ya `CUMPLIDA`), si la creó. Para deshacer.

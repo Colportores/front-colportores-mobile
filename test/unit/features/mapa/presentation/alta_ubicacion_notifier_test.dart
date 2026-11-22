@@ -3,7 +3,6 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
-import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
@@ -12,13 +11,13 @@ import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenada
 import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_notifier.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/ubicacion_colportor_provider.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../../helpers/alta_ubicacion_falsos.dart';
-import '../../../../helpers/logger_mudo.dart';
 
 const _otroPunto = Coordenadas(lat: -34.8900, lon: -56.1300);
 
@@ -114,14 +113,31 @@ void main() {
       },
     );
 
-    test('el tipo no viene elegido: sin tipo no se puede registrar; con el tipo, sí', () async {
+    test(
+      'el tipo viene en «Casa» (#665): con punto y ciudad ya se puede registrar, sin elegir nada',
+      () async {
+        final b = _banco();
+        await _esperar();
+        expect(b.estado.tipo, TipoUbicacion.casa);
+        expect(b.estado.puedeRegistrar, isTrue);
+
+        final resultado = await b.notificador.registrar();
+
+        expect(resultado, isA<AltaCreada>());
+        expect(b.repo.llamadas.single.ubicacion.tipo, TipoUbicacion.casa);
+      },
+    );
+
+    test('cambiar el tipo y volver a «Casa» funciona igual que antes (#665)', () async {
       final b = _banco();
       await _esperar();
-      expect(b.estado.tipo, isNull);
-      expect(b.estado.puedeRegistrar, isFalse);
+
+      b.notificador.elegirTipo(TipoUbicacion.negocio);
+      expect(b.estado.tipo, TipoUbicacion.negocio);
+      expect(b.estado.puedeRegistrar, isTrue);
 
       b.notificador.elegirTipo(TipoUbicacion.casa);
-
+      expect(b.estado.tipo, TipoUbicacion.casa);
       expect(b.estado.puedeRegistrar, isTrue);
     });
 
@@ -216,13 +232,19 @@ void main() {
       await _esperar();
       expect(gps.lecturas, 1);
 
+      // Volver de otra app (WhatsApp) sin haber tocado «Activar GPS» no pide nada (#651).
+      await b.notificador.reintentarGpsSiHaceFalta();
+      expect(gps.lecturas, 1);
+
+      await b.notificador.activarGps();
+      expect(gps.lecturas, 2);
       gps.respuesta = Right(lecturaGps(9));
       await b.notificador.reintentarGpsSiHaceFalta();
       expect(b.estado.gps, EstadoGps.conLectura);
-      expect(gps.lecturas, 2);
+      expect(gps.lecturas, 3);
 
       await b.notificador.reintentarGpsSiHaceFalta();
-      expect(gps.lecturas, 2);
+      expect(gps.lecturas, 3);
     });
 
     test(
@@ -245,8 +267,9 @@ void main() {
     );
 
     group('dos lecturas del GPS en vuelo', () {
-      // Permiso denegado; después «Activar GPS» y el reintento al volver de los ajustes arrancan una
-      // lectura cada uno, a la vez (la 2 y la 3). La que vale es la última que se pidió: la 3.
+      // Permiso denegado; después «Activar GPS» y «Mi ubicación» de otra vista arrancan una lectura
+      // cada uno, a la vez (la 2 y la 3). La que vale es la última que se pidió: la 3. (El regreso a
+      // la app con «Activar GPS» en curso ya no lee: es el del diálogo del permiso, #679.)
       const segundoPunto = Coordenadas(lat: -34.88741, lon: -56.13024);
       final lecturas = <int, Completer<Either<Failure, LecturaGps>>>{};
       late _Banco b;
@@ -261,7 +284,7 @@ void main() {
         gps.porLectura = (n) =>
             lecturas.putIfAbsent(n, () => Completer<Either<Failure, LecturaGps>>()).future;
         unawaited(b.notificador.activarGps());
-        unawaited(b.notificador.reintentarGpsSiHaceFalta());
+        unawaited(b.contenedor.read(ubicacionColportorProvider.notifier).refrescar());
         await _esperar();
         expect(gps.lecturas, 3, reason: 'quedaron dos lecturas en vuelo');
       }
@@ -362,7 +385,7 @@ void main() {
         b.notificador.moverPunto(_otroPunto);
         final camara = b.estado.movimientosCamara;
 
-        b.notificador.volverAMiUbicacion();
+        await b.notificador.volverAMiUbicacion();
 
         expect(b.estado.punto, puntoItalia);
         expect(b.estado.origen, OrigenCoordenadas.gps);
@@ -515,7 +538,11 @@ void main() {
       expect(b.estado.calle, const CampoDireccion());
       expect(b.estado.numero, const CampoDireccion());
       expect(b.estado.propuesta, isNull);
-      expect(b.estado.puedeRegistrar, isFalse, reason: 'falta el tipo, no la dirección');
+      expect(
+        b.estado.puedeRegistrar,
+        isTrue,
+        reason: 'la dirección es opcional: se registra igual',
+      );
     });
 
     test('con el geocodificador sin respuesta se registra igual con las coordenadas', () async {
@@ -831,13 +858,13 @@ void main() {
 
     group('no se pueden leer las ciudades', () {
       Future<_Banco> sinFuente() async {
-        final b = _banco(puertoCiudades: CiudadesParaAltaSinFuente(logger: loggerMudo()));
+        final b = _banco(puertoCiudades: const CiudadesQueNoSePuedenLeer());
         await _esperar();
         b.notificador.elegirTipo(TipoUbicacion.casa);
         return b;
       }
 
-      test('sin la fuente de ciudades (producción hoy) es una falla de lectura, no «la campaña '
+      test('con las ciudades sin poder leerse es una falla de lectura, no «la campaña '
           'no tiene ciudades»', () async {
         final b = await sinFuente();
 
@@ -849,10 +876,10 @@ void main() {
         expect(b.repo.llamadas, isEmpty);
       });
 
-      test('sin la fuente y sin punto pasa lo mismo, y «Reintentar» no la inventa', () async {
+      test('sin poder leerlas y sin punto pasa lo mismo, y «Reintentar» no la inventa', () async {
         final b = _banco(
           gps: GpsFalso(const Left(FailureGpsNoDisponible(motivo: MotivoSinGps.sinSenal))),
-          puertoCiudades: CiudadesParaAltaSinFuente(logger: loggerMudo()),
+          puertoCiudades: const CiudadesQueNoSePuedenLeer(),
         );
         await _esperar();
 
@@ -861,7 +888,7 @@ void main() {
 
         await b.notificador.reintentarCiudad();
 
-        expect(b.estado.origenCiudad, OrigenCiudad.noSePudoLeer, reason: 'sigue sin fuente');
+        expect(b.estado.origenCiudad, OrigenCiudad.noSePudoLeer, reason: 'sigue sin poder leerlas');
         expect(b.estado.ciudad, isNull);
       });
 

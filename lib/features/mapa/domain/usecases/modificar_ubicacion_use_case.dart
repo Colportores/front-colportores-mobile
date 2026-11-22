@@ -306,6 +306,7 @@ final class ModificarUbicacionUseCase
           : _criterio,
       reduceAUnEspacio: reduceAUnEspacio,
       espacioSiNoTiene: espacioSiNoTiene,
+      justificacion: buscaDuplicados && seguirIgual ? _texto(params.justificacionDuplicado) : null,
     );
     return resultado.map(
       (r) => r is UbicacionModificada

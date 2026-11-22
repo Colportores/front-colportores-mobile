@@ -2,6 +2,9 @@ import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../entities/agenda.dart';
+import '../entities/cambios_de_agenda.dart';
+import '../entities/detalle_de_agenda.dart';
+import '../entities/misionero_dejado.dart';
 import '../entities/nota_de_campo.dart';
 import '../entities/visita.dart';
 import '../entities/visita_guardada.dart';
@@ -26,6 +29,17 @@ abstract interface class AgendaRepository {
   /// `FailureValidacion` con el campo `agenda`.
   Future<Either<Failure, Agenda>> cancelar(String agendaId, {required DateTime ahora});
 
+  /// Aplica [cambios] a la agenda `PROGRAMADA` [CambiosDeAgenda.agendaId] (HU-VIS-003): tipo, día y
+  /// hora, franja y nota. Escribe la fila, la encola para el sync, deja el registro en el `audit_log`
+  /// local, guarda la nota y recalcula el color de la casa, todo en una transacción. Si nada cambió,
+  /// no escribe nada y devuelve la agenda (idempotente ante doble toque y reintento). Una agenda
+  /// cumplida, no cumplida, cancelada o inexistente es un `FailureValidacion` con el campo `agenda`.
+  Future<Either<Failure, Agenda>> modificar(CambiosDeAgenda cambios, {required DateTime ahora});
+
+  /// La agenda [agendaId] con su nota y la visita que la cerró (23C·01), o `null` si no está en el
+  /// teléfono o está dada de baja. Solo lee.
+  Future<Either<Failure, DetalleDeAgenda?>> obtenerDetalle(String agendaId);
+
   /// Guarda [visita] y su [nota] opcional. Con [agendaId], la agenda que la visita cumple pasa a
   /// `CUMPLIDA` en la misma transacción. Si ya hay una visita con ese `id`, no escribe nada y
   /// devuelve la que estaba.
@@ -35,11 +49,16 @@ abstract interface class AgendaRepository {
   /// visita**: se guarda como espontánea, la agenda no se toca y `VisitaGuardada.agendaIgnorada` dice
   /// por qué, para avisar sin perder lo registrado. Un resultado que no cumple la agenda
   /// (`TipoResultadoVisita.cumpleLaAgenda`: `NO_CONTESTO`) la pasa a `NO_CUMPLIDA` y
-  /// `VisitaGuardada.agendaNoCumplida` lo dice.
+  /// `VisitaGuardada.agendaNoCumplida` lo dice; si la agenda es una cuota del plan, la visita se
+  /// guarda y la cuota queda como estaba (decisión del 03/11, #608).
+  ///
+  /// [misioneros] son los que se dejaron sin venta («Lo que dejaste», #608): van en la misma
+  /// transacción que la visita.
   Future<Either<Failure, VisitaGuardada>> registrarVisita(
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
+    List<MisioneroDejado> misioneros = const [],
   });
 
   /// La agenda de entrevista que sigue `PROGRAMADA` en [espacioId] (la más próxima), o `null` si no

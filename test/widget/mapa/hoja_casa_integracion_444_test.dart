@@ -51,7 +51,7 @@ Finder get _elegir => find.byKey(ClavesEstadosHojaCasa.elegirUbicacion);
 
 /// Mueve el mapa falso al zoom máximo, donde acercar más ya no separa las ubicaciones.
 void _alZoomMaximo(MontajeMapaUbicaciones m) =>
-    m.mapa.moverPorGesto(CamaraMapa(centro: puntoItalia, zoom: MapaAlta.zoomMaximo));
+    m.mapa.moverPorGesto(const CamaraMapa(centro: puntoItalia, zoom: MapaAlta.zoomMaximo));
 
 Future<void> _drenar(WidgetTester tester) => asentarLista(tester);
 
@@ -96,7 +96,7 @@ void main() {
       await _tocarVisible(tester, _registrar);
       await tester.pump();
 
-      expect(visitas, [(ubicacionId: 'b', espacioId: 'esp-1')]);
+      expect(visitas, [(ubicacionId: 'b', espacioId: 'esp-1', agendaId: null)]);
     });
 
     testWidgets('al volver de una vista hija, la hoja ya muestra el estado nuevo de la casa', (
@@ -241,7 +241,7 @@ void main() {
       'antes del zoom máximo no se pide elegir: se abre la más cercana y se acerca con los dedos',
       (tester) async {
         final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(_tresEnElMismoPunto()));
-        m.mapa.moverPorGesto(CamaraMapa(centro: puntoItalia, zoom: MapaAlta.zoomMaximo - 2));
+        m.mapa.moverPorGesto(const CamaraMapa(centro: puntoItalia, zoom: MapaAlta.zoomMaximo - 2));
 
         m.mapa.tocarPunto('u-2');
         await _drenar(tester);
@@ -436,7 +436,7 @@ void main() {
       await _tocarVisible(tester, _registrar);
       await tester.pump();
 
-      expect(visitas, [(ubicacionId: 'casa-1', espacioId: 'esp-1')]);
+      expect(visitas, [(ubicacionId: 'casa-1', espacioId: 'esp-1', agendaId: null)]);
     });
 
     testWidgets('si la casa cambia mientras la hoja está abierta, la hoja sigue a la Lista', (
@@ -467,7 +467,11 @@ void main() {
       tester,
     ) async {
       final abiertas = <String>[];
-      await montarLista(tester, repo: RepoListaFalso([casa()]), alAbrir: abiertas.add);
+      await montarLista(
+        tester,
+        repo: RepoListaFalso([casa()]),
+        alAbrir: (id, _) => abiertas.add(id),
+      );
 
       await tester.tap(find.text('Rivadavia 100'));
       await asentarLista(tester);

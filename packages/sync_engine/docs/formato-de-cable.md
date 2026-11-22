@@ -73,8 +73,13 @@ de cerrar la sesión de uno perdido sin cerrar todas.
 } }
 ```
 
-`op` es `insert` | `update` | `delete`. `sync_version` es `null` en los insert y
-la versión esperada en los demás (§5.4).
+`op` es `insert` | `update` | `delete` | `marcar_como_duplicado`. `sync_version`
+es `null` en los insert y la versión esperada en los `update` y `delete` (§5.4).
+
+`marcar_como_duplicado` es la unión de duplicados (contrato §6.2): `entity` es
+`ubicacion`, el `payload` es `{"duplicada_id", "conservada_id"}` y el job **no
+lleva** `sync_version`. `accepted` y `duplicate` traen la `sync_version` de la
+duplicada, que el motor le devuelve a esa fila.
 
 Topes: **500 jobs y 1 MB** por lote. El MB se mide sobre `jobs` como texto de
 `jsonb`, que pone un espacio después de cada `:` y cada `,`, así que pesa un poco
@@ -185,6 +190,24 @@ el motor conserva el que tenía: inventar uno sería adelantar el cursor sin
 datos. Una entidad **ausente** de `rows` significa "sin cambios". El motor no borra
 nada por ausencia. Si `has_more` es `true`, vuelve a pedir con el `watermark`
 nuevo antes de considerar la sync completa.
+
+Dos claves más, **aditivas** (backend `0016` y `0023`, §2.1 del contrato), que
+solo vienen cuando hay algo que avisar:
+
+```json
+{
+  "out_of_area": { "ubicacion": ["…"] },
+  "area_reset": ["ubicacion", "espacio", "house_status"]
+}
+```
+
+`out_of_area` son las filas que salieron del área del colportor desde el pull
+anterior: el motor las marca (`PullNotices.outOfArea`), no las borra.
+`area_reset` dice qué entidades bajan completas porque apareció una ciudad
+nueva: lo que el teléfono tenía de ellas y no vuelva a bajar antes de la
+última página (`has_more` en `false`) quedó fuera del área. Una página sin
+filas también se aplica si trae avisos o un `watermark` nuevo. Un servidor que
+no las manda no genera avisos.
 
 ## Rechazos del lote entero
 

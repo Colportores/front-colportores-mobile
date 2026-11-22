@@ -6,6 +6,7 @@
 // bytes. Todo lo demás ya está acá y corre en la VM, así que se testea sin
 // dispositivo.
 
+import 'dart:convert';
 import 'dart:isolate';
 
 import 'package:archive/archive.dart';
@@ -64,6 +65,23 @@ abstract class CompressingCrypto implements CryptoPort {
   /// de la cadena sin descifrar nada, y por lo tanto sin la clave del usuario.
   @override
   String digest(List<int> bytes) => sha256.convert(bytes).toString();
+
+  /// La firma se calcula con [sign] (lo pone la plataforma, que tiene la llave)
+  /// y se compara acá, en tiempo constante: no se corta en la primera diferencia
+  /// (quien mira la carpeta de Drive no puede ir probando byte a byte).
+  @override
+  Future<bool> verifySignature(String mensaje, String? firma) async {
+    if (firma == null) return false;
+    final esperada = utf8.encode(await sign(mensaje));
+    final recibida = utf8.encode(firma);
+    // El largo de una firma válida no es secreto: sale del algoritmo.
+    if (esperada.length != recibida.length) return false;
+    var diferencia = 0;
+    for (var i = 0; i < esperada.length; i++) {
+      diferencia |= esperada[i] ^ recibida[i];
+    }
+    return diferencia == 0;
+  }
 
   /// gzip, en un isolate si el payload lo justifica.
   ///

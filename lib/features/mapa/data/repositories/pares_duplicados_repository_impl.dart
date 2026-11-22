@@ -39,6 +39,9 @@ final class ParesDuplicadosRepositoryImpl implements ParesDuplicadosRepository {
   Stream<Map<String, ParDecidido>> observarDecididos() => _local.observarDecididos();
 
   @override
+  Stream<Map<String, String>> observarUnionesRechazadas() => _local.observarUnionesRechazadas();
+
+  @override
   Future<Either<Failure, Unit>> decidir(
     ParDuplicado par,
     DecisionParDuplicado decision, {

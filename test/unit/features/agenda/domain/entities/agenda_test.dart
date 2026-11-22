@@ -94,7 +94,11 @@ void main() {
         'columna', () {
       expect(
         {for (final t in TipoAgenda.values) t: t.codigo},
-        {TipoAgenda.entrevista: 'ENTREVISTA', TipoAgenda.cobranza: 'COBRANZA'},
+        {
+          TipoAgenda.entrevista: 'ENTREVISTA',
+          TipoAgenda.cobranza: 'COBRANZA',
+          TipoAgenda.entrega: 'ENTREGA',
+        },
       );
       expect(
         {for (final e in EstadoAgenda.values) e: e.codigo},
@@ -142,7 +146,10 @@ void main() {
 
     test('dado cada motivo de rechazo, cuando se lee, dice a qué campo va y guía a la persona', () {
       for (final motivo in MotivoRechazoAgenda.values) {
-        expect(motivo.campo, anyOf('espacio', 'persona', 'agenda', 'visita'));
+        expect(
+          motivo.campo,
+          anyOf('espacio', 'persona', 'ubicacion', 'jornada', 'agenda', 'visita'),
+        );
         expect(motivo.mensaje, endsWith('.'));
       }
     });

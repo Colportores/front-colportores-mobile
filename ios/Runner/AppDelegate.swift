@@ -2,6 +2,7 @@ import Flutter
 import LocalAuthentication
 import UIKit
 import UserNotifications
+import workmanager_apple
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -12,6 +13,15 @@ import UserNotifications
     // Recordatorios de las visitas (HU-NOT-002), flutter_local_notifications: el centro de
     // notificaciones le avisa a este delegado cuando el aviso llega o se toca.
     UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
+    // Respaldo de la noche con la app cerrada (HU-SYNC-005, #583), workmanager: el identificador se
+    // registra acá, antes de que termine el arranque, y es el mismo de `Info.plist`
+    // (BGTaskSchedulerPermittedIdentifiers) y de `nombreTareaRespaldoNocturno` en Dart. La app que
+    // despierta el sistema corre en un motor sin UI: se le registran los plugins (el Keychain, la
+    // conectividad, Google, la DB).
+    WorkmanagerPlugin.setPluginRegistrantCallback { registry in
+      GeneratedPluginRegistrant.register(with: registry)
+    }
+    WorkmanagerPlugin.registerBGProcessingTask(withIdentifier: "com.colportores.respaldo_nocturno")
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -20,6 +30,33 @@ import UserNotifications
     registrarCanalSeguridadDispositivo(engineBridge.pluginRegistry)
     registrarCanalAlmacenamientoTiles(engineBridge.pluginRegistry)
     registrarCanalNotificaciones(engineBridge.pluginRegistry)
+    registrarCanalBateria(engineBridge.pluginRegistry)
+  }
+
+  /// Canal `colportores/bateria` (HU-SYNC-005, R-SY10): el nivel de la batería, para que el backup
+  /// automático no corra con menos del 30 %. Del lado de Dart, `NivelBateriaCanal`.
+  ///
+  /// - `nivel`: el porcentaje (0 a 100, `UIDevice.batteryLevel`) o `nil` si iOS no lo informa (el
+  ///   simulador devuelve -1).
+  private func registrarCanalBateria(_ registry: FlutterPluginRegistry) {
+    guard let registrar = registry.registrar(forPlugin: "NivelBateria") else { return }
+    let canal = FlutterMethodChannel(
+      name: "colportores/bateria",
+      binaryMessenger: registrar.messenger()
+    )
+    canal.setMethodCallHandler { call, result in
+      switch call.method {
+      case "nivel":
+        DispatchQueue.main.async {
+          let dispositivo = UIDevice.current
+          dispositivo.isBatteryMonitoringEnabled = true
+          let nivel = dispositivo.batteryLevel
+          result(nivel < 0 ? nil : Int((nivel * 100).rounded()))
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
   }
 
   /// Canal `colportores/notificaciones` (HU-NOT-001, vista 24): el permiso de notificaciones del
@@ -30,6 +67,8 @@ import UserNotifications
   /// - `pedir`: muestra el diálogo del sistema y responde cuando la persona contesta, con si
   ///   quedaron activadas. Si iOS ya no puede preguntar, responde enseguida con lo que hay.
   /// - `abrirAjustes`: abre los ajustes de la app (de ahí se llega a Notificaciones).
+  /// - `alarmasExactas`: `"noAplica"` (iOS no tiene el permiso «Alarmas y recordatorios» de Android).
+  /// - `abrirAjustesAlarmas`: `false`, no hay a dónde ir.
   private func registrarCanalNotificaciones(_ registry: FlutterPluginRegistry) {
     guard let registrar = registry.registrar(forPlugin: "PermisoNotificaciones") else { return }
     let canal = FlutterMethodChannel(
@@ -61,6 +100,10 @@ import UserNotifications
         DispatchQueue.main.async {
           UIApplication.shared.open(url, options: [:]) { abierta in result(abierta) }
         }
+      case "alarmasExactas":
+        result("noAplica")
+      case "abrirAjustesAlarmas":
+        result(false)
       default:
         result(FlutterMethodNotImplemented)
       }

@@ -14,7 +14,6 @@ class Jornada extends Equatable {
     required DateTime inicio,
     DateTime? fin,
     this.acompananteId,
-    this.tipoAcompanamiento,
     this.totalVisitas = 0,
     this.totalVentas = 0,
     required this.auditoria,
@@ -35,10 +34,6 @@ class Jornada extends Equatable {
 
   /// FK opcional a `usuario.id` (esquema-datos.md: "acompañante_id (FK opcional)").
   final String? acompananteId;
-
-  /// TODO(#8): el esquema no define el catálogo de valores de `tipo_acompañamiento` — pendiente
-  /// de confirmar. Se modela como texto libre hasta que se defina.
-  final String? tipoAcompanamiento;
 
   /// Denormalizado al cerrar la jornada (esquema-datos.md).
   final int totalVisitas;
@@ -74,7 +69,6 @@ class Jornada extends Equatable {
     inicio: inicio,
     fin: fin,
     acompananteId: acompananteId,
-    tipoAcompanamiento: tipoAcompanamiento,
     totalVisitas: totalVisitas,
     totalVentas: totalVentas,
     auditoria: auditoria.copyWith(updatedAt: actualizadaEn),
@@ -87,7 +81,6 @@ class Jornada extends Equatable {
     inicio,
     fin,
     acompananteId,
-    tipoAcompanamiento,
     totalVisitas,
     totalVentas,
     auditoria,

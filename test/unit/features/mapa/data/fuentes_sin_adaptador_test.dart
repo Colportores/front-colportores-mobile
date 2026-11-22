@@ -1,13 +1,11 @@
-// HU-UBI-001: lo que hace el alta mientras no existen el catálogo de ciudades, las inscripciones ni el
-// motor de sync. Ninguno inventa datos.
+// HU-UBI-001: lo que hace el alta mientras no existen las inscripciones ni el motor de sync. Ninguno
+// inventa datos. (Las ciudades de la campaña ya salen de las réplicas locales: `ciudades_para_alta_local_test.dart`.)
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
 import 'package:colportores_mobile/core/sync/encolador_sync.dart';
 import 'package:colportores_mobile/features/mapa/data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/pendientes_ubicacion.dart';
-import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
-import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_baja.dart'
@@ -18,10 +16,6 @@ import 'package:flutter_riverpod/misc.dart' show ProviderException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logger/logger.dart';
 
-import '../../../../helpers/logger_mudo.dart';
-
-const _punto = Coordenadas(lat: -34.9, lon: -56.1);
-
 final class _SalidaEnMemoria extends LogOutput {
   final lineas = <String>[];
 
@@ -30,40 +24,6 @@ final class _SalidaEnMemoria extends LogOutput {
 }
 
 void main() {
-  test(
-    'sin la fuente de ciudades: es una falla de lectura y no «la campaña no tiene ciudades», ni al '
-    'proponer ni en «Cambiar»',
-    () async {
-      final c = CiudadesParaAltaSinFuente(logger: loggerMudo());
-
-      expect(
-        await c.proponer(colportorId: 'col-1', punto: _punto),
-        const Left<Failure, PropuestaCiudad>(FailureCiudadesNoDisponibles()),
-      );
-      expect(
-        await c.proponer(colportorId: 'col-1'),
-        const Left<Failure, PropuestaCiudad>(FailureCiudadesNoDisponibles()),
-      );
-      expect(
-        await c.deMiCampania('col-1'),
-        const Left<Failure, List<CiudadCatalogo>>(FailureCiudadesNoDisponibles()),
-      );
-    },
-  );
-
-  test('cada lectura sin fuente deja el aviso CIUDADES_SIN_FUENTE en el log', () async {
-    final salida = _SalidaEnMemoria();
-    final c = CiudadesParaAltaSinFuente(logger: AppLogger(output: salida));
-
-    await c.proponer(colportorId: 'col-1', punto: _punto);
-    await c.deMiCampania('col-1');
-
-    expect(
-      salida.lineas.where((l) => l.startsWith('[WARN][MAP][CIUDADES_SIN_FUENTE]')),
-      hasLength(2),
-    );
-  });
-
   test('la falla de lectura dice qué pasa y qué hacer, con el texto del aviso de la vista 03', () {
     const falla = FailureCiudadesNoDisponibles();
 

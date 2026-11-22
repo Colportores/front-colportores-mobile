@@ -11,12 +11,16 @@ class Campania extends Equatable {
     required this.nombre,
     required this.tipo,
     required DateTime fechaInicio,
-    required DateTime fechaFin,
+    DateTime? fechaFin,
     required this.ciudadId,
     this.coordinadorId,
     required this.auditoria,
-  }) : fechaInicio = fechaInicio.toUtc(),
-       fechaFin = fechaFin.toUtc();
+  }) : assert(
+         fechaFin == null || !fechaFin.isBefore(fechaInicio),
+         'fechaFin no puede ser anterior a fechaInicio (check del backend)',
+       ),
+       fechaInicio = fechaInicio.toUtc(),
+       fechaFin = fechaFin?.toUtc();
 
   final String id;
   final String nombre;
@@ -25,21 +29,17 @@ class Campania extends Equatable {
   /// Siempre en UTC — ver el invariante de fechas en [Auditoria].
   final DateTime fechaInicio;
 
+  /// `null` si la campaña es permanente, que por definición no termina (esquema-datos.md
+  /// §Identidad): nadie debe inventar un centinela (año 9999, etc.). Si tiene valor, nunca es
+  /// anterior a [fechaInicio] (`check (fecha_fin is null or fecha_fin >= fecha_inicio)`).
   /// Siempre en UTC — ver el invariante de fechas en [Auditoria].
-  ///
-  /// TODO(#8): no-nullable aun con [TipoCampania.permanente], que por definición no tiene fecha
-  /// de fin — el llamador termina inventando un centinela. Decisión pendiente (ver comentario
-  /// en el issue #8).
-  final DateTime fechaFin;
+  final DateTime? fechaFin;
 
   /// FK a `ciudad.id` (entidad de Geografía, fuera del alcance de #8 — se referencia por id).
   final String ciudadId;
 
-  /// FK a `usuario.id`.
-  ///
-  /// TODO(#8): el esquema no lo marca como opcional (y sí marca otros: "(FK opcional)",
-  /// "(nullable)"), así que hacerlo nullable es apartarse del esquema — decisión pendiente
-  /// (ver comentario en el issue #8).
+  /// FK opcional a `usuario.id`: se asigna después de crear la campaña (esquema-datos.md
+  /// §Identidad), así que puede ser `null`.
   final String? coordinadorId;
 
   final Auditoria auditoria;

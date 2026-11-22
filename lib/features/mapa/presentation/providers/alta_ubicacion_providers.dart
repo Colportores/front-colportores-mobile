@@ -3,10 +3,13 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../../../datos/encolador_marcar_duplicado_motor.dart';
+import '../../data/datasources/campanias_del_colportor_local_data_source.dart';
 import '../../data/datasources/ubicacion_local_data_source_drift.dart';
 import '../../data/datasources/zona_local_data_source.dart';
 import '../../data/repositories/ubicacion_repository_impl.dart';
 import '../../data/repositories/zona_repository_impl.dart';
+import '../../data/services/ciudades_para_alta_local.dart';
 import '../../data/services/fuentes_sin_adaptador_ubicaciones.dart';
 import '../../data/services/geocodificador_nominatim.dart';
 import '../../data/services/plataforma_gps.dart';
@@ -21,6 +24,7 @@ import '../../domain/services/encolador_marcar_duplicado.dart';
 import '../../domain/services/geocodificador_inverso.dart';
 import '../../domain/services/inscripciones_colportor.dart';
 import '../../domain/services/proveedor_gps.dart';
+import '../../domain/services/seguidor_gps.dart';
 import '../../domain/services/ubicador_zona.dart';
 import '../../domain/usecases/capturar_posicion_gps_use_case.dart';
 import '../../domain/usecases/registrar_ubicacion_use_case.dart';
@@ -31,15 +35,18 @@ import '../../domain/value_objects/area_mapa.dart';
 export '../../../../core/sync/sync_providers.dart' show encoladorSyncProvider;
 
 // Cableado del alta de ubicación (HU-UBI-001, vistas 03 y 04). Presentation conoce domain; data se
-// inyecta acá. Todo lo que todavía no tiene fuente real (ciudades de la campaña, inscripciones,
-// motor de sync) usa un `...SinFuente` que no inventa datos: ver `fuentes_sin_adaptador_ubicaciones`.
+// inyecta acá. Todo lo que todavía no tiene fuente real (inscripciones, motor de sync) usa un `...SinFuente` que no inventa datos: ver `fuentes_sin_adaptador_ubicaciones`.
 
-/// El job «marcar como duplicado» del motor de sync (#178, RPC 0026). Hasta que llegue,
-/// [EncoladorMarcarDuplicadoSinMotor]: unir dos ubicaciones falla y no cambia nada, en vez de dejar la
-/// unión hecha en el teléfono sin avisarle nunca al servidor.
-final encoladorMarcarDuplicadoProvider = Provider<EncoladorMarcarDuplicado>(
-  (ref) => const EncoladorMarcarDuplicadoSinMotor(),
-);
+/// El trabajo «marcar como duplicado» del motor de sync (contrato-sync-engine §6.2, RPC 0026), como
+/// [encoladorSyncProvider] hace con las filas. Sin DB abierta no hay motor:
+/// [EncoladorMarcarDuplicadoSinMotor] falla y unir dos ubicaciones no cambia nada, en vez de dejar
+/// la unión hecha en el teléfono sin avisarle nunca al servidor.
+final encoladorMarcarDuplicadoProvider = Provider<EncoladorMarcarDuplicado>((ref) {
+  final motor = ref.watch(motorSyncProvider);
+  return motor == null
+      ? const EncoladorMarcarDuplicadoSinMotor()
+      : EncoladorMarcarDuplicadoMotor(motor);
+});
 
 /// La DB local abierta (`dbLocalProvider`). Sin DB abierta no hay dónde guardar: lanza, y quien lo
 /// lee lo traduce a una falla.
@@ -101,6 +108,11 @@ final proveedorGpsProvider = Provider<ProveedorGps>(
   (ref) => ref.watch(proveedorGpsPlataformaProvider),
 );
 
+/// El GPS mientras la colportora se mueve (#670): lo abre solo el GPS único del colportor.
+final seguidorGpsProvider = Provider<SeguidorGps>(
+  (ref) => ref.watch(proveedorGpsPlataformaProvider),
+);
+
 final activadorGpsProvider = Provider<ActivadorGps>(
   (ref) => ref.watch(proveedorGpsPlataformaProvider),
 );
@@ -115,10 +127,18 @@ final geocodificadorInversoProvider = Provider<GeocodificadorInverso>(
   (ref) => GeocodificadorNominatim(lectorHttpIo()),
 );
 
-/// Sin réplica local de las ciudades de la campaña hasta el adaptador real (#274, junto al pull de
-/// catálogos): [CiudadesParaAltaSinFuente] devuelve la falla de lectura, y toda alta muestra «No
-/// pudimos leer las ciudades de tu campaña». La app no sale a producción así.
-final ciudadesParaAltaProvider = Provider<CiudadesParaAlta>((ref) => CiudadesParaAltaSinFuente());
+/// Las ciudades de la campaña del colportor, leídas de las réplicas locales del pull de catálogos
+/// (`ciudad`, `campania`, `campania_ciudad`, `campania_colportor` y las zonas): sin red (#274). Sin la
+/// base abierta, o con el catálogo sin bajar, contesta que no pudo leerlas ([CiudadesParaAltaLocal]).
+final ciudadesParaAltaProvider = Provider<CiudadesParaAlta>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return CiudadesParaAltaLocal.sinBaseAbierta();
+  return CiudadesParaAltaLocal(
+    campanias: CampaniasDelColportorLocalDataSourceDrift(db),
+    zonas: ref.watch(zonaRepositoryProvider),
+    ahora: ref.watch(relojAltaUbicacionProvider),
+  );
+});
 
 /// Las ubicaciones del colportor dentro de [consulta] (colportor y área visible), para el contexto
 /// del mapa del alta. Emite vacío si la DB no está abierta.

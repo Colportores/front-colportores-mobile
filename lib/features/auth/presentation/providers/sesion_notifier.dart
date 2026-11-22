@@ -7,6 +7,7 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/database/sesion_usuario_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../../../core/sync/sync_providers.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../../domain/entities/cierre_forzado.dart';
 import '../../domain/entities/motivo_expiracion.dart';
@@ -16,6 +17,7 @@ import '../../domain/entities/resumen_datos_locales.dart';
 import '../../domain/entities/sesion.dart';
 import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
+import '../../domain/usecases/cerrar_otras_sesiones_pendientes_use_case.dart';
 import '../../domain/usecases/confirmar_password_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/reenviar_verificacion_use_case.dart';
@@ -23,6 +25,7 @@ import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
 import 'aviso_sesion_notifier.dart';
 import 'password_para_db_local.dart';
+import 'recuperacion_password_providers.dart';
 import 'reingreso_sesion_notifier.dart';
 
 part 'sesion_notifier.g.dart';
@@ -266,6 +269,7 @@ class SesionNotifier extends _$SesionNotifier {
         ref.read(reingresoSesionProvider.notifier).limpiar();
         // Entrar prueba que hay red: momento de revocar lo que un logout sin red dejó pendiente.
         _reintentarRevocacionPendiente();
+        _cerrarOtrasSesionesPendientes(sesion.usuarioId);
         return null;
       },
     );
@@ -529,7 +533,39 @@ class SesionNotifier extends _$SesionNotifier {
     }
   }
 
+  /// Cuánto espera el cierre al ciclo de sync en curso antes de cerrar la DB (HU-AUTH-006, «Edge -
+  /// logout en medio de un sync activo»).
+  static const _esperaSyncActivo = Duration(seconds: 5);
+
+  /// El ciclo de sync que está corriendo usa la DB: se lo espera hasta [_esperaSyncActivo] para que
+  /// termine solo; si el tiempo vence, la DB se cierra igual (lo que no subió sigue en la cola
+  /// como `PENDING`/`IN_FLIGHT` y se retoma al volver a entrar, sin perder nada: el servidor
+  /// deduplica por `client_op_id`). Si no hay motor armado no hay nada que esperar, y mirarlo no
+  /// lo arma. Nunca frena el cierre: cualquier falla del ciclo va al log.
+  Future<void> _esperarSyncActivo() async {
+    if (!ref.exists(motorSyncProvider)) return;
+    try {
+      await ref.read(motorSyncProvider)?.settled.timeout(_esperaSyncActivo);
+    } on TimeoutException {
+      _log.warn(
+        LogModulo.sync,
+        'LOGOUT_SYNC_TIMEOUT',
+        'el ciclo de sync no terminó en ${_esperaSyncActivo.inSeconds} s; se cierra la DB igual',
+      );
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.sync,
+        'LOGOUT_SYNC_FAIL',
+        'el ciclo de sync falló mientras se cerraba la sesión',
+        const {},
+        e,
+        st,
+      );
+    }
+  }
+
   Future<void> _cerrarDbYSesion() async {
+    await _esperarSyncActivo();
     _olvidarPassword();
     // El nombre del usuario no se queda en el teléfono (#243). Antes de cerrar la DB; si falla, el
     // cierre sigue igual: la copia está cifrada y la próxima sesión la pisa o la ignora (se lee por
@@ -552,4 +588,12 @@ class SesionNotifier extends _$SesionNotifier {
   /// sigue pendiente y no se avisa — el usuario no puede hacer nada con eso.
   void _reintentarRevocacionPendiente() =>
       unawaited(ref.read(reintentarRevocacionPendienteUseCaseProvider)(const NoParams()));
+
+  /// Best-effort: si al cambiar la contraseña no se pudieron cerrar las sesiones de los otros
+  /// teléfonos, entrar con la nueva lo reintenta (#542), solo si entra esa cuenta. La sesión de este teléfono no se toca.
+  void _cerrarOtrasSesionesPendientes(String usuarioId) => unawaited(
+    ref.read(cerrarOtrasSesionesPendientesUseCaseProvider)(
+      CerrarOtrasSesionesPendientesParams(usuarioId: usuarioId),
+    ),
+  );
 }

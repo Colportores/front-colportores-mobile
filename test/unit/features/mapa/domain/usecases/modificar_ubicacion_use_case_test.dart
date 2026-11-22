@@ -21,6 +21,7 @@ typedef _Escritura = ({
   CriterioDuplicadoUbicacion? duplicados,
   bool reduceAUnEspacio,
   Espacio? espacioSiNoTiene,
+  String? justificacion,
 });
 
 /// Un repositorio con una ubicación y N espacios, que anota lo que se le manda a escribir.
@@ -49,6 +50,7 @@ final class _Repositorio implements UbicacionRepository {
     CriterioDuplicadoUbicacion? duplicados,
     bool reduceAUnEspacio = false,
     Espacio? espacioSiNoTiene,
+    String? justificacion,
   }) async {
     escrituras.add((
       nueva: nueva,
@@ -56,6 +58,7 @@ final class _Repositorio implements UbicacionRepository {
       duplicados: duplicados,
       reduceAUnEspacio: reduceAUnEspacio,
       espacioSiNoTiene: espacioSiNoTiene,
+      justificacion: justificacion,
     ));
     return respuesta ?? Right(UbicacionModificada(ubicacion: nueva));
   }
@@ -286,6 +289,15 @@ void main() {
       expect(repo.escrituras.single.duplicados, isNull);
     });
 
+    test('dado "seguir igual" con motivo, cuando modifica, la justificación llega al repositorio '
+        'sin espacios en los bordes; sin "seguir igual" no llega ninguna', () async {
+      await ok(params(numero: '1236', justificacion: '  Son dos locales distintos '));
+      await ok(params(numero: '1237'));
+
+      expect(repo.escrituras.first.justificacion, 'Son dos locales distintos');
+      expect(repo.escrituras.last.justificacion, isNull);
+    });
+
     test('dado D1 y "seguir igual" con motivo, cuando modifica, busca solo las candidatas que no '
         'admiten conservar las dos (la misma dirección a menos de 100 m)', () async {
       await ok(params(numero: '1236', justificacion: 'Son dos locales distintos'));
@@ -439,7 +451,7 @@ void main() {
           expect(e.id, 'esp-nuevo');
           expect(e.ubicacionId, 'ub-1');
           expect(e.numeroDepto, isNull);
-          expect((e.piso, e.descripcion, e.estaBorrada), (null, null, false));
+          expect((e.piso, e.estaBorrada), (null, false));
           expect(e.auditoria.createdAt, t1);
           expect(e.auditoria.updatedAt, repo.escrituras.single.nueva.auditoria.updatedAt);
           expect(e.auditoria.createdBy, 'col-1');

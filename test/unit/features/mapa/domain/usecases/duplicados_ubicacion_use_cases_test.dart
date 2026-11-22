@@ -87,6 +87,7 @@ final class _Ubicaciones with UbicacionRepositorySinModificar implements Ubicaci
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) => throw UnimplementedError();
 
   @override
@@ -112,6 +113,14 @@ final class _Pares implements ParesDuplicadosRepository {
   Stream<Map<String, ParDecidido>> observarDecididos() {
     cambios = StreamController<Map<String, ParDecidido>>(onCancel: () => cambiosCancelados = true);
     return cambios.stream;
+  }
+
+  StreamController<Map<String, String>> rechazos = StreamController<Map<String, String>>();
+
+  @override
+  Stream<Map<String, String>> observarUnionesRechazadas() {
+    rechazos = StreamController<Map<String, String>>();
+    return rechazos.stream;
   }
 
   @override
@@ -458,6 +467,33 @@ void main() {
       await asentar();
 
       expect(errores, hasLength(1));
+    });
+
+    test('dado que el servidor rechazó la unión del par (#679), sale con el código del rechazo; el '
+        'rechazo de otro par no lo toca', () async {
+      ubicaciones.lista.add([resumen(a), resumen(b)]);
+      pares.cambios.add({});
+      await asentar();
+      expect(emisiones.last.single.rechazoDeUnion, isNull);
+
+      pares.rechazos.add({'ub-x|ub-y': '42501'});
+      await asentar();
+      expect(emisiones.last.single.rechazoDeUnion, isNull);
+
+      pares.rechazos.add({'ub-a|ub-b': 'UB003'});
+      await asentar();
+      expect(emisiones.last.single.rechazoDeUnion, 'UB003');
+    });
+
+    test('dado que la lectura de los rechazos falla, los pares siguen saliendo, sin aviso ni '
+        'error', () async {
+      ubicaciones.lista.add([resumen(a), resumen(b)]);
+      pares.cambios.add({});
+      pares.rechazos.addError(StateError('disco'));
+      await asentar();
+
+      expect(errores, isEmpty);
+      expect(emisiones.last.single.rechazoDeUnion, isNull);
     });
 
     test('dado el colportor en blanco, cuando observa, el stream sale con error sin leer nada', () {

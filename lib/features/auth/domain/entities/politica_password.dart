@@ -9,8 +9,8 @@ import 'package:characters/characters.dart';
 /// la Ñ: «Ñandú2026» y «Élan2026» cumplen) y el largo se cuenta por **caracteres visibles** (un
 /// emoji es 1, no los 2 o más que ocupa en la cadena).
 ///
-/// El tope de largo ([largoMaximoBytes]) es solo del registro por ahora (#265); el de la contraseña
-/// nueva de la recuperación va en su propio issue (#296), por eso [validar] no lo mira.
+/// El tope de largo ([largoMaximoBytes]) rige en las dos: el registro (#265) y la contraseña nueva
+/// de la recuperación (#296). El login no lo lleva: la cuenta ya existe.
 abstract final class PoliticaPassword {
   static const int largoMinimo = 8;
 
@@ -43,9 +43,11 @@ abstract final class PoliticaPassword {
   static bool tieneNumero(String password) => _numero.hasMatch(password);
 
   /// El error de [password] para el formulario, o `null` si cumple. [vacia] es el texto para la
-  /// contraseña sin completar (cada pantalla nombra su campo).
+  /// contraseña sin completar (cada pantalla nombra su campo). Una de más de [largoMaximoBytes]
+  /// bytes da [demasiadoLarga], antes que los requisitos.
   static String? validar(String password, {String vacia = 'Ingresá tu contraseña'}) {
     if (password.isEmpty) return vacia;
+    if (excedeLargoMaximo(password)) return demasiadoLarga;
     if (!cumpleLargo(password) || !tieneMayuscula(password) || !tieneNumero(password)) {
       return requisitos;
     }

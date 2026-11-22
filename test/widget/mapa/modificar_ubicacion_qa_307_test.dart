@@ -7,8 +7,7 @@
 // Geometría con las fuentes reales del proyecto (con la de prueba cada letra mide un cuadrado). Las
 // guías de accesibilidad van en `modificar_ubicacion_qa_307_guias_test.dart`.
 //
-// Los tests que documentan un hallazgo van con `skip: true` y, arriba, el comentario
-// `// skip: QA #321 — <hallazgo>` (en `testWidgets` el `skip` es un bool).
+// Los hallazgos de QA #321 ya están arreglados: no queda ningún test con `skip` en este archivo.
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_modificar.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
 import 'package:flutter/material.dart';

@@ -60,14 +60,16 @@ final class EncoladorMarcarDuplicadoFalso implements EncoladorMarcarDuplicado {
   Object? fallarCon;
   final encolados = <({String duplicadaId, String conservadaId})>[];
 
+  /// El `id` que devuelve cada trabajo encolado: `trabajo-1`, `trabajo-2`…
   @override
-  Future<void> encolarMarcarDuplicado({
+  Future<String> encolarMarcarDuplicado({
     required String duplicadaId,
     required String conservadaId,
   }) async {
     final error = fallarCon;
     if (error != null) throw error;
     encolados.add((duplicadaId: duplicadaId, conservadaId: conservadaId));
+    return 'trabajo-${encolados.length}';
   }
 }
 
@@ -89,6 +91,16 @@ final class DuplicadosEnMemoria {
   final Map<String, EstadoCasa> estados = {};
   Map<String, ParDecidido> decididos = {};
   var ahora = DateTime.utc(2026, 10, 9, 12);
+
+  /// Los pares cuya unión rechazó el servidor (#679), por clave, con el código. Cambiarlo con
+  /// [rechazarUnion].
+  final Map<String, String> unionesRechazadas = {};
+
+  /// El servidor rechazó la unión del par [clave] con [codigo] y quedó separado.
+  void rechazarUnion(String clave, String codigo) {
+    unionesRechazadas[clave] = codigo;
+    _cambios.add(null);
+  }
 
   late final UbicacionRepository ubicacionesRepo;
   late final ParesDuplicadosRepository paresRepo;
@@ -256,6 +268,7 @@ final class _Ubicaciones with UbicacionRepositorySinModificar implements Ubicaci
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) => throw UnimplementedError();
 
   @override
@@ -275,6 +288,10 @@ final class _Pares implements ParesDuplicadosRepository {
 
   @override
   Stream<Map<String, ParDecidido>> observarDecididos() => _d._decididos();
+
+  @override
+  Stream<Map<String, String>> observarUnionesRechazadas() =>
+      _d._reactivo(() => Map.of(_d.unionesRechazadas));
 
   @override
   Future<Either<Failure, Unit>> decidir(

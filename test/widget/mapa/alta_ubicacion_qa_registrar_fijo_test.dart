@@ -10,8 +10,8 @@
 //     el aviso de duplicado.
 //  6. Los casos límite de la acción: falla a mitad con el teclado, acciones superpuestas.
 //
-// Medidas con las fuentes reales del proyecto. Los hallazgos de QA van con `skip` y el motivo en un
-// comentario `// skip: QA #305 …`; el implementador les saca el `skip` cuando los arregla.
+// Medidas con las fuentes reales del proyecto. Los hallazgos de QA #305 ya están arreglados: no queda
+// ningún test con `skip` en este archivo.
 // Capturas: `flutter test --dart-define=QA_CAPTURAS=true …` las deja en `.dart_tool/qa_capturas/`.
 import 'dart:async';
 
@@ -242,13 +242,13 @@ void main() {
       'leído una sola vez',
       (tester) async {
         final handle = tester.ensureSemantics();
-        await abrirEn(tester, EstadoAlta.gpsPreciso);
+        await abrirEn(tester, EstadoAlta.gpsImpreciso);
 
         expect(registrarHabilitado(tester), isFalse);
         expect(
           tester.getSemantics(botonRegistrarFijo),
           isSemantics(
-            label: '${TextosAlta.registrar}. ${TextosAlta.elegiElTipo}',
+            label: '${TextosAlta.registrar}. ${TextosAlta.elegiPrecision}',
             isButton: true,
             hasEnabledState: true,
             isEnabled: false,
@@ -260,16 +260,16 @@ void main() {
         final etiquetas = _etiquetasEnOrden(tester);
         expect(
           etiquetas,
-          contains('${TextosAlta.registrar}. ${TextosAlta.elegiElTipo}'),
+          contains('${TextosAlta.registrar}. ${TextosAlta.elegiPrecision}'),
           reason: 'el botón está con su motivo: $etiquetas',
         );
         expect(
-          etiquetas.where((e) => e.contains(TextosAlta.elegiElTipo)),
+          etiquetas.where((e) => e.contains(TextosAlta.elegiPrecision)),
           hasLength(1),
           reason: 'no se repite: $etiquetas',
         );
         expect(tester.getSemantics(botonRegistrarFijo).getSemanticsData().hint, isEmpty);
-        expect(find.text(TextosAlta.elegiElTipo), findsOneWidget, reason: 'el motivo se ve');
+        expect(find.text(TextosAlta.elegiPrecision), findsOneWidget, reason: 'el motivo se ve');
         handle.dispose();
       },
     );
@@ -294,7 +294,11 @@ void main() {
           hasTapAction: true,
         ),
       );
-      expect(find.text(TextosAlta.elegiElTipo), findsNothing, reason: 'sin motivo cuando se puede');
+      expect(
+        find.text(TextosAlta.elegiPrecision),
+        findsNothing,
+        reason: 'sin motivo cuando se puede',
+      );
       handle.dispose();
     });
 

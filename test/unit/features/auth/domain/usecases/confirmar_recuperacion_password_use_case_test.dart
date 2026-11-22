@@ -12,6 +12,7 @@ import 'package:colportores_mobile/features/auth/domain/entities/politica_passwo
 import 'package:colportores_mobile/features/auth/domain/repositories/recuperacion_password_repository.dart';
 import 'package:colportores_mobile/features/auth/domain/services/turno_db_local.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/abandonar_recuperacion_password_use_case.dart';
+import 'package:colportores_mobile/features/auth/domain/usecases/cerrar_otras_sesiones_pendientes_use_case.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/confirmar_recuperacion_password_use_case.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/inicializar_db_local_use_case.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/observar_enlaces_recuperacion_use_case.dart';
@@ -55,6 +56,16 @@ final class _RecuperacionFalsa implements RecuperacionPasswordRepository {
     llamadas.add('abandonar');
     return const Right(unit);
   }
+
+  @override
+  bool otrasSesionesSinCerrar = false;
+
+  @override
+  Future<Either<Failure, Unit>> cerrarOtrasSesionesPendientes(String usuarioId) async {
+    llamadas.add('cerrarOtras:$usuarioId');
+    otrasSesionesSinCerrar = false;
+    return const Right(unit);
+  }
 }
 
 void main() {
@@ -85,6 +96,38 @@ void main() {
       expect(recuperacion.fijada, 'NuevaClave1');
       expect(recuperacion.llamadas, ['actualizar', 'cerrarSesiones']);
       expect(dbLocal.llamadas, ['estado'], reason: 'no hay DEK que re-envolver');
+    });
+  });
+
+  group('las otras sesiones sin cerrar (decisión del 29/10 en #542)', () {
+    test(
+      'dado que el repositorio no pudo revocar, cuando el cambio sale bien, el éxito lo dice',
+      () async {
+        recuperacion.otrasSesionesSinCerrar = true;
+
+        final r = await conPassword('NuevaClave1');
+
+        expect(r, const Right<Failure, Unit>(unit));
+        expect(confirmar.otrasSesionesSinCerrar, isTrue);
+      },
+    );
+
+    test('dado que revocó, no hay nada pendiente que decir', () async {
+      await conPassword('NuevaClave1');
+
+      expect(confirmar.otrasSesionesSinCerrar, isFalse);
+    });
+
+    test('el caso de uso de reintento delega en el repositorio y baja la marca', () async {
+      recuperacion.otrasSesionesSinCerrar = true;
+
+      final r = await CerrarOtrasSesionesPendientesUseCase(recuperacion)(
+        const CerrarOtrasSesionesPendientesParams(usuarioId: 'u1'),
+      );
+
+      expect(r, const Right<Failure, Unit>(unit));
+      expect(recuperacion.llamadas, ['cerrarOtras:u1']);
+      expect(confirmar.otrasSesionesSinCerrar, isFalse);
     });
   });
 
@@ -333,6 +376,25 @@ void main() {
       expect(campos(await conPassword('sinmayuscula1')), {'password': PoliticaPassword.requisitos});
       expect(campos(await conPassword('SinNumero')), {'password': PoliticaPassword.requisitos});
       expect(recuperacion.llamadas, isEmpty);
+    });
+
+    test(
+      'dada una contraseña de más de 72 bytes, lo dice en el campo y no llama al remoto (#296)',
+      () async {
+        for (final clave in ['Aa1${'x' * 70}', 'ñ' * 37, 'Aa1${'😀' * 18}']) {
+          expect(campos(await conPassword(clave)), {
+            'password': PoliticaPassword.demasiadoLarga,
+          }, reason: clave);
+        }
+        expect(recuperacion.llamadas, isEmpty);
+      },
+    );
+
+    test('dada una de exactamente 72 bytes, se actualiza', () async {
+      final r = await conPassword('Aa1${'x' * 69}');
+
+      expect(r, const Right<Failure, Unit>(unit));
+      expect(recuperacion.fijada, 'Aa1${'x' * 69}');
     });
 
     test('dado que la repetida no coincide, lo dice en ese campo', () async {

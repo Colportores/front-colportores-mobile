@@ -30,16 +30,25 @@ final class ResultadoAvisosZona extends Equatable {
 ///   campaña): no se avisa ni se anota; cuando el nombre llegue, la réplica vuelve a emitir.
 /// - **Con zona distinta a la ya avisada** —o con zona y nunca vista—: [ZonaAsignada].
 /// - **Sin zona, con una zona ya avisada**: [ZonaQuitada].
+/// - **Sin zona y con su aviso todavía en la franja** (el de «Te asignaron…», que la persona no cerró
+///   y por eso nunca quedó anotado, o el de «Ya no tenés zona…» de un pull anterior): [ZonaQuitada].
+///   El aviso que se está leyendo no se va sin decir nada ni desaparece con el pull siguiente: se
+///   queda hasta que la persona lo cierra. Lo que está en la franja lo dicen [mostrados], sin memoria
+///   aparte.
 /// - **Sin zona y nunca vista**: nada que avisar; se anota sin zona, así la primera zona que le
 ///   asignen es un cambio y se avisa.
 /// - Igual a lo ya avisado: nada.
 abstract final class DetectorAvisosZona {
   /// [avisadas]: inscripción → la zona de la última vez que se le avisó (`null` = quedó sin zona).
   /// Una inscripción que no está es una que el teléfono nunca vio.
+  ///
+  /// [mostrados]: los avisos que hoy están en la franja, sin cerrar.
   static ResultadoAvisosZona detectar({
     required Map<String, String?> avisadas,
     required Iterable<InscripcionConZona> actuales,
+    Iterable<AvisoZona> mostrados = const [],
   }) {
+    final enLaFranja = {for (final aviso in mostrados) aviso.inscripcionId};
     final avisos = <AvisoZona>[];
     final silenciosas = <String, String?>{};
     for (final inscripcion in actuales) {
@@ -55,10 +64,10 @@ abstract final class DetectorAvisosZona {
 
       final zonaId = inscripcion.zonaId;
       if (zonaId == null) {
-        if (!conocida) {
-          silenciosas[inscripcion.id] = null;
-        } else if (anterior != null) {
+        if (enLaFranja.contains(inscripcion.id) || (conocida && anterior != null)) {
           avisos.add(ZonaQuitada(inscripcionId: inscripcion.id, campaniaNombre: campania));
+        } else if (!conocida) {
+          silenciosas[inscripcion.id] = null;
         }
         continue;
       }

@@ -1345,4 +1345,44 @@ void main() {
       expect(const UnionesPendientesState().falla, isNull);
     });
   });
+
+  group('El servidor rechaza una unión hecha con la pantalla abierta (#679)', () {
+    _conReloj('dado una unión ya escrita, cuando su par vuelve con el aviso del rechazo, deja de '
+        'estar oculto y su B vuelve para los demás pares', (banco, reloj) {
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      expect(banco.estado.ocultas, {'ub-a|ub-b'});
+
+      banco.notificador.soltarRechazadas({'ub-a|ub-b'});
+
+      expect(banco.estado.ocultas, isEmpty);
+      expect(banco.estado.duplicadasEnCurso, isEmpty);
+    });
+
+    _conReloj('dado un par que espera sus 8 s con el aviso de un rechazo anterior, no se suelta: '
+        'sigue oculto hasta que se une o se deshace', (banco, reloj) {
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(const Duration(seconds: 3));
+
+      banco.notificador.soltarRechazadas({'ub-a|ub-b'});
+
+      expect(banco.estado.pendiente, _union('ub-a', 'ub-b'));
+      expect(banco.estado.ocultas, {'ub-a|ub-b'});
+    });
+
+    _conReloj('dado el par soltado, cuando lo vuelvo a unir, se oculta de nuevo, y un aviso viejo '
+        'repetido no lo suelta mientras espera', (banco, reloj) {
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      reloj.elapse(_ocho);
+      reloj.flushMicrotasks();
+      banco.notificador.soltarRechazadas({'ub-a|ub-b'});
+
+      banco.notificador.unir(_union('ub-a', 'ub-b'));
+      banco.notificador.soltarRechazadas({'ub-a|ub-b'});
+
+      expect(banco.estado.ocultas, {'ub-a|ub-b'});
+      expect(banco.estado.duplicadasEnCurso, {'ub-b'});
+    });
+  });
 }

@@ -155,13 +155,26 @@ class InMemoryJobStore implements JobStorePort {
       ]);
 
   @override
+  Future<Set<String>> withUnapplied(
+      String entity, Iterable<String> rowPks) async => {
+        for (final pk in rowPks)
+          if ((_porFila[(entity, pk)] ?? const <String>[]).any((id) {
+            final estado = _jobs[id]?.state;
+            return estado != null &&
+                estado != JobState.done &&
+                estado != JobState.invalid;
+          }))
+            pk
+      };
+
+  @override
   Future<void> rebaseVersions(
       String entity, Map<String, int> versionPorFila) async {
     for (final MapEntry(key: pk, value: version) in versionPorFila.entries) {
       for (final id in _porFila[(entity, pk)] ?? const <String>[]) {
         final q = _jobs[id];
         if (q == null ||
-            q.job.op == Op.insert ||
+            !q.job.op.esperaVersion ||
             q.state == JobState.done ||
             q.state == JobState.invalid) {
           continue;
@@ -321,6 +334,13 @@ class InMemoryJobStore implements JobStorePort {
 /// nada **ni avanza el watermark**, que es el escenario que hay que poder
 /// probar sin una DB real.
 class InMemoryLocalStore implements LocalStorePort {
+  /// [pkFieldPorEntidad] es la PK de las entidades que no usan `id`
+  /// (`house_status` → `ubicacion_id`), como en `FakeSyncTransport`: la marca,
+  /// la espera y las filas protegidas se buscan por ella, igual que en Drift.
+  InMemoryLocalStore({this.pkFieldPorEntidad = const {}});
+
+  final Map<String, String> pkFieldPorEntidad;
+
   final Map<String, List<Map<String, Object?>>> rows = {};
   final Map<String, String> watermarks = {};
 
@@ -331,21 +351,78 @@ class InMemoryLocalStore implements LocalStorePort {
   /// se nota acá.
   int applies = 0;
 
+  /// Entidad → ids de las filas marcadas «fuera del área» (§2.1).
+  final Map<String, Set<String>> fueraDelArea = {};
+
+  /// Entidad → ids que esperan volver a bajar desde un `areaReset`.
+  final Map<String, Set<String>> aLaEspera = {};
+
+  /// Los avisos de cada página, en orden, para que los tests vean qué llegó.
+  final List<PullNotices> avisos = [];
+
   @override
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> delta, {
     required String scope,
     required String? watermark,
+    PullNotices notices = PullNotices.none,
+    UnappliedRows? unapplied,
   }) async {
     if (failOnApply) {
       throw StateError('la transacción local falló');
     }
-    for (final MapEntry(key: entity, value: filas) in delta.entries) {
-      (rows[entity] ??= []).addAll(filas);
+    // Todo se calcula antes de escribir nada: si [unapplied] falla, el store
+    // queda como estaba, igual que con una transacción.
+    final espera = <String, Set<String>>{};
+    for (final entidad in notices.areaReset) {
+      final ids = [
+        for (final f in rows[entidad] ?? const <Map<String, Object?>>[])
+          _pkDe(entidad, f)
+      ];
+      final ocupadas = unapplied == null || ids.isEmpty
+          ? const <String>{}
+          : await unapplied(entidad, ids);
+      espera[entidad] = {...ids}..removeAll(ocupadas);
     }
+    final aplicar = <String, List<Map<String, Object?>>>{};
+    for (final MapEntry(key: entity, value: filas) in delta.entries) {
+      final ids = [for (final f in filas) _pkDe(entity, f)];
+      final ocupadas = unapplied == null || ids.isEmpty
+          ? const <String>{}
+          : await unapplied(entity, ids);
+      aplicar[entity] = [
+        for (final f in filas)
+          if (!ocupadas.contains(_pkDe(entity, f))) f
+      ];
+    }
+    for (final MapEntry(key: entidad, value: ids) in espera.entries) {
+      (aLaEspera[entidad] ??= {}).addAll(ids);
+    }
+    for (final MapEntry(key: entity, value: filas) in aplicar.entries) {
+      (rows[entity] ??= []).addAll(filas);
+      for (final f in filas) {
+        aLaEspera[entity]?.remove(_pkDe(entity, f));
+        fueraDelArea[entity]?.remove(_pkDe(entity, f));
+      }
+    }
+    for (final MapEntry(key: entidad, value: ids)
+        in notices.outOfArea.entries) {
+      (fueraDelArea[entidad] ??= {}).addAll(ids);
+    }
+    if (notices.complete) {
+      for (final MapEntry(key: entidad, value: ids) in aLaEspera.entries) {
+        (fueraDelArea[entidad] ??= {}).addAll(ids);
+      }
+      aLaEspera.clear();
+    }
+    if (!notices.isEmpty) avisos.add(notices);
     if (watermark != null) watermarks[scope] = watermark;
     applies++;
   }
+
+  /// El valor de la PK de [entidad] en [fila], como texto.
+  String _pkDe(String entidad, Map<String, Object?> fila) =>
+      '${fila[pkFieldPorEntidad[entidad] ?? 'id']}';
 
   @override
   Future<String?> watermarkOf(String scope) async => watermarks[scope];
@@ -361,5 +438,41 @@ class InMemoryLocalStore implements LocalStorePort {
         filas[i] = {...fila, 'sync_version': version};
       }
     }
+  }
+}
+
+/// `sync_meta` en memoria (HU-SYNC-007). Un test que simula reiniciar el
+/// celular arma otro motor con **el mismo** [InMemorySyncMeta], como lo haría la
+/// DB en disco.
+class InMemorySyncMeta implements SyncMetaPort {
+  SyncMeta _meta = const SyncMeta();
+
+  /// Cuántas veces se escribió.
+  int writes = 0;
+
+  /// Si es `true`, [write] lanza: la DB local falló.
+  bool failOnWrite = false;
+
+  @override
+  Future<SyncMeta> read() async => _meta;
+
+  @override
+  Future<void> write({
+    DateTime? lastPullAt,
+    DateTime? lastBackupAt,
+    DateTime? lastPushAt,
+    SyncNetwork? lastPushNetwork,
+  }) async {
+    if (failOnWrite) throw StateError('la DB local falló al anotar sync_meta');
+    writes++;
+    final previo = _meta;
+    final pushNuevo = lastPushAt != null &&
+        (previo.lastPushAt == null || !lastPushAt.isBefore(previo.lastPushAt!));
+    _meta = SyncMeta(
+      lastPullAt: lastPullAt ?? previo.lastPullAt,
+      lastBackupAt: lastBackupAt ?? previo.lastBackupAt,
+      lastPushAt: pushNuevo ? lastPushAt : previo.lastPushAt,
+      lastPushNetwork: pushNuevo ? lastPushNetwork : previo.lastPushNetwork,
+    );
   }
 }

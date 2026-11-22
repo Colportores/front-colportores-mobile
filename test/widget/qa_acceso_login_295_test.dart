@@ -28,6 +28,12 @@ const _correo = Key('login_email');
 const _clave = Key('login_password');
 const _errorGeneral = Key('login_error_general');
 
+/// Lo que dice el campo del email cuando está incompleto o mal armado (#700).
+const _emailIncompleto = 'El email no es válido. Revisá que esté completo, como nombre@correo.com.';
+
+/// Lo que dice el campo de la contraseña cuando no llega al mínimo de la cuenta (#700).
+const _claveCorta = 'Revisá la contraseña: tiene que tener al menos 8 caracteres.';
+
 const _reingreso = DatosReingreso(
   motivo: MotivoExpiracion.inactividad,
   email: 'lucia.silva@correo.com',
@@ -277,7 +283,7 @@ void main() {
         await _tocarEntrar(tester);
         await tester.pumpAndSettle();
 
-        expect(find.text('El email no es válido'), findsOneWidget);
+        expect(find.text(_emailIncompleto), findsOneWidget);
         expect(remoto.llamadasIniciarSesion, 0);
       });
     }
@@ -294,7 +300,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text(avisoCaracterNoPermitido), findsOneWidget);
-        expect(find.text('El email no es válido'), findsNothing);
+        expect(find.text(_emailIncompleto), findsNothing);
         expect(remoto.llamadasIniciarSesion, 0);
       });
     }
@@ -306,7 +312,70 @@ void main() {
       await _tocarEntrar(tester);
       await tester.pumpAndSettle();
 
-      expect(find.text('La contraseña tiene al menos 8 caracteres'), findsOneWidget);
+      expect(find.text(_claveCorta), findsOneWidget);
+      expect(remoto.llamadasIniciarSesion, 0);
+    });
+
+    // #700: los avisos de los campos no esperan a «Entrar».
+    testWidgets('al salir del correo con un email incompleto, el campo avisa sin tocar «Entrar»', (
+      tester,
+    ) async {
+      final remoto = await _llegarA(tester, _Estado.inicial);
+
+      await tester.enterText(find.byKey(_correo), 'ana@');
+      await tester.pumpAndSettle();
+      expect(find.text(_emailIncompleto), findsNothing, reason: 'escribiendo no avisa');
+
+      await tester.enterText(find.byKey(_clave), claveAna);
+      await tester.pumpAndSettle();
+
+      expect(find.text(_emailIncompleto), findsOneWidget);
+      expect(remoto.llamadasIniciarSesion, 0);
+    });
+
+    testWidgets('una contraseña corta avisa al salir del campo y el aviso se va al completarla', (
+      tester,
+    ) async {
+      await _llegarA(tester, _Estado.inicial);
+
+      await tester.enterText(find.byKey(_clave), 'abc');
+      await tester.enterText(find.byKey(_correo), correoAna);
+      await tester.pumpAndSettle();
+      expect(find.text(_claveCorta), findsOneWidget);
+
+      await tester.enterText(find.byKey(_clave), claveAna);
+      await tester.pumpAndSettle();
+
+      expect(find.text(_claveCorta), findsNothing);
+    });
+
+    testWidgets('salir de un campo vacío no avisa: lo que falta lo dice «Entrar»', (tester) async {
+      await _llegarA(tester, _Estado.inicial);
+
+      await tester.enterText(find.byKey(_correo), '   ');
+      await tester.enterText(find.byKey(_clave), '');
+      await tester.enterText(find.byKey(_correo), '');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ingresá tu email'), findsNothing);
+      expect(find.text('Ingresá tu contraseña'), findsNothing);
+    });
+
+    testWidgets('corregir un campo que avisaba cambia el aviso sin tocar «Entrar» y no toca el '
+        'otro', (tester) async {
+      final remoto = await _llegarA(tester, _Estado.erroresDeCampo);
+      expect(find.text('Ingresá tu email'), findsOneWidget);
+
+      await tester.enterText(find.byKey(_correo), 'ana');
+      await tester.pumpAndSettle();
+      expect(find.text('Ingresá tu email'), findsNothing);
+      expect(find.text(_emailIncompleto), findsOneWidget);
+
+      await tester.enterText(find.byKey(_correo), correoAna);
+      await tester.pumpAndSettle();
+
+      expect(find.text(_emailIncompleto), findsNothing);
+      expect(find.text('Ingresá tu contraseña'), findsOneWidget);
       expect(remoto.llamadasIniciarSesion, 0);
     });
 
@@ -458,6 +527,28 @@ void main() {
       expect(aviso, 'Servicio temporalmente no disponible, reintentá en unos minutos');
       expect(find.widgetWithText(FilledButton, 'Reintentar'), findsOneWidget);
     });
+
+    testWidgets(
+      'un rechazo del servidor sin traducción (4xx con código) dice qué pasa y qué hacer, sin el '
+      'código ni el genérico, y el botón queda habilitado (decisión del 29/10 en #542)',
+      (tester) async {
+        final remoto = await _llegarA(tester, _Estado.inicial);
+        remoto.falla = const ServidorException(status: 400);
+        await _escribir(tester);
+
+        await _tocarEntrar(tester);
+        await tester.pumpAndSettle();
+
+        expect(
+          tester.widget<Text>(find.byKey(_errorGeneral)).data,
+          'No pudimos iniciar tu sesión. Probá de nuevo en unos minutos.',
+        );
+        expect(find.textContaining('El servidor no pudo procesar'), findsNothing);
+        expect(find.textContaining('No se pudo completar la operación'), findsNothing);
+        expect(tester.widget<FilledButton>(find.byKey(_enviar)).onPressed, isNotNull);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+      },
+    );
 
     testWidgets('«¿Olvidaste tu clave?» lleva el correo tipeado y al volver el login lo conserva', (
       tester,

@@ -6,6 +6,11 @@
 // muestra el segundo: lo enmascara (HU-AUTH-004, #363). Va en su propio archivo porque carga la
 // letra real (con la de prueba, de cuadrados, el corte de renglones no es el real) y eso cambia las
 // medidas de todo el archivo.
+//
+// #700: también el aviso del email incompleto, con el texto de cada pantalla. El del login, el
+// registro y el reenvío («El email no es válido. Revisá que esté completo, como
+// nombre@correo.com.», 72 caracteres) es el más largo: la dirección de ejemplo no se parte por
+// palabras y a 320 dp y texto al 300 % ocupa 7 renglones.
 import 'package:colportores_mobile/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:colportores_mobile/features/auth/domain/services/validador_email.dart';
 import 'package:flutter/rendering.dart';
@@ -32,7 +37,11 @@ void main() {
 
   for (final pantalla in pantallasEmail) {
     group('${pantalla.nombre} — el aviso del email a texto grande (#353)', () {
-      for (final (cual, texto, email, preparar) in avisos) {
+      final avisosDeLaPantalla = <(String, String, String, void Function(ArmadaEmail))>[
+        ...avisos,
+        ('del email incompleto', pantalla.textoIncompleto, 'lucia@correo', (_) {}),
+      ];
+      for (final (cual, texto, email, preparar) in avisosDeLaPantalla) {
         // La recuperación no muestra el rechazo del servidor (#363): lo trata como un envío.
         if (!pantalla.rechazoDelServidorSeVe && texto == avisoDireccionRechazada) continue;
         for (final (tam, escala) in [

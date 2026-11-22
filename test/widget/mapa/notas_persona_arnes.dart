@@ -52,11 +52,17 @@ void fijarTamano(WidgetTester tester, Size tamano) {
   addTearDown(tester.view.reset);
 }
 
-List<Override> overridesNotas(NotaPersonaRepositorioFalso repo, {List<Override> otros = const []}) {
+/// [reloj] es el «ahora» de la pantalla (por defecto, [ahoraDePrueba]): un test que hace pasar el
+/// tiempo lo cambia sin tocar los overrides.
+List<Override> overridesNotas(
+  NotaPersonaRepositorioFalso repo, {
+  List<Override> otros = const [],
+  DateTime Function()? reloj,
+}) {
   var contador = 0;
   return [
     notaPersonaRepositorioProviderOverride(repo),
-    relojPersonaProvider.overrideWithValue(() => ahoraDePrueba),
+    relojPersonaProvider.overrideWithValue(reloj ?? () => ahoraDePrueba),
     generadorIdPersonaProvider.overrideWithValue(() => 'nota-nueva-${++contador}'),
     ...otros,
   ];
@@ -74,11 +80,12 @@ Future<void> montarNotas(
   bool abrir = true,
   bool lector = false,
   List<Override> otros = const [],
+  DateTime Function()? reloj,
 }) async {
   fijarTamano(tester, tamano);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: overridesNotas(repo ?? NotaPersonaRepositorioFalso(), otros: otros),
+      overrides: overridesNotas(repo ?? NotaPersonaRepositorioFalso(), otros: otros, reloj: reloj),
       child: _App(
         escala: escala,
         lector: lector,

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "224402660816",
+    "project_id": "colportores-66b3b",
+    "storage_bucket": "colportores-66b3b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:224402660816:android:43472ddf3f21c1ecfd6dd5",
+        "android_client_info": {
+          "package_name": "com.colportores.colportores_mobile.staging"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCSl2zX38zXOPZR98_tTE-h5pDG61Z1SPM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

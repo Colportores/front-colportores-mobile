@@ -9,6 +9,7 @@ import '../../domain/entities/ubicacion.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../providers/alta_ubicacion_notifier.dart';
 import '../providers/alta_ubicacion_providers.dart';
+import '../providers/pantallas_sobre_el_mapa.dart' show RutasCapaDelMapa;
 import '../widgets/aviso_mapa.dart';
 import '../widgets/hoja_alta.dart';
 import '../widgets/hoja_ciudad.dart';
@@ -57,6 +58,7 @@ class AltaUbicacionPage extends ConsumerStatefulWidget {
     Coordenadas? puntoInicial,
   }) => Navigator.of(context).push<SalidaAltaUbicacion>(
     MaterialPageRoute(
+      settings: const RouteSettings(name: RutasCapaDelMapa.alta),
       builder: (_) => AltaUbicacionPage(
         parametros: ParametrosAlta(
           colportorId: colportorId,
