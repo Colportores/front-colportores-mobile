@@ -19,14 +19,22 @@ const _duracionDelAviso = Duration(seconds: 8);
 /// Avisa por qué la jornada o la venta no se habilitan todavía, sin acumular avisos si se toca varias
 /// veces. Va por el [mensajero] (el del `ScaffoldMessenger`) y no por un `BuildContext` para poder
 /// llamarlo desde un flujo que ya cambió de pantalla.
-void avisarCampaniaPorEmpezar(ScaffoldMessengerState? mensajero, CampaniaPorEmpezar campania) =>
-    mensajero
-      ?..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          key: const Key('campania_por_empezar_aviso'),
-          content: Text(TextosCampaniaPorEmpezar.aviso(campania)),
-          duration: _duracionDelAviso,
-          showCloseIcon: true,
-        ),
-      );
+void avisarCampaniaPorEmpezar(ScaffoldMessengerState? mensajero, CampaniaPorEmpezar campania) {
+  if (mensajero == null) return;
+  // Con lector de pantalla o con el foco del teclado el aviso no se cierra solo (decisión del agente
+  // de decisiones, P1 de #62, accesibilidad): se queda hasta que la persona lo cierra con la ✕.
+  final sinPrisa =
+      (MediaQuery.maybeAccessibleNavigationOf(mensajero.context) ?? false) ||
+      FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+  mensajero
+    ..clearSnackBars()
+    ..showSnackBar(
+      SnackBar(
+        key: const Key('campania_por_empezar_aviso'),
+        content: Text(TextosCampaniaPorEmpezar.aviso(campania)),
+        duration: _duracionDelAviso,
+        persist: sinPrisa,
+        showCloseIcon: true,
+      ),
+    );
+}

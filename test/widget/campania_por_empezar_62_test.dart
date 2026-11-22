@@ -222,6 +222,26 @@ void main() {
       expect(_snack, findsNothing);
     });
 
+    testWidgets('con lector de pantalla el aviso no se cierra solo: queda hasta tocar la ✕', (
+      tester,
+    ) async {
+      final m = _Mundo(campanias: [_porEmpezar()]);
+      tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+        accessibleNavigation: true,
+      );
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      await _montar(tester, m);
+
+      await _tocarIniciar(tester);
+      await tester.pump(const Duration(seconds: 30));
+      expect(_snack, findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(_snack, findsNothing);
+    });
+
     testWidgets('con varias por empezar dice la que empieza primero', (tester) async {
       await _montar(
         tester,
