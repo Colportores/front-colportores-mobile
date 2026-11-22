@@ -474,7 +474,12 @@ void main() {
 
       await darDeBajaUbicacion('ub-2', t2);
       await hasta(m.emitidos, 3);
-      expect(m.emitidos.last, const UbicacionAlternativaDeBaja('ub-2'));
+      final deBaja = m.emitidos.last as UbicacionAlternativaDeBaja;
+      expect(deBaja.ubicacionId, 'ub-2');
+      // La ficha dice cuál es (22A·08): la baja es lógica y la fila sigue en el teléfono.
+      expect(deBaja.ubicacion?.id, 'ub-2');
+      expect(deBaja.ubicacion?.calle, 'Av. Italia');
+      expect(deBaja.ubicacion?.estaBorrada, isTrue);
       expect(m.emitidos.last.sugerida, isNull);
       expect(m.emitidos.last.requiereActualizar, isTrue);
 

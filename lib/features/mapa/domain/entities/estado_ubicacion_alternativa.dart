@@ -39,15 +39,19 @@ final class UbicacionAlternativaVigente extends EstadoUbicacionAlternativa {
 
 /// La alternativa [ubicacionId] se dio de baja después de elegirla. No se sugiere.
 final class UbicacionAlternativaDeBaja extends EstadoUbicacionAlternativa {
-  const UbicacionAlternativaDeBaja(this.ubicacionId);
+  const UbicacionAlternativaDeBaja(this.ubicacionId, {this.ubicacion});
 
   final String ubicacionId;
+
+  /// La ubicación dada de baja, para que la ficha diga cuál es (vista 22A·08: dirección tachada). La
+  /// baja es lógica: la fila sigue en el teléfono.
+  final Ubicacion? ubicacion;
 
   @override
   bool get requiereActualizar => true;
 
   @override
-  List<Object?> get props => [ubicacionId];
+  List<Object?> get props => [ubicacionId, ubicacion];
 }
 
 /// La alternativa [ubicacionId] no está en el teléfono (el pull no garantiza el orden, o se recuperó

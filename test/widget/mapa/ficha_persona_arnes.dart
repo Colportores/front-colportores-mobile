@@ -22,6 +22,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/ficha_pe
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/notas_persona_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/ubicacion_alternativa_providers.dart';
 import 'package:colportores_mobile/features/notificaciones/domain/entities/preferencias_recordatorios.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
@@ -35,6 +36,7 @@ import '../../helpers/ficha_persona_falsos.dart';
 import '../../helpers/nota_persona_falsos.dart';
 import '../../helpers/notificaciones_arnes.dart' show Telefono;
 import '../../helpers/persona_falsos.dart';
+import '../../helpers/ubicacion_alternativa_falsos.dart';
 import 'baja_persona_arnes.dart' show CuentasFalsas;
 
 export 'package:colportores_mobile/features/mapa/domain/entities/contexto_notas_persona.dart';
@@ -44,6 +46,7 @@ export 'package:colportores_mobile/features/mapa/domain/repositories/ficha_perso
 export '../../helpers/ficha_persona_falsos.dart';
 export '../../helpers/nota_persona_falsos.dart';
 export '../../helpers/persona_falsos.dart';
+export '../../helpers/ubicacion_alternativa_falsos.dart';
 export 'baja_persona_arnes.dart' show CuentasFalsas, cuentaConSaldo;
 
 /// «Hoy» de los tests: el 22/10/2026 a las 15:00, hora local.
@@ -113,6 +116,9 @@ final class MundoFicha {
   final movimientos = MovimientosFalsos();
   final marcador = MarcadorFalso();
   final personas = PersonaRepositorioFalso();
+
+  /// Dónde se le cobra a la persona (HU-UBI-013, vista 22): sin alternativa y sin otras ubicaciones.
+  final alternativas = UbicacionAlternativaRepositorioFalso();
 
   /// La agenda de la persona (23A·05, «PRÓXIMA VISITA»): `per-1` tiene el vínculo `ep-per-1`.
   final consultaAgendas = ConsultaAgendaFalsa()
@@ -211,6 +217,7 @@ Future<void> montarFicha(
         movimientosDeCuentaProvider.overrideWithValue(mundo.movimientos),
         marcadorDeTelefonoProvider.overrideWithValue(mundo.marcador),
         personaRepositoryProvider.overrideWithValue(mundo.personas),
+        ubicacionAlternativaRepositoryProvider.overrideWithValue(mundo.alternativas),
         consultaAgendaRepositoryProvider.overrideWithValue(mundo.consultaAgendas),
         preferenciasDelAvisoProvider.overrideWith((ref) async => mundo.preferencias),
         if (mundo.conDetalleDeAgenda)
