@@ -110,7 +110,7 @@ void main() {
   });
 
   test('dado un login posterior, abre la misma DB con la DEK del almacén, sin Argon2id y sin '
-      'contraseña (sesión restaurada o Google)', () async {
+      'contraseña (sesión restaurada)', () async {
     await iniciarSesion();
     await inicializar();
     final dek = (await container.read(custodiaClaveDbProvider).leerDek())!.bytes;
@@ -159,9 +159,11 @@ void main() {
   test('dado que el usuario eligió empezar de nuevo, borra todo y la inicialización crea una DB '
       'nueva', () async {
     await iniciarSesion();
-    await inicializar(password: null);
+    await inicializar();
     await cerrarSesion();
+    // Se perdieron el almacén y el envoltorio (si quedara el envoltorio, la contraseña recupera).
     await almacen.borrarTodo();
+    await container.read(archivoEnvoltorioDekProvider).borrar();
     await iniciarSesion();
     expect(
       await inicializar(password: null),
@@ -172,7 +174,7 @@ void main() {
 
     expect(r, const Right<Failure, Unit>(unit));
     expect(await helper.existe(), isFalse);
-    expect(await inicializar(password: null), _creada);
+    expect(await inicializar(), _creada);
   });
 
   test('dadas dos inicializaciones en paralelo (login y sesión restaurada juntos), la segunda '

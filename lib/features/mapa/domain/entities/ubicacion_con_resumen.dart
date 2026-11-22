@@ -1,0 +1,42 @@
+import 'package:equatable/equatable.dart';
+
+import 'estado_casa.dart';
+import 'ubicacion.dart';
+
+/// Una ubicación con lo que la lista (HU-UBI-002) muestra al lado de la dirección: cuántos
+/// espacios tiene y en qué estado está la casa.
+final class UbicacionConResumen extends Equatable {
+  const UbicacionConResumen({
+    required this.ubicacion,
+    this.cantidadEspacios = 0,
+    this.estado,
+    this.proximaEntrevista,
+    this.motivoBaja,
+  });
+
+  final Ubicacion ubicacion;
+
+  /// Espacios (deptos) sin baja de la ubicación.
+  final int cantidadEspacios;
+
+  /// El estado de la casa según `house_status`. Una ubicación sin fila (o con la fila dada de baja:
+  /// el cálculo la dejó sin nada que contar) es [EstadoCasa.sinVisita]. `null` solo si quien arma la
+  /// fila no conoce el estado (los tests de las pantallas).
+  final EstadoCasa? estado;
+
+  /// La hora de la próxima entrevista agendada (la `PROGRAMADA` más cercana que todavía no pasó),
+  /// para [EstadoCasa.entrevistaAgendada]. Sin entrevista agendada, `null`: la línea no se muestra.
+  final DateTime? proximaEntrevista;
+
+  /// El motivo con que se dio de baja (`audit_log` local), si la ubicación está de baja y el
+  /// teléfono lo guardó: una baja que vino del sync, o anterior a la versión 7 de la DB, no lo tiene.
+  final String? motivoBaja;
+
+  @override
+  List<Object?> get props => [ubicacion, cantidadEspacios, estado, proximaEntrevista, motivoBaja];
+
+  /// [motivoBaja] es texto libre del colportor y está en [props]: `EquatableConfig.stringify` arranca
+  /// en `true` en debug y lo imprimiría en el `toString` (R-UB09, ni a logs ni a telemetría).
+  @override
+  bool? get stringify => false;
+}

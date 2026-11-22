@@ -47,6 +47,7 @@ void main() {
         'iguales y comparten hashCode', () {
       Visita construir(DateTime fecha) => Visita(
         id: 'vis-1',
+        espacioId: 'esp-1',
         espacioPersonaId: 'ep-1',
         fecha: fecha,
         tipoResultado: TipoResultadoVisita.venta,
@@ -87,7 +88,6 @@ void main() {
         montoCentavos: 50000,
         medio: MedioCobranza.efectivo,
         fecha: local,
-        numeroCuota: 1,
         auditoria: auditoria,
       );
       final jornada = Jornada(
@@ -115,7 +115,7 @@ void main() {
       );
 
       expect(campania.fechaInicio.isUtc, isTrue);
-      expect(campania.fechaFin.isUtc, isTrue);
+      expect(campania.fechaFin!.isUtc, isTrue);
       expect(usuarioRol.validoDesde.isUtc, isTrue);
       expect(usuarioRol.validoHasta!.isUtc, isTrue);
       expect(cobranza.fecha.isUtc, isTrue);

@@ -1,12 +1,18 @@
 import 'package:dartz/dartz.dart';
+import 'package:sqlite3/common.dart' show SqliteException;
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/espacio.dart';
+import '../../domain/entities/espacios_activos.dart';
+import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/marcador_mapa.dart';
+import '../../domain/entities/motivo_baja.dart';
 import '../../domain/entities/resultado_alta_ubicacion.dart';
 import '../../domain/entities/resultado_modificacion_ubicacion.dart';
+import '../../domain/entities/resultado_union_duplicados.dart';
 import '../../domain/entities/ubicacion.dart';
+import '../../domain/entities/ubicacion_con_resumen.dart';
 import '../../domain/repositories/ubicacion_repository.dart';
 import '../../domain/services/criterio_duplicado_ubicacion.dart';
 import '../../domain/value_objects/area_mapa.dart';
@@ -33,12 +39,14 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) async {
     try {
       final insercion = await _local.insertar(
         UbicacionModel.fromEntity(ubicacion),
         espacio: espacio == null ? null : EspacioModel.fromEntity(espacio),
         duplicados: duplicados,
+        justificacion: justificacion,
       );
       if (insercion.yaEstaba) {
         _log.info(LogModulo.db, 'UBICACION_YA_REGISTRADA', 'el alta ya estaba hecha', {
@@ -67,13 +75,23 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         LogModulo.db,
         'UBICACION_ALTA_FAIL',
         'no se pudo guardar la ubicación',
-        {'ubicacion_id': ubicacion.id},
-        e,
+        _contextoDeFalla(ubicacion.id, e),
+        null,
         st,
       );
       return Left(FailureInesperado(causa: e));
     }
   }
+
+  /// El contexto del log de una falla al escribir. Nunca el objeto de la excepción: una
+  /// `SqliteException` imprime la sentencia con los parámetros enlazados y, si falla el INSERT en
+  /// `audit_log`, entre ellos va la justificación de «Crear igual» (texto libre, R-UB09). Solo el
+  /// tipo y, de SQLite, el código.
+  static Map<String, Object?> _contextoDeFalla(String ubicacionId, Object e) => {
+    'ubicacion_id': ubicacionId,
+    'tipo': e.runtimeType.toString(),
+    if (e is SqliteException) 'result_code': e.resultCode,
+  };
 
   @override
   Future<Either<Failure, Ubicacion?>> obtener(String id) async {
@@ -110,20 +128,33 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
   }
 
   @override
+  Stream<EspaciosActivos> observarEspaciosActivos(String ubicacionId) =>
+      _local.observarEspaciosActivos(ubicacionId);
+
+  @override
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool reduceAUnEspacio = false,
+    Espacio? espacioSiNoTiene,
+    String? justificacion,
   }) async {
     try {
       final guardada = await _local.actualizar(
         UbicacionModel.fromEntity(nueva),
         baseUpdatedAt: baseUpdatedAt,
         duplicados: duplicados,
+        reduceAUnEspacio: reduceAUnEspacio,
+        espacioSiNoTiene: espacioSiNoTiene == null
+            ? null
+            : EspacioModel.fromEntity(espacioSiNoTiene),
+        justificacion: justificacion,
       );
       _log.info(LogModulo.db, 'UBICACION_MODIFICADA', 'ubicación modificada', {
         'ubicacion_id': nueva.id,
         'seguir_igual': duplicados?.esSeguirIgual ?? true,
+        'reduce_a_un_espacio': reduceAUnEspacio,
       });
       return Right(UbicacionModificada(ubicacion: guardada.toEntity()));
     } on UbicacionDuplicadaException catch (e) {
@@ -133,6 +164,22 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         'motivos': [for (final c in e.candidatas) c.motivo.name],
       });
       return Right(ModificacionConDuplicados(candidatas: e.candidatas));
+    } on UbicacionConEspaciosException catch (e) {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_CON_ESPACIOS',
+        'ubicación con espacios: no cambia de tipo',
+        {'ubicacion_id': nueva.id, 'espacios': e.cantidad},
+      );
+      return Left(FailureUbicacionConEspacios(cantidadEspacios: e.cantidad));
+    } on ReactivacionDeUnionException catch (e) {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_REACTIVAR_UNION',
+        'la baja nació de unir duplicados: no se reactiva',
+        {'ubicacion_id': nueva.id},
+      );
+      return Left(FailureReactivacionDeUnion(conservadaId: await _conservadaActiva(e)));
     } on UbicacionInexistenteException {
       return const Left(FailureUbicacionInexistente());
     } on UbicacionCambioException {
@@ -145,8 +192,8 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         LogModulo.db,
         'UBICACION_MODIFICAR_FAIL',
         'no se pudo modificar la ubicación',
-        {'ubicacion_id': nueva.id},
-        e,
+        _contextoDeFalla(nueva.id, e),
+        null,
         st,
       );
       return Left(FailureInesperado(causa: e));
@@ -159,16 +206,22 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
     required bool baja,
     required DateTime baseUpdatedAt,
     required DateTime ahora,
-    bool conMotivo = false,
+    String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
   }) async {
+    // El motivo es texto del colportor: a la DB (auditoría local) sí, al log solo que hubo.
+    final guardado = MotivosBaja.paraGuardar(motivo, deUnion: conservadaId != null);
+    final conMotivo = baja && guardado != null;
     try {
       final (:ubicacion, :escribio) = await _local.cambiarBaja(
         id,
         baseUpdatedAt: baseUpdatedAt,
         updatedAt: ahora,
         deletedAt: baja ? ahora : null,
+        motivo: baja ? guardado : null,
         conservadaId: conservadaId,
+        duplicados: baja ? null : duplicados,
       );
       // Un solo evento de auditoría por baja (R-UB09): el segundo de dos toques no escribió.
       if (escribio) {
@@ -187,6 +240,29 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         );
       }
       return Right((ubicacion: ubicacion.toEntity(), escribio: escribio));
+    } on ReactivacionDeUnionException catch (e) {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_REACTIVAR_UNION',
+        'la baja nació de unir duplicados: no se reactiva',
+        {'ubicacion_id': id},
+      );
+      return Left(FailureReactivacionDeUnion(conservadaId: await _conservadaActiva(e)));
+    } on UbicacionDuplicadaException catch (e) {
+      // Reactivar choca con otra activa por D1 (la más cercana primero). Al log, solo los uuid.
+      _log.info(
+        LogModulo.db,
+        'UBICACION_REACTIVAR_MISMA_DIRECCION',
+        'reactivar choca con otra ubicación activa por la dirección única',
+        {'ubicacion_id': id, 'existente_id': e.candidatas.first.ubicacion.id},
+      );
+      final existente = e.candidatas.first.ubicacion;
+      return Left(
+        FailureReactivacionChocaConActiva(
+          existenteId: existente.id,
+          direccion: _direccionDe(existente),
+        ),
+      );
     } on UbicacionInexistenteException {
       return const Left(FailureUbicacionInexistente());
     } on ConservadaDeBajaException {
@@ -208,12 +284,80 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         baja ? const FailureBajaCambioReciente() : const FailureReactivacionCambioReciente(),
       );
     } on Object catch (e, st) {
+      // Nunca el objeto de la excepción al log: una `SqliteException` imprime la sentencia con los
+      // parámetros enlazados y, si falla el INSERT en `audit_log`, entre ellos va el motivo (texto
+      // libre, R-UB09). Solo el tipo y, de SQLite, el código (como `DatabaseHelper.sinClave`).
       _log.error(
         LogModulo.db,
         'UBICACION_BAJA_FAIL',
         'no se pudo cambiar la baja',
-        {'ubicacion_id': id},
-        e,
+        {
+          'ubicacion_id': id,
+          'tipo': e.runtimeType.toString(),
+          if (e is SqliteException) 'result_code': e.resultCode,
+        },
+        null,
+        st,
+      );
+      return Left(FailureInesperado(causa: e));
+    }
+  }
+
+  @override
+  Future<Either<Failure, ResultadoUnionDuplicados>> unirDuplicada(
+    String conservadaId,
+    String duplicadaId, {
+    required DateTime ahora,
+  }) async {
+    final datos = {'conservada_id': conservadaId, 'duplicada_id': duplicadaId};
+    try {
+      final union = await _local.unirDuplicada(conservadaId, duplicadaId, ahora: ahora);
+      if (!union.escribio) {
+        _log.info(
+          LogModulo.db,
+          'UBICACION_YA_UNIDA',
+          'el par ya estaba unido: no se hizo nada',
+          datos,
+        );
+        return const Right(ResultadoUnionDuplicados.yaUnida);
+      }
+      _log.info(LogModulo.db, 'UBICACION_UNIDA', 'par de duplicados unido', {
+        ...datos,
+        'espacios_pasados': union.espaciosPasados,
+        'espacios_fundidos': union.espaciosFundidos,
+        'a_edificio': union.conservadaPasoAEdificio,
+      });
+      return Right(
+        ResultadoUnionDuplicados(
+          escribio: true,
+          espaciosPasados: union.espaciosPasados,
+          espaciosFundidos: union.espaciosFundidos,
+          conservadaPasoAEdificio: union.conservadaPasoAEdificio,
+        ),
+      );
+    } on UbicacionInexistenteException {
+      return const Left(FailureUbicacionInexistente());
+    } on ConservadaDeBajaException {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_CONSERVADA_DE_BAJA',
+        'la ubicación que se conserva ya estaba de baja',
+        datos,
+      );
+      return const Left(FailureConservadaDeBaja());
+    } on Object catch (e, st) {
+      // Como en la baja: nunca la excepción al log (una `SqliteException` imprime la sentencia con
+      // sus parámetros). Solo el tipo y, de SQLite, el código.
+      _log.error(
+        LogModulo.db,
+        'UBICACION_UNIR_FAIL',
+        'no se pudo unir el par de duplicados',
+        {
+          ...datos,
+          'tipo': e.runtimeType.toString(),
+          if (e is SqliteException) 'result_code': e.resultCode,
+        },
+        null,
         st,
       );
       return Left(FailureInesperado(causa: e));
@@ -233,9 +377,54 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
       )
       .map((modelos) => [for (final m in modelos) m.toEntity()]);
 
+  // El estado sale de la cache local `house_status` (ADR-003), que se lee junto con los espacios: sin
+  // fila la casa es «Sin visita». Lo que la lista y el mapa dibujan sale de acá, en el mismo cuadro.
+  @override
+  Stream<List<UbicacionConResumen>> observarListaDelColportor({
+    required String colportorId,
+    bool incluirBajas = false,
+  }) => _local
+      .observarListaDelColportor(colportorId: colportorId, incluirBajas: incluirBajas)
+      .map(
+        (filas) => [
+          for (final f in filas)
+            UbicacionConResumen(
+              ubicacion: f.ubicacion.toEntity(),
+              cantidadEspacios: f.cantidadEspacios,
+              estado: EstadoCasa.desdeColor(f.color),
+              motivoBaja: f.motivoBaja,
+              proximaEntrevista: f.proximaEntrevista,
+            ),
+        ],
+      );
+
   @override
   Stream<List<MarcadorMapa>> observarMarcadoresEnArea({
     required String colportorId,
     required AreaMapa area,
   }) => _local.observarMarcadoresEnArea(colportorId: colportorId, area: area);
+
+  /// La ubicación a la que se unió la baja de [union], solo si sigue activa: es a la que la hoja de
+  /// «Reactivar» ofrece abrir. `null` si el motivo no trae el uuid, si ya no existe, si también está
+  /// de baja o si no se pudo leer (la hoja entonces solo dice «Entendido»).
+  Future<String?> _conservadaActiva(ReactivacionDeUnionException union) async {
+    final id = union.conservadaId;
+    if (id == null) return null;
+    try {
+      final conservada = await _local.obtener(id);
+      return conservada == null || conservada.auditoria.estaBorrada ? null : id;
+    } on Object {
+      return null;
+    }
+  }
+
+  /// «Av. Italia 1240»: calle y número como los escribió quien la cargó. Un choque de D1 siempre
+  /// tiene los dos; «otra ubicación» solo por si alguna vez faltaran.
+  static String _direccionDe(Ubicacion u) {
+    final partes = [
+      for (final p in [u.calle, u.numero])
+        if (p != null && p.trim().isNotEmpty) p.trim(),
+    ];
+    return partes.isEmpty ? 'otra ubicación' : partes.join(' ');
+  }
 }

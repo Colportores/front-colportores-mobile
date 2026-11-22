@@ -345,6 +345,7 @@ void main() {
     testWidgets('dos tocs seguidos en «Cerrar sesión» abren una sola hoja', (tester) async {
       _pantalla(tester, const Size(390, 844), 1);
       await _montar(tester);
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       final pos = tester.getCenter(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tapAt(pos);
       await tester.tapAt(pos);

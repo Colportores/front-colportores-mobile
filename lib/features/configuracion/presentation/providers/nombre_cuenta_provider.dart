@@ -9,7 +9,7 @@ import '../../../auth/presentation/providers/sesion_notifier.dart';
 
 /// Nombre de la cuenta para el saludo del resumen del día y para Configuración («Lucía Silva»):
 /// el de la sesión y, si la sesión no lo trae, la copia guardada en la DB cifrada (#243). `null`
-/// si no hay ninguno (ingreso con Google): la pantalla muestra el saludo o el correo sin nombre.
+/// si no hay ninguno (una cuenta vieja sin nombre): la pantalla muestra el saludo o el correo sin nombre.
 final nombreCuentaProvider = Provider<String?>((ref) {
   final delaSesion = _limpio(ref.watch(sesionProvider).value?.nombre);
   return delaSesion ?? _limpio(ref.watch(nombreGuardadoProvider).value);

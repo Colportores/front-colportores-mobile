@@ -1,0 +1,864 @@
+import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../../../core/database/app_database.dart';
+import '../../../../core/domain/entities/auditoria.dart';
+import '../../../../core/domain/instante.dart';
+import '../../../../core/sync/encolador_sync.dart';
+import '../../../cobranzas/data/datasources/cuotas_local_data_source_drift.dart';
+import '../../../mapa/data/datasources/audit_log_table.dart';
+import '../../../mapa/data/datasources/notas_table.dart';
+import '../../../mapa/domain/services/house_status_updater.dart';
+import '../../../ventas/data/models/entrega_model.dart';
+import '../../../ventas/domain/services/reglas_de_entrega.dart';
+import '../../domain/entities/agenda.dart';
+import '../../domain/entities/cambios_de_agenda.dart';
+import '../../domain/entities/detalle_de_agenda.dart';
+import '../../domain/entities/estado_agenda.dart';
+import '../../domain/entities/misionero_dejado.dart';
+import '../../domain/entities/motivo_rechazo_agenda.dart';
+import '../../domain/entities/nota_de_campo.dart';
+import '../../domain/entities/tipo_agenda.dart';
+import '../../domain/entities/visita.dart';
+import '../../domain/entities/visita_guardada.dart';
+import '../models/agenda_model.dart';
+import '../models/misionero_dejado_model.dart';
+import '../models/visita_model.dart';
+import 'agenda_local_data_source.dart';
+
+typedef _Motivo = MotivoRechazoAgenda;
+
+String _uuidV7() => const Uuid().v7();
+
+/// [AgendaLocalDataSource] sobre las tablas `agenda`, `visita` y `nota` de la DB cifrada.
+///
+/// Cada operación es **una transacción de Drift** que escribe la fila, la encola para el sync
+/// (contrato-sync-engine §3: [EncoladorSync] se llama adentro, así que si falla se revierte todo),
+/// guarda la nota local-only y le pide a [HouseStatusUpdater] que recalcule el color de la casa
+/// (R-UB08). Drift no corre dos transacciones a la vez sobre la misma DB: dos llamadas casi
+/// simultáneas (un doble toque, dos acciones seguidas) se serializan y la segunda ve lo que dejó la
+/// primera.
+///
+/// El orden de la cola importa para el servidor (`agenda.visita_id` apunta a `visita`): primero
+/// el `insert` de la visita y después el `update` de la agenda que cumple.
+final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
+  /// [_encolador] y [_estadoDeLasCasas] se pasan como `encolador:` y `estadoDeLasCasas:`
+  /// (parámetros nombrados privados, Dart ≥ 3.10).
+  AgendaLocalDataSourceDrift(
+    this._db, {
+    required this._encolador,
+    required this._estadoDeLasCasas,
+    this._generarId = _uuidV7,
+  });
+
+  final AppDatabase _db;
+  final EncoladorSync _encolador;
+  final HouseStatusUpdater _estadoDeLasCasas;
+
+  /// Id de la agenda `CUMPLIDA` que se crea junto con una visita espontánea.
+  final String Function() _generarId;
+
+  @override
+  Future<AgendaAgendada> agendar(Agenda agenda, {NotaDeCampo? nota}) => _db.transaction(() async {
+    final existente = await _agendaPorId(agenda.id);
+    if (existente != null) return (agenda: _aAgenda(existente), yaEstaba: true);
+
+    await _exigirEspacioYVinculo(agenda.espacioId, agenda.espacioPersonaId);
+    await _exigirUbicacionAlt(agenda.ubicacionAltId);
+    await _db.into(_db.agendas).insert(_aFilaAgenda(agenda));
+    await _encolador.encolar(
+      'agenda',
+      OperacionSync.insert,
+      AgendaModel.fromEntity(agenda).toJson(),
+    );
+    if (nota != null) await _guardarNota(nota, TipoObjetivoNota.agenda, agenda.id);
+    await _recalcular(
+      agenda.espacioId,
+      ahora: agenda.auditoria.updatedAt,
+      colportorId: agenda.colportorId,
+    );
+    return (agenda: agenda, yaEstaba: false);
+  });
+
+  @override
+  Future<AgendaCancelada> cancelar(
+    String agendaId, {
+    required DateTime ahora,
+  }) => _db.transaction(() async {
+    final fila = await _agendaPorId(agendaId);
+    if (fila == null || fila.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.agendaInexistente);
+    }
+    final estado = EstadoAgenda.desdeCodigo(fila.estado);
+    // Un segundo toque sobre «Cancelar» no es un error: ya está cancelada y no se vuelve a
+    // escribir ni a encolar.
+    if (estado == EstadoAgenda.cancelada) return (agenda: _aAgenda(fila), escribio: false);
+    if (estado.estaCerrada) throw const AgendaRechazadaException(_Motivo.agendaCerrada);
+
+    // Una cuota del plan de una venta no se pierde al cancelarla: su monto pasa a las que siguen
+    // (HU-COB-004, «Plan cuotas»). Se mide antes de cancelar, con la cuota todavía abierta. La
+    // última cuota abierta del plan siempre es lo que falta: no se cancela, se reprograma (decisión
+    // del 03/11, #608).
+    if (fila.montoPrevisto != null) {
+      final cuotas = CuotasLocalDataSourceDrift(
+        _db,
+        encolador: _encolador,
+        estadoDeLasCasas: _estadoDeLasCasas,
+      );
+      if (await cuotas.esLaUltimaCuotaAbierta(agendaId)) {
+        throw const AgendaRechazadaException(_Motivo.ultimaCuotaDelPlan);
+      }
+      await cuotas.trasladarLaCancelada(agendaId, ahora: ahora);
+    }
+    final guardada = await _escribirAgenda(
+      agendaId,
+      AgendasCompanion(
+        estado: Value(EstadoAgenda.cancelada.codigo),
+        updatedAt: Value(instanteMs(ahora)),
+      ),
+    );
+    await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
+    return (agenda: guardada, escribio: true);
+  });
+
+  @override
+  Future<AgendaEditada> modificar(
+    CambiosDeAgenda cambios, {
+    required DateTime ahora,
+  }) => _db.transaction(() async {
+    final fila = await _agendaPorId(cambios.agendaId);
+    if (fila == null || fila.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.agendaInexistente);
+    }
+    // Solo se edita una agenda que sigue esperando su visita (HU-VIS-003): se mira DENTRO de la
+    // transacción, porque entre abrir el formulario y guardar pudo cumplirse, cancelarse o
+    // llegar cancelada del servidor.
+    if (EstadoAgenda.desdeCodigo(fila.estado).estaCerrada) {
+      throw const AgendaRechazadaException(_Motivo.agendaCerrada);
+    }
+    // Una cuota del plan se reprograma, pero sigue siendo una cobranza con su venta y su monto.
+    if (fila.montoPrevisto != null && cambios.tipo != TipoAgenda.cobranza) {
+      throw const AgendaRechazadaException(_Motivo.cuotaDelPlan);
+    }
+    // La cita de una entrega tampoco cambia de tipo: el CHECK de `entrega_id` la frenaría con una
+    // excepción cruda.
+    if (fila.tipo == TipoAgenda.entrega.codigo && cambios.tipo != TipoAgenda.entrega) {
+      throw const AgendaRechazadaException(_Motivo.citaDeEntrega);
+    }
+
+    final instante = instanteMs(ahora);
+    final cuando = instanteMs(cambios.fechaProgramada);
+    final cambiaLaFila =
+        fila.tipo != cambios.tipo.codigo ||
+        fila.fechaProgramada != cuando ||
+        fila.slotCodigo != cambios.slotCodigo;
+    final cambiaLaNota = await _guardarNotaEditada(cambios, instante, fila.colportorId);
+    if (!cambiaLaFila && !cambiaLaNota) return (agenda: _aAgenda(fila), escribio: false);
+
+    var agenda = _aAgenda(fila);
+    if (cambiaLaFila) {
+      agenda = await _escribirAgenda(
+        cambios.agendaId,
+        AgendasCompanion(
+          tipo: Value(cambios.tipo.codigo),
+          fechaProgramada: Value(cuando),
+          slotCodigo: Value(cambios.slotCodigo),
+          updatedAt: Value(instante),
+        ),
+      );
+      await _moverLaFechaDeLaEntrega(fila, cuando, instante);
+      await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
+    }
+    // «Audit log local» (HU-VIS-003): una fila por modificación, solo con el id de la agenda.
+    await _db
+        .into(_db.auditLogLocal)
+        .insert(
+          AuditLogLocalCompanion.insert(
+            evento: EventoAuditoriaLocal.agendaModificada,
+            uuid: cambios.agendaId,
+            creadoEn: instante,
+          ),
+        );
+    return (agenda: agenda, escribio: true);
+  });
+
+  /// Deja la nota de la agenda como la pide [cambios] y devuelve si cambió algo. `nota == null`: no
+  /// se toca. En blanco: se da de baja la vigente. Con texto: se cambia la vigente o se crea una con
+  /// `idNota`.
+  Future<bool> _guardarNotaEditada(CambiosDeAgenda cambios, DateTime instante, String autor) async {
+    final pedida = cambios.nota?.trim();
+    if (pedida == null) return false;
+    final actual = await _notaVigente(cambios.agendaId);
+    if (pedida.isEmpty) {
+      if (actual == null) return false;
+      await (_db.update(_db.notas)..where((n) => n.id.equals(actual.id))).write(
+        NotasCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
+      );
+      return true;
+    }
+    if (actual == null) {
+      await _guardarNota(
+        NotaDeCampo(
+          id: cambios.idNota,
+          texto: pedida,
+          auditoria: Auditoria(createdAt: instante, updatedAt: instante, createdBy: autor),
+        ),
+        TipoObjetivoNota.agenda,
+        cambios.agendaId,
+      );
+      return true;
+    }
+    if (actual.texto == pedida) return false;
+    await (_db.update(_db.notas)..where((n) => n.id.equals(actual.id))).write(
+      NotasCompanion(texto: Value(pedida), updatedAt: Value(instante)),
+    );
+    return true;
+  }
+
+  /// La nota vigente (sin baja) de la agenda [agendaId]: la más antigua si por algún motivo hay más
+  /// de una.
+  Future<NotaFila?> _notaVigente(String agendaId) async {
+    final filas =
+        await (_db.select(_db.notas)
+              ..where(
+                (n) =>
+                    n.targetType.equals(TipoObjetivoNota.agenda) &
+                    n.targetId.equals(agendaId) &
+                    n.deletedAt.isNull(),
+              )
+              ..orderBy([(n) => OrderingTerm.asc(n.createdAt), (n) => OrderingTerm.asc(n.id)])
+              ..limit(1))
+            .get();
+    return filas.isEmpty ? null : filas.first;
+  }
+
+  @override
+  Future<DetalleDeAgenda?> obtenerDetalle(String id) async {
+    final fila = await _agendaPorId(id);
+    if (fila == null || fila.deletedAt != null) return null;
+    final nota = await _notaVigente(id);
+    final visitaId = fila.visitaId;
+    final visita = visitaId == null ? null : await _visitaPorId(visitaId);
+    return DetalleDeAgenda(
+      agenda: _aAgenda(fila),
+      nota: nota?.texto,
+      visita: visita == null || visita.deletedAt != null ? null : _aVisita(visita),
+    );
+  }
+
+  @override
+  Future<VisitaRegistrada> registrarVisita(
+    Visita visita, {
+    String? agendaId,
+    NotaDeCampo? nota,
+    List<MisioneroDejado> misioneros = const [],
+  }) => _db.transaction(() async {
+    // Un renglón por producto y de esta visita (el servidor no admite dos vivos): se valida antes de
+    // escribir nada.
+    final yaDejados = <String>{};
+    for (final m in misioneros) {
+      if (m.visitaId != visita.id || m.cantidad < 1 || !yaDejados.add(m.productoId)) {
+        throw ArgumentError.value(m.productoId, 'misioneros', 'renglón de misioneros inválido');
+      }
+    }
+    final existente = await _visitaPorId(visita.id);
+    if (existente != null) {
+      // Un segundo toque o un reintento con los mismos ids: la visita no se vuelve a escribir, pero la
+      // respuesta dice lo mismo que la primera (qué agenda cumplió o creó la visita), así «Deshacer»
+      // funciona con cualquiera de las dos. Lo que dejó sí sigue a lo que se ve: si la visita se
+      // guardó y falló lo de después, el reintento puede llegar con otras cantidades.
+      if (existente.deletedAt == null) {
+        await _misionerosComoSeVen(visita.id, misioneros, instanteMs(visita.auditoria.updatedAt));
+      }
+      final vinculadas = await (_db.select(
+        _db.agendas,
+      )..where((a) => a.visitaId.equals(visita.id) & a.deletedAt.isNull())).get();
+      final vinculada = vinculadas.isEmpty ? null : vinculadas.first;
+      // Con un reintento ya no se sabe cuál agenda se pasó la primera vez (la cita que la visita
+      // cumplió dejó de estar programada), así que se lee de las filas: la agenda que creó la visita
+      // nace con ella (mismo instante de alta); una cita de antes es anterior a la visita.
+      final laCreoLaVisita =
+          vinculada != null &&
+          vinculada.createdAt == existente.createdAt &&
+          vinculada.estado == EstadoAgenda.cumplida.codigo;
+      final afectada = vinculada != null && !laCreoLaVisita;
+      return (
+        visita: _aVisita(existente),
+        yaEstaba: true,
+        agendaIgnorada: null,
+        agendaNoCumplida: vinculada != null && vinculada.estado == EstadoAgenda.noCumplida.codigo,
+        agendaCreadaId: laCreoLaVisita ? vinculada.id : null,
+        agendaAfectadaId: afectada ? vinculada.id : null,
+      );
+    }
+
+    await _exigirEspacioYVinculo(visita.espacioId, visita.espacioPersonaId);
+    await _exigirJornada(visita.jornadaId);
+    final (:agenda, :ignorada) = agendaId == null
+        ? (agenda: null, ignorada: null)
+        : await _agendaACumplir(agendaId, visita);
+
+    await _db.into(_db.visitas).insert(_aFilaVisita(visita));
+    await _encolador.encolar(
+      'visita',
+      OperacionSync.insert,
+      VisitaModel.fromEntity(visita).toJson(),
+    );
+    // Lo que dejó sin venta («Lo que dejaste», #608): después de la visita de la que cuelga, para que
+    // el servidor la encuentre al subirlo.
+    for (final m in misioneros) {
+      await _db.into(_db.visitaMisioneros).insert(_aFilaMisionero(m));
+      await _encolador.encolar(
+        'visita_misionero',
+        OperacionSync.insert,
+        MisioneroDejadoModel.toJson(m),
+      );
+    }
+    // Una agenda que sirve pasa a `CUMPLIDA` con el resultado que la cumple, o a `NO_CUMPLIDA` con
+    // «No contestó» (HU-VIS-005; decisión del 23/10, «No cumplida»): en los dos casos apunta a la
+    // visita. Salvo una cuota del plan (decisión del 03/11, #608): «No contestó» queda en la visita
+    // pero no cierra la cuota, que sigue `PROGRAMADA` (y pasada la fecha se ve «Vencida»). Sin agenda, la visita espontánea nace con la suya, ya cumplida; salvo la de cobranza: pasar
+    // a cobrar no es una entrevista que haya quedado hecha, así que queda en el historial sin agenda
+    // (decisión del 25/10, «Cobranza sin cita no crea agenda»).
+    final noLaCumple = agenda != null && !visita.tipoResultado.cumpleLaAgenda;
+    final esCuota =
+        agenda != null &&
+        agenda.tipo == TipoAgenda.cobranza.codigo &&
+        agenda.ventaId != null &&
+        agenda.montoPrevisto != null;
+    final cuotaSinRespuesta = noLaCumple && esCuota;
+    String? agendaCreadaId;
+    if (agenda == null) {
+      if (visita.tipoResultado != TipoResultadoVisita.cobranza) {
+        agendaCreadaId = await _crearAgendaCumplida(visita);
+      }
+    } else if (!cuotaSinRespuesta) {
+      await _escribirAgenda(
+        agenda.id,
+        AgendasCompanion(
+          estado: Value((noLaCumple ? EstadoAgenda.noCumplida : EstadoAgenda.cumplida).codigo),
+          visitaId: Value(visita.id),
+          updatedAt: Value(visita.auditoria.updatedAt),
+        ),
+      );
+    }
+    if (nota != null) {
+      // La entrevista en curso fue guardando su nota como borrador, con este mismo `id` y atada a esta
+      // visita (vista 39, #450): el texto final la reemplaza. Solo ese borrador; una nota ajena con
+      // el mismo `id` sigue haciendo fallar el alta, como siempre.
+      await (_db.delete(_db.notas)..where(
+            (n) =>
+                n.id.equals(nota.id) &
+                n.targetType.equals(TipoObjetivoNota.visita) &
+                n.targetId.equals(visita.id),
+          ))
+          .go();
+      await _guardarNota(nota, TipoObjetivoNota.visita, visita.id);
+    }
+    await _recalcular(
+      visita.espacioId,
+      ahora: visita.auditoria.updatedAt,
+      colportorId: visita.colportorId,
+    );
+    return (
+      visita: visita,
+      yaEstaba: false,
+      agendaIgnorada: ignorada,
+      agendaNoCumplida: noLaCumple && !esCuota,
+      agendaCreadaId: agendaCreadaId,
+      agendaAfectadaId: cuotaSinRespuesta ? null : agenda?.id,
+    );
+  });
+
+  @override
+  Future<VisitaDeshecha> deshacerVisita(
+    String visitaId, {
+    String? agendaCreadaId,
+    String? agendaAfectadaId,
+    required DateTime ahora,
+  }) => _db.transaction(() async {
+    final fila = await _visitaPorId(visitaId);
+    if (fila == null) throw const AgendaRechazadaException(_Motivo.visitaInexistente);
+    // Un segundo toque sobre «Deshacer» no es un error: ya está deshecha y no se vuelve a escribir
+    // ni a encolar.
+    if (fila.deletedAt != null) return (visita: _aVisita(fila), escribio: false);
+
+    final instante = instanteMs(ahora);
+    // La agenda primero: si la visita la cumplió o no la cumplió, vuelve a esperarla; si la creó ella
+    // (visita espontánea), se da de baja con la visita.
+    if (agendaCreadaId != null) {
+      final creada = await _agendaPorId(agendaCreadaId);
+      if (creada != null && creada.deletedAt == null && creada.visitaId == visitaId) {
+        await _escribirAgenda(
+          agendaCreadaId,
+          AgendasCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
+          operacion: OperacionSync.delete,
+        );
+      }
+    } else if (agendaAfectadaId != null) {
+      final afectada = await _agendaPorId(agendaAfectadaId);
+      if (afectada != null && afectada.deletedAt == null && afectada.visitaId == visitaId) {
+        await _escribirAgenda(
+          agendaAfectadaId,
+          AgendasCompanion(
+            estado: Value(EstadoAgenda.programada.codigo),
+            visitaId: const Value(null),
+            updatedAt: Value(instante),
+          ),
+        );
+      }
+    }
+    await (_db.update(_db.visitas)..where((v) => v.id.equals(visitaId))).write(
+      VisitasCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
+    );
+    final deshecha = _aVisita((await _visitaPorId(visitaId))!);
+    await _encolador.encolar(
+      'visita',
+      OperacionSync.delete,
+      VisitaModel.fromEntity(deshecha).toJson(),
+    );
+    // Lo que dejó sin venta se va con ella: el servidor devuelve el stock que había descontado.
+    final dejados =
+        await (_db.select(_db.visitaMisioneros)
+              ..where((m) => m.visitaId.equals(visitaId) & m.deletedAt.isNull())
+              ..orderBy([(m) => OrderingTerm.asc(m.id)]))
+            .get();
+    for (final m in dejados) {
+      await (_db.update(_db.visitaMisioneros)..where((f) => f.id.equals(m.id))).write(
+        VisitaMisionerosCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
+      );
+      final dadoDeBaja = await (_db.select(
+        _db.visitaMisioneros,
+      )..where((f) => f.id.equals(m.id))).getSingle();
+      await _encolador.encolar(
+        'visita_misionero',
+        OperacionSync.delete,
+        MisioneroDejadoModel.toJson(_aMisionero(dadoDeBaja)),
+      );
+    }
+    // Sus notas (locales) se van con ella.
+    await (_db.update(_db.notas)..where(
+          (n) =>
+              n.targetType.equals(TipoObjetivoNota.visita) &
+              n.targetId.equals(visitaId) &
+              n.deletedAt.isNull(),
+        ))
+        .write(NotasCompanion(deletedAt: Value(instante), updatedAt: Value(instante)));
+    await _recalcular(fila.espacioId, ahora: ahora, colportorId: fila.colportorId);
+    return (visita: deshecha, escribio: true);
+  });
+
+  @override
+  Future<Agenda?> agendaProgramadaDe(String espacioId) async {
+    final filas =
+        await (_db.select(_db.agendas)
+              ..where(
+                (a) =>
+                    a.espacioId.equals(espacioId) &
+                    a.tipo.equals(TipoAgenda.entrevista.codigo) &
+                    a.estado.equals(EstadoAgenda.programada.codigo) &
+                    a.deletedAt.isNull(),
+              )
+              ..orderBy([(a) => OrderingTerm.asc(a.fechaProgramada), (a) => OrderingTerm.asc(a.id)])
+              ..limit(1))
+            .get();
+    return filas.isEmpty ? null : _aAgenda(filas.first);
+  }
+
+  @override
+  Future<Agenda?> obtenerAgenda(String id) async {
+    final fila = await _agendaPorId(id);
+    return fila == null ? null : _aAgenda(fila);
+  }
+
+  @override
+  Future<Visita?> obtenerVisita(String id) async {
+    final fila = await _visitaPorId(id);
+    return fila == null ? null : _aVisita(fila);
+  }
+
+  Future<AgendaFila?> _agendaPorId(String id) =>
+      (_db.select(_db.agendas)..where((a) => a.id.equals(id))).getSingleOrNull();
+
+  /// Deja vivos en `visita_misionero` exactamente los [pedidos] de la visita: lo que no cambió no se
+  /// toca ni se vuelve a encolar; un producto que ya no está o cambió de cantidad se da de baja (antes
+  /// que el renglón nuevo, por el índice único del servidor) y lo nuevo se inserta.
+  Future<void> _misionerosComoSeVen(
+    String visitaId,
+    List<MisioneroDejado> pedidos,
+    DateTime instante,
+  ) async {
+    final vivos =
+        await (_db.select(_db.visitaMisioneros)
+              ..where((m) => m.visitaId.equals(visitaId) & m.deletedAt.isNull())
+              ..orderBy([(m) => OrderingTerm.asc(m.id)]))
+            .get();
+    final porProducto = {for (final m in pedidos) m.productoId: m};
+    for (final v in vivos) {
+      if (porProducto[v.productoId]?.cantidad == v.cantidad) {
+        porProducto.remove(v.productoId);
+        continue;
+      }
+      await (_db.update(_db.visitaMisioneros)..where((f) => f.id.equals(v.id))).write(
+        VisitaMisionerosCompanion(deletedAt: Value(instante), updatedAt: Value(instante)),
+      );
+      final dadoDeBaja = await (_db.select(
+        _db.visitaMisioneros,
+      )..where((f) => f.id.equals(v.id))).getSingle();
+      await _encolador.encolar(
+        'visita_misionero',
+        OperacionSync.delete,
+        MisioneroDejadoModel.toJson(_aMisionero(dadoDeBaja)),
+      );
+    }
+    for (final m in porProducto.values) {
+      // Un renglón con el id de uno que ya existe (el mismo reintento dos veces) no se duplica.
+      final yaEsta = await (_db.select(
+        _db.visitaMisioneros,
+      )..where((f) => f.id.equals(m.id))).getSingleOrNull();
+      if (yaEsta != null) continue;
+      await _db.into(_db.visitaMisioneros).insert(_aFilaMisionero(m));
+      await _encolador.encolar(
+        'visita_misionero',
+        OperacionSync.insert,
+        MisioneroDejadoModel.toJson(m),
+      );
+    }
+  }
+
+  Future<VisitaFila?> _visitaPorId(String id) =>
+      (_db.select(_db.visitas)..where((v) => v.id.equals(id))).getSingleOrNull();
+
+  /// El espacio (la casa o el depto) tiene que estar en el teléfono y sin baja: el servidor lo exige
+  /// (`espacio_id` es `NOT NULL` con FK) y la pantalla lo eligió de la casa. Si hay persona
+  /// ([espacioPersonaId]), su vínculo también tiene que estar, sin baja y **en ese espacio**: una
+  /// persona de otra casa no se cuela en esta.
+  Future<void> _exigirEspacioYVinculo(String espacioId, String? espacioPersonaId) async {
+    final espacio = await (_db.select(
+      _db.espacios,
+    )..where((e) => e.id.equals(espacioId))).getSingleOrNull();
+    if (espacio == null || espacio.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.espacioInexistente);
+    }
+    if (espacioPersonaId == null) return;
+    final vinculo = await (_db.select(
+      _db.espacioPersonas,
+    )..where((v) => v.id.equals(espacioPersonaId))).getSingleOrNull();
+    if (vinculo == null || vinculo.deletedAt != null || vinculo.espacioId != espacioId) {
+      throw const AgendaRechazadaException(_Motivo.personaInexistente);
+    }
+  }
+
+  /// La ubicación alternativa de una agenda tiene que estar viva en el teléfono: el servidor exige
+  /// la FK (`agenda.ubicacion_alt_id`) y una rota deja la operación en `INVALID` sin que la agenda
+  /// suba. Sin ubicación alternativa no hay nada que mirar.
+  Future<void> _exigirUbicacionAlt(String? ubicacionId) async {
+    if (ubicacionId == null) return;
+    final fila = await (_db.select(
+      _db.ubicaciones,
+    )..where((u) => u.id.equals(ubicacionId))).getSingleOrNull();
+    if (fila == null || fila.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.ubicacionAltInexistente);
+    }
+  }
+
+  /// La jornada de una visita tiene que estar viva en el teléfono (FK `visita.jornada_id`). Una
+  /// visita sin jornada es válida (la espontánea de otro día, HU-VIS-005).
+  Future<void> _exigirJornada(String? jornadaId) async {
+    if (jornadaId == null) return;
+    final fila = await (_db.select(
+      _db.jornadas,
+    )..where((j) => j.id.equals(jornadaId))).getSingleOrNull();
+    if (fila == null || fila.deletedAt != null) {
+      throw const AgendaRechazadaException(_Motivo.jornadaInexistente);
+    }
+  }
+
+  /// La agenda que [visita] cumple, o por qué no sirve: una agenda inexistente, de otra casa o de
+  /// otra persona, o ya cerrada, no frena la visita (no se pierde lo que la colportora acaba de
+  /// registrar), que se guarda como espontánea y deja la agenda como estaba.
+  Future<({AgendaFila? agenda, MotivoAgendaIgnorada? ignorada})> _agendaACumplir(
+    String agendaId,
+    Visita visita,
+  ) async {
+    final fila = await _agendaPorId(agendaId);
+    if (fila == null || fila.deletedAt != null) {
+      return (agenda: null, ignorada: MotivoAgendaIgnorada.inexistente);
+    }
+    if (fila.espacioId != visita.espacioId) {
+      return (agenda: null, ignorada: MotivoAgendaIgnorada.deOtraCasa);
+    }
+    // Una cita sin persona, o una visita sin persona, sirve para cualquiera de la casa; con las dos
+    // personas, tienen que ser la misma.
+    final personaDeLaCita = fila.espacioPersonaId;
+    final personaDeLaVisita = visita.espacioPersonaId;
+    if (personaDeLaCita != null &&
+        personaDeLaVisita != null &&
+        personaDeLaCita != personaDeLaVisita) {
+      return (agenda: null, ignorada: MotivoAgendaIgnorada.deOtraPersona);
+    }
+    if (EstadoAgenda.desdeCodigo(fila.estado).estaCerrada) {
+      return (agenda: null, ignorada: MotivoAgendaIgnorada.cerrada);
+    }
+    return (agenda: fila, ignorada: null);
+  }
+
+  /// La visita espontánea (sin agenda, o con una que no sirvió) nace con su agenda `CUMPLIDA`, en la
+  /// misma transacción (HU-VIS-005; decisión del 23/10 sobre la regla «Agenda»): fecha de la visita,
+  /// mismo espacio, misma persona (si la hay) y colportora, tipo `ENTREVISTA`, sin slot y no
+  /// estricta. Se encola después de la visita, porque `agenda.visita_id` apunta a ella. Devuelve el
+  /// id de la agenda creada.
+  Future<String> _crearAgendaCumplida(Visita visita) async {
+    final agenda = Agenda(
+      id: _generarId(),
+      espacioId: visita.espacioId,
+      espacioPersonaId: visita.espacioPersonaId,
+      tipo: TipoAgenda.entrevista,
+      fechaProgramada: visita.fecha,
+      estado: EstadoAgenda.cumplida,
+      colportorId: visita.colportorId,
+      visitaId: visita.id,
+      auditoria: Auditoria(
+        createdAt: visita.auditoria.createdAt,
+        updatedAt: visita.auditoria.updatedAt,
+        createdBy: visita.auditoria.createdBy,
+      ),
+    );
+    await _db.into(_db.agendas).insert(_aFilaAgenda(agenda));
+    await _encolador.encolar(
+      'agenda',
+      OperacionSync.insert,
+      AgendaModel.fromEntity(agenda).toJson(),
+    );
+    return agenda.id;
+  }
+
+  /// Aplica [cambios] a la agenda [id], lee la fila resultante y encola su [operacion] (`update` por
+  /// defecto) con la fila entera.
+  Future<Agenda> _escribirAgenda(
+    String id,
+    AgendasCompanion cambios, {
+    OperacionSync operacion = OperacionSync.update,
+  }) async {
+    await (_db.update(_db.agendas)..where((a) => a.id.equals(id))).write(cambios);
+    final agenda = _aAgenda((await _agendaPorId(id))!);
+    await _encolador.encolar('agenda', operacion, AgendaModel.fromEntity(agenda).toJson());
+    return agenda;
+  }
+
+  Future<void> _guardarNota(NotaDeCampo nota, String tipoObjetivo, String objetivoId) => _db
+      .into(_db.notas)
+      .insert(
+        NotasCompanion.insert(
+          id: nota.id,
+          targetType: tipoObjetivo,
+          targetId: objetivoId,
+          texto: nota.texto,
+          createdAt: nota.auditoria.createdAt,
+          updatedAt: nota.auditoria.updatedAt,
+          createdBy: Value(nota.auditoria.createdBy),
+          deletedAt: Value(nota.auditoria.deletedAt),
+          syncVersion: Value(nota.auditoria.syncVersion),
+        ),
+      );
+
+  /// Mover la cita de una entrega (HU-VEN-003) mueve también la fecha prevista de lo que falta
+  /// entregar **de esa cita**: la lista de «Entregas pendientes» y la Agenda dicen la misma fecha. Lo
+  /// que ya se entregó conserva la que se había acordado, y lo de otra cita de la misma venta (lo que se
+  /// le sumó, decisión de Cristian del 11/11, «Entrega cita») conserva la suya. Se encola cada fila
+  /// con su `update`. [cita] es la fila como estaba antes de moverla.
+  Future<void> _moverLaFechaDeLaEntrega(AgendaFila cita, DateTime cuando, DateTime instante) async {
+    final ventaId = cita.ventaId;
+    if (cita.tipo != TipoAgenda.entrega.codigo || ventaId == null) return;
+    final todas =
+        await (_db.select(_db.entregas)
+              ..where(
+                (e) => e.ventaId.equals(ventaId) & e.pendiente.equals(true) & e.deletedAt.isNull(),
+              )
+              ..orderBy([(e) => OrderingTerm.asc(e.createdAt), (e) => OrderingTerm.asc(e.id)]))
+            .get();
+    final citas =
+        await (_db.select(_db.agendas)
+              ..where(
+                (a) =>
+                    a.ventaId.equals(ventaId) &
+                    a.tipo.equals(TipoAgenda.entrega.codigo) &
+                    a.estado.equals(EstadoAgenda.programada.codigo) &
+                    a.deletedAt.isNull(),
+              )
+              ..orderBy([(a) => OrderingTerm.asc(a.createdAt), (a) => OrderingTerm.asc(a.id)]))
+            .get();
+    // Cada cita con su grupo, como estaban antes de mover esta (la fila ya tiene la fecha nueva).
+    final reparto = ReglasDeEntrega.repartirCitas(
+      [
+        for (final c in citas)
+          (
+            id: c.id,
+            fecha:
+                (c.id == cita.id ? cita.fechaProgramada : c.fechaProgramada).millisecondsSinceEpoch,
+          ),
+      ],
+      [for (final e in todas) e.fechaPrevista?.millisecondsSinceEpoch],
+    );
+    final List<EntregaFila> pendientes;
+    if (reparto.containsKey(cita.id)) {
+      final fecha = reparto[cita.id];
+      pendientes = [
+        for (final e in todas)
+          if (e.fechaPrevista?.millisecondsSinceEpoch == fecha) e,
+      ];
+    } else if (citas.length <= 1) {
+      // La única cita de la venta, sin un grupo a su hora (datos de antes): mueve todo lo pendiente.
+      pendientes = todas;
+    } else {
+      pendientes = const [];
+    }
+    for (final fila in pendientes) {
+      if (fila.fechaPrevista == cuando) continue;
+      final nueva = EntregaModel.desdeFila(fila).editada(ahora: instante, fechaPrevista: cuando);
+      await (_db.update(_db.entregas)..where((e) => e.id.equals(fila.id))).write(
+        EntregasCompanion(
+          fechaPrevista: Value(cuando),
+          updatedAt: Value(nueva.auditoria.updatedAt),
+        ),
+      );
+      await _encolador.encolar('entrega', OperacionSync.update, EntregaModel.toJson(nueva));
+    }
+  }
+
+  /// Recalcula el color de la casa a la que pertenece el espacio [espacioId]. Si la ubicación del
+  /// espacio no está en el teléfono no hay casa que pintar: la agenda o la visita se guarda igual,
+  /// porque no se pierde un registro de campo por una fila que falta.
+  Future<void> _recalcular(
+    String espacioId, {
+    required DateTime ahora,
+    required String colportorId,
+  }) async {
+    final consulta = _db.selectOnly(_db.espacios)
+      ..addColumns([_db.espacios.ubicacionId])
+      ..where(_db.espacios.id.equals(espacioId));
+    final fila = await consulta.getSingleOrNull();
+    final ubicacionId = fila?.read(_db.espacios.ubicacionId);
+    if (ubicacionId == null) return;
+    await _estadoDeLasCasas.recalcular(ubicacionId, ahora: ahora, colportorId: colportorId);
+  }
+
+  /// La entidad de una fila de `agenda`: la usan las cuotas del plan (HU-COB-004), que son citas.
+  static Agenda desdeFila(AgendaFila fila) => _aAgenda(fila);
+
+  /// La entidad de una fila de `visita`: la usa la unión rechazada que se deshace para reenviar una
+  /// visita que vuelve a B con su persona (#696).
+  static Visita visitaDesdeFila(VisitaFila fila) => _aVisita(fila);
+
+  /// La fila de [agenda] lista para insertar.
+  static AgendasCompanion aFila(Agenda agenda) => _aFilaAgenda(agenda);
+
+  static Agenda _aAgenda(AgendaFila fila) => Agenda(
+    id: fila.id,
+    espacioId: fila.espacioId,
+    espacioPersonaId: fila.espacioPersonaId,
+    tipo: TipoAgenda.desdeCodigo(fila.tipo),
+    fechaProgramada: fila.fechaProgramada,
+    slotCodigo: fila.slotCodigo,
+    esEstricta: fila.esEstricta,
+    ubicacionAltId: fila.ubicacionAltId,
+    estado: EstadoAgenda.desdeCodigo(fila.estado),
+    colportorId: fila.colportorId,
+    visitaId: fila.visitaId,
+    ventaId: fila.ventaId,
+    montoPrevistoCentavos: fila.montoPrevisto,
+    entregaId: fila.entregaId,
+    auditoria: Auditoria(
+      createdAt: fila.createdAt,
+      updatedAt: fila.updatedAt,
+      createdBy: fila.createdBy,
+      deletedAt: fila.deletedAt,
+      syncVersion: fila.syncVersion,
+    ),
+  );
+
+  static Visita _aVisita(VisitaFila fila) => Visita(
+    id: fila.id,
+    espacioId: fila.espacioId,
+    espacioPersonaId: fila.espacioPersonaId,
+    fecha: fila.fecha,
+    tipoResultado: TipoResultadoVisita.desdeCodigo(fila.tipoResultado),
+    colportorId: fila.colportorId,
+    jornadaId: fila.jornadaId,
+    entrevistaEntrada: fila.entrevistaEntrada,
+    entrevistaSalida: fila.entrevistaSalida,
+    auditoria: Auditoria(
+      createdAt: fila.createdAt,
+      updatedAt: fila.updatedAt,
+      createdBy: fila.createdBy,
+      deletedAt: fila.deletedAt,
+      syncVersion: fila.syncVersion,
+    ),
+  );
+
+  static AgendasCompanion _aFilaAgenda(Agenda a) => AgendasCompanion.insert(
+    id: a.id,
+    espacioId: a.espacioId,
+    espacioPersonaId: Value(a.espacioPersonaId),
+    tipo: a.tipo.codigo,
+    fechaProgramada: a.fechaProgramada,
+    slotCodigo: Value(a.slotCodigo),
+    esEstricta: Value(a.esEstricta),
+    ubicacionAltId: Value(a.ubicacionAltId),
+    estado: Value(a.estado.codigo),
+    colportorId: a.colportorId,
+    visitaId: Value(a.visitaId),
+    ventaId: Value(a.ventaId),
+    montoPrevisto: Value(a.montoPrevistoCentavos),
+    entregaId: Value(a.entregaId),
+    createdAt: a.auditoria.createdAt,
+    updatedAt: a.auditoria.updatedAt,
+    createdBy: Value(a.auditoria.createdBy),
+    deletedAt: Value(a.auditoria.deletedAt),
+    syncVersion: Value(a.auditoria.syncVersion),
+  );
+
+  static VisitasCompanion _aFilaVisita(Visita v) => VisitasCompanion.insert(
+    id: v.id,
+    espacioId: v.espacioId,
+    espacioPersonaId: Value(v.espacioPersonaId),
+    fecha: v.fecha,
+    tipoResultado: v.tipoResultado.codigo,
+    colportorId: v.colportorId,
+    jornadaId: Value(v.jornadaId),
+    entrevistaEntrada: Value(v.entrevistaEntrada),
+    entrevistaSalida: Value(v.entrevistaSalida),
+    createdAt: v.auditoria.createdAt,
+    updatedAt: v.auditoria.updatedAt,
+    createdBy: Value(v.auditoria.createdBy),
+    deletedAt: Value(v.auditoria.deletedAt),
+    syncVersion: Value(v.auditoria.syncVersion),
+  );
+
+  static VisitaMisionerosCompanion _aFilaMisionero(MisioneroDejado m) =>
+      VisitaMisionerosCompanion.insert(
+        id: m.id,
+        visitaId: m.visitaId,
+        productoId: m.productoId,
+        cantidad: m.cantidad,
+        createdAt: m.auditoria.createdAt,
+        updatedAt: m.auditoria.updatedAt,
+        createdBy: Value(m.auditoria.createdBy),
+        deletedAt: Value(m.auditoria.deletedAt),
+        syncVersion: Value(m.auditoria.syncVersion),
+      );
+
+  static MisioneroDejado _aMisionero(VisitaMisioneroFila f) => MisioneroDejado(
+    id: f.id,
+    visitaId: f.visitaId,
+    productoId: f.productoId,
+    cantidad: f.cantidad,
+    auditoria: Auditoria(
+      createdAt: f.createdAt,
+      updatedAt: f.updatedAt,
+      createdBy: f.createdBy,
+      deletedAt: f.deletedAt,
+      syncVersion: f.syncVersion,
+    ),
+  );
+}

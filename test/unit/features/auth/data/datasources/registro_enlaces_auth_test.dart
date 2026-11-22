@@ -10,7 +10,7 @@ void main() {
 
   Uri recuperacion(String parametros) =>
       Uri.parse('${ConfigSupabase.redirectRecuperacion}$parametros');
-  Uri verificacion(String parametros) => Uri.parse('${ConfigSupabase.redirectOAuth}$parametros');
+  Uri verificacion(String parametros) => Uri.parse('${ConfigSupabase.redirectBase}$parametros');
 
   group('RegistroEnlacesAuth.esCallbackDeAuth', () {
     test('con la heurística de supabase_flutter: code, access_token o error, en la query o en el '

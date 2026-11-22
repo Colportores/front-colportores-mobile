@@ -64,7 +64,9 @@ ThemeData temaClaro() {
         foregroundColor: colorScheme.onPrimary,
         disabledBackgroundColor: colorScheme.primary.withValues(alpha: .5),
         shape: const StadiumBorder(),
-        padding: const EdgeInsets.symmetric(vertical: 17),
+        // El relleno horizontal de Material (24): con la etiqueta en dos renglones (texto al 200 %)
+        // la primera letra de cada renglón no cae sobre la curva de la píldora.
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 17),
         textStyle: const TextStyle(
           fontFamily: 'Inter',
           fontSize: 15.5,
@@ -87,14 +89,40 @@ ThemeData temaClaro() {
       ),
     ),
     checkboxTheme: CheckboxThemeData(
-      fillColor: WidgetStatePropertyAll(colorScheme.primary),
+      // Relleno solo con la casilla marcada: sin marcar es caja vacía con borde (canvas A04).
+      fillColor: WidgetStateProperty.resolveWith(
+        (estados) =>
+            estados.contains(WidgetState.selected) ? colorScheme.primary : Colors.transparent,
+      ),
       checkColor: WidgetStatePropertyAll(colorScheme.onPrimary),
-      side: BorderSide(color: colores.bordeInput, width: 1.5),
+      // Sin marcar el borde es lo único que se ve de la casilla: `gris` (5,19:1 contra el crema; el
+      // `bordeInput` daba 1,4:1) para cumplir WCAG 1.4.11. Marcada, el borde sigue del color del
+      // relleno (lo mismo que dibuja Flutter si `side` no depende del estado).
+      side: WidgetStateBorderSide.resolveWith(
+        (estados) => BorderSide(
+          color: estados.contains(WidgetState.selected) ? colorScheme.primary : colores.gris,
+          width: 1.5,
+        ),
+      ),
+    ),
+    // Interruptor apagado: el borde y el pulgar por defecto salen de `outline` (`bordeInput`, 1,46:1
+    // contra la hoja blanca). Van en el `gris` de la paleta (~5,4:1) para cumplir WCAG 1.4.11
+    // (decisión del 17/11, P2 del QA de #715). Encendido y deshabilitado, lo de Material.
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith(_delApagado),
+      trackOutlineColor: WidgetStateProperty.resolveWith(_delApagado),
     ),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
     extensions: const [colores],
   );
 }
+
+/// El borde y el pulgar del interruptor apagado y habilitado: el `gris` de la paleta (`#5B6B82`,
+/// ~5,4:1 contra el blanco y el crema). Encendido o deshabilitado, `null` (lo de Material).
+Color? _delApagado(Set<WidgetState> estados) =>
+    estados.contains(WidgetState.selected) || estados.contains(WidgetState.disabled)
+    ? null
+    : ColoresColportaje.unica.gris;
 
 TextTheme _textTheme(Color colorTexto) {
   return TextTheme(
@@ -114,7 +142,7 @@ TextTheme _textTheme(Color colorTexto) {
       height: 1.15,
       color: colorTexto,
     ),
-    // Label de campo en mayúsculas: "CORREO O CÉDULA".
+    // Label de campo en mayúsculas: "CORREO".
     labelMedium: TextStyle(
       fontFamily: 'JetBrainsMono',
       fontSize: 10.5,

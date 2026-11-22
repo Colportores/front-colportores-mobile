@@ -1,5 +1,5 @@
 // Vista 21 (resumen del día) — saludo «Buen trabajo, <nombre>» (#243): con nombre, sin nombre
-// (ingreso con Google o cuenta sin nombre), nombre largo y texto grande.
+// (cuenta sin nombre), nombre largo y texto grande.
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
@@ -46,7 +46,7 @@ void main() {
     expect(find.text('Buen trabajo'), findsNothing);
   });
 
-  testWidgets('sin nombre (Google): «Buen trabajo» a secas, sin coma ni hueco', (tester) async {
+  testWidgets('sin nombre: «Buen trabajo» a secas, sin coma ni hueco', (tester) async {
     await _montar(tester);
 
     expect(find.text('Buen trabajo'), findsOneWidget);

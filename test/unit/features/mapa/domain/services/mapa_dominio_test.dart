@@ -1,21 +1,10 @@
-// Test de dominio: Dart puro (HU-UBI-003): área, agrupador, fuente de tiles y centro del mapa.
-import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
-import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
-import 'package:colportores_mobile/features/mapa/domain/services/agrupador_marcadores.dart';
+// Test de dominio: Dart puro (HU-UBI-003): área, fuente de tiles y centro del mapa.
 import 'package:colportores_mobile/features/mapa/domain/services/resolutores_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:test/test.dart';
 
 void main() {
-  MarcadorMapa m(String id, double lat, double lon, {int espacios = 0}) => MarcadorMapa(
-    ubicacionId: id,
-    tipo: TipoUbicacion.casa,
-    lat: lat,
-    lon: lon,
-    cantidadEspacios: espacios,
-  );
-
   group('AreaMapa', () {
     const area = AreaMapa(sur: -35, oeste: -57, norte: -34, este: -56);
 
@@ -44,61 +33,6 @@ void main() {
         expect(a.esValida, isFalse, reason: '$a');
         expect(a.contiene(const Coordenadas(lat: 0.5, lon: 0.5)), isFalse, reason: '$a');
       }
-    });
-  });
-
-  group('AgrupadorMarcadores', () {
-    test('sin marcadores no hay grupos', () {
-      expect(AgrupadorMarcadores.agrupar(const [], zoom: 10), isEmpty);
-    });
-
-    test('a zoom alto, marcadores separados quedan individuales', () {
-      final grupos = AgrupadorMarcadores.agrupar([
-        m('a', -34.9, -56.15),
-        m('b', -34.91, -56.16),
-      ], zoom: 18);
-      expect(grupos, hasLength(2));
-      expect(grupos.every((g) => g.esIndividual), isTrue);
-    });
-
-    test('a zoom bajo, marcadores cercanos se agrupan con el centro promedio y en orden de id', () {
-      final grupos = AgrupadorMarcadores.agrupar([
-        m('b', -34.9010, -56.1500),
-        m('a', -34.9000, -56.1510),
-      ], zoom: 10);
-      expect(grupos, hasLength(1));
-      final g = grupos.single;
-      expect(g.cantidad, 2);
-      expect(g.esIndividual, isFalse);
-      expect([for (final x in g.marcadores) x.ubicacionId], ['a', 'b']);
-      expect(g.centro.lat, closeTo(-34.9005, 1e-9));
-      expect(g.centro.lon, closeTo(-56.1505, 1e-9));
-    });
-
-    test('es determinista y no pierde marcadores', () {
-      final entrada = [
-        for (var i = 0; i < 300; i++)
-          m('u$i', -34.9 + (i % 20) * 0.001, -56.15 + (i ~/ 20) * 0.001),
-      ];
-      final a = AgrupadorMarcadores.agrupar(entrada, zoom: 13);
-      final b = AgrupadorMarcadores.agrupar(entrada.reversed, zoom: 13);
-      expect(a, b);
-      expect(a.fold<int>(0, (s, g) => s + g.cantidad), 300);
-      expect(a.length, lessThan(300));
-    });
-
-    test('menos grupos cuanto menor el zoom', () {
-      final entrada = [for (var i = 0; i < 50; i++) m('u$i', -34.9 + i * 0.002, -56.15)];
-      final lejos = AgrupadorMarcadores.agrupar(entrada, zoom: 8).length;
-      final cerca = AgrupadorMarcadores.agrupar(entrada, zoom: 16).length;
-      expect(lejos, lessThan(cerca));
-    });
-
-    test('zoom NaN o fuera de rango y radio inválido no rompen', () {
-      final entrada = [m('a', -34.9, -56.15)];
-      expect(AgrupadorMarcadores.agrupar(entrada, zoom: double.nan), hasLength(1));
-      expect(AgrupadorMarcadores.agrupar(entrada, zoom: 99), hasLength(1));
-      expect(AgrupadorMarcadores.agrupar(entrada, zoom: -3, radioPx: -1), hasLength(1));
     });
   });
 

@@ -40,9 +40,10 @@ final class _LocalFijo implements EspacioLocalDataSource {
       _o('insertar', (espacio: modelo, yaEstaba: false));
 
   @override
-  Future<EspacioModel> actualizarNumeroDepto(
+  Future<EspacioModel> actualizarEspacio(
     String id, {
     required String numeroDepto,
+    String? piso,
     required DateTime ahora,
   }) async => _o('actualizar', modelo);
 

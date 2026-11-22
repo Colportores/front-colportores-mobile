@@ -23,8 +23,15 @@ abstract final class TextosConfirmacionRecuperacion {
   /// "Cambio exitoso": la pantalla de éxito (15-A09) antes de volver al login.
   static const exito = 'Contraseña actualizada. Iniciá sesión.';
 
-  /// "Error - token expirado" (el mismo texto de `FailureEnlaceRecuperacionVencido`).
-  static const vencido = 'El enlace expiró. Solicitá uno nuevo.';
+  /// 15-A06, el único enlace que no sirve: Supabase manda el mismo `otp_expired` para uno vencido y
+  /// para uno ya usado, y el error llega sin el enlace, así que la app no adivina cuál de los dos
+  /// es. Dice las dos cosas y guía (decisión de Cristian, 02/10, sobre «Error - token expirado» y
+  /// «Error - token reutilizado» de HU-AUTH-005). El mismo texto de
+  /// `FailureEnlaceRecuperacionVencido`.
+  static const vencido = 'Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.';
+
+  /// Rótulo de 15-A06: no afirma «vencido» (decisión del orquestador, 02/10).
+  static const rotuloEnlaceNoValido = 'ENLACE NO VÁLIDO';
 
   /// Para `mensajePara`, cuando el enlace no se pudo canjear por falta de red: "Necesitás conexión
   /// para abrir el enlace. Cuando tengas señal, volvé a abrirlo desde el correo." (propio, sin
@@ -42,6 +49,18 @@ abstract final class TextosConfirmacionRecuperacion {
       'contraseña nueva.';
   static const sesionesConBase = 'Se cierran tus sesiones en todos tus teléfonos.';
 
+  /// La contraseña cambió pero el servidor no contestó al cerrar las sesiones de los otros
+  /// teléfonos: se les cierran al entrar con la nueva (decisión del 29/10 en #542).
+  static const exitoOtrasSesionesPendientes =
+      'Contraseña actualizada. Iniciá sesión ahora: al entrar cerramos tus sesiones en los otros '
+      'teléfonos.';
+
+  /// La contraseña cambió pero la sesión que estaba abierta en este teléfono no se pudo cerrar
+  /// (decisión de Cristian, 02/10): dice qué pasó y la salida.
+  static const exitoSinCerrarSesion =
+      'Cambiaste la contraseña, pero no pudimos cerrar la sesión en este teléfono. Cerrala desde '
+      'Configuración.';
+
   /// 15-A05.
   static const errorInesperado = 'No pudimos guardar la contraseña. Probá de nuevo.';
 
@@ -49,6 +68,14 @@ abstract final class TextosConfirmacionRecuperacion {
   static const sinConexionTitulo = 'Sin conexión';
   static const sinConexionDetalle =
       'Conectate para guardar la contraseña. No perdés lo que escribiste.';
+
+  /// La salida de 15-A06 y del aviso de enlace sin conexión cuando no hay sesión: la raíz de la
+  /// pila es el login (canvas y decisión de Cristian).
+  static const volverAlLogin = 'Volver al login';
+
+  /// La misma salida cuando quien abrió el enlace ya tenía la sesión abierta: no hay login al que
+  /// volver, la raíz es su inicio (decisión del 02/10 sobre #264, mismo criterio que la vista 12).
+  static const irAMiInicio = 'Ir a mi inicio';
 }
 
 /// Contraseña nueva después de abrir el enlace de recuperación (HU-AUTH-005, #51, vista 15).
@@ -59,16 +86,24 @@ abstract final class TextosConfirmacionRecuperacion {
 ///   `ConfirmarRecuperacionPasswordUseCase` la fija, re-envuelve la DEK si hay DB local (ADR-006,
 ///   sin tarjetas «Restaurar»/«Borrar»: decisión de Cristian 30/09) y revoca todas las sesiones; la
 ///   pantalla muestra «Contraseña actualizada. Iniciá sesión.» con el botón al login (15-A09).
-/// - Con [EnlaceRecuperacion.vencido] (o si la sesión del enlace vence mientras tanto): "El enlace
-///   expiró. Solicitá uno nuevo.", con el botón para pedir otro (HU-AUTH-004) y volver al login.
+/// - Con [EnlaceRecuperacion.vencido] (o si la sesión del enlace vence mientras tanto): 15-A06,
+///   «Este enlace ya no sirve: venció o ya se usó. Solicitá uno nuevo.» con el rótulo «ENLACE NO
+///   VÁLIDO», el botón para pedir otro (HU-AUTH-004) y la salida a la raíz. Una sola pantalla para
+///   el enlace vencido y el ya usado: Supabase los rechaza igual y la app no adivina cuál es
+///   (decisión de Cristian, 02/10; el canvas dibuja además 15-A07 «ya fue utilizado», que se quitó).
 /// - Con [EnlaceRecuperacion.sinConexion]: que hace falta conexión y que el enlace se vuelve a
 ///   abrir desde el correo (sigue sirviendo).
+///
+/// La salida de 15-A06 y del aviso sin conexión vuelve a la raíz de la pila: el login, o el inicio
+/// de quien ya tenía la sesión abierta. El botón lo dice así: «Volver al login» sin sesión y
+/// «Ir a mi inicio» con sesión (decisión del 02/10 sobre #264, #277); la sesión no se toca.
 ///
 /// Si el usuario sale sin terminar, se suelta la sesión que abrió el enlace: si no, el próximo
 /// arranque lo dejaría adentro sin haber puesto ninguna contraseña. Mientras guarda no se puede
 /// salir (el "atrás" dejaría el cambio corriendo sin nadie que muestre cómo terminó).
 ///
-/// El enlace ya usado (15-A07) lo cubre front-colportores-mobile#247: hoy se trata como vencido.
+/// 15-A06 es como el canvas: el contenido centrado con el anillo arriba, las salidas al pie y
+/// **sin flecha de atrás** (se sale por los botones o por el atrás del sistema).
 class ConfirmarRecuperacionPasswordPage extends ConsumerStatefulWidget {
   const ConfirmarRecuperacionPasswordPage({super.key, required this.enlace});
 
@@ -85,14 +120,21 @@ class ConfirmarRecuperacionPasswordPage extends ConsumerStatefulWidget {
 class _ConfirmarRecuperacionPasswordPageState
     extends ConsumerState<ConfirmarRecuperacionPasswordPage> {
   static const _verde = Color(0xFF1F6E3A);
-  static const _largoMinimo = 8;
+  static const _oro = Color(0xFFA98330);
 
   final _nueva = TextEditingController();
   final _repetida = TextEditingController();
+  final _scroll = ScrollController();
 
   late bool _vencido = widget.enlace == EnlaceRecuperacion.vencido;
   bool _guardando = false;
   bool _terminado = false;
+
+  /// La contraseña cambió pero la sesión abierta en la app no se pudo cerrar.
+  bool _cierreFallido = false;
+
+  /// La contraseña cambió pero el servidor no contestó al cerrar las sesiones de los otros teléfonos.
+  bool _otrasSinCerrar = false;
   bool _sesionSoltada = false;
   bool _hayBaseLocal = false;
   Map<String, String> _erroresCampo = const {};
@@ -109,6 +151,7 @@ class _ConfirmarRecuperacionPasswordPageState
   void dispose() {
     _nueva.dispose();
     _repetida.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -123,10 +166,14 @@ class _ConfirmarRecuperacionPasswordPageState
     }
   }
 
-  bool get _cumpleLargo => _nueva.text.length >= _largoMinimo;
-  bool get _cumpleMayuscula => _nueva.text.contains(RegExp('[A-Z]'));
-  bool get _cumpleNumero => _nueva.text.contains(RegExp(r'\d'));
+  bool get _cumpleLargo => PoliticaPassword.cumpleLargo(_nueva.text);
+  bool get _cumpleMayuscula => PoliticaPassword.tieneMayuscula(_nueva.text);
+  bool get _cumpleNumero => PoliticaPassword.tieneNumero(_nueva.text);
   bool get _cumple => PoliticaPassword.validar(_nueva.text) == null;
+
+  /// Pasa los 72 bytes que acepta el servidor (#296): el campo lo dice y «Guardar» queda apagado.
+  /// Nunca se recorta lo escrito ni se muestra un contador.
+  bool get _demasiadoLarga => PoliticaPassword.excedeLargoMaximo(_nueva.text);
   bool get _coinciden => _repetida.text.isNotEmpty && _repetida.text == _nueva.text;
   bool get _puedeGuardar => !_guardando && _cumple && _coinciden;
 
@@ -148,6 +195,8 @@ class _ConfirmarRecuperacionPasswordPageState
     setState(() {
       if (_nueva.text.isEmpty) {
         _erroresCampo = const {'password': _faltaNueva};
+      } else if (_demasiadoLarga) {
+        // El campo ya lo dice (siempre a la vista): no se lo pisa con otro texto.
       } else if (!_cumple) {
         _erroresCampo = const {'password': _faltaRequisitos};
       } else if (_repetida.text.isEmpty) {
@@ -194,6 +243,19 @@ class _ConfirmarRecuperacionPasswordPageState
           _guardando = false;
           _errorGeneral = TextosConfirmacionRecuperacion.errorInesperado;
         });
+      case FailureServidor(status: 429, :final mensaje):
+        // El único error del servidor con texto propio que dice qué hacer («Esperá unos minutos…»).
+        setState(() {
+          _guardando = false;
+          _errorGeneral = mensaje;
+        });
+      case FailureServidor():
+        // Cualquier otro: el texto de la falla es un código técnico o el genérico del servidor y
+        // no dice qué hacer (QA #224). El detalle ya quedó en el log del remoto.
+        setState(() {
+          _guardando = false;
+          _errorGeneral = TextosConfirmacionRecuperacion.errorInesperado;
+        });
       case final Failure falla:
         setState(() {
           _guardando = false;
@@ -206,15 +268,33 @@ class _ConfirmarRecuperacionPasswordPageState
   /// también se cierra acá (DB, DEK en memoria), y se muestra la pantalla de éxito (15-A09).
   Future<void> _terminar() async {
     _terminado = true;
+    final otrasSinCerrar = ref
+        .read(confirmarRecuperacionPasswordUseCaseProvider)
+        .otrasSesionesSinCerrar;
+    var cierreFallido = false;
     try {
       if (ref.read(sesionProvider).value != null) {
-        await ref.read(sesionProvider.notifier).cerrarSesion();
+        // El cierre lo hace la app, no la colportora: el correo de la última cuenta se conserva y
+        // el login lo trae puesto (se borra solo con «Cerrar sesión» o al borrar los datos).
+        final cierre = await ref.read(sesionProvider.notifier).cerrarSesion(conservarCorreo: true);
+        cierreFallido = cierre.isLeft();
       }
     } on Object {
       // La contraseña ya cambió: el éxito se muestra igual; un cierre local que falló no puede
-      // dejar la pantalla trabada en «Guardando…».
+      // dejar la pantalla trabada en «Guardando…». Si lanzó pero la sesión quedó cerrada (el
+      // notifier la cierra igual), no hay nada que avisar.
+      cierreFallido = ref.read(sesionProvider).value != null;
     } finally {
-      if (mounted) setState(() => _guardando = false);
+      if (mounted) {
+        setState(() {
+          _guardando = false;
+          _cierreFallido = cierreFallido;
+          _otrasSinCerrar = otrasSinCerrar;
+        });
+        // El éxito reemplaza al formulario: con el texto grande el formulario venía desplazado y el
+        // éxito abría a mitad de camino. Se lo lleva al inicio.
+        if (_scroll.hasClients) _scroll.jumpTo(0);
+      }
     }
   }
 
@@ -222,7 +302,7 @@ class _ConfirmarRecuperacionPasswordPageState
     if (salio) {
       _soltarSesionDelEnlace();
     } else if (_terminado) {
-      _irAlLogin();
+      _irALaRaiz();
     }
   }
 
@@ -247,13 +327,24 @@ class _ConfirmarRecuperacionPasswordPageState
     );
   }
 
-  void _irAlLogin() => Navigator.of(context).popUntil((route) => route.isFirst);
+  /// Vuelve a la raíz de la pila: el login o, si la sesión sigue abierta, el inicio. No toca la
+  /// sesión: el rótulo de los botones lo dice según corresponda (ver [_rotuloVolver]).
+  void _irALaRaiz() => Navigator.of(context).popUntil((route) => route.isFirst);
+
+  /// El rótulo de la salida a la raíz: sin sesión la raíz es el login; con sesión, su inicio.
+  String _rotuloVolver({required bool haySesion}) => haySesion
+      ? TextosConfirmacionRecuperacion.irAMiInicio
+      : TextosConfirmacionRecuperacion.volverAlLogin;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     const paddingHorizontal = 30.0;
+    // Con la sesión abierta no hay login al que volver: las salidas dicen «Ir a mi inicio».
+    final haySesion = ref.watch(sesionProvider).value != null;
     final formulario = !_vencido && widget.enlace == EnlaceRecuperacion.valido;
+    // 15-A06 tiene su propio armado: centrado, sin flecha, con las salidas al pie.
+    final enlaceInservible = !_terminado && _vencido;
 
     return PopScope(
       // Guardando no se sale; terminado, el atrás lleva al login (no queda el formulario).
@@ -261,54 +352,89 @@ class _ConfirmarRecuperacionPasswordPageState
       onPopInvokedWithResult: (salio, _) => _alSalir(salio),
       child: Scaffold(
         body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: 24),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: (constraints.maxHeight - 48).clamp(0, double.infinity),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    if (_terminado)
-                      _exitoContenido(theme)
-                    else ...[
-                      Column(
+          child: enlaceInservible
+              ? _enlaceInservible(theme, haySesion: haySesion)
+              : LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    controller: _scroll,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: paddingHorizontal,
+                      vertical: 24,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: (constraints.maxHeight - 48).clamp(0, double.infinity),
+                      ),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: IconButton(
-                              key: const Key('confirmar_recuperacion_atras'),
-                              tooltip: 'Volver',
-                              onPressed: _guardando ? null : () => Navigator.of(context).maybePop(),
-                              icon: const Icon(Icons.arrow_back),
+                          if (_terminado)
+                            _exitoContenido(theme)
+                          else ...[
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: IconButton(
+                                    key: const Key('confirmar_recuperacion_atras'),
+                                    tooltip: 'Volver',
+                                    onPressed: _guardando
+                                        ? null
+                                        : () => Navigator.of(context).maybePop(),
+                                    icon: const Icon(Icons.arrow_back),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                if (widget.enlace == EnlaceRecuperacion.sinConexion)
+                                  _sinConexionContenido(theme, haySesion: haySesion)
+                                else
+                                  _formularioArriba(theme),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          if (_vencido)
-                            _vencidoContenido(theme)
-                          else if (widget.enlace == EnlaceRecuperacion.sinConexion)
-                            _sinConexionContenido(theme)
-                          else
-                            _formularioArriba(theme),
+                            if (formulario) _formularioAbajo(theme),
+                          ],
                         ],
                       ),
-                      if (formulario) _formularioAbajo(theme),
-                    ],
-                  ],
+                    ),
+                  ),
                 ),
+        ),
+      ),
+    );
+  }
+
+  /// 15-A06 (el enlace no sirve: venció o ya se usó), como el canvas: el contenido centrado en lo
+  /// que sobra encima de las salidas, que van pegadas al pie. Sin flecha de atrás.
+  Widget _enlaceInservible(ThemeData theme, {required bool haySesion}) {
+    final colores = theme.extension<ColoresColportaje>()!;
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Con spaceBetween, el del medio queda centrado entre el borde de arriba y las salidas.
+              const SizedBox.shrink(),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 24),
+                child: _vencidoContenido(theme, colores),
               ),
-            ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+                child: _vencidoSalidas(context, haySesion: haySesion),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _encabezado(ThemeData theme, String eyebrow, String titulo, {Key? tituloKey}) {
+  Widget _encabezado(ThemeData theme, String eyebrow, String titulo) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -318,12 +444,8 @@ class _ConfirmarRecuperacionPasswordPageState
         ),
         const SizedBox(height: 8),
         Semantics(
-          liveRegion: tituloKey != null,
-          child: Text(
-            titulo,
-            key: tituloKey,
-            style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
-          ),
+          header: true,
+          child: Text(titulo, style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26)),
         ),
       ],
     );
@@ -342,9 +464,15 @@ class _ConfirmarRecuperacionPasswordPageState
       ),
       const SizedBox(height: 16),
       Semantics(
+        header: true,
         liveRegion: true,
         child: Text(
-          TextosConfirmacionRecuperacion.exito,
+          // Con la sesión todavía abierta, «Iniciá sesión» sería falso: se dice qué pasó y qué hacer.
+          _cierreFallido
+              ? TextosConfirmacionRecuperacion.exitoSinCerrarSesion
+              : _otrasSinCerrar
+              ? TextosConfirmacionRecuperacion.exitoOtrasSesionesPendientes
+              : TextosConfirmacionRecuperacion.exito,
           key: const Key('confirmar_recuperacion_exito'),
           style: theme.textTheme.headlineMedium?.copyWith(fontSize: 26),
         ),
@@ -352,47 +480,64 @@ class _ConfirmarRecuperacionPasswordPageState
       const SizedBox(height: 32),
       FilledButton(
         key: const Key('confirmar_recuperacion_exito_ir_al_login'),
-        onPressed: _irAlLogin,
+        onPressed: _irALaRaiz,
         style: _estiloTextoGrande(context),
-        child: const Text('Ir al login'),
+        child: Text(_cierreFallido ? 'Volver al inicio' : 'Ir al login'),
       ),
     ],
   );
 
-  /// 15-A06.
-  Widget _vencidoContenido(ThemeData theme) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
+  /// Título de 15-A06: serif de 28 con interlineado 1,2, como el canvas.
+  TextStyle? _tituloEnlace(ThemeData theme) =>
+      theme.textTheme.headlineMedium?.copyWith(fontSize: 28, height: 1.2);
+
+  /// 15-A06, la parte del medio: anillo dorado con el reloj de arena, el rótulo y el texto.
+  Widget _vencidoContenido(ThemeData theme, ColoresColportaje colores) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    spacing: 16,
     children: [
-      const Align(
-        alignment: Alignment.centerLeft,
-        child: ExcludeSemantics(
-          child: _Insignia(icono: Icons.hourglass_empty, color: Color(0xFF5B6B82)),
+      _Anillo(
+        icono: Icons.hourglass_empty,
+        colorBorde: _oro,
+        colorIcono: theme.colorScheme.onSurface,
+      ),
+      Text(
+        TextosConfirmacionRecuperacion.rotuloEnlaceNoValido,
+        style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
+      ),
+      Semantics(
+        header: true,
+        liveRegion: true,
+        child: Text(
+          TextosConfirmacionRecuperacion.vencido,
+          key: const Key('confirmar_recuperacion_vencido'),
+          style: _tituloEnlace(theme),
         ),
       ),
-      const SizedBox(height: 16),
-      _encabezado(
-        theme,
-        'ENLACE VENCIDO',
-        TextosConfirmacionRecuperacion.vencido,
-        tituloKey: const Key('confirmar_recuperacion_vencido'),
-      ),
-      const SizedBox(height: 24),
+    ],
+  );
+
+  /// 15-A06, al pie: pedir un enlace nuevo y volver a la raíz («Volver al login» o, con sesión
+  /// abierta, «Ir a mi inicio»).
+  Widget _vencidoSalidas(BuildContext context, {required bool haySesion}) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    spacing: 10,
+    children: [
       FilledButton(
         key: const Key('confirmar_recuperacion_pedir_otro'),
         onPressed: _pedirOtroEnlace,
         style: _estiloTextoGrande(context),
         child: const Text('Solicitar un enlace nuevo'),
       ),
-      const SizedBox(height: 8),
       TextButton(
         key: const Key('confirmar_recuperacion_ir_al_login'),
-        onPressed: _irAlLogin,
-        child: const Text('Volver al login'),
+        onPressed: _irALaRaiz,
+        child: Text(_rotuloVolver(haySesion: haySesion)),
       ),
     ],
   );
 
-  Widget _sinConexionContenido(ThemeData theme) => Column(
+  Widget _sinConexionContenido(ThemeData theme, {required bool haySesion}) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       _encabezado(theme, 'RECUPERAR CONTRASEÑA', 'Sin conexión'),
@@ -411,9 +556,9 @@ class _ConfirmarRecuperacionPasswordPageState
       const SizedBox(height: 24),
       FilledButton(
         key: const Key('confirmar_recuperacion_ir_al_login'),
-        onPressed: _irAlLogin,
+        onPressed: _irALaRaiz,
         style: _estiloTextoGrande(context),
-        child: const Text('Volver al login'),
+        child: Text(_rotuloVolver(haySesion: haySesion)),
       ),
     ],
   );
@@ -436,7 +581,9 @@ class _ConfirmarRecuperacionPasswordPageState
           _encabezado(theme, 'RECUPERAR CONTRASEÑA', 'Elegí una contraseña nueva'),
           const SizedBox(height: 22),
           Opacity(
-            opacity: _guardando ? .55 : 1,
+            // 15-A04: el canvas atenúa al 55 %, que da 2,4:1 en las etiquetas; con 95 % llegan a
+            // 4,5:1 (decisión de Cristian, 02/10). El «Guardando…» lo dice además el botón.
+            opacity: _guardando ? .95 : 1,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -449,7 +596,9 @@ class _ConfirmarRecuperacionPasswordPageState
                       : colores.gris,
                   campoKey: const Key('confirmar_recuperacion_nueva'),
                   controller: _nueva,
-                  errorText: _erroresCampo['password'],
+                  errorText: _demasiadoLarga
+                      ? PoliticaPassword.demasiadoLarga
+                      : _erroresCampo['password'],
                   habilitado: !_guardando,
                   accionTeclado: TextInputAction.next,
                   alCambiar: _alCambiar,
@@ -458,7 +607,7 @@ class _ConfirmarRecuperacionPasswordPageState
                 _Requisitos(
                   vacia: nuevaVacia,
                   largo: _cumpleLargo,
-                  faltan: _largoMinimo - _nueva.text.length,
+                  faltan: PoliticaPassword.largoMinimo - PoliticaPassword.largo(_nueva.text),
                   mayuscula: _cumpleMayuscula,
                   numero: _cumpleNumero,
                 ),
@@ -549,7 +698,7 @@ class _ConfirmarRecuperacionPasswordPageState
   }
 }
 
-/// Círculo con un ícono (éxito, vencido): decorativo, el texto dice lo mismo.
+/// Círculo lleno con un ícono (éxito, 15-A09): decorativo, el texto dice lo mismo.
 class _Insignia extends StatelessWidget {
   const _Insignia({required this.icono, required this.color});
 
@@ -563,6 +712,32 @@ class _Insignia extends StatelessWidget {
       height: 56,
       decoration: BoxDecoration(shape: BoxShape.circle, color: color),
       child: Icon(icono, color: Colors.white, size: 28),
+    );
+  }
+}
+
+/// Anillo con un ícono adentro (enlace que no sirve, 15-A06): borde de 1,5 y sin relleno, como el
+/// canvas. Decorativo: el título dice lo mismo.
+class _Anillo extends StatelessWidget {
+  const _Anillo({required this.icono, required this.colorBorde, required this.colorIcono});
+
+  final IconData icono;
+  final Color colorBorde;
+  final Color colorIcono;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: Container(
+        width: 56,
+        height: 56,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: colorBorde, width: 1.5),
+        ),
+        child: Icon(icono, color: colorIcono, size: 22),
+      ),
     );
   }
 }

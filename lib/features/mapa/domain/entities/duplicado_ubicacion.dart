@@ -1,29 +1,54 @@
 import 'package:equatable/equatable.dart';
 
+import 'estado_casa.dart';
 import 'ubicacion.dart';
 
 /// Por qué dos ubicaciones son un posible duplicado (HU-UBI-006, regla del 29/09 en #207).
 ///
 /// Si se cumplen las dos, cuenta [mismaDireccion]: es la más fuerte y la que decide si se puede
-/// "conservar ambos" (ver `CriterioDuplicadoUbicacion.mismaDireccionAdmiteConservarAmbos`).
+/// "conservar ambos": a menos de 100 m no, a 100 m o más sí (D1, ver
+/// `CriterioDuplicadoUbicacion.radioMismaDireccionMetros`).
 enum MotivoDuplicado {
   /// Misma calle y mismo número en la misma ciudad, a cualquier distancia (el GPS puede diferir
-  /// 10 o 20 m). Vista 10: "Misma calle y número".
+  /// 10 o 20 m, y dos casas con el mismo número pueden estar a cuadras). Vista 10: "Misma calle y
+  /// número".
   mismaDireccion,
 
   /// A menos de 5 m, con cualquier dirección o sin ella. Vista 10: "A menos de 5 m".
   cercania,
 }
 
-/// Lo que el colportor decidió sobre un par del scan que no se da de baja (HU-UBI-006). Las dos
-/// sacan el par de "Posibles duplicados" durante `ConsultarParesDuplicadosUseCase.ventana`.
+/// Lo que el colportor decidió sobre un par del scan que no se une (HU-UBI-006, decisión del
+/// 06/10): «Son distintos» no vuelve nunca y «Ignorar» esconde el par [ParDecidido.ventanaIgnorar].
 enum DecisionParDuplicado {
-  /// "Conservar ambos": son lugares distintos. Solo si el par lo admite
+  /// «Son distintos» (el botón de la vista 10; «Conservar ambos» en la HU): son lugares distintos y
+  /// el par **no vuelve a proponerse nunca**. Solo si el par lo admite
   /// ([ParDuplicado.admiteConservarAmbos]). Cuenta como falso positivo (R21).
   conservarAmbos,
 
-  /// "Ignorar": no lo resuelve ahora.
+  /// «Ignorar» (y «Después» en la vista 10, que no guarda nada): no lo resuelve ahora. El par
+  /// vuelve a aparecer pasados [ParDecidido.ventanaIgnorar].
   ignorar,
+}
+
+/// Una decisión ya guardada sobre un par, con su fecha.
+final class ParDecidido extends Equatable {
+  const ParDecidido({required this.decision, required this.decididoEn});
+
+  final DecisionParDuplicado decision;
+  final DateTime decididoEn;
+
+  /// HU-UBI-006: «Conservar histórico de "ignorados" 30 días para no reaparecer constantemente».
+  static const ventanaIgnorar = Duration(days: 30);
+
+  /// Si el par sigue escondido en [ahora]: «Son distintos» siempre; «Ignorar» hasta que vence.
+  bool ocultaEn(DateTime ahora) => switch (decision) {
+    DecisionParDuplicado.conservarAmbos => true,
+    DecisionParDuplicado.ignorar => decididoEn.isAfter(ahora.subtract(ventanaIgnorar)),
+  };
+
+  @override
+  List<Object?> get props => [decision, decididoEn];
 }
 
 /// Una ubicación que ya existe y parece la misma que otra (alta, modificación o scan).
@@ -33,6 +58,8 @@ final class CandidataDuplicado extends Equatable {
     required this.motivo,
     required this.distanciaMetros,
     required this.admiteConservarAmbos,
+    this.estado,
+    this.cantidadEspacios,
   });
 
   final Ubicacion ubicacion;
@@ -47,8 +74,34 @@ final class CandidataDuplicado extends Equatable {
   /// duplicado.
   final bool admiteConservarAmbos;
 
+  /// El estado de visita de la casa candidata según `house_status` (vista 04: "Entrevista
+  /// agendada"); una casa sin fila es [EstadoCasa.sinVisita]. `null` = no se sabe (quien arma la
+  /// candidata no lo leyó, como el criterio puro): la tarjeta no dibuja nada en su lugar.
+  final EstadoCasa? estado;
+
+  /// Los espacios sin baja de la candidata (vista 04: "2 espacios"); `null` = no se sabe.
+  final int? cantidadEspacios;
+
+  /// Esta candidata con lo que la tarjeta muestra de su casa: el estado de visita y los espacios.
+  CandidataDuplicado conResumen({required EstadoCasa estado, required int cantidadEspacios}) =>
+      CandidataDuplicado(
+        ubicacion: ubicacion,
+        motivo: motivo,
+        distanciaMetros: distanciaMetros,
+        admiteConservarAmbos: admiteConservarAmbos,
+        estado: estado,
+        cantidadEspacios: cantidadEspacios,
+      );
+
   @override
-  List<Object?> get props => [ubicacion, motivo, distanciaMetros, admiteConservarAmbos];
+  List<Object?> get props => [
+    ubicacion,
+    motivo,
+    distanciaMetros,
+    admiteConservarAmbos,
+    estado,
+    cantidadEspacios,
+  ];
 }
 
 /// Un par de ubicaciones propias que el scan de duplicados propone revisar (HU-UBI-006, vista 10).

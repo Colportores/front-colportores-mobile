@@ -41,6 +41,10 @@ final class _DataSource implements JornadaLocalDataSource {
   List<JornadaModel> get jornadas => _real.jornadas;
 
   @override
+  Future<JornadaModel?> siguienteA({required String colportorId, required DateTime inicio}) =>
+      _real.siguienteA(colportorId: colportorId, inicio: inicio);
+
+  @override
   Future<JornadaModel?> obtenerActiva(String colportorId) async {
     if (errorAlLeer case final error?) throw error;
     if (lecturasSinVer > 0) {
@@ -357,7 +361,7 @@ void main() {
       await _escribirHoraEnLaHoja(tester, '14', '35');
 
       // La hoja la rechaza con el rango y no deja confirmarla: nada se ajusta en silencio.
-      expect(find.text('La hora tiene que estar entre las 14:36 y las 23:59.'), findsOneWidget);
+      expect(find.text('La hora tiene que estar entre las 14:36 y las 02:35.'), findsOneWidget);
       expect(
         tester.widget<FilledButton>(find.byKey(const Key('hoja_hora_usar_escrita'))).onPressed,
         isNull,

@@ -4,10 +4,14 @@ import 'package:equatable/equatable.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../agenda/domain/services/recordatorios.dart';
+import '../entities/motivo_baja.dart';
+import '../entities/pendientes_ubicacion.dart';
 import '../entities/resultado_baja_ubicacion.dart';
 import '../entities/ubicacion.dart';
 import '../repositories/ubicacion_repository.dart';
 import '../services/consultor_pendientes_ubicacion.dart';
+import '../services/criterio_duplicado_ubicacion.dart';
 
 /// Parámetros de [DarDeBajaUbicacionUseCase].
 final class DarDeBajaUbicacionParams extends Equatable {
@@ -25,7 +29,8 @@ final class DarDeBajaUbicacionParams extends Equatable {
   /// concurrente (igual que `ModificarUbicacionParams.baseUpdatedAt`).
   final DateTime baseUpdatedAt;
 
-  /// Opcional (R-UB09, "`reason` si el usuario aporta"). Texto libre: no se imprime nunca.
+  /// Uno de [MotivosBaja] o, con «Otro», el texto del colportor (R-UB09). Va al `audit_log` local;
+  /// texto libre: no se imprime nunca. Sin motivo (o en blanco) no se guarda nada.
   final String? motivo;
 
   /// La segunda confirmación, tras ver el resumen de [BajaRequiereConfirmacion].
@@ -47,22 +52,34 @@ final class DarDeBajaUbicacionParams extends Equatable {
 /// 1. Sin `id`: `Left(FailureValidacion)`. La ubicación no está: `Left(FailureUbicacionInexistente)`.
 /// 2. Ya estaba de baja (doble toque): `Right(BajaSinCambios)`, sin escribir ni encolar.
 /// 3. La fila cambió desde que se cargó la pantalla: `Left(FailureBajaCambioReciente)`.
-/// 4. Con visitas pendientes, ventas con saldo o cobros sin cerrar y sin `confirmaPendientes`:
-///    `Right(BajaRequiereConfirmacion)` con el resumen; no escribe.
-/// 5. Escribe `deleted_at` = ahora y `updated_at` = ahora y encola el tombstone, en una
-///    transacción. **No** da de baja los espacios ni las personas (HU: "no se borran en cascada").
-///    Si otro toque la dio de baja mientras tanto, `Right(BajaSinCambios)`. Con
-///    [DarDeBajaUbicacionParams.conservadaId], la transacción exige que esa otra siga activa.
+/// 4. Con una cobranza pendiente, alguna venta o una visita de otro colportor:
+///    `Right(BajaBloqueada)` con el motivo; no escribe. **No** vale para la baja por unión de
+///    duplicados (con [DarDeBajaUbicacionParams.conservadaId]): todo lo que colgaba de la duplicada
+///    pasa a la que se conserva (HU-UBI-005, «Baja por unión de duplicados»).
+/// 5. Con entrevistas agendadas y sin `confirmaPendientes`: `Right(BajaRequiereConfirmacion)`
+///    con el resumen; no escribe.
+/// 6. Escribe `deleted_at` = ahora y `updated_at` = ahora, el motivo en la auditoría local y encola
+///    el tombstone, en una transacción. **No** da de baja los espacios ni las personas (HU: "no se
+///    borran en cascada"). Las entrevistas agendadas de la ubicación se pasan a `CANCELADA` en esa misma
+///    transacción (no se borra nada y quedan canceladas al reactivar) y, ya escrita la baja, se cancelan
+///    sus recordatorios (que no falla nunca). Si otro toque la dio de baja mientras tanto,
+///    `Right(BajaSinCambios)`. Con [DarDeBajaUbicacionParams.conservadaId], la transacción exige que
+///    esa otra siga activa.
 ///
 /// Como `ModificarUbicacionUseCase`, no toca `sync_version`: el servidor la incrementa (0002).
 final class DarDeBajaUbicacionUseCase
     implements UseCase<ResultadoBajaUbicacion, DarDeBajaUbicacionParams> {
-  DarDeBajaUbicacionUseCase(this._repository, this._pendientes, {DateTime Function()? ahora})
-    : _ahora = ahora ?? DateTime.now;
+  DarDeBajaUbicacionUseCase(
+    this._repository,
+    this._pendientes, {
+    DateTime Function()? ahora,
+    this._recordatorios,
+  }) : _ahora = ahora ?? DateTime.now;
 
   final UbicacionRepository _repository;
   final ConsultorPendientesUbicacion _pendientes;
   final DateTime Function() _ahora;
+  final Recordatorios? _recordatorios;
 
   @override
   Future<Either<Failure, ResultadoBajaUbicacion>> call(DarDeBajaUbicacionParams params) async {
@@ -70,39 +87,80 @@ final class DarDeBajaUbicacionUseCase
     if (id.isEmpty) return const Left(_sinId);
 
     final leida = await _repository.obtener(id);
-    return leida.fold<Future<Either<Failure, ResultadoBajaUbicacion>>>(
-      (falla) async => Left(falla),
-      (actual) async {
-        if (actual == null) return const Left(FailureUbicacionInexistente());
-        if (actual.estaBorrada) return Right(BajaSinCambios(ubicacion: actual));
-        if (actual.auditoria.updatedAt != instanteMs(params.baseUpdatedAt)) {
-          return const Left(FailureBajaCambioReciente());
-        }
+    return leida.fold<
+      Future<Either<Failure, ResultadoBajaUbicacion>>
+    >((falla) async => Left(falla), (actual) async {
+      if (actual == null) return const Left(FailureUbicacionInexistente());
+      if (actual.estaBorrada) return Right(BajaSinCambios(ubicacion: actual));
+      if (actual.auditoria.updatedAt != instanteMs(params.baseUpdatedAt)) {
+        return const Left(FailureBajaCambioReciente());
+      }
 
-        final pendientes = await _pendientes.de(id);
-        final falla = pendientes.fold<Failure?>((f) => f, (_) => null);
-        if (falla != null) return Left(falla);
-        final resumen = pendientes.getOrElse(() => throw StateError('era un Left'));
-        if (resumen.hayPendientes && !params.confirmaPendientes) {
-          return Right(BajaRequiereConfirmacion(pendientes: resumen));
-        }
+      final pendientes = await _pendientes.de(id);
+      final falla = pendientes.fold<Failure?>((f) => f, (_) => null);
+      if (falla != null) return Left(falla);
+      final resumen = pendientes.getOrElse(() => throw StateError('era un Left'));
+      final bloqueo = resumen.bloqueo;
+      if (bloqueo != null && params.conservadaId == null) {
+        return Right(BajaBloqueada(bloqueo: bloqueo));
+      }
+      // En la baja por unión de duplicados las entrevistas no se cancelan: pasan a la que se conserva.
+      final pideConfirmar = params.conservadaId == null && resumen.hayPendientes;
+      if (pideConfirmar && !params.confirmaPendientes) {
+        return Right(BajaRequiereConfirmacion(pendientes: resumen));
+      }
 
-        final motivo = params.motivo?.trim();
-        final baja = await _repository.cambiarBaja(
-          id,
-          baja: true,
-          baseUpdatedAt: params.baseUpdatedAt,
-          ahora: _ahora(),
-          conMotivo: motivo != null && motivo.isNotEmpty,
-          conservadaId: params.conservadaId,
-        );
-        return baja.map<ResultadoBajaUbicacion>(
-          (r) => r.escribio
-              ? UbicacionDadaDeBaja(ubicacion: r.ubicacion)
-              : BajaSinCambios(ubicacion: r.ubicacion),
-        );
-      },
-    );
+      final baja = await _repository.cambiarBaja(
+        id,
+        baja: true,
+        baseUpdatedAt: params.baseUpdatedAt,
+        ahora: _ahora(),
+        motivo: MotivosBaja.paraGuardar(params.motivo, deUnion: params.conservadaId != null),
+        conservadaId: params.conservadaId,
+      );
+      // Las entrevistas ya quedaron canceladas en la transacción de la baja: sus avisos ya no tienen
+      // sentido. Después de escribir (el recordatorio es del teléfono, no de la DB) y sin que pueda
+      // fallar la baja.
+      if (baja.fold((_) => false, (r) => r.escribio) && params.conservadaId == null) {
+        await _cancelarRecordatorios(resumen.entrevistasAgendadas);
+      }
+      return baja.map<ResultadoBajaUbicacion>(
+        (r) => r.escribio
+            ? UbicacionDadaDeBaja(ubicacion: r.ubicacion)
+            : BajaSinCambios(ubicacion: r.ubicacion),
+      );
+    });
+  }
+
+  Future<void> _cancelarRecordatorios(List<String> agendaIds) async {
+    final recordatorios = _recordatorios;
+    if (recordatorios == null) return;
+    for (final id in agendaIds) {
+      try {
+        await recordatorios.cancelar(id);
+      } on Object {
+        // `Recordatorios.cancelar` no lanza; si un doble lo hace, la baja ya está escrita.
+      }
+    }
+  }
+}
+
+/// HU-UBI-005 — Lo que el teléfono sabe de la ubicación antes de ofrecer «Dar de baja»: si la baja
+/// está bloqueada (cobranza pendiente, ventas o visitas de otro colportor) y si pide la segunda
+/// confirmación (entrevistas agendadas). No escribe nada. Sin `id`: `Left(FailureValidacion)`.
+///
+/// La baja vuelve a mirar todo esto al escribirse ([DarDeBajaUbicacionUseCase]): entre una cosa y la
+/// otra pudo llegar una venta por el sync.
+final class ConsultarPendientesBajaUseCase implements UseCase<PendientesUbicacion, String> {
+  ConsultarPendientesBajaUseCase(this._pendientes);
+
+  final ConsultorPendientesUbicacion _pendientes;
+
+  @override
+  Future<Either<Failure, PendientesUbicacion>> call(String ubicacionId) async {
+    final id = ubicacionId.trim();
+    if (id.isEmpty) return const Left(_sinId);
+    return _pendientes.de(id);
   }
 }
 
@@ -123,17 +181,32 @@ final class ReactivarUbicacionParams extends Equatable {
 /// como la baja; ya activa (doble toque): `Right` con la ubicación tal cual, sin escribir; la fila
 /// cambió: `Left(FailureReactivacionCambioReciente)`; si no, escribe y encola el `update`.
 ///
+/// Antes de escribir, **en la misma transacción** (decisión del orquestador, 09/10, por el mapa de
+/// decisiones, front-colportores-mobile#205; HU-UBI-005, «Reactivar»):
+///
+/// - una baja por unión de duplicados (`duplicado_de_*`) no se reactiva:
+///   `Left(FailureReactivacionDeUnion)`, con la ubicación a la que se unió si sigue activa;
+/// - las demás pasan por la regla de dirección única (D1) que usa la edición
+///   ([CriterioDuplicadoUbicacion.alSeguirIgual], el punto único de D1): si hay otra activa con la
+///   misma dirección a menos de 100 m, `Left(FailureReactivacionChocaConActiva)` con la más cercana.
+///   Es **solo D1**: el posible duplicado que avisa sin frenar (a menos de 5 m, o la misma dirección
+///   a 100 m o más) lo encuentra el scan de "Posibles duplicados".
+///
+/// En los dos casos no se escribe ni se toca nada. La guarda vive en quien escribe la reactivación,
+/// así que vale también al reactivar al guardar desde Editar ([ModificarUbicacionUseCase]).
+///
 /// **No** mira si la ciudad sigue en el catálogo (decisión de Cristian, 29/09): la ciudad es una
 /// parte más de la dirección y ninguna acción sobre una ubicación se frena por eso.
-///
-/// No busca duplicados al reactivar (la HU no lo pide; sí lo hace la reactivación que va dentro de
-/// editar, en `ModificarUbicacionUseCase`, HU-UBI-004): para confirmar.
 final class ReactivarUbicacionUseCase implements UseCase<Ubicacion, ReactivarUbicacionParams> {
-  ReactivarUbicacionUseCase(this._repository, {DateTime Function()? ahora})
-    : _ahora = ahora ?? DateTime.now;
+  ReactivarUbicacionUseCase(
+    this._repository, {
+    DateTime Function()? ahora,
+    this._criterio = const CriterioDuplicadoUbicacion(),
+  }) : _ahora = ahora ?? DateTime.now;
 
   final UbicacionRepository _repository;
   final DateTime Function() _ahora;
+  final CriterioDuplicadoUbicacion _criterio;
 
   @override
   Future<Either<Failure, Ubicacion>> call(ReactivarUbicacionParams params) async {
@@ -155,6 +228,7 @@ final class ReactivarUbicacionUseCase implements UseCase<Ubicacion, ReactivarUbi
         baja: false,
         baseUpdatedAt: params.baseUpdatedAt,
         ahora: _ahora(),
+        duplicados: _criterio.alSeguirIgual,
       );
       return reactivada.map((r) => r.ubicacion);
     });

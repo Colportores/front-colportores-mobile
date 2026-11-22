@@ -70,7 +70,7 @@ void main() {
     expect(await nombre(armar(_sesion(nombre: 'Lucía'))), 'Lucía');
   });
 
-  test('sin nombre en la sesión ni copia (ingreso con Google), es null: saludo a secas', () async {
+  test('sin nombre en la sesión ni copia (una cuenta vieja), es null: saludo a secas', () async {
     expect(await nombre(armar(_sesion())), isNull);
     expect(await nombre(armar(_sesion(nombre: '   '))), isNull);
   });
@@ -119,7 +119,7 @@ void main() {
       expect(await copia.leer('u-1'), 'Lucía Beatriz');
     });
 
-    test('con sesión sin nombre (Google) no guarda nada', () async {
+    test('con sesión sin nombre no guarda nada', () async {
       final c = armar(_sesion());
       await c.read(sesionProvider.future);
 

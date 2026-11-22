@@ -1,8 +1,17 @@
 package com.colportores.colportores_mobile
 
+import android.Manifest
+import android.app.AlarmManager
 import android.app.KeyguardManager
+import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
+import android.os.StatFs
+import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
@@ -17,6 +26,196 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         registrarCanalSeguridadDispositivo(flutterEngine)
+        registrarCanalAlmacenamientoTiles(flutterEngine)
+        registrarCanalNotificaciones(flutterEngine)
+        registrarCanalBateria(flutterEngine)
+    }
+
+    /**
+     * Canal `colportores/bateria` (HU-SYNC-005, R-SY10): el nivel de la batería, para que el backup
+     * automático no corra con menos del 30 %. Del lado de Dart, `NivelBateriaCanal`.
+     *
+     * - `nivel` -> el porcentaje (0 a 100, `BatteryManager.BATTERY_PROPERTY_CAPACITY`) o `null` si el
+     *   sistema no lo informa.
+     */
+    private fun registrarCanalBateria(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CANAL_BATERIA).setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "nivel" -> {
+                        val bateria = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                        val nivel = bateria.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                        // Sin dato, Android devuelve 0 o `Integer.MIN_VALUE`.
+                        result.success(if (nivel in 1..100) nivel else null)
+                    }
+                    else -> result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("BATERIA", e.javaClass.simpleName, null)
+            }
+        }
+    }
+
+    /**
+     * Canal `colportores/notificaciones` (HU-NOT-001, vista 24): el permiso de notificaciones del
+     * sistema. Del lado de Dart, `PermisoNotificacionesCanal`.
+     *
+     * - `estado` -> `"activadas"` o `"apagadas"` (`NotificationManager.areNotificationsEnabled`). Android
+     *   no distingue «nunca se preguntó» de «dijo que no»: eso lo recuerda la app.
+     * - `pedir` -> muestra el diálogo del sistema (Android 13 o más, `POST_NOTIFICATIONS`) y responde
+     *   cuando la persona contesta, con si quedaron activadas. Si el diálogo ya no se puede mostrar
+     *   (se negó dos veces) o el Android es anterior al 13, responde enseguida con el estado de ahora.
+     * - `abrirAjustes` -> abre los ajustes de notificaciones de la app y devuelve si pudo.
+     * - `alarmasExactas` -> `"permitidas"` o `"apagadas"` (`AlarmManager.canScheduleExactAlarms`, el
+     *   permiso «Alarmas y recordatorios»; antes del Android 12 no se pide y siempre son `"permitidas"`).
+     *   Del lado de Dart, `PermisoAlarmasExactasCanal`.
+     * - `abrirAjustesAlarmas` -> abre «Alarmas y recordatorios» de la app (Android 12 o más) y devuelve
+     *   si pudo.
+     */
+    private fun registrarCanalNotificaciones(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CANAL_NOTIFICACIONES).setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "estado" -> result.success(if (notificacionesActivadas()) "activadas" else "apagadas")
+                    "pedir" -> pedirPermisoNotificaciones(result)
+                    "abrirAjustes" -> result.success(abrirAjustesNotificaciones())
+                    "alarmasExactas" -> result.success(if (alarmasExactasPermitidas()) "permitidas" else "apagadas")
+                    "abrirAjustesAlarmas" -> result.success(abrirAjustesAlarmas())
+                    else -> result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("NOTIFICACIONES", e.javaClass.simpleName, null)
+            }
+        }
+    }
+
+    private fun notificacionesActivadas(): Boolean {
+        val administrador = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return administrador.areNotificationsEnabled()
+    }
+
+    private fun alarmasExactasPermitidas(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        val alarmas = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        return alarmas.canScheduleExactAlarms()
+    }
+
+    /**
+     * Abre «Alarmas y recordatorios» de esta app (Android 12 o más) o, si el equipo no tiene esa
+     * pantalla, los detalles de la app. `false` si ninguna abre o si el Android no la pide.
+     */
+    private fun abrirAjustesAlarmas(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
+        val paquete = Uri.fromParts("package", packageName, null)
+        val intentos = listOf(
+            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, paquete),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, paquete),
+        )
+        for (intento in intentos) {
+            try {
+                startActivity(intento.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return true
+            } catch (e: Exception) {
+                // Esa pantalla no existe en este equipo: se prueba la siguiente.
+            }
+        }
+        return false
+    }
+
+    /** El pedido de `pedir` que espera la respuesta del diálogo del sistema, si hay uno abierto. */
+    private var pedidoNotificaciones: MethodChannel.Result? = null
+
+    private fun pedirPermisoNotificaciones(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) {
+            result.success(notificacionesActivadas())
+            return
+        }
+        if (pedidoNotificaciones != null) {
+            // Ya hay un diálogo abierto: la app no pide dos veces, pero si llegara, no se cuelga.
+            result.error("NOTIFICACIONES", "EnCurso", null)
+            return
+        }
+        pedidoNotificaciones = result
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), CODIGO_NOTIFICACIONES)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != CODIGO_NOTIFICACIONES) return
+        val pedido = pedidoNotificaciones ?: return
+        pedidoNotificaciones = null
+        if (grantResults.isEmpty()) {
+            // El sistema canceló el pedido sin que la persona contestara (por ejemplo, al girar la
+            // pantalla o cambiar de app con el diálogo abierto): no es un «no». La app lo cuenta como
+            // falla recuperable y ofrece volver a intentarlo.
+            pedido.error("NOTIFICACIONES", "Interrumpido", null)
+            return
+        }
+        // El permiso concedido puede convivir con las notificaciones apagadas de la app en los ajustes:
+        // lo que vale es lo que el sistema dice ahora.
+        pedido.success(notificacionesActivadas())
+    }
+
+    /**
+     * Abre los ajustes de notificaciones de esta app (Android 8 o más) o, si no los tiene, los
+     * detalles de la app. `false` si ninguna abre.
+     */
+    private fun abrirAjustesNotificaciones(): Boolean {
+        val intentos = mutableListOf<Intent>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intentos.add(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, packageName),
+            )
+        }
+        intentos.add(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)),
+        )
+        for (intento in intentos) {
+            try {
+                startActivity(intento.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return true
+            } catch (e: Exception) {
+                // Esa pantalla no existe en este equipo: se prueba la siguiente.
+            }
+        }
+        return false
+    }
+
+    /**
+     * Canal `colportores/almacenamiento_tiles` (HU-SYNC-010, #189): lo que la descarga de los mapas
+     * offline pregunta del almacenamiento. Del lado de Dart, `AlmacenamientoTilesCanal`. Los dos
+     * métodos reciben `{ruta}`.
+     *
+     * - `bytesLibres` → bytes que la app puede usar en el volumen de `ruta` (`StatFs.availableBytes`).
+     * - `excluirDeBackup` → `true` sin hacer nada: en Android la app ya tiene `allowBackup="false"`
+     *   (AndroidManifest.xml), así que ni los mapas ni nada de la app viajan a la copia de seguridad.
+     */
+    private fun registrarCanalAlmacenamientoTiles(flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CANAL_TILES).setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "bytesLibres" -> {
+                        val ruta = call.argument<String>("ruta")
+                        if (ruta == null) {
+                            result.error("ALMACENAMIENTO_TILES", "falta la ruta", null)
+                        } else {
+                            result.success(StatFs(ruta).availableBytes)
+                        }
+                    }
+                    "excluirDeBackup" -> result.success(true)
+                    else -> result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("ALMACENAMIENTO_TILES", e.javaClass.simpleName, null)
+            }
+        }
     }
 
     /**
@@ -25,6 +224,11 @@ class MainActivity : FlutterActivity() {
      *
      * - `bloqueoPantalla` → si hay PIN, patrón, contraseña o biometría (`isDeviceSecure`).
      * - `nivelAlmacen` → `"hardware"` (TEE o StrongBox) o `"software"` (Supuesto S10).
+     * - `abrirAjustesSeguridad` / `abrirAjustesAlmacenamiento` / `abrirAjustesRed` → abre esa pantalla
+     *   de los ajustes (vista 13, #222; «Activar datos» del mapa, #190) y devuelve si pudo.
+     *
+     * - `abrirEnlace` → abre `{url}` con el sistema (chat de soporte por WhatsApp, vista 13) y
+     *   devuelve si pudo. Solo `https://wa.me/...`: cualquier otro enlace se rechaza.
      *
      * Nunca devuelve material secreto: la clave de prueba se crea y se borra acá mismo.
      */
@@ -34,12 +238,69 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "bloqueoPantalla" -> result.success(tieneBloqueoPantalla())
                     "nivelAlmacen" -> result.success(nivelAlmacen())
+                    "abrirAjustesSeguridad" -> result.success(abrirAjustes(Settings.ACTION_SECURITY_SETTINGS))
+                    "abrirAjustesAlmacenamiento" ->
+                        result.success(abrirAjustes(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
+                    "abrirAjustesRed" -> result.success(abrirAjustes(Settings.ACTION_WIRELESS_SETTINGS))
+                    "abrirEnlace" -> result.success(abrirEnlace(call.argument<String>("url")))
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
                 // Solo el tipo: el mensaje de una excepción del Keystore no tiene por qué ir a Dart.
                 result.error("SEGURIDAD_DISPOSITIVO", e.javaClass.simpleName, null)
             }
+        }
+    }
+
+    /**
+     * Abre la pantalla de ajustes [accion] y devuelve `true`. Si el equipo no la tiene, abre los
+     * ajustes generales pero devuelve `false`: no llegó a la pantalla pedida, y la app le dice al
+     * usuario cómo llegar a mano. También `false` si ninguna abre.
+     */
+    private fun abrirAjustes(accion: String): Boolean {
+        try {
+            startActivity(Intent(accion).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return true
+        } catch (e: Exception) {
+            // Sin esa pantalla: se intenta con los ajustes generales.
+        }
+        try {
+            startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            // Tampoco abren.
+        }
+        return false
+    }
+
+    /**
+     * Abre [url] (solo `https://wa.me/...`) con la app que la resuelva: WhatsApp si está instalado
+     * (`wa.me` es un enlace verificado suyo) y, si no, el navegador. `false` si el enlace no es de
+     * `wa.me` o ninguna app lo abre.
+     */
+    private fun abrirEnlace(url: String?): Boolean {
+        if (url == null) return false
+        val uri = Uri.parse(url)
+        if (uri.scheme != "https" || uri.host != "wa.me") return false
+        return try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Abre el marcador del sistema con [numero] escrito (`ACTION_DIAL`, sin permiso: no llama solo).
+     * `false` si el número no es de dígitos con un `+` al comienzo, o si ninguna app lo abre. El número
+     * no se registra ni se devuelve a Dart.
+     */
+    private fun marcarTelefono(numero: String?): Boolean {
+        if (numero == null || !Regex("^\\+?[0-9]{1,20}$").matches(numero)) return false
+        return try {
+            startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", numero, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -96,6 +357,10 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val CANAL = "colportores/seguridad_dispositivo"
+        private const val CANAL_TILES = "colportores/almacenamiento_tiles"
+        private const val CANAL_NOTIFICACIONES = "colportores/notificaciones"
+        private const val CANAL_BATERIA = "colportores/bateria"
+        private const val CODIGO_NOTIFICACIONES = 4711
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val ALIAS_PRUEBA = "colportores_sonda_nivel_keystore"
     }

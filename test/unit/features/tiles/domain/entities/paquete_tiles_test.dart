@@ -10,14 +10,53 @@ void main() {
   const ambito = AmbitoTrabajo(zonaId: 'z-1', ciudadId: 'c-1', departamentoId: 'd-1');
   final bytes = bytesDePrueba(10);
 
-  PaqueteTiles construir(NivelCobertura nivel, String? ambitoId, {String? checksum}) {
+  PaqueteTiles construir(NivelCobertura nivel, String? ambitoId, {String? version}) {
     final id = '${nivel.name}-$ambitoId';
-    return paqueteDe(bytes, id: id, nivel: nivel, ambitoId: ambitoId, checksum: checksum);
+    return paqueteDe(bytes, id: id, nivel: nivel, ambitoId: ambitoId, version: version);
   }
 
-  PaqueteDescargado descargado(PaqueteTiles paquete) {
-    return PaqueteDescargado(paquete: paquete, ruta: '/tiles/${paquete.id}.pmtiles');
-  }
+  PaqueteDescargado descargado(PaqueteTiles paquete) => descargadoDe(paquete);
+
+  group('PaqueteTiles — partes', () {
+    final primera = bytesDePrueba(1200);
+    final segunda = bytesDePrueba(800, semilla: 9);
+    final paquete = paqueteEnPartes([primera, segunda]);
+
+    test('dado un paquete en dos partes, el tamaño es la suma y se muestra en MB para arriba', () {
+      expect(paquete.partes, hasLength(2));
+      expect(paquete.tamanoBytes, 2000);
+      expect(paquete.megabytes, 1);
+    });
+
+    test('dado un paquete en partes, cada archivo local lleva el paquete, la parte y la huella '
+        'del SHA-256', () {
+      final huella0 = paquete.partes[0].sha256.substring(0, 12);
+      final huella1 = paquete.partes[1].sha256.substring(0, 12);
+
+      expect(paquete.partes[0].huella, huella0);
+      expect(paquete.claveDeParte(0), 'ciudad-montevideo-p1-$huella0');
+      expect(paquete.claveDeParte(1), 'ciudad-montevideo-p2-$huella1');
+      expect(huella0, isNot(huella1));
+    });
+
+    test('dado un SHA-256 más corto que la huella, la huella es el hash entero', () {
+      final corto = ParteTiles(
+        origen: Uri.parse('https://tiles.test/a'),
+        tamanoBytes: 1,
+        sha256: 'ab',
+      );
+
+      expect(corto.huella, 'ab');
+    });
+
+    test('dado un paquete descargado en partes, el id es el del paquete y las rutas van en el '
+        'orden de las partes', () {
+      final bajado = descargado(paquete);
+
+      expect(bajado.id, 'ciudad-montevideo');
+      expect(bajado.rutas, [rutaFinalDe(paquete, 0), rutaFinalDe(paquete, 1)]);
+    });
+  });
 
   group('PaqueteTiles.cubre', () {
     test('dado un paquete de cada nivel con el id del ámbito, cubre ese ámbito', () {
@@ -86,9 +125,9 @@ void main() {
     });
   });
 
-  test('OpcionCobertura.hayActualizacion compara el checksum del catálogo con el descargado', () {
+  test('OpcionCobertura.hayActualizacion compara la versión del catálogo con la descargada', () {
     final actual = construir(NivelCobertura.zona, 'z-1');
-    final nuevo = construir(NivelCobertura.zona, 'z-1', checksum: 'v2');
+    final nuevo = construir(NivelCobertura.zona, 'z-1', version: 'v2');
     final bajado = descargado(actual);
     bool hay(PaqueteTiles? delCatalogo, PaqueteDescargado? enTelefono) {
       const nivel = NivelCobertura.zona;

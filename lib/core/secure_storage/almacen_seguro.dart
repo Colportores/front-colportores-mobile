@@ -38,9 +38,122 @@ enum ClaveSegura {
   relojSesion('session_clock'),
 
   /// Intentos fallidos de contraseña en la confirmación final del borrado de datos locales
-  /// (HU-AUTH-010, vista 19) y hasta cuándo dura la espera, como `<fallidos>|<ISO 8601 UTC o vacío>`.
+  /// (HU-AUTH-010, vista 19) y lo que falta de la espera, como `<fallidos>|<milisegundos o vacío>`.
   /// No es secreto: vive acá para que cerrar la app no reinicie la espera.
-  intentosBorrado('wipe_attempts');
+  intentosBorrado('wipe_attempts'),
+
+  /// El correo de la última cuenta que estuvo adentro y nada más (decisión de Cristian, 01/10):
+  /// precarga «Sesión vencida» tras un arranque en frío (HU-AUTH-007, vista 17). Se borra al
+  /// cerrar sesión a propósito y al borrar los datos locales (HU-AUTH-010, vista 19).
+  ultimoCorreo('last_account_email'),
+
+  /// Por qué terminó la última sesión sin que la persona lo pidiera (venció por 30 días sin uso o
+  /// la cerró el servidor) y cuándo, como `<motivo>|<fecha ISO 8601 UTC>` y nada más (decisión de
+  /// Cristian, 07/10, front-colportores-mobile#302): el aviso de «Sesión vencida» vale en cada
+  /// arranque sin sesión hasta que la persona entra (HU-AUTH-007, vista 17). Se borra al entrar,
+  /// con el correo al cerrar sesión a propósito y al borrar los datos locales (HU-AUTH-010).
+  cierreForzado('last_forced_close'),
+
+  /// Cuándo salió el último enlace de recuperación de contraseña pedido desde este teléfono (ISO
+  /// 8601, UTC) y nada más (decisión de Cristian, 02/10, front-colportores-mobile#223; seguimiento
+  /// #281): la espera de 60 s de «Olvidé mi contraseña» no se reinicia al salir y volver a entrar.
+  /// Es por teléfono, no por correo (no revela si un correo existe) y no es secreto: vive acá para
+  /// no sumar otro almacenamiento, y así el borrado de datos locales (HU-AUTH-010) también lo
+  /// borra.
+  ultimoEnvioRecuperacion('last_recovery_request'),
+
+  /// Los correos a los que el servidor rechazó el reenvío del email de verificación por límite de
+  /// intentos y hasta cuándo no se les vuelve a ofrecer (HU-AUTH-002, vista 12-A06; decisión de
+  /// Cristian, 30/09, front-colportores-mobile#221 y #239; seguimiento #249), y la espera de 60 s
+  /// desde el último correo que salió a cada dirección (#325): un JSON
+  /// `{"<correo en minúsculas>": {"bloqueo": "<vencimiento ISO 8601 UTC>", "espera": "<ídem>"}}`,
+  /// cada campo opcional y solo lo vigente (se poda al leer y al guardar, y la clave se borra
+  /// cuando no queda nada). El candado es por dirección (otra dirección no queda bloqueada) y
+  /// sobrevive a reiniciar la app. No es secreto de la sesión: vive acá, junto a `ultimoCorreo`,
+  /// para no sumar otro almacenamiento; se borra con el borrado de datos locales (HU-AUTH-010) y
+  /// con «Cerrar sesión» a propósito.
+  bloqueoReenvioVerificacion('verification_resend_locks'),
+
+  /// La zona de cada inscripción del colportor la última vez que se le avisó de su zona (HU-CAM-006,
+  /// #251): un JSON `{"<id de la inscripción>": "<id de la zona>" | null}`, solo ids (UUID), sin
+  /// nombres. Hace que «Te asignaron la zona…» y «Ya no tenés zona…» se avisen una sola vez. No es
+  /// secreto: vive acá, junto a `ultimoCorreo`, para no sumar otro almacenamiento, y así el borrado
+  /// de datos locales (HU-AUTH-010) también lo borra.
+  zonasAvisadas('zones_notified'),
+
+  /// Las cuentas que escondieron el aviso «Estos datos solo viven en tu celular…» con «No volver a
+  /// mostrar» (decisión de Cristian, 23/10, «Aviso privado», front-colportores-mobile#445 y #447): un
+  /// JSON con la lista de ids (UUID) de usuario, nada más. Es por cuenta y vale para los dos lugares
+  /// donde sale (el alta de persona y las notas); se vuelve a encender desde Configuración, «Mostrar
+  /// el aviso de privacidad». No es secreto: vive acá, junto a `zonasAvisadas`, para no sumar otro
+  /// almacenamiento, y el borrado de datos locales (HU-AUTH-010) también lo borra: sin datos del
+  /// teléfono, el aviso vuelve a verse.
+  avisoPrivacidadOculto('privacy_notice_hidden'),
+
+  /// El id de esta instalación (UUID v7) que viaja en el sobre de cada push y pull del motor de
+  /// sync (contrato-sync-engine §5.3, #178): separa dos teléfonos del mismo colportor en la
+  /// telemetría de `sync.log`. No es secreto ni dato personal; vive acá para no sumar otro
+  /// almacenamiento, y el borrado de datos locales (HU-AUTH-010) estrena uno nuevo.
+  idInstalacion('device_id'),
+
+  /// Qué pasó con el pedido del permiso de notificaciones en este teléfono (HU-NOT-001, vista 24):
+  /// `ahora_no` (tocó «Ahora no», el sistema todavía no le preguntó) o `sistema` (se le mostró el
+  /// diálogo del sistema; con las notificaciones apagadas después de eso, desde la app ya no se
+  /// pueden activar). Sin la clave, nunca se le pidió: el primer ingreso muestra el pedido, y no se
+  /// vuelve a mostrar. No es secreto: vive acá, junto a `ultimoCorreo`, para no sumar otro
+  /// almacenamiento, y así el borrado de datos locales (HU-AUTH-010) también lo borra.
+  permisoNotificaciones('notifications_permission'),
+
+  /// Marca de que la persona cerró con la ✕ el aviso «Las notificaciones están apagadas» de Hoy (24A·03):
+  /// no vuelve a salir en esta instalación. No es secreto; se borra con el borrado de datos locales.
+  avisoNotificacionesCerrado('notifications_banner_closed'),
+
+  /// «Recordatorios de agenda» (HU-NOT-004, vista 24 grupo B): `0` si los apagó; sin la clave (o con
+  /// cualquier otro valor) están prendidos. En el S8 las preferencias no suben al servidor. No es
+  /// secreto ni dato personal; se conserva al recuperar los datos y se borra con el borrado de datos
+  /// locales.
+  recordatoriosActivados('reminders_enabled'),
+
+  /// «Anticipación» de los recordatorios, en minutos (de 5 a 120; sin la clave, 30). Mismo trato que
+  /// [recordatoriosActivados].
+  anticipacionRecordatorios('reminders_lead_minutes'),
+
+  /// Hasta qué instante el historial de avisos (HU-NOT-005) ya revisó los recordatorios de las
+  /// visitas que sonaron: milisegundos desde la época, en UTC. Es lo que impide que «Borrar todas»
+  /// se deshaga solo (una visita agendada sigue pendiente después de que su aviso sonó) y que una
+  /// agenda que llega de la nube pase por un aviso que este teléfono nunca mostró. Sin la clave, la
+  /// primera revisión solo la fija. No es secreto ni dato personal; se conserva al recuperar los
+  /// datos (la tabla del historial también se conserva) y se borra con el borrado de datos locales.
+  ultimaConciliacionRecordatorios('reminders_reconciled_at'),
+
+  /// La entrevista que cada colportora tiene en curso (vista 39, R·05; decisión de Cristian, 23/10,
+  /// front-colportores-mobile#450): un JSON `{"<id del colportor>": {...}}` con **solo ids** y la
+  /// hora de inicio (ISO 8601, UTC), sin nombres ni direcciones. Hace que la entrevista siga en
+  /// curso al salir de la hoja o cerrar la app y que la hora de inicio no se pierda. Vive acá, junto a
+  /// `zonasAvisadas`, para no sumar otro almacenamiento ni una migración de la DB; se conserva al
+  /// reconstruir el almacén (la DB sigue) y se borra con el borrado de datos locales (HU-AUTH-010),
+  /// que se lleva los espacios a los que apunta.
+  entrevistaEnCurso('interview_in_progress'),
+
+  /// Qué cuenta de Google autorizó el respaldo en Drive de cada usuario de este teléfono y en qué
+  /// estado está (HU-SYNC-004, vista 16 «Cuenta Drive»): un JSON que por cada id de usuario de la app
+  /// guarda `email` (el correo de Google), `id` (el id de la cuenta de Google) y `estado`
+  /// (`conectada`, `revocada` o `sin_espacio`). **No guarda ningún token**: `google_sign_in` 7 no entrega el refresh token y
+  /// el de acceso (una hora) se pide en silencio cada vez que hace falta. Sin la entrada de un
+  /// usuario, su Drive no está conectado: otra persona que use el teléfono no hereda el respaldo
+  /// de esta. No es secreto: vive acá, junto a `zonasAvisadas`, para no sumar otro almacenamiento;
+  /// se conserva al reconstruir el almacén (la DB sigue y su respaldo también) y se borra con el
+  /// borrado de datos locales (HU-AUTH-010).
+  respaldoDrive('drive_backup_account'),
+
+  /// Para qué usuario ya se resolvió el asistente de recuperación del primer arranque (HU-SYNC-006,
+  /// vista 34): el valor es el id (UUID) del usuario de la app, nada más. Con él, el asistente no
+  /// vuelve a ofrecerse en este teléfono a quien ya recuperó sus datos o eligió «Empezar sin
+  /// recuperar»; con otro usuario (o sin la clave) se ofrece de nuevo. No es secreto: vive acá, junto a
+  /// `respaldoDrive`, para no sumar otro almacenamiento; se conserva al reconstruir el almacén (la DB
+  /// sigue) y se borra con el borrado de datos locales (HU-AUTH-010): un teléfono sin datos vuelve a
+  /// ofrecer recuperarlos.
+  recuperacionResuelta('recovery_resolved');
 
   const ClaveSegura(this.id);
 

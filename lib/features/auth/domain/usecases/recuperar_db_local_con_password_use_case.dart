@@ -19,7 +19,7 @@ final class RecuperarDbLocalParams extends Equatable {
   final String password;
 
   /// Contraseña del login que llevó hasta acá, ya validada por el servidor, o `null` si no la hay
-  /// (sesión restaurada, Google). Con ella se renueva un envoltorio desactualizado (#125).
+  /// (sesión restaurada). Con ella se renueva un envoltorio desactualizado (#125).
   final String? passwordDelLogin;
 
   /// `usuario_id` de la sesión: el envoltorio desactualizado solo se renueva si es de esta cuenta.

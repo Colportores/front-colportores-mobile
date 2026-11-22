@@ -86,8 +86,13 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// registrar la solicitud — para simular un rate limit u otro error de Supabase.
   AuthRemoteException? fallaAlSolicitarRecuperacion;
 
+  /// Si no es `null`, [solicitarRecuperacionPassword] no sigue hasta que el test lo complete — para
+  /// ver el estado «Enviando…» y probar el doble toque con la solicitud en vuelo.
+  Completer<void>? demoraRecuperacion;
+
   @override
   Future<void> solicitarRecuperacionPassword(String email) async {
+    await demoraRecuperacion?.future;
     if (simularSinConexion) throw const SinConexionException();
     if (fallaAlSolicitarRecuperacion != null) throw fallaAlSolicitarRecuperacion!;
     solicitudesRecuperacionPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);
@@ -134,24 +139,6 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
       email: email,
       accessToken: 'token-en-memoria-${email.hashCode}',
       expiraEn: PoliticaSesion.expiraEn(_ahora()),
-    );
-  }
-
-  /// Cuenta fija con la que "entra" Google en la demo (no hay navegador ni deep link acá).
-  static const String emailGoogle = 'google@colportores.app';
-
-  int llamadasIniciarSesionConGoogle = 0;
-
-  @override
-  Future<SesionModel> iniciarSesionConGoogle() async {
-    if (simularSinConexion) throw const SinConexionException();
-    llamadasIniciarSesionConGoogle++;
-    return SesionModel(
-      usuarioId: _uuidDesde(emailGoogle),
-      email: emailGoogle,
-      accessToken: 'token-google-en-memoria',
-      expiraEn: PoliticaSesion.expiraEn(_ahora()),
-      entraConPassword: false,
     );
   }
 
@@ -250,8 +237,13 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// simular el rate limit de Supabase (~2 emails/hora sin SMTP propio).
   AuthRemoteException? fallaAlReenviar;
 
+  /// Si no es `null`, [reenviarVerificacion] no sigue hasta que el test lo complete — para probar
+  /// qué pasa con el reenvío en vuelo (doble toque, cambiar la dirección, salir de la pantalla).
+  Completer<void>? demoraReenvio;
+
   @override
   Future<void> reenviarVerificacion(String email) async {
+    await demoraReenvio?.future;
     if (simularSinConexion) throw const SinConexionException();
     if (fallaAlReenviar != null) throw fallaAlReenviar!;
     reenviosPorEmail.update(email, (n) => n + 1, ifAbsent: () => 1);

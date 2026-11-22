@@ -7,6 +7,7 @@ import 'almacen_seguro.dart';
 import 'archivo_envoltorio_dek.dart';
 import 'clave_db.dart';
 import 'envoltorio_dek.dart';
+import 'generacion_datos_locales.dart';
 
 /// Custodia la DEK de la DB local cifrada y sus dos envoltorios (ADR-006).
 ///
@@ -28,14 +29,17 @@ final class CustodiaClaveDb {
     this._proveedorClave,
     this._sellador, {
     this._parametros = ParametrosArgon2id.adr006,
+    GeneracionDatosLocales? generacion,
     AppLogger? logger,
-  }) : _log = logger ?? AppLogger.instance;
+  }) : _generacion = generacion ?? GeneracionDatosLocales(),
+       _log = logger ?? AppLogger.instance;
 
   final AlmacenSeguro _almacen;
   final ArchivoEnvoltorioDek _archivo;
   final ProveedorClaveDb _proveedorClave;
   final SelladorDek _sellador;
   final ParametrosArgon2id _parametros;
+  final GeneracionDatosLocales _generacion;
   final AppLogger _log;
   final Random _aleatorio = Random.secure();
 
@@ -155,6 +159,15 @@ final class CustodiaClaveDb {
   Future<ClaveDb> desenvolverConPassword(String password) async {
     final envoltorio = await _archivo.leer();
     if (envoltorio == null) throw const SinEnvoltorioException();
+    return abrirEnvoltorio(envoltorio, password);
+  }
+
+  /// Desenvuelve la DEK de [envoltorio] —uno que no es el de este equipo: el que viaja con el backup
+  /// en Drive (ADR-006)— con Argon2id([password]), con los parámetros y la sal de su cabecera.
+  ///
+  /// Lanza [EnvoltorioCorruptoException] si es de un algoritmo que esta app no conoce y
+  /// [EnvoltorioNoAbreException] si la contraseña no es la que lo armó.
+  Future<ClaveDb> abrirEnvoltorio(EnvoltorioDek envoltorio, String password) async {
     if (envoltorio.algoritmo != EnvoltorioDek.algoritmoActual) {
       throw const EnvoltorioCorruptoException('algoritmo desconocido');
     }
@@ -175,6 +188,11 @@ final class CustodiaClaveDb {
       clave.destruir();
     }
   }
+
+  /// El envoltorio de este equipo tal como está en el archivo (el texto que viaja con el backup),
+  /// o `null` si no hay. Lanza [EnvoltorioCorruptoException] si no se puede interpretar: un archivo
+  /// roto no se sube a Drive.
+  Future<String?> leerEnvoltorioCodificado() async => (await _archivo.leer())?.codificar();
 
   // --- Marca de inicialización ---
 
@@ -266,6 +284,31 @@ final class CustodiaClaveDb {
     ClaveSegura.relojSesion,
     ClaveSegura.sesionMigrada,
     ClaveSegura.intentosBorrado,
+    ClaveSegura.ultimoCorreo,
+    ClaveSegura.cierreForzado,
+    ClaveSegura.ultimoEnvioRecuperacion,
+    ClaveSegura.bloqueoReenvioVerificacion,
+    ClaveSegura.zonasAvisadas,
+    ClaveSegura.avisoPrivacidadOculto,
+    // Sigue siendo la misma instalación: el sync tiene que seguir diciendo el mismo id (§5.3).
+    ClaveSegura.idInstalacion,
+    // Lo que se contestó del permiso de notificaciones (HU-NOT-001): recuperar los datos no vuelve
+    // a pedirlo ni a mostrar el aviso que ya se cerró.
+    ClaveSegura.permisoNotificaciones,
+    ClaveSegura.avisoNotificacionesCerrado,
+    // Las preferencias de los recordatorios (HU-NOT-004): recuperar los datos no las vuelve a los
+    // valores de siempre.
+    ClaveSegura.recordatoriosActivados,
+    ClaveSegura.anticipacionRecordatorios,
+    // Hasta dónde se revisaron los recordatorios que sonaron (HU-NOT-005): el historial se conserva,
+    // y sin esta marca la revisión siguiente volvería a guardar lo que la persona ya borró.
+    ClaveSegura.ultimaConciliacionRecordatorios,
+    // La DB sigue y la entrevista apunta a sus filas: no se pierde la hora de inicio (#450).
+    ClaveSegura.entrevistaEnCurso,
+    // La DB sigue y su respaldo también: recuperar los datos no desconecta Drive (HU-SYNC-004).
+    ClaveSegura.respaldoDrive,
+    // La DB sigue y el asistente de recuperación ya se resolvió: no se vuelve a ofrecer (HU-SYNC-006).
+    ClaveSegura.recuperacionResuelta,
   };
 
   /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
@@ -329,10 +372,19 @@ final class CustodiaClaveDb {
   ///   que es justo el caso en que el use case le ofrece reintentar.
   /// - `sesionMigrada`: no tiene datos del usuario, y sin ella una copia vieja de la sesión que haya
   ///   quedado en SharedPreferences se volvería a migrar.
+  ///
+  /// Avanza la [GeneracionDatosLocales] antes de empezar y otra vez al terminar (también si falla):
+  /// una respuesta del servidor que ya iba en camino no vuelve a escribir lo que se acaba de borrar
+  /// (el estado de cuenta, #319).
   Future<void> olvidarDatosDelUsuario() async {
-    await olvidar();
-    for (final clave in seBorranAlBorrarDatos) {
-      await _almacen.borrar(clave);
+    _generacion.avanzar();
+    try {
+      await olvidar();
+      for (final clave in seBorranAlBorrarDatos) {
+        await _almacen.borrar(clave);
+      }
+    } finally {
+      _generacion.avanzar();
     }
     _log.warn(
       LogModulo.db,
@@ -342,11 +394,35 @@ final class CustodiaClaveDb {
   }
 
   /// Lo que [olvidarDatosDelUsuario] borra además de lo de [olvidar]: el último estado de cuenta
-  /// (lleva el id del usuario) y el reloj de la sesión (el último momento en que se usó la app).
+  /// (lleva el id del usuario), el reloj de la sesión (el último momento en que se usó la app), los
+  /// intentos del borrado, el correo de la última cuenta, el motivo del último cierre forzado, la
+  /// hora del último enlace de recuperación pedido, los correos con el reenvío de la verificación
+  /// bloqueado, las zonas ya avisadas de cada inscripción, las cuentas que escondieron el aviso de
+  /// privacidad, la entrevista en curso (apunta a filas que se borran) y el id de la instalación (el
+  /// sync estrena uno, como en una reinstalación: la cola y la réplica también arrancan de cero) y lo
+  /// contestado del permiso de notificaciones (el primer ingreso siguiente lo vuelve a pedir,
+  /// HU-NOT-001).
   static const List<ClaveSegura> seBorranAlBorrarDatos = [
     ClaveSegura.estadoCuenta,
     ClaveSegura.relojSesion,
     ClaveSegura.intentosBorrado,
+    ClaveSegura.ultimoCorreo,
+    ClaveSegura.cierreForzado,
+    ClaveSegura.ultimoEnvioRecuperacion,
+    ClaveSegura.bloqueoReenvioVerificacion,
+    ClaveSegura.zonasAvisadas,
+    ClaveSegura.avisoPrivacidadOculto,
+    ClaveSegura.idInstalacion,
+    ClaveSegura.entrevistaEnCurso,
+    // Sin los datos del teléfono no hay qué respaldar: el vínculo con Drive se olvida (HU-SYNC-004).
+    ClaveSegura.respaldoDrive,
+    // Sin datos en el teléfono, el asistente de recuperación vuelve a ofrecerse (HU-SYNC-006).
+    ClaveSegura.recuperacionResuelta,
+    ClaveSegura.permisoNotificaciones,
+    ClaveSegura.avisoNotificacionesCerrado,
+    ClaveSegura.recordatoriosActivados,
+    ClaveSegura.anticipacionRecordatorios,
+    ClaveSegura.ultimaConciliacionRecordatorios,
   ];
 
   /// Lo que el borrado de datos no toca, con el motivo en [olvidarDatosDelUsuario].
@@ -388,8 +464,8 @@ final class MarcaInicializacionCorruptaException implements Exception {
   String toString() => 'MarcaInicializacionCorruptaException($motivo)';
 }
 
-/// Se pidió desenvolver la DEK con la contraseña y este equipo no tiene envoltorio: el login fue
-/// con Google sin backup, o se borró.
+/// Se pidió desenvolver la DEK con la contraseña y este equipo no tiene envoltorio: se borró, o
+/// nunca se llegó a armar.
 final class SinEnvoltorioException implements Exception {
   const SinEnvoltorioException();
 

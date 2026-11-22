@@ -7,13 +7,17 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/database/sesion_usuario_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../../../core/sync/sync_providers.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../domain/entities/cierre_forzado.dart';
 import '../../domain/entities/motivo_expiracion.dart';
 import '../../domain/entities/resultado_cierre_sesion.dart';
 import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/resumen_datos_locales.dart';
 import '../../domain/entities/sesion.dart';
+import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
+import '../../domain/usecases/cerrar_otras_sesiones_pendientes_use_case.dart';
 import '../../domain/usecases/confirmar_password_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/reenviar_verificacion_use_case.dart';
@@ -21,6 +25,8 @@ import '../../domain/usecases/registrar_usuario_use_case.dart';
 import 'auth_providers.dart';
 import 'aviso_sesion_notifier.dart';
 import 'password_para_db_local.dart';
+import 'recuperacion_password_providers.dart';
+import 'reingreso_sesion_notifier.dart';
 
 part 'sesion_notifier.g.dart';
 
@@ -37,6 +43,15 @@ class SesionNotifier extends _$SesionNotifier {
 
   final AppLogger _log;
 
+  /// Cuenta las veces que cambió el cierre que vale: la persona lo resolvió (entró, se registró,
+  /// cerró a propósito o borró los datos) o llegó otro fin de sesión que pasa a ser el del aviso.
+  /// Lo que se guarda tras una espera lenta mira si cambió mientras esperaba (ver [_guardarCierre]).
+  int _generacionCierre = 0;
+
+  /// El fin de sesión que llegó mientras `build()` todavía leía la sesión (#311): sin sesión
+  /// publicada no hay a quién cerrarle ni login que avise, así que se atiende apenas termina.
+  MotivoExpiracion? _vencimientoTemprano;
+
   @override
   Future<Sesion?> build() async {
     // HU-AUTH-007: la sesión puede terminar sin que el usuario lo pida (el servidor la revocó, o
@@ -45,34 +60,186 @@ class SesionNotifier extends _$SesionNotifier {
         .watch(observarExpiracionesSesionUseCaseProvider)(const NoParams())
         .listen((motivo) => unawaited(_alExpirar(motivo)));
     ref.onDispose(expiraciones.cancel);
+    listenSelf((_, estado) {
+      final motivo = _vencimientoTemprano;
+      if (motivo == null || (estado.isLoading && !estado.hasValue)) return;
+      _vencimientoTemprano = null;
+      // Ya con la sesión (o su ausencia) publicada: es un fin de sesión como cualquier otro.
+      scheduleMicrotask(() {
+        if (ref.mounted) unawaited(_alExpirar(motivo));
+      });
+    });
 
     final resultado = await ref.watch(obtenerSesionActualUseCaseProvider)(const NoParams());
     _reintentarRevocacionPendiente();
-    return resultado.fold((failure) {
-      if (failure case FailureSesionExpiradaPorInactividad() || FailureSesionRevocada()) {
-        ref.read(avisoSesionProvider.notifier).mostrar(failure);
+    if (resultado case Left(value: final failure)) {
+      final motivo = switch (failure) {
+        FailureSesionExpiradaPorInactividad() => MotivoExpiracion.inactividad,
+        FailureSesionRevocada() => MotivoExpiracion.revocada,
+        _ => null,
+      };
+      if (motivo != null) {
+        // Se descartó la sesión en este arranque: el motivo queda guardado para los que siguen
+        // (decisión de Cristian, 07/10, #302). Si se corta antes de guardarlo, el próximo arranque
+        // ve un login común: la sesión ya no está para volver a detectarlo.
+        await _guardarCierre(motivo);
+        await _avisarCierre(motivo);
       }
       return null;
-    }, (sesion) => sesion);
+    }
+    final sesion = (resultado as Right<Failure, Sesion?>).value;
+    if (sesion == null) {
+      // Sin sesión y sin un cierre nuevo: puede quedar el de un arranque anterior que la persona
+      // no resolvió entrando (sin señal, por ejemplo). El aviso de la vista 17 vale hasta que entra.
+      final guardado = await ref.read(cierreForzadoRepositoryProvider).leer();
+      if (guardado != null) {
+        _log.info(LogModulo.auth, 'CIERRE_FORZADO_PENDIENTE', 'sigue sin resolverse el cierre', {
+          'motivo': guardado.motivo.name,
+        });
+        await _avisarCierre(guardado.motivo);
+      }
+      return null;
+    }
+    // La sesión sigue en pie: un cierre guardado ya no corresponde (se cortó justo antes de
+    // soltarla, o el servidor la volvió a aceptar). Una sesión restaurada también deja el correo:
+    // cubre las cuentas que entraron antes de que se guardara.
+    unawaited(_borrarCierre());
+    unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(sesion.email));
+    return sesion;
+  }
+
+  /// Guarda el motivo y la fecha del cierre que la persona no pidió, al lado del último correo:
+  /// sin esto, el aviso de la vista 17 valdría solo en el arranque que lo detectó.
+  ///
+  /// Leer la fecha del reloj puede tardar (Keystore) y mientras tanto pueden pasar dos cosas: la
+  /// persona resuelve el cierre (entra, se registra, cierra a propósito) o llega otro fin de sesión
+  /// con otro motivo, cuyo aviso reemplaza al de este. En los dos casos el guardado se descarta: el
+  /// borrado ya está pedido y guardar después lo desharía, dejando el motivo con la sesión abierta,
+  /// y el que queda en disco tiene que ser el del aviso que se ve, no el de la lectura que termina
+  /// última. Por eso cada llamada empieza invalidando las anteriores: se llama justo al fijar el
+  /// aviso, sin esperas de por medio.
+  ///
+  /// Devuelve la generación de esta llamada (se guardara o no): mientras siga siendo la actual
+  /// ([_generacionCierre]), el aviso, el saludo y el motivo que hay son los de este fin de sesión.
+  Future<int> _guardarCierre(MotivoExpiracion motivo) async {
+    final generacion = ++_generacionCierre;
+    final fecha = await ref.read(relojSesionProvider).ahora();
+    if (!ref.mounted || generacion != _generacionCierre) return generacion;
+    await ref
+        .read(cierreForzadoRepositoryProvider)
+        .guardar(CierreForzado(motivo: motivo, fecha: fecha));
+    return generacion;
+  }
+
+  /// Borra el motivo guardado del último cierre: todo borrado pasa por acá para que un guardado
+  /// que sigue esperando el reloj (ver [_guardarCierre]) se entere.
+  Future<void> _borrarCierre() {
+    _generacionCierre++;
+    return ref.read(cierreForzadoRepositoryProvider).borrar();
+  }
+
+  /// Sin sesión que leer (se descartó, ahora o en un arranque anterior): el saludo no tiene a quién
+  /// nombrar, pero el correo de la última cuenta sí quedó guardado aparte (decisión de Cristian,
+  /// 01/10). Deja el aviso de la vista 17 y el saludo del login.
+  Future<void> _avisarCierre(MotivoExpiracion motivo) async {
+    final correo = await ref.read(ultimoCorreoRepositoryProvider).leer();
+    if (!ref.mounted) return;
+    ref.read(avisoSesionProvider.notifier).mostrar(switch (motivo) {
+      MotivoExpiracion.inactividad => const FailureSesionExpiradaPorInactividad(),
+      MotivoExpiracion.revocada => const FailureSesionRevocada(),
+    });
+    ref
+        .read(reingresoSesionProvider.notifier)
+        .iniciar(DatosReingreso(motivo: motivo, email: correo));
   }
 
   /// La sesión venció o el servidor la revocó (HU-AUTH-007): de vuelta al login con el motivo.
   /// Es un cierre de sesión, no un borrado: la DB local se cierra con todo lo que tiene —incluido
   /// lo que falta sincronizar— y se vuelve a abrir al entrar de nuevo.
+  ///
+  /// Si llega mientras `build()` todavía lee la sesión (#311) no se atiende en el momento: la sesión
+  /// que esa lectura devuelva ya habría terminado, y `habiaSesion` daría `false` con una sesión en
+  /// camino (el aviso se quedaba puesto con la app abierta). Queda anotado y se atiende al
+  /// publicarse el resultado, con la misma lógica que cualquier otro fin de sesión.
   Future<void> _alExpirar(MotivoExpiracion motivo) async {
+    if (state.isLoading && !state.hasValue) {
+      _vencimientoTemprano = motivo;
+      _log.info(LogModulo.auth, 'SESION_FIN_FORZADO_TEMPRANO', 'se atiende al leer la sesión', {
+        'motivo': motivo.name,
+      });
+      return;
+    }
     final Failure aviso = switch (motivo) {
       MotivoExpiracion.inactividad => const FailureSesionExpiradaPorInactividad(),
       MotivoExpiracion.revocada => const FailureSesionRevocada(),
     };
-    final habiaSesion = state.value != null;
+    final sesion = state.value;
+    final habiaSesion = sesion != null;
     _log.warn(LogModulo.auth, 'SESION_FIN_FORZADO', 'la sesión terminó sin logout', {
       'motivo': motivo.name,
       'habia_sesion': habiaSesion,
     });
     ref.read(avisoSesionProvider.notifier).mostrar(aviso);
-    if (!habiaSesion) return;
+    // Antes de cerrar: cuando `state` pase a `null`, el login ya tiene a quién saludar. Sin sesión
+    // (un segundo aviso mientras se ve el login) no hay correo nuevo: se conserva el que ya estaba.
+    if (habiaSesion) {
+      ref
+          .read(reingresoSesionProvider.notifier)
+          .iniciar(
+            DatosReingreso(motivo: motivo, email: state.value?.email, nombre: state.value?.nombre),
+          );
+    } else {
+      final previo = ref.read(reingresoSesionProvider);
+      final datos = DatosReingreso(motivo: motivo, email: previo?.email, nombre: previo?.nombre);
+      ref.read(reingresoSesionProvider.notifier).iniciar(datos);
+      // Sin sesión ni saludo previo (un fin de sesión temprano sin sesión guardada, #349): el correo
+      // de la última cuenta, como lo pone el arranque siguiente.
+      if (datos.email == null) unawaited(_completarCorreoDelSaludo(datos));
+    }
+    // Antes de soltar la sesión: si la app se corta en el medio, el próximo arranque todavía sabe
+    // por qué (decisión de Cristian, 07/10, #302). Nunca lanza.
+    final generacion = await _guardarCierre(motivo);
+    if (sesion == null) return;
+    // Desde acá, cada espera puede dejar atrás a la sesión que terminó (#347): otro fin de sesión
+    // casi junto ya la cerró, o la persona ya volvió a entrar. Cerrar igual sería cerrar la sesión
+    // nueva, viva, sin decir nada: se sigue solo si la que está es la misma.
+    if (!_sigueAbierta(sesion, motivo, generacion)) return;
     await ref.read(expirarSesionUseCaseProvider)(motivo);
+    if (!_sigueAbierta(sesion, motivo, generacion)) return;
     await _cerrarDbYSesion();
+  }
+
+  /// Pone el correo de la última cuenta en el saludo [datos] (el que `_alExpirar` acaba de fijar sin
+  /// nadie a quien nombrar), con la misma lectura que hace el arranque siguiente (`_avisarCierre`).
+  /// Solo si el saludo sigue siendo ese: si la persona entró mientras se leía (se limpió) o llegó
+  /// otro fin de sesión (otro motivo), no se le vuelve a poner uno que ya no corresponde.
+  Future<void> _completarCorreoDelSaludo(DatosReingreso datos) async {
+    final correo = await ref.read(ultimoCorreoRepositoryProvider).leer();
+    if (correo == null || !ref.mounted || ref.read(reingresoSesionProvider) != datos) return;
+    ref
+        .read(reingresoSesionProvider.notifier)
+        .iniciar(DatosReingreso(motivo: datos.motivo, email: correo, nombre: datos.nombre));
+  }
+
+  /// `true` si [sesion] sigue siendo la sesión de la app: la misma instancia, no una igual. Entrar
+  /// de nuevo (aunque sea con la misma cuenta) publica una sesión nueva, y un fin de sesión que
+  /// quedó esperando no le corresponde (#347). Si ya no lo es, lo deja en el registro.
+  ///
+  /// Si hay una sesión nueva y [generacion] sigue siendo la actual, nadie retiró lo que este fin de
+  /// sesión dejó puesto —el aviso, el saludo y el motivo guardado—: la sesión nueva no vino de
+  /// «Entrar» ni de un registro, que lo retiran (`confirmarPassword`), y con la sesión abierta no
+  /// corresponden (#347, revisión). Si la generación cambió, lo que hay es de otro fin de sesión
+  /// que llegó después, o ya lo retiró quien entró o cerró: no se toca.
+  bool _sigueAbierta(Sesion sesion, MotivoExpiracion motivo, int generacion) {
+    if (!ref.mounted) return false;
+    if (identical(state.value, sesion)) return true;
+    final haySesionNueva = state.value != null;
+    _log.info(LogModulo.auth, 'SESION_FIN_FORZADO_OBSOLETO', 'la sesión ya no es la que terminó', {
+      'motivo': motivo.name,
+      'hay_sesion_nueva': haySesionNueva,
+    });
+    if (haySesionNueva && generacion == _generacionCierre) unawaited(_retirarCierre());
+    return false;
   }
 
   /// Devuelve el [Failure] si falló (para que el formulario lo muestre) o `null` si entró.
@@ -93,30 +260,16 @@ class SesionNotifier extends _$SesionNotifier {
         // envuelve la DEK con esta contraseña (HU-AUTH-009, `PreparacionDbLocalNotifier`).
         ref.read(passwordParaDbLocalProvider).recordar(password);
         state = AsyncData(sesion);
+        unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(sesion.email));
+        // Entrar resuelve el cierre que la persona no pidió: el motivo guardado se borra.
+        unawaited(_borrarCierre());
+        // La cuenta entró: el candado y la espera de reenvío de su email ya no hacen falta (#325).
+        unawaited(_olvidarReenvios({sesion.email, email}));
         ref.read(avisoSesionProvider.notifier).descartar();
+        ref.read(reingresoSesionProvider.notifier).limpiar();
         // Entrar prueba que hay red: momento de revocar lo que un logout sin red dejó pendiente.
         _reintentarRevocacionPendiente();
-        return null;
-      },
-    );
-  }
-
-  /// Ingreso con Google (HU-AUTH-003): abre el navegador y espera el deep link de vuelta.
-  /// Mismo contrato que [iniciarSesion]: el [Failure] si falló o `null` si entró.
-  Future<Failure?> iniciarSesionConGoogle() async {
-    // Sin esto, la contraseña de una sesión anterior armaría el envoltorio de esta (#130).
-    _olvidarPassword();
-    state = const AsyncLoading();
-    final resultado = await ref.read(iniciarSesionConGoogleUseCaseProvider)(const NoParams());
-
-    return resultado.fold(
-      (failure) {
-        state = const AsyncData(null);
-        return failure;
-      },
-      (sesion) {
-        state = AsyncData(sesion);
-        ref.read(avisoSesionProvider.notifier).descartar();
+        _cerrarOtrasSesionesPendientes(sesion.usuarioId);
         return null;
       },
     );
@@ -158,7 +311,13 @@ class SesionNotifier extends _$SesionNotifier {
       (r) {
         if (r.sesion != null) ref.read(passwordParaDbLocalProvider).recordar(password);
         state = AsyncData(r.sesion);
-        if (r.sesion != null) ref.read(avisoSesionProvider.notifier).descartar();
+        // Un registro que termina bien, con sesión o con la verificación del email pendiente,
+        // deja atrás la cuenta anterior (decisión del 07/10, #308): el aviso de la vista 17 y su
+        // motivo se borran y el último correo pasa a ser el de la cuenta nueva.
+        unawaited(ref.read(ultimoCorreoRepositoryProvider).guardar(r.sesion?.email ?? r.email));
+        unawaited(_borrarCierre());
+        ref.read(avisoSesionProvider.notifier).descartar();
+        ref.read(reingresoSesionProvider.notifier).limpiar();
         return Right(r);
       },
     );
@@ -187,14 +346,22 @@ class SesionNotifier extends _$SesionNotifier {
   ///
   /// Si el use case **lanza** (no debería: el repositorio traduce todo a `Failure`), la DB se cierra
   /// igual, el estado se resetea y la excepción se propaga: deslogueado en pantalla con la DB
-  /// abierta y la clave viva sería peor.
+  /// abierta y la clave viva sería peor. Como la sesión se cierra igual, el correo de la última
+  /// cuenta se borra igual (salvo con [conservarCorreo]).
   ///
   /// [avisarCierreSinConexion]: con `true`, si la revocación quedó pendiente (sin red) deja el aviso
   /// «Cerraste sesión…» en el login. Solo lo pide el cierre que el colportor inicia desde
   /// Configuración: otros flujos que cierran la sesión (recuperación de contraseña, preparación de
   /// la DB) tienen su propia pantalla y ese aviso no les corresponde.
+  ///
+  /// [conservarCorreo]: con `true`, el correo de la última cuenta queda guardado. Es para el cierre
+  /// que la app hace sola y la colportora no pidió (el cambio de contraseña con el enlace de
+  /// recuperación, HU-AUTH-005): el correo se borra solo cuando ella toca «Cerrar sesión» o borra
+  /// los datos locales (decisión de Cristian, 01/10, y del orquestador, 02/10). El motivo del
+  /// último cierre forzado (#302) sigue la misma regla: se borra con el correo.
   Future<Either<Failure, ResultadoCierreSesion>> cerrarSesion({
     bool avisarCierreSinConexion = false,
+    bool conservarCorreo = false,
   }) async {
     final Either<Failure, ResultadoCierreSesion> resultado;
     try {
@@ -208,11 +375,19 @@ class SesionNotifier extends _$SesionNotifier {
         e,
         st,
       );
+      // Antes de resetear el estado: cuando pasa a `null` el login ya no ve el correo.
+      if (!conservarCorreo) await _borrarRastroDeLaCuenta();
       await _cerrarDbYSesion();
       rethrow;
     }
 
     if (resultado.isRight()) {
+      // Cerrar a propósito: el correo de la última cuenta no se queda en el teléfono.
+      if (!conservarCorreo) {
+        await ref.read(ultimoCorreoRepositoryProvider).borrar();
+        await _olvidarReenvios();
+        await _retirarCierre();
+      }
       // HU-AUTH-006, "Logout sin conexión": el login avisa que el cierre completo queda pendiente.
       if (avisarCierreSinConexion) {
         if (resultado case Right(value: ResultadoCierreSesion.revocacionPendiente)) {
@@ -228,8 +403,15 @@ class SesionNotifier extends _$SesionNotifier {
   /// la app estaba en segundo plano, se cierra como [MotivoExpiracion.inactividad], conservando la
   /// DB. La raíz de la app lo llama en cada `resumed`.
   Future<void> revisarVigencia() async {
-    if (state.value == null) return;
-    final resultado = await ref.read(obtenerSesionActualUseCaseProvider)(const NoParams());
+    final sesion = state.value;
+    if (sesion == null) return;
+    // Sin descartar: si venció, la sesión se descarta recién en `_alExpirar`, después de comprobar
+    // que sigue siendo esta. Descartarla en la lectura borraría la sesión nueva del teléfono.
+    final resultado = await ref.read(revisarVigenciaSesionUseCaseProvider)(const NoParams());
+    // La sesión pudo terminar mientras se leía (por el stream, o porque la persona cerró) y hasta
+    // haber una nueva (#347): avisar ahora de un segundo motivo taparía el verdadero, dejaría el
+    // aviso tras un cierre a propósito o cerraría la sesión a la que la persona acaba de entrar.
+    if (!ref.mounted || !identical(state.value, sesion)) return;
     if (resultado case Left(value: FailureSesionExpiradaPorInactividad())) {
       await _alExpirar(MotivoExpiracion.inactividad);
     }
@@ -254,6 +436,10 @@ class SesionNotifier extends _$SesionNotifier {
     );
     if (resultado.isRight()) {
       _olvidarPassword();
+      await ref.read(ultimoCorreoRepositoryProvider).borrar();
+      // El borrado de datos ya vació la clave del almacén seguro; esto cubre el repositorio.
+      await _olvidarReenvios();
+      await _retirarCierre();
       state = const AsyncData(null);
     }
     return resultado;
@@ -288,7 +474,98 @@ class SesionNotifier extends _$SesionNotifier {
   /// (revisión del PR #130). Acá y no en la preparación de la DB, que puede no estar escuchando.
   void _olvidarPassword() => ref.read(passwordParaDbLocalProvider).olvidar();
 
+  /// Borra el correo de la última cuenta y el motivo del último cierre forzado (y retira su aviso)
+  /// cuando el cierre ya está fallando: nada de lo que pase acá puede tapar el error original ni
+  /// dejar la DB abierta, y que falle uno no salta al otro.
+  Future<void> _borrarRastroDeLaCuenta() async {
+    try {
+      await ref.read(ultimoCorreoRepositoryProvider).borrar();
+    } on Object {
+      _log.warn(LogModulo.auth, 'ULTIMO_CORREO_BORRAR', 'no se pudo borrar el último correo');
+    }
+    await _olvidarReenvios();
+    try {
+      await _retirarCierre();
+    } on Object {
+      _log.warn(LogModulo.auth, 'CIERRE_FORZADO_BORRAR', 'no se pudo borrar el motivo del cierre');
+    }
+  }
+
+  /// Retira el aviso de «Sesión vencida» y el saludo del login cuando la persona cierra sesión a
+  /// propósito o borra los datos del teléfono (#349): el fin de sesión que los fijó pudo llegar
+  /// justo antes y seguir esperando el reloj (Keystore lento) para guardar su motivo, y a esa
+  /// altura ya no corresponden (HU-AUTH-007: «Si en el medio la persona cerró sesión a propósito,
+  /// no queda aviso ni motivo»). Va antes de dejar el aviso propio del cierre sin conexión, que no
+  /// es este. Se usa a través de [_retirarCierre].
+  void _retirarAvisoDelCierre() {
+    ref.read(avisoSesionProvider.notifier).descartar();
+    ref.read(reingresoSesionProvider.notifier).limpiar();
+  }
+
+  /// Retira todo lo que dejó un fin de sesión: el aviso, el saludo y el motivo guardado. El orden
+  /// es lo que importa: el aviso se retira y la generación sube —lo que invalida el guardado de un
+  /// fin de sesión que sigue esperando al reloj, ver [_guardarCierre]— en el mismo instante, sin
+  /// una espera de por medio. Con una espera (borrar el correo, olvidar los reenvíos) entre una
+  /// cosa y la otra, un fin de sesión que llega ahí deja el motivo en disco aunque el aviso ya se
+  /// haya retirado, y el arranque siguiente avisa tras un cierre a propósito (revisión del PR #368).
+  /// Por eso va **al final** de las limpiezas con espera, y su propia espera es solo el borrado.
+  Future<void> _retirarCierre() {
+    _retirarAvisoDelCierre();
+    return _borrarCierre();
+  }
+
+  /// Olvida lo que el teléfono recuerda del reenvío del email de verificación (HU-AUTH-002, #325):
+  /// el de las direcciones de [correos] o, sin ellas, todo (cerrar la sesión a propósito, como el
+  /// último correo y el motivo del cierre: ningún correo queda en el teléfono más allá de su hora).
+  /// Nunca lanza: tapar el error de un cierre que ya está fallando sería peor.
+  Future<void> _olvidarReenvios([Set<String>? correos]) async {
+    try {
+      final repositorio = ref.read(bloqueoReenvioVerificacionRepositoryProvider);
+      if (correos == null) {
+        await repositorio.olvidarTodo();
+      } else {
+        for (final correo in {for (final c in correos) correoParaBloqueo(c)}) {
+          if (correo.isNotEmpty) await repositorio.olvidar(correo);
+        }
+      }
+    } on Object {
+      _log.warn(LogModulo.auth, 'VERIFICACION_BLOQUEO_OLVIDAR', 'no se pudo olvidar el reenvío');
+    }
+  }
+
+  /// Cuánto espera el cierre al ciclo de sync en curso antes de cerrar la DB (HU-AUTH-006, «Edge -
+  /// logout en medio de un sync activo»).
+  static const _esperaSyncActivo = Duration(seconds: 5);
+
+  /// El ciclo de sync que está corriendo usa la DB: se lo espera hasta [_esperaSyncActivo] para que
+  /// termine solo; si el tiempo vence, la DB se cierra igual (lo que no subió sigue en la cola
+  /// como `PENDING`/`IN_FLIGHT` y se retoma al volver a entrar, sin perder nada: el servidor
+  /// deduplica por `client_op_id`). Si no hay motor armado no hay nada que esperar, y mirarlo no
+  /// lo arma. Nunca frena el cierre: cualquier falla del ciclo va al log.
+  Future<void> _esperarSyncActivo() async {
+    if (!ref.exists(motorSyncProvider)) return;
+    try {
+      await ref.read(motorSyncProvider)?.settled.timeout(_esperaSyncActivo);
+    } on TimeoutException {
+      _log.warn(
+        LogModulo.sync,
+        'LOGOUT_SYNC_TIMEOUT',
+        'el ciclo de sync no terminó en ${_esperaSyncActivo.inSeconds} s; se cierra la DB igual',
+      );
+    } on Object catch (e, st) {
+      _log.error(
+        LogModulo.sync,
+        'LOGOUT_SYNC_FAIL',
+        'el ciclo de sync falló mientras se cerraba la sesión',
+        const {},
+        e,
+        st,
+      );
+    }
+  }
+
   Future<void> _cerrarDbYSesion() async {
+    await _esperarSyncActivo();
     _olvidarPassword();
     // El nombre del usuario no se queda en el teléfono (#243). Antes de cerrar la DB; si falla, el
     // cierre sigue igual: la copia está cifrada y la próxima sesión la pisa o la ignora (se lee por
@@ -311,4 +588,12 @@ class SesionNotifier extends _$SesionNotifier {
   /// sigue pendiente y no se avisa — el usuario no puede hacer nada con eso.
   void _reintentarRevocacionPendiente() =>
       unawaited(ref.read(reintentarRevocacionPendienteUseCaseProvider)(const NoParams()));
+
+  /// Best-effort: si al cambiar la contraseña no se pudieron cerrar las sesiones de los otros
+  /// teléfonos, entrar con la nueva lo reintenta (#542), solo si entra esa cuenta. La sesión de este teléfono no se toca.
+  void _cerrarOtrasSesionesPendientes(String usuarioId) => unawaited(
+    ref.read(cerrarOtrasSesionesPendientesUseCaseProvider)(
+      CerrarOtrasSesionesPendientesParams(usuarioId: usuarioId),
+    ),
+  );
 }

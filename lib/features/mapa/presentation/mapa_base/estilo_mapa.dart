@@ -1,0 +1,1006 @@
+import 'dart:convert';
+
+import 'package:flutter/painting.dart';
+
+import '../../domain/services/circulo_geografico.dart';
+import '../../domain/value_objects/coordenadas.dart';
+import 'marcador_cercano.dart';
+import 'marcador_estado.dart';
+import 'modelo_mapa_base.dart';
+import 'zonas_mapa.dart';
+
+/// Arma el estilo MapLibre que dibuja `MapaBase`: el de lib-mapa (`estilo/colportores.json` del
+/// paquete `colportores_mapa`, con la paleta del canvas y los números de puerta de OSM) apuntando al PMTiles que corresponda y a los glyphs y sprites de la app, más
+/// las capas propias de la app (puntos, grupos, radio de precisión y área de «cerca tuyo»).
+///
+/// Es todo JSON puro: se prueba sin la vista nativa.
+abstract final class ConstructorEstiloMapa {
+  /// La fuente de tiles del estilo de backend, con `url: "pmtiles://REEMPLAZAR"`.
+  static const fuenteTiles = 'protomaps';
+
+  /// Los puntos (con grupos si se pidieron), los que nunca se agrupan (el GPS, el punto nuevo, el
+  /// seleccionado y los cercanos: [EstiloPunto.sinAgrupar]), el radio de precisión del GPS y el
+  /// área de «cerca tuyo».
+  static const fuentePuntos = 'colportores-puntos';
+  static const fuentePuntosLibres = 'colportores-puntos-libres';
+  static const fuentePrecision = 'colportores-precision';
+  static const fuenteCercania = 'colportores-cercania';
+
+  /// Las zonas de las campañas del colportor (#511): sus polígonos y, aparte, el punto de su nombre.
+  /// Van por debajo de todos los puntos y no están en [capasTocables]: no reciben toques.
+  static const fuenteZonas = 'colportores-zonas';
+  static const fuenteZonasRotulos = 'colportores-zonas-rotulos';
+  static const capaZonaPropiaHalo = 'colportores:zonas-propia-halo';
+  static const capaZonaPropiaRelleno = 'colportores:zonas-propia-relleno';
+  static const capaZonaPropiaBorde = 'colportores:zonas-propia-borde';
+  static const capaZonasRotulo = 'colportores:zonas-rotulo';
+
+  static const capaGrupos = 'colportores:grupos';
+  static const capaContexto = 'colportores:contexto';
+  static const capaCandidata = 'colportores:candidata';
+
+  /// «Cerca tuyo»: la etiqueta con el número de puerta (capa de símbolos, una imagen por número que
+  /// la vista registra: [MarcadorCercano]) y, para el punto cuya imagen no se pudo registrar, el
+  /// círculo con el número de respaldo.
+  static const capaCercano = 'colportores:cercano';
+  static const capaCercanoRespaldo = 'colportores:cercano-respaldo';
+  static const capaSeleccionado = 'colportores:seleccionado';
+
+  /// Vista 39, M·01: la insignia del estado de una casa (capa de símbolos, una imagen por estado:
+  /// [MarcadorEstado]) y, si la imagen no está registrada, el círculo con el color del estado.
+  static const capaEstado = 'colportores:estado';
+  static const capaEstadoRespaldo = 'colportores:estado-respaldo';
+
+  /// Vista 39, M·02: el cuadrado de 40 dp de la casa acercada (símbolos de una imagen por estado),
+  /// su aro cuando es la seleccionada, el número en dos renglones y el respaldo si falta la imagen.
+  static const capaCuadradoAro = 'colportores:cuadrado-aro';
+  static const capaCuadrado = 'colportores:cuadrado';
+  static const capaCuadradoRespaldo = 'colportores:cuadrado-respaldo';
+  static const capaCuadradoNumero = 'colportores:cuadrado-numero';
+  static const capaNuevo = 'colportores:nuevo';
+
+  /// El aro de las casas fuera del área (#713): una capa por fuente, por debajo de los marcadores.
+  /// No responden al toque (la casa se toca por su marcador).
+  static const capaFueraDelArea = 'colportores:fuera-del-area';
+  static const capaFueraDelAreaLibres = 'colportores:fuera-del-area-libres';
+
+  /// La propiedad de un punto fuera del área ([PuntoMapa.fueraDelArea]).
+  static const propiedadFueraDelArea = 'fuera';
+  static const capaGps = 'colportores:gps';
+
+  /// El radio del círculo de una candidata (en px): con una letra y con dos («AA», «AB»…).
+  static const radioCandidata = 11.5;
+  static const radioCandidataDosLetras = 14.5;
+
+  /// El radio del grupo de ubicaciones (en px): hasta 99 y de 100 en adelante.
+  static const radioGrupo = 17.0;
+  static const radioGrupoGrande = 21.0;
+
+  /// El radio del círculo de un punto con número de puerta (en px): hasta 4 caracteres («1250»),
+  /// con 5 («1250A») y con 6 o más.
+  static const radioEtiqueta = 16.0;
+  static const radioEtiquetaLarga = 19.0;
+  static const radioEtiquetaMuyLarga = 22.0;
+
+  /// Las capas de íconos propias que **ocupan su lugar** en el mapa (`icon-ignore-placement: false`):
+  /// la insignia M·01, la etiqueta de «cerca tuyo», el cuadrado M·02 y su aro. Se dibujan siempre
+  /// (`icon-allow-overlap`), y como MapLibre ubica primero los símbolos de las capas de arriba, el
+  /// número de puerta de OSM del estilo (`address_label`, desde `TokensMapa.zoomNumerosDePuerta`) y
+  /// los nombres de calles se esconden donde las pisan (decisión P4 de lib-mapa, opción A: gana el
+  /// cuadrado M·02, #673).
+  static const capasQueOcupanLugar = [capaEstado, capaCercano, capaCuadradoAro, capaCuadrado];
+
+  /// Las capas que responden al toque de un punto o un grupo.
+  static const capasTocables = [
+    capaGrupos,
+    capaSeleccionado,
+    capaCuadrado,
+    capaCuadradoRespaldo,
+    capaCercano,
+    capaCercanoRespaldo,
+    capaEstado,
+    capaEstadoRespaldo,
+    capaContexto,
+    capaCandidata,
+    capaNuevo,
+    capaGps,
+  ];
+
+  /// Las que cuentan para un toque largo: las mismas menos «Tu ubicación», que no tiene acción. A
+  /// zoom de calle el colportor suele estar parado a pocos metros de la casa que quiere registrar:
+  /// apoyar el dedo sobre su propio punto azul tiene que abrir el alta, no quedar en silencio.
+  static const capasTocablesLargo = [
+    capaGrupos,
+    capaSeleccionado,
+    capaCuadrado,
+    capaCuadradoRespaldo,
+    capaCercano,
+    capaCercanoRespaldo,
+    capaEstado,
+    capaEstadoRespaldo,
+    capaContexto,
+    capaCandidata,
+    capaNuevo,
+  ];
+
+  /// El estilo final como texto, para `MapLibreMap.styleString`.
+  ///
+  /// [directorioRecursos] es donde `PreparadorRecursosMapa` dejó los glyphs y sprites; [estiloBase]
+  /// es el JSON de lib-mapa tal como viaja en el paquete `colportores_mapa` (#673).
+  static String construir({
+    required String estiloBase,
+    required String directorioRecursos,
+    required ConfigVistaMapa config,
+  }) => _armar(estiloBase: estiloBase, directorioRecursos: directorioRecursos, config: config);
+
+  /// El estilo cuando no se pudieron copiar los glyphs y sprites (disco lleno, por ejemplo): sin
+  /// tipografías ni íconos, o sea sin las capas que los usan (nombres de calles, números de los
+  /// grupos y letras de las candidatas). Lo demás se ve igual: los tiles, los puntos y el radio del
+  /// GPS, que son círculos y polígonos. Así el mapa responde y se puede marcar el punto.
+  static String construirSinRecursos({
+    required String estiloBase,
+    required ConfigVistaMapa config,
+  }) => _armar(estiloBase: estiloBase, directorioRecursos: null, config: config);
+
+  static String _armar({
+    required String estiloBase,
+    required String? directorioRecursos,
+    required ConfigVistaMapa config,
+  }) {
+    final conRecursos = directorioRecursos != null;
+    final estilo = Map<String, dynamic>.from(jsonDecode(estiloBase) as Map<String, dynamic>);
+    if (conRecursos) {
+      estilo['glyphs'] = 'file://$directorioRecursos/glyphs/{fontstack}/{range}.pbf';
+      estilo['sprite'] = 'file://$directorioRecursos/sprites/grayscale';
+    } else {
+      estilo.remove('glyphs');
+      estilo.remove('sprite');
+    }
+
+    var capas = <Map<String, dynamic>>[
+      for (final capa in estilo['layers'] as List<dynamic>)
+        if (conRecursos || !_usaRecursos(capa as Map<String, dynamic>))
+          capa as Map<String, dynamic>,
+    ];
+    final fuentes = Map<String, dynamic>.from(estilo['sources'] as Map<String, dynamic>);
+
+    final urlsTiles = config.fuente.urlsPmtiles;
+    if (urlsTiles.isEmpty) {
+      // Sin tiles queda el fondo: ninguna capa del estilo de backend tiene de dónde leer.
+      fuentes.remove(fuenteTiles);
+      capas.removeWhere((c) => c['source'] == fuenteTiles);
+    } else {
+      final tiles = Map<String, dynamic>.from(fuentes[fuenteTiles] as Map<String, dynamic>);
+      tiles['url'] = urlsTiles.first;
+      fuentes[fuenteTiles] = tiles;
+      if (urlsTiles.length > 1) {
+        // Un paquete en varias partes: una fuente por parte y las capas de los tiles repetidas
+        // para cada una, en el mismo orden de apilado (capa por capa, no parte por parte).
+        for (var i = 1; i < urlsTiles.length; i++) {
+          fuentes[_fuenteDeParte(i)] = {...tiles, 'url': urlsTiles[i]};
+        }
+        capas = [
+          for (final capa in capas)
+            if (capa['source'] == fuenteTiles)
+              for (var i = 0; i < urlsTiles.length; i++) _capaDeParte(capa, i)
+            else
+              capa,
+        ];
+      }
+    }
+
+    for (final capa in capas) {
+      if (capa['type'] == 'background') {
+        capa['paint'] = {'background-color': _hex(config.fondo)};
+      }
+    }
+
+    fuentes[fuentePuntos] = {
+      'type': 'geojson',
+      'data': coleccionPuntos(config.puntos),
+      if (config.agruparPuntos) ...{
+        'cluster': true,
+        'clusterRadius': 44,
+        'clusterMaxZoom': 17,
+        // Cuántas casas del grupo no están atenuadas: un grupo es tenue si todas lo son (06C·03).
+        'clusterProperties': {
+          propiedadVivos: [
+            '+',
+            ['case', _estaAtenuado, 0, 1],
+          ],
+        },
+      },
+    };
+    fuentes[fuentePuntosLibres] = {'type': 'geojson', 'data': coleccionPuntosLibres(config.puntos)};
+    fuentes[fuentePrecision] = {'type': 'geojson', 'data': poligonoPrecision(config.precision)};
+    fuentes[fuenteCercania] = {'type': 'geojson', 'data': poligonoCercania(config.cercania)};
+    fuentes[fuenteZonas] = {'type': 'geojson', 'data': coleccionZonas(config.zonas)};
+    fuentes[fuenteZonasRotulos] = {
+      'type': 'geojson',
+      'data': coleccionRotulosDeZonas(config.zonas),
+    };
+
+    estilo['sources'] = fuentes;
+    estilo['layers'] = [
+      ...capas,
+      ..._capasPropias(config, conRecursos: conRecursos).map(_conAtenuado),
+    ];
+    return jsonEncode(estilo);
+  }
+
+  /// El nombre de la fuente de la parte [indice] (0 es la primera: [fuenteTiles]).
+  static String _fuenteDeParte(int indice) =>
+      indice == 0 ? fuenteTiles : '$fuenteTiles-p${indice + 1}';
+
+  /// La copia de [capa] para la parte [indice]; la de la primera parte es la capa tal cual.
+  static Map<String, dynamic> _capaDeParte(Map<String, dynamic> capa, int indice) {
+    if (indice == 0) return capa;
+    return {...capa, 'id': '${capa['id']}-p${indice + 1}', 'source': _fuenteDeParte(indice)};
+  }
+
+  /// ¿La capa necesita glyphs o sprites? Los textos (`symbol`) y los rellenos y líneas con patrón.
+  static bool _usaRecursos(Map<String, dynamic> capa) {
+    if (capa['type'] == 'symbol') return true;
+    final paint = capa['paint'];
+    return paint is Map<String, dynamic> && paint.keys.any((k) => k.endsWith('-pattern'));
+  }
+
+  /// Los puntos que se pueden agrupar, como `FeatureCollection` de GeoJSON, con `id`, `estilo`,
+  /// `letra` y `etiqueta` como propiedades.
+  ///
+  /// [imagenes] son los nombres de las imágenes que la vista ya registró en el estilo (como en
+  /// [coleccionPuntosLibres]): una casa con estado cuya insignia está entre ellas lleva la propiedad
+  /// `imagen` y la dibuja la capa de símbolos; la que no, el círculo de respaldo.
+  static Map<String, dynamic> coleccionPuntos(
+    List<PuntoMapa> puntos, {
+    Set<String> imagenes = const {},
+  }) => _coleccion(puntos.where((p) => !p.estilo.sinAgrupar), imagenes);
+
+  /// Los puntos que nunca se agrupan ([EstiloPunto.sinAgrupar]), con las mismas propiedades. Van en
+  /// otra fuente: en la de los grupos, un punto del GPS o uno cercano quedaría absorbido por el
+  /// grupo de los que tiene al lado.
+  ///
+  /// [imagenes] son los nombres de las imágenes que la vista ya registró en el estilo
+  /// ([MarcadorCercano.nombre], [MarcadorEstado.nombreCuadrado]): un punto cercano o un cuadrado cuya
+  /// imagen está entre ellas lleva la propiedad `imagen` y lo dibuja la capa de símbolos; el que no,
+  /// el círculo de respaldo.
+  static Map<String, dynamic> coleccionPuntosLibres(
+    List<PuntoMapa> puntos, {
+    Set<String> imagenes = const {},
+  }) => _coleccion(puntos.where((p) => p.estilo.sinAgrupar), imagenes);
+
+  static Map<String, dynamic> _coleccion(
+    Iterable<PuntoMapa> puntos, [
+    Set<String> imagenes = const {},
+  ]) => {
+    'type': 'FeatureCollection',
+    'features': [
+      for (final p in puntos)
+        {
+          'type': 'Feature',
+          'geometry': {
+            'type': 'Point',
+            'coordinates': [p.coordenadas.lon, p.coordenadas.lat],
+          },
+          'properties': {
+            'id': p.id,
+            'estilo': p.estilo.name,
+            if (p.letra != null) 'letra': p.letra,
+            if (p.etiqueta != null) 'etiqueta': p.etiqueta,
+            if (p.estilo == EstiloPunto.cercano &&
+                p.etiqueta != null &&
+                imagenes.contains(MarcadorCercano.nombre(p.etiqueta!, p.variante)))
+              'imagen': MarcadorCercano.nombre(p.etiqueta!, p.variante),
+            ..._propiedadesDeEstado(p, imagenes),
+            if (p.atenuado) propiedadAtenuado: true,
+            if (p.fueraDelArea) propiedadFueraDelArea: true,
+          },
+        },
+    ],
+  };
+
+  /// Lo que el estado de la casa (vista 39) le suma a un punto: la variante, los colores con que lo
+  /// pintan las capas de respaldo y el seleccionado, y —según el estilo— la imagen de su insignia o
+  /// de su cuadrado (si ya está registrada) y el número en dos renglones. Un punto sin variante no
+  /// lleva nada de esto.
+  static Map<String, dynamic> _propiedadesDeEstado(PuntoMapa p, Set<String> imagenes) {
+    final variante = p.variante;
+    if (variante == null) return const {};
+    final imagen = switch (p.estilo) {
+      EstiloPunto.conEstado => MarcadorEstado.nombreInsignia(variante),
+      EstiloPunto.cuadrado ||
+      EstiloPunto.cuadradoSeleccionado => MarcadorEstado.nombreCuadrado(variante),
+      _ => null,
+    };
+    final etiqueta = p.etiqueta;
+    return {
+      'variante': variante.name,
+      'fondo': _hex(variante.fondo),
+      'tinta': _hex(variante.tintaNumero),
+      'borde': _hex(variante.borde),
+      if (imagen != null && imagenes.contains(imagen)) 'imagen': imagen,
+      if (p.estilo.esCuadrado && etiqueta != null)
+        'numero': MarcadorEstado.numeroEnDosRenglones(etiqueta),
+    };
+  }
+
+  /// Las zonas como `FeatureCollection` de polígonos (uno por polígono de cada zona; una zona con
+  /// varios es un `MultiPolygon`), con `id`, `propia` y `color` (el del borde, en hex) como
+  /// propiedades. Vacía si no hay zonas.
+  static Map<String, dynamic> coleccionZonas(List<ZonaMapa> zonas) => {
+    'type': 'FeatureCollection',
+    'features': [
+      for (final zona in zonas)
+        for (final poligono in zona.poligonos)
+          {
+            'type': 'Feature',
+            'geometry': {
+              'type': 'Polygon',
+              'coordinates': [
+                for (final anillo in poligono)
+                  [
+                    for (final v in anillo) [v.lon, v.lat],
+                  ],
+              ],
+            },
+            'properties': {'id': zona.id, 'propia': zona.propia, 'color': _hex(zona.color)},
+          },
+    ],
+  };
+
+  /// El nombre de cada zona como `FeatureCollection` de puntos (adentro de la zona), con `id`,
+  /// `propia` y `rotulo`. La zona sin punto de nombre no lleva ninguno.
+  static Map<String, dynamic> coleccionRotulosDeZonas(List<ZonaMapa> zonas) => {
+    'type': 'FeatureCollection',
+    'features': [
+      for (final zona in zonas)
+        if (zona.puntoRotulo case final punto?)
+          {
+            'type': 'Feature',
+            'geometry': {
+              'type': 'Point',
+              'coordinates': [punto.lon, punto.lat],
+            },
+            'properties': {'id': zona.id, 'propia': zona.propia, 'rotulo': zona.rotulo},
+          },
+    ],
+  };
+
+  /// El radio de precisión como `FeatureCollection` con un polígono, o vacía si no hay.
+  static Map<String, dynamic> poligonoPrecision(CirculoPrecision? precision) =>
+      _poligono(precision?.centro, precision?.radioMetros);
+
+  /// El área de «cerca tuyo» como `FeatureCollection` con un polígono, o vacía si no hay.
+  static Map<String, dynamic> poligonoCercania(CirculoCercania? cercania) =>
+      _poligono(cercania?.centro, cercania?.radioMetros);
+
+  static Map<String, dynamic> _poligono(Coordenadas? centro, double? radioMetros) {
+    final anillo = centro == null || radioMetros == null
+        ? const <Coordenadas>[]
+        : CirculoGeografico.anillo(centro, radioMetros);
+    return {
+      'type': 'FeatureCollection',
+      'features': [
+        if (anillo.isNotEmpty)
+          {
+            'type': 'Feature',
+            'geometry': {
+              'type': 'Polygon',
+              'coordinates': [
+                [
+                  for (final v in anillo) [v.lon, v.lat],
+                ],
+              ],
+            },
+            'properties': const <String, dynamic>{},
+          },
+      ],
+    };
+  }
+
+  /// La propiedad de un punto atenuado ([PuntoMapa.atenuado]) y la que suma un grupo con las casas
+  /// suyas que no lo están.
+  static const propiedadAtenuado = 'atenuado';
+  static const propiedadVivos = 'vivos';
+
+  /// La opacidad de lo atenuado (canvas 06C·03: `opacity: .3`).
+  static const opacidadAtenuado = .3;
+
+  static const List<Object?> _estaAtenuado = [
+    '==',
+    ['get', propiedadAtenuado],
+    true,
+  ];
+
+  /// Las propiedades de opacidad de cada tipo de capa de puntos.
+  static const _opacidades = {
+    'circle': ['circle-opacity', 'circle-stroke-opacity'],
+    'symbol': ['icon-opacity', 'text-opacity'],
+  };
+
+  /// [capa] con su opacidad multiplicada por la del atenuado, si dibuja puntos: el punto atenuado (o
+  /// el grupo sin ninguna casa viva) se ve a [opacidadAtenuado] de lo que se veía. Las demás capas
+  /// (zonas, precisión, cercanía) no cambian.
+  static Map<String, dynamic> _conAtenuado(Map<String, dynamic> capa) {
+    final fuente = capa['source'];
+    final propiedades = _opacidades[capa['type']];
+    if ((fuente != fuentePuntos && fuente != fuentePuntosLibres) || propiedades == null) {
+      return capa;
+    }
+    final filtro = capa['filter'];
+    final esGrupo =
+        filtro is List && filtro.length == 2 && filtro[0] == 'has' && filtro[1] == 'point_count';
+    final List<Object?> factor = esGrupo
+        ? [
+            'case',
+            [
+              '==',
+              ['get', propiedadVivos],
+              0,
+            ],
+            opacidadAtenuado,
+            1,
+          ]
+        : ['case', _estaAtenuado, opacidadAtenuado, 1];
+    final paint = {...?(capa['paint'] as Map<String, dynamic>?)};
+    for (final propiedad in propiedades) {
+      final actual = paint[propiedad];
+      paint[propiedad] = actual == null ? factor : ['*', actual, factor];
+    }
+    return {...capa, 'paint': paint};
+  }
+
+  static const List<Object?> _noEsGrupo = [
+    '!',
+    ['has', 'point_count'],
+  ];
+
+  /// El punto cuya etiqueta ya está registrada como imagen en el estilo, y el que no.
+  static const List<Object?> _tieneImagen = ['has', 'imagen'];
+  static const List<Object?> _sinImagen = [
+    '!',
+    ['has', 'imagen'],
+  ];
+
+  /// Las dos formas del cuadrado de M·02: el común y el de la casa seleccionada.
+  static const List<Object?> _esCuadrado = [
+    'in',
+    ['get', 'estilo'],
+    [
+      'literal',
+      ['cuadrado', 'cuadradoSeleccionado'],
+    ],
+  ];
+
+  /// La propiedad [propiedad] del punto (un color en hex) o, si no la tiene, [respaldo].
+  static List<Object?> _conRespaldo(String propiedad, String respaldo) => [
+    'coalesce',
+    ['get', propiedad],
+    respaldo,
+  ];
+
+  /// Solo las zonas propias del colportor (#654).
+  static const List<Object?> _esZonaPropia = [
+    '==',
+    ['get', 'propia'],
+    true,
+  ];
+
+  static List<Object?> _filtroEstilo(EstiloPunto estilo) => ['all', _noEsGrupo, _esEstilo(estilo)];
+
+  static List<Object?> _esEstilo(EstiloPunto estilo) => [
+    '==',
+    ['get', 'estilo'],
+    estilo.name,
+  ];
+
+  /// El radio de un círculo con número de puerta: crece con la cantidad de caracteres para que
+  /// entre. `to-string` deja a los puntos sin número en «» (largo 0).
+  static const List<Object?> _radioPorEtiqueta = [
+    'step',
+    [
+      'length',
+      [
+        'to-string',
+        ['get', 'etiqueta'],
+      ],
+    ],
+    radioEtiqueta,
+    5,
+    radioEtiquetaLarga,
+    6,
+    radioEtiquetaMuyLarga,
+  ];
+
+  static const _estiloNumero = {
+    'text-field': ['get', 'etiqueta'],
+    'text-font': ['NotoSans-Medium'],
+    'text-size': 12,
+    'text-allow-overlap': true,
+    'text-ignore-placement': true,
+  };
+
+  static const List<Object?> _estaFueraDelArea = [
+    '==',
+    ['get', propiedadFueraDelArea],
+    true,
+  ];
+
+  /// El radio del aro de una casa fuera del área: un poco más grande que su marcador, según cómo se
+  /// dibuja (el cuadrado de M·02 mide 40 dp; el seleccionado lleva su aro doble).
+  static const List<Object?> _radioFueraDelArea = [
+    'match',
+    ['get', 'estilo'],
+    'cuadradoSeleccionado',
+    radioFueraDelAreaCuadradoSeleccionado,
+    'cuadrado',
+    radioFueraDelAreaCuadrado,
+    'seleccionado',
+    ['+', _radioPorEtiqueta, 10],
+    radioFueraDelArea,
+  ];
+
+  /// Los radios del aro «fuera del área» (en px): alrededor de un punto, de un cuadrado de M·02 y del
+  /// cuadrado elegido (con su aro doble).
+  static const radioFueraDelArea = 17.0;
+  static const radioFueraDelAreaCuadrado = 26.0;
+  static const radioFueraDelAreaCuadradoSeleccionado = 30.0;
+
+  /// El aro de las casas fuera del área de [fuente]: un disco blanco translúcido (contraste sobre
+  /// cualquier fondo) con el borde ámbar. Va por debajo del marcador.
+  static Map<String, dynamic> _aroFueraDelArea(String id, String fuente, String blanco) => {
+    'id': id,
+    'type': 'circle',
+    'source': fuente,
+    'filter': ['all', _noEsGrupo, _estaFueraDelArea],
+    'paint': {
+      'circle-color': blanco,
+      'circle-opacity': .6,
+      'circle-radius': _radioFueraDelArea,
+      'circle-stroke-width': 3,
+      'circle-stroke-color': _hex(ColoresMapa.fueraDelArea),
+    },
+  };
+
+  static List<Map<String, dynamic>> _capasPropias(
+    ConfigVistaMapa config, {
+    required bool conRecursos,
+  }) {
+    final blanco = _hex(const Color(0xFFFFFFFF));
+    return [
+      // Las zonas (#511) van primero: por debajo de todo lo que el colportor toca. Estilo de zona del
+      // panel (vista 24: relleno translúcido y borde del color de la zona) y el retoque del teléfono:
+      // borde grueso, relleno más firme y un filete blanco que le asegura contraste sobre cualquier
+      // fondo. Solo se dibujan las zonas propias (#654): las de otros colportores no aparecen ni
+      // como contorno; el filtro `propia` lo asegura aunque una ajena llegara hasta acá.
+      {
+        'id': capaZonaPropiaHalo,
+        'type': 'line',
+        'source': fuenteZonas,
+        'filter': _esZonaPropia,
+        'layout': {'line-join': 'round'},
+        'paint': {'line-color': blanco, 'line-opacity': .9, 'line-width': 7},
+      },
+      {
+        'id': capaZonaPropiaRelleno,
+        'type': 'fill',
+        'source': fuenteZonas,
+        'filter': _esZonaPropia,
+        'paint': {
+          'fill-color': ['get', 'color'],
+          'fill-opacity': .2,
+        },
+      },
+      {
+        'id': capaZonaPropiaBorde,
+        'type': 'line',
+        'source': fuenteZonas,
+        'filter': _esZonaPropia,
+        'layout': {'line-join': 'round'},
+        'paint': {
+          'line-color': ['get', 'color'],
+          'line-width': 4,
+        },
+      },
+      // El nombre de la zona: lo que dice cuál es la propia sin depender del color ni del grosor
+      // (WCAG 1.4.1). Siempre se dibuja (`text-allow-overlap`): está debajo de las
+      // [capasQueOcupanLugar] y, si no, una insignia lo escondería. No esconde a nadie.
+      if (conRecursos)
+        {
+          'id': capaZonasRotulo,
+          'type': 'symbol',
+          'source': fuenteZonasRotulos,
+          'filter': _esZonaPropia,
+          'layout': {
+            'text-field': ['get', 'rotulo'],
+            'text-font': ['NotoSans-Medium'],
+            'text-size': 13,
+            'text-max-width': 9,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          'paint': {
+            'text-color': _hex(ColoresMapa.tinta),
+            'text-halo-color': blanco,
+            'text-halo-width': 1.5,
+          },
+        },
+      {
+        'id': 'colportores:precision-relleno',
+        'type': 'fill',
+        'source': fuentePrecision,
+        'paint': {'fill-color': _hex(ColoresMapa.puntoGps), 'fill-opacity': .14},
+      },
+      {
+        'id': 'colportores:precision-borde',
+        'type': 'line',
+        'source': fuentePrecision,
+        'paint': {'line-color': _hex(ColoresMapa.puntoGps), 'line-opacity': .45, 'line-width': 1.5},
+      },
+      {
+        'id': 'colportores:cercania-relleno',
+        'type': 'fill',
+        'source': fuenteCercania,
+        'paint': {'fill-color': _hex(ColoresMapa.puntoGps), 'fill-opacity': .06},
+      },
+      {
+        'id': 'colportores:cercania-borde',
+        'type': 'line',
+        'source': fuenteCercania,
+        'paint': {
+          'line-color': _hex(ColoresMapa.puntoGps),
+          'line-opacity': .55,
+          'line-width': 1.5,
+          'line-dasharray': [4, 3],
+        },
+      },
+      // #713: el aro de las casas fuera del área, debajo de todos los marcadores.
+      _aroFueraDelArea(capaFueraDelArea, fuentePuntos, blanco),
+      _aroFueraDelArea(capaFueraDelAreaLibres, fuentePuntosLibres, blanco),
+      {
+        'id': 'colportores:contexto-sombra',
+        'type': 'circle',
+        'source': fuentePuntos,
+        'filter': _filtroEstilo(EstiloPunto.contexto),
+        'paint': {
+          'circle-color': '#000000',
+          'circle-opacity': .4,
+          'circle-radius': 12,
+          'circle-blur': .25,
+          'circle-translate': [0, 1],
+        },
+      },
+      {
+        'id': capaContexto,
+        'type': 'circle',
+        'source': fuentePuntos,
+        'filter': _filtroEstilo(EstiloPunto.contexto),
+        'paint': {
+          'circle-color': blanco,
+          'circle-radius': 9.5,
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': _hex(ColoresMapa.bordeContexto),
+        },
+      },
+      // Vista 39, M·01: de lejos, cada casa con estado es la insignia de su estado (color y símbolo).
+      // Se agrupa con las que tiene cerca, como el punto de «Sin visita».
+      {
+        'id': capaEstado,
+        'type': 'symbol',
+        'source': fuentePuntos,
+        'filter': ['all', _filtroEstilo(EstiloPunto.conEstado), _tieneImagen],
+        'layout': {
+          'icon-image': ['get', 'imagen'],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': false,
+        },
+      },
+      // El respaldo: mientras la insignia no está registrada (o si no se pudo), la casa no queda sin
+      // dibujar y conserva el color de su estado.
+      {
+        'id': capaEstadoRespaldo,
+        'type': 'circle',
+        'source': fuentePuntos,
+        'filter': ['all', _filtroEstilo(EstiloPunto.conEstado), _sinImagen],
+        'paint': {
+          'circle-color': _conRespaldo('fondo', blanco),
+          'circle-radius': 11,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': _conRespaldo('borde', _hex(ColoresMapa.bordeContexto)),
+        },
+      },
+      {
+        'id': 'colportores:grupos-halo',
+        'type': 'circle',
+        'source': fuentePuntos,
+        'filter': ['has', 'point_count'],
+        'paint': {
+          'circle-color': _hex(ColoresMapa.tintaOscura),
+          'circle-opacity': .18,
+          'circle-radius': [
+            'step',
+            ['get', 'point_count'],
+            radioGrupo + 5,
+            100,
+            radioGrupoGrande + 5,
+          ],
+        },
+      },
+      {
+        'id': capaGrupos,
+        'type': 'circle',
+        'source': fuentePuntos,
+        'filter': ['has', 'point_count'],
+        'paint': {
+          'circle-color': _hex(ColoresMapa.tintaOscura),
+          'circle-radius': [
+            'step',
+            ['get', 'point_count'],
+            radioGrupo,
+            100,
+            radioGrupoGrande,
+          ],
+          'circle-stroke-width': 2,
+          'circle-stroke-color': blanco,
+        },
+      },
+      if (conRecursos)
+        {
+          'id': 'colportores:grupos-cuenta',
+          'type': 'symbol',
+          'source': fuentePuntos,
+          'filter': ['has', 'point_count'],
+          'layout': {
+            'text-field': ['get', 'point_count_abbreviated'],
+            'text-font': ['NotoSans-Medium'],
+            'text-size': 13,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          'paint': {'text-color': blanco},
+        },
+      {
+        'id': capaCandidata,
+        'type': 'circle',
+        'source': fuentePuntos,
+        'filter': _filtroEstilo(EstiloPunto.candidata),
+        'paint': {
+          'circle-color': blanco,
+          // Con dos letras («AA», «AB»…, de la candidata 27 en adelante) el círculo crece para que
+          // entren. `to-string` deja la letra de las candidatas sin rótulo en «».
+          'circle-radius': [
+            'case',
+            [
+              '>',
+              [
+                'length',
+                [
+                  'to-string',
+                  ['get', 'letra'],
+                ],
+              ],
+              1,
+            ],
+            radioCandidataDosLetras,
+            radioCandidata,
+          ],
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': _hex(ColoresMapa.bordeCandidata),
+        },
+      },
+      if (conRecursos)
+        {
+          'id': 'colportores:candidata-letra',
+          'type': 'symbol',
+          'source': fuentePuntos,
+          'filter': [
+            'all',
+            _filtroEstilo(EstiloPunto.candidata),
+            ['has', 'letra'],
+          ],
+          'layout': {
+            'text-field': ['get', 'letra'],
+            'text-font': ['NotoSans-Medium'],
+            'text-size': 12,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          'paint': {'text-color': _hex(ColoresMapa.tinta)},
+        },
+      // «Cerca tuyo»: la etiqueta del canvas, una imagen por número de puerta que la vista registra
+      // (`MarcadorCercano`). Anclada por la punta de abajo y sin esconderse: son pocas y todas
+      // tienen que verse.
+      {
+        'id': capaCercano,
+        'type': 'symbol',
+        'source': fuentePuntosLibres,
+        'filter': ['all', _esEstilo(EstiloPunto.cercano), _tieneImagen],
+        'layout': {
+          'icon-image': ['get', 'imagen'],
+          'icon-anchor': 'bottom',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': false,
+        },
+      },
+      // El respaldo: mientras la imagen de un número no está registrada (o si no se pudo), el punto
+      // no queda sin dibujar.
+      {
+        'id': capaCercanoRespaldo,
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': ['all', _esEstilo(EstiloPunto.cercano), _sinImagen],
+        'paint': {
+          'circle-color': blanco,
+          'circle-radius': _radioPorEtiqueta,
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': _hex(ColoresMapa.bordeContexto),
+        },
+      },
+      if (conRecursos)
+        {
+          'id': 'colportores:cercano-numero',
+          'type': 'symbol',
+          'source': fuentePuntosLibres,
+          'filter': [
+            'all',
+            _esEstilo(EstiloPunto.cercano),
+            _sinImagen,
+            ['has', 'etiqueta'],
+          ],
+          'layout': _estiloNumero,
+          'paint': {'text-color': _hex(ColoresMapa.tinta)},
+        },
+      // El seleccionado: el marcador con un aro doble, blanco y azul, encima de los demás.
+      {
+        'id': 'colportores:seleccionado-aro',
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.seleccionado),
+        'paint': {
+          'circle-color': _hex(ColoresMapa.aroSeleccion),
+          'circle-radius': ['+', _radioPorEtiqueta, 6],
+        },
+      },
+      {
+        'id': 'colportores:seleccionado-aro-blanco',
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.seleccionado),
+        'paint': {
+          'circle-color': blanco,
+          'circle-radius': ['+', _radioPorEtiqueta, 3],
+        },
+      },
+      {
+        'id': capaSeleccionado,
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.seleccionado),
+        'paint': {
+          // Con estado, el círculo lleva el color de su estado; sin él, el blanco de siempre.
+          'circle-color': _conRespaldo('fondo', blanco),
+          'circle-radius': _radioPorEtiqueta,
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': _conRespaldo('borde', _hex(ColoresMapa.bordeContexto)),
+        },
+      },
+      if (conRecursos)
+        {
+          'id': 'colportores:seleccionado-numero',
+          'type': 'symbol',
+          'source': fuentePuntosLibres,
+          'filter': [
+            'all',
+            _esEstilo(EstiloPunto.seleccionado),
+            ['has', 'etiqueta'],
+          ],
+          'layout': _estiloNumero,
+          'paint': {'text-color': _conRespaldo('tinta', _hex(ColoresMapa.tinta))},
+        },
+      // Vista 39, M·02: la casa acercada es un cuadrado de 40 dp (una imagen por estado) con el
+      // número en dos renglones encima. La seleccionada lleva el aro doble por debajo. Nunca se
+      // agrupa ni se esconde: la página solo los pide cuando entran todos sin taparse.
+      {
+        'id': capaCuadradoAro,
+        'type': 'symbol',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.cuadradoSeleccionado),
+        'layout': {
+          'icon-image': MarcadorEstado.nombreAro,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': false,
+        },
+      },
+      {
+        'id': capaCuadrado,
+        'type': 'symbol',
+        'source': fuentePuntosLibres,
+        'filter': ['all', _esCuadrado, _tieneImagen],
+        'layout': {
+          'icon-image': ['get', 'imagen'],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': false,
+        },
+      },
+      {
+        'id': capaCuadradoRespaldo,
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': ['all', _esCuadrado, _sinImagen],
+        'paint': {
+          'circle-color': _conRespaldo('fondo', blanco),
+          'circle-radius': 16,
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': _conRespaldo('borde', _hex(ColoresMapa.bordeContexto)),
+        },
+      },
+      if (conRecursos)
+        {
+          'id': capaCuadradoNumero,
+          'type': 'symbol',
+          'source': fuentePuntosLibres,
+          'filter': [
+            'all',
+            _esCuadrado,
+            ['has', 'numero'],
+          ],
+          'layout': {
+            'text-field': ['get', 'numero'],
+            'text-font': ['NotoSans-Medium'],
+            'text-size': MarcadorEstado.tamanoNumero,
+            'text-line-height': MarcadorEstado.interlineadoNumero,
+            // El bloque del número, arriba a la izquierda y alineado a la izquierda: abajo a la
+            // derecha va el símbolo del estado y es una esquina reservada (el segundo renglón se
+            // corta antes de llegar, `MarcadorEstado.numeroEnDosRenglones`).
+            'text-anchor': 'top-left',
+            'text-justify': 'left',
+            'text-offset': [
+              MarcadorEstado.desplazamientoNumeroEm,
+              MarcadorEstado.desplazamientoNumeroEm,
+            ],
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          'paint': {'text-color': _conRespaldo('tinta', _hex(ColoresMapa.tinta))},
+        },
+      {
+        'id': capaNuevo,
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.nuevo),
+        'paint': {
+          'circle-color': _hex(config.colorNuevo),
+          'circle-radius': 11,
+          'circle-stroke-width': 3,
+          'circle-stroke-color': blanco,
+        },
+      },
+      {
+        'id': 'colportores:gps-halo',
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.gps),
+        'paint': {
+          'circle-color': _hex(ColoresMapa.puntoGps),
+          'circle-opacity': .16,
+          'circle-radius': 17,
+        },
+      },
+      {
+        'id': capaGps,
+        'type': 'circle',
+        'source': fuentePuntosLibres,
+        'filter': _esEstilo(EstiloPunto.gps),
+        'paint': {
+          'circle-color': _hex(ColoresMapa.puntoGps),
+          'circle-radius': 6,
+          'circle-stroke-width': 3,
+          'circle-stroke-color': blanco,
+        },
+      },
+    ];
+  }
+
+  static String _hex(Color color) =>
+      '#${(color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+}

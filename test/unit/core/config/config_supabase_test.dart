@@ -13,9 +13,9 @@ void main() {
       expect(ConfigSupabase.configurada, isFalse);
     });
 
-    test('el deep link de OAuth es el que declara AndroidManifest.xml', () {
-      expect(ConfigSupabase.redirectOAuth, 'io.supabase.colportores://login-callback/');
-      expect(ConfigSupabase.redirectOAuth, startsWith('io.supabase.colportores://login-callback'));
+    test('el deep link de los enlaces del correo es el que declara AndroidManifest.xml', () {
+      expect(ConfigSupabase.redirectBase, 'io.supabase.colportores://login-callback/');
+      expect(ConfigSupabase.redirectBase, startsWith('io.supabase.colportores://login-callback'));
     });
   });
 

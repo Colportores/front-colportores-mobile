@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../formato_jornada.dart';
 
@@ -15,7 +16,8 @@ typedef HoraElegida = ({DateTime hora, bool esAhora});
 /// eligió el colportor, o `null` si canceló.
 ///
 /// [ahora] es el instante con el que se armó la pantalla que se está viendo y [margenMinutos] lo
-/// que se puede retroceder (30, el mismo rango que valida `IniciarJornadaUseCase`).
+/// que se puede retroceder (30, el mismo rango que valida `IniciarJornadaUseCase`). [notaDeHora]
+/// puede aclarar algo de la hora que se está mirando (ver [HojaHoraInicio.notaDeHora]).
 Future<HoraElegida?> mostrarHojaHoraInicio(
   BuildContext context, {
   required DateTime ahora,
@@ -24,10 +26,10 @@ Future<HoraElegida?> mostrarHojaHoraInicio(
   String pregunta = '¿A qué hora empezaste?',
   String etiquetaCampo = 'HORA DE INICIO',
   bool mostrarRelativo = true,
-}) => showModalBottomSheet<HoraElegida>(
+  String? Function(DateTime hora)? notaDeHora,
+}) => mostrarHojaInferior<HoraElegida>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: false,
   backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
   shape: const RoundedRectangleBorder(
@@ -40,6 +42,7 @@ Future<HoraElegida?> mostrarHojaHoraInicio(
     pregunta: pregunta,
     etiquetaCampo: etiquetaCampo,
     mostrarRelativo: mostrarRelativo,
+    notaDeHora: notaDeHora,
   ),
 );
 
@@ -55,6 +58,7 @@ class HojaHoraInicio extends StatefulWidget {
     this.pregunta = '¿A qué hora empezaste?',
     this.etiquetaCampo = 'HORA DE INICIO',
     this.mostrarRelativo = true,
+    this.notaDeHora,
   });
 
   static const pasoMinutos = 5;
@@ -66,6 +70,11 @@ class HojaHoraInicio extends StatefulWidget {
   /// "Ahora" / "Hace N min" bajo la hora: solo tiene sentido cuando [ahora] es de verdad el
   /// momento actual (no en la corrección de una jornada de otro día, donde es el fin de ese día).
   final bool mostrarRelativo;
+
+  /// Una aclaración bajo la hora que se está mirando, o `null` si no hace falta: en la jornada que
+  /// quedó abierta, que el fin cae al día siguiente (el rango cruza la medianoche, #250). Se
+  /// llama con cada hora que muestra la hoja, la elegida con −5 / +5 o la escrita en "Otra hora".
+  final String? Function(DateTime hora)? notaDeHora;
 
   final DateTime ahora;
   final int margenMinutos;
@@ -185,6 +194,13 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
     return null;
   }
 
+  /// La aclaración de [HojaHoraInicio.notaDeHora] para lo escrito, si es una hora válida.
+  String? _notaDeLoEscrito() {
+    final minutos = _minutosEscritos();
+    if (minutos == null || minutos > widget.margenMinutos) return null;
+    return widget.notaDeHora?.call(_hora(minutos));
+  }
+
   bool get _escritoValido {
     final minutos = _minutosEscritos();
     return minutos != null && minutos <= widget.margenMinutos;
@@ -214,6 +230,7 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
     final horaElegida = horaCorta(_hora(_minutos));
+    final nota = widget.notaDeHora?.call(_hora(_minutos));
 
     return Column(
       key: const Key('hoja_hora_ajuste'),
@@ -282,6 +299,17 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
             ),
           ],
         ),
+        // La aclaración va debajo de la fila, no dentro de la columna de la hora: así −5 y +5
+        // quedan alineados con la hora y no se corren cuando la nota aparece o cambia de alto.
+        if (nota != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            nota,
+            key: const Key('hoja_hora_nota'),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
         const SizedBox(height: 20),
         FilledButton(
           key: const Key('hoja_hora_usar'),
@@ -337,6 +365,8 @@ class _HojaHoraInicioState extends State<HojaHoraInicio> {
                 labelText: widget.etiquetaCampo,
                 errorText: error,
                 errorMaxLines: 3,
+                helperText: _notaDeLoEscrito(),
+                helperMaxLines: 2,
               ),
               onChanged: (_) {
                 setState(() {});

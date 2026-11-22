@@ -1,4 +1,6 @@
 // HU-AUTH-008 — estado de la cuenta: siempre del backend. Dart puro.
+import 'dart:async';
+
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/estado_cuenta.dart';
 import 'package:colportores_mobile/features/auth/domain/repositories/cuenta_repository.dart';
@@ -10,8 +12,16 @@ final class _CuentaFalsa implements CuentaRepository {
   Either<Failure, EstadoCuenta> respuesta = const Right(EstadoCuenta.activa);
   EstadoCuenta? ultimo;
 
+  /// Si está, [consultar] espera a que el test la complete (un backend que no contesta).
+  Completer<void>? demora;
+  int consultas = 0;
+
   @override
-  Future<Either<Failure, EstadoCuenta>> consultar(String usuarioId) async => respuesta;
+  Future<Either<Failure, EstadoCuenta>> consultar(String usuarioId) async {
+    consultas++;
+    await demora?.future;
+    return respuesta;
+  }
 
   @override
   Future<EstadoCuenta?> ultimoConocido(String usuarioId) async => ultimo;
@@ -72,6 +82,165 @@ void main() {
       await consultar(params(admite: false)),
       const Left<Failure, EstadoCuenta>(FailureSinConexion()),
     );
+  });
+
+  group('tope de espera (#278)', () {
+    const tope = Duration(milliseconds: 40);
+    late Completer<void> sinRespuesta;
+
+    setUp(() {
+      sinRespuesta = Completer<void>();
+      cuenta.demora = sinRespuesta;
+      consultar = ConsultarEstadoCuentaUseCase(cuenta, limiteAlEntrar: tope);
+    });
+
+    tearDown(() {
+      if (!sinRespuesta.isCompleted) sinRespuesta.complete();
+    });
+
+    test('el tope es de 15 s, el mismo del GPS', () {
+      expect(ConsultarEstadoCuentaUseCase.limiteConsultaAlEntrar, const Duration(seconds: 15));
+      expect(ConsultarEstadoCuentaUseCase(cuenta).limiteAlEntrar, const Duration(seconds: 15));
+    });
+
+    test('al entrar con un backend que no contesta y sin estado conocido, devuelve sin conexión '
+        'al vencer el tope', () async {
+      final resultado = await consultar(params(admite: true));
+
+      expect(resultado, const Left<Failure, EstadoCuenta>(FailureSinConexion()));
+    });
+
+    test('al entrar con un backend que no contesta, rige el último estado conocido', () async {
+      cuenta.ultimo = EstadoCuenta.pendienteAsignacion;
+
+      final resultado = await consultar(params(admite: true));
+
+      expect(resultado, const Right<Failure, EstadoCuenta>(EstadoCuenta.pendienteAsignacion));
+    });
+
+    test(
+      'la respuesta que llega después del tope no cambia lo ya devuelto ni rompe nada',
+      () async {
+        final resultado = await consultar(params(admite: true));
+        cuenta.respuesta = const Right(EstadoCuenta.activa);
+
+        sinRespuesta.complete();
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+
+        expect(resultado, const Left<Failure, EstadoCuenta>(FailureSinConexion()));
+        expect(cuenta.consultas, 1);
+      },
+    );
+
+    test('la respuesta buena que llega después del tope se le pasa a quien la espera', () async {
+      final tarde = <EstadoCuenta>[];
+      final resultado = await consultar(
+        ConsultarEstadoCuentaParams(
+          usuarioId: 'u',
+          admiteUltimoConocido: true,
+          alLlegarTarde: tarde.add,
+        ),
+      );
+      expect(resultado, const Left<Failure, EstadoCuenta>(FailureSinConexion()));
+      expect(tarde, isEmpty);
+      cuenta.respuesta = const Right(EstadoCuenta.pendienteAsignacion);
+
+      sinRespuesta.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(tarde, [EstadoCuenta.pendienteAsignacion]);
+      expect(cuenta.consultas, 1);
+    });
+
+    test('la falla que llega después del tope no se le pasa a nadie', () async {
+      final tarde = <EstadoCuenta>[];
+      await consultar(
+        ConsultarEstadoCuentaParams(
+          usuarioId: 'u',
+          admiteUltimoConocido: true,
+          alLlegarTarde: tarde.add,
+        ),
+      );
+      cuenta.respuesta = const Left(FailureSinConexion());
+
+      sinRespuesta.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(tarde, isEmpty);
+    });
+
+    test('una respuesta dentro del tope no pasa por quien espera la tardía', () async {
+      final tarde = <EstadoCuenta>[];
+      cuenta.respuesta = const Right(EstadoCuenta.suspendida);
+      final pendiente = consultar(
+        ConsultarEstadoCuentaParams(
+          usuarioId: 'u',
+          admiteUltimoConocido: true,
+          alLlegarTarde: tarde.add,
+        ),
+      );
+      sinRespuesta.complete();
+
+      expect(await pendiente, const Right<Failure, EstadoCuenta>(EstadoCuenta.suspendida));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(tarde, isEmpty);
+    });
+
+    test('refrescar a mano también vence: devuelve sin conexión, aunque haya un estado '
+        'recordado', () async {
+      cuenta.ultimo = EstadoCuenta.activa;
+
+      // El backend sigue sin contestar: si no hubiera tope, esto no volvería nunca.
+      final resultado = await consultar(params(admite: false));
+
+      expect(resultado, const Left<Failure, EstadoCuenta>(FailureSinConexion()));
+      expect(sinRespuesta.isCompleted, isFalse);
+      expect(cuenta.consultas, 1);
+    });
+
+    test('refrescar a mano: la respuesta que llega después del tope se le pasa a quien la '
+        'pida', () async {
+      final tarde = <EstadoCuenta>[];
+      final resultado = await consultar(
+        ConsultarEstadoCuentaParams(
+          usuarioId: 'u',
+          admiteUltimoConocido: false,
+          alLlegarTarde: tarde.add,
+        ),
+      );
+      expect(resultado, const Left<Failure, EstadoCuenta>(FailureSinConexion()));
+      cuenta.respuesta = const Right(EstadoCuenta.suspendida);
+
+      sinRespuesta.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(tarde, [EstadoCuenta.suspendida]);
+    });
+
+    test('refrescar a mano dentro del tope devuelve la respuesta y no usa la tardía', () async {
+      final tarde = <EstadoCuenta>[];
+      cuenta.respuesta = const Right(EstadoCuenta.activa);
+      final pendiente = consultar(
+        ConsultarEstadoCuentaParams(
+          usuarioId: 'u',
+          admiteUltimoConocido: false,
+          alLlegarTarde: tarde.add,
+        ),
+      );
+      sinRespuesta.complete();
+
+      expect(await pendiente, const Right<Failure, EstadoCuenta>(EstadoCuenta.activa));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(tarde, isEmpty);
+    });
+
+    test('una respuesta dentro del tope se devuelve tal cual', () async {
+      cuenta.respuesta = const Right(EstadoCuenta.suspendida);
+      final pendiente = consultar(params(admite: true));
+      sinRespuesta.complete();
+
+      expect(await pendiente, const Right<Failure, EstadoCuenta>(EstadoCuenta.suspendida));
+    });
   });
 
   test('solo la cuenta activa accede a los módulos de campo', () {

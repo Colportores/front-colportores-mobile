@@ -4,7 +4,21 @@ import '../../../../core/domain/entities/auditoria.dart';
 import '../value_objects/coordenadas.dart';
 
 /// Tipo de ubicación (HU-UBI-001: enum `CASA | NEGOCIO | EDIFICIO`).
-enum TipoUbicacion { casa, negocio, edificio }
+enum TipoUbicacion {
+  casa,
+  negocio,
+  edificio;
+
+  /// S17 (HU-UBI-004): si cambiar de este tipo a [nuevo] deja a la ubicación con un solo espacio
+  /// —el de la casa o el del negocio—: de `EDIFICIO` a `CASA` o `NEGOCIO`, y de `NEGOCIO` a `CASA`.
+  /// Con dos o más espacios activos esos cambios se bloquean; con uno pasan y ese espacio queda
+  /// sin `numero_depto` (decisión de Cristian, 07/10).
+  bool reduceAUnEspacioHacia(TipoUbicacion nuevo) => switch ((this, nuevo)) {
+    (TipoUbicacion.edificio, TipoUbicacion.casa || TipoUbicacion.negocio) => true,
+    (TipoUbicacion.negocio, TipoUbicacion.casa) => true,
+    _ => false,
+  };
+}
 
 /// Dirección física (esquema-datos.md §Modelo de Espacio, tabla `ubicacion`).
 ///

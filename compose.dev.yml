@@ -19,6 +19,11 @@ services:
       - build_out:/app/build
       - android_gradle:/app/android/.gradle
     working_dir: /app
+    # Tope de memoria del contenedor: un proceso que se pase muere solo en vez de voltear la VM de
+    # WSL y los demás contenedores (la suite completa en paralelo llegó a 4,9 GB con 8 flutter_tester).
+    # Para el check local usar `-e J=1` (tests en secuencia, ver scripts/check.sh).
+    mem_limit: 3g
+    memswap_limit: 4g
 
 volumes:
   # Cachés de descarga: compartidas por todos los proyectos de compose (`-p`), con nombre fijo.

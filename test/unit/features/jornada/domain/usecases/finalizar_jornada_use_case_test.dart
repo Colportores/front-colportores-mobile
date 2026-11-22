@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/jornada/domain/entities/jornada.dart';
+import 'package:colportores_mobile/features/jornada/domain/jornada_sin_cerrar.dart';
 import 'package:colportores_mobile/features/jornada/domain/repositories/jornada_repository.dart';
 import 'package:colportores_mobile/features/jornada/domain/services/disparador_backup.dart';
 import 'package:colportores_mobile/features/jornada/domain/usecases/finalizar_jornada_use_case.dart';
@@ -15,7 +16,11 @@ final class _RepositorioFalso implements JornadaRepository {
   Either<Failure, Jornada?> respuestaActiva = const Right(null);
   Either<Failure, Jornada>? respuestaFinalizar;
 
+  /// La jornada siguiente a la abierta (HU-JOR-002): `null` = no hay ninguna.
+  Either<Failure, Jornada?> respuestaSiguiente = const Right(null);
+
   final List<Jornada> finalizadas = [];
+  final List<Jornada> consultasSiguiente = [];
 
   @override
   Future<Either<Failure, Jornada?>> obtenerActiva(String colportorId) async => respuestaActiva;
@@ -28,6 +33,12 @@ final class _RepositorioFalso implements JornadaRepository {
   Future<Either<Failure, Jornada>> finalizar(Jornada jornada) async {
     finalizadas.add(jornada);
     return respuestaFinalizar ?? Right(jornada);
+  }
+
+  @override
+  Future<Either<Failure, Jornada?>> siguienteA(Jornada jornada) async {
+    consultasSiguiente.add(jornada);
+    return respuestaSiguiente;
   }
 }
 
@@ -45,6 +56,15 @@ final class _BackupFalso implements DisparadorBackup {
     if (error case final e?) throw e;
   }
 }
+
+/// Una jornada ya cerrada que empezó en [inicio]: la que sigue a la que quedó abierta.
+Jornada _cerrada(DateTime inicio) => Jornada(
+  id: 'jor-2',
+  colportorId: 'u-1',
+  inicio: inicio.toUtc(),
+  fin: inicio.toUtc().add(const Duration(hours: 2)),
+  auditoria: Auditoria(createdAt: inicio.toUtc(), updatedAt: inicio.toUtc(), createdBy: 'u-1'),
+);
 
 /// Una hora del miércoles 23/09/2026 **en la zona del dispositivo**, como instante UTC (como la
 /// devuelve el caso de uso). Así los tests no dependen del huso horario de quien los corre: la
@@ -244,15 +264,242 @@ void main() {
 
       final failure = resultado.fold((f) => f, (_) => fail('se esperaba Left'));
       expect(failure, FailureJornadaDeDiaAnterior(inicio: ayer.toUtc()));
-      expect(failure.mensaje, startsWith('Tenés una jornada del martes 22 sin cerrar.'));
-      expect(failure.mensaje, contains('hay que indicar a qué hora terminaste ese día'));
+      expect(
+        failure.mensaje,
+        'Tu jornada del martes 22 empezó a las 18:00 y quedó abierta. Cerrala para empezar la de '
+        'hoy.',
+      );
       expect(repositorio.finalizadas, isEmpty);
       expect(backup.pedidos, isEmpty);
     });
 
+    test('el aviso lleva el día entero y la hora de inicio con ceros, y se compara con el '
+        'inicio de la siguiente', () {
+      // Domingo 6/9/2026 a las 05:05, en la zona del dispositivo.
+      final inicio = DateTime(2026, 9, 6, 5, 5);
+      final siguiente = DateTime(2026, 9, 6, 9);
+
+      final failure = FailureJornadaDeDiaAnterior(
+        inicio: inicio.toUtc(),
+        inicioSiguiente: siguiente.toUtc(),
+      );
+
+      expect(
+        failure.mensaje,
+        'Tu jornada del domingo 6 empezó a las 05:05 y quedó abierta. Cerrala para empezar la de '
+        'hoy.',
+      );
+      expect(failure.inicioSiguiente, siguiente.toUtc());
+      expect(
+        failure,
+        FailureJornadaDeDiaAnterior(inicio: inicio.toUtc(), inicioSiguiente: siguiente.toUtc()),
+      );
+      expect(failure, isNot(FailureJornadaDeDiaAnterior(inicio: inicio.toUtc())));
+    });
+
+    test('dado que hay una jornada siguiente, el aviso la informa para que la pantalla ofrezca el '
+        'mismo tope', () async {
+      final inicioAyer = DateTime(2026, 9, 22, 22);
+      final inicioSiguiente = DateTime(2026, 9, 23, 6);
+      repositorio
+        ..respuestaActiva = Right(abierta(desde: inicioAyer))
+        ..respuestaSiguiente = Right(_cerrada(inicioSiguiente));
+
+      final resultado = await finalizarJornada(const FinalizarJornadaParams(colportorId: 'u-1'));
+
+      final failure = resultado.fold((f) => f, (_) => fail('se esperaba Left'));
+      expect(
+        failure,
+        FailureJornadaDeDiaAnterior(
+          inicio: inicioAyer.toUtc(),
+          inicioSiguiente: inicioSiguiente.toUtc(),
+        ),
+      );
+      expect(repositorio.consultasSiguiente.single.id, 'jor-1');
+      expect(repositorio.finalizadas, isEmpty);
+    });
+
+    test('con una hora elegida, el fin no pisa a la jornada siguiente: las 06:00 valen y las '
+        '06:01 no, aunque las 12 h dejarían hasta las 08:00', () async {
+      final inicioAyer = DateTime(2026, 9, 22, 20);
+      repositorio
+        ..respuestaActiva = Right(abierta(desde: inicioAyer))
+        ..respuestaSiguiente = Right(_cerrada(DateTime(2026, 9, 23, 6)));
+
+      final pasado = await finalizarJornada(
+        FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 6, 1)),
+      );
+
+      final falla = pasado.fold((f) => f, (_) => fail('se esperaba Left'));
+      expect(falla, isA<FailureHoraFueraDeRango>());
+      expect(falla.mensaje, 'La hora tiene que estar entre las 20:01 y las 06:00.');
+      expect(repositorio.finalizadas, isEmpty);
+      expect(backup.pedidos, isEmpty);
+
+      final justo = await finalizarJornada(
+        FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 6)),
+      );
+      expect(
+        justo.getOrElse(() => fail('se esperaba Right')).fin,
+        DateTime(2026, 9, 23, 6).toUtc(),
+      );
+      expect(repositorio.finalizadas, hasLength(1));
+    });
+
+    test('la jornada siguiente topa el fin aunque esté abierta: es la misma regla', () async {
+      final inicioAyer = DateTime(2026, 9, 22, 20);
+      repositorio
+        ..respuestaActiva = Right(abierta(desde: inicioAyer))
+        ..respuestaSiguiente = Right(abierta(desde: DateTime(2026, 9, 23, 3)));
+
+      final r = await finalizarJornada(
+        FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 4)),
+      );
+
+      expect(r.fold((f) => f, (_) => null), isA<FailureHoraFueraDeRango>());
+      expect(repositorio.finalizadas, isEmpty);
+    });
+
+    test('sin jornada siguiente, el tope sigue siendo el de las 12 h (o ahora)', () async {
+      final inicioAyer = DateTime(2026, 9, 22, 20);
+      repositorio.respuestaActiva = Right(abierta(desde: inicioAyer));
+
+      final r = await finalizarJornada(
+        FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 7)),
+      );
+
+      expect(r.getOrElse(() => fail('se esperaba Right')).fin, DateTime(2026, 9, 23, 7).toUtc());
+    });
+
+    test('si no se puede leer la jornada siguiente, devuelve esa falla y no guarda nada: no se '
+        'ofrece ni se acepta una hora sin saber si pisa a la que sigue', () async {
+      repositorio
+        ..respuestaActiva = Right(abierta(desde: DateTime(2026, 9, 22, 20)))
+        ..respuestaSiguiente = const Left(FailureInesperado(causa: 'disco'));
+
+      final sinHora = await finalizarJornada(const FinalizarJornadaParams(colportorId: 'u-1'));
+      final conHora = await finalizarJornada(
+        FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 6)),
+      );
+
+      expect(sinHora.fold((f) => f, (_) => null), isA<FailureInesperado>());
+      expect(conHora.fold((f) => f, (_) => null), isA<FailureInesperado>());
+      expect(repositorio.finalizadas, isEmpty);
+    });
+
+    group(
+      'una jornada siguiente que ya empezó en el mismo minuto: no queda ningún minuto (#339)',
+      () {
+        final inicioAyer = DateTime(2026, 9, 22, 22);
+
+        for (final (nombre, desfase) in [
+          ('a ras del inicio', Duration.zero),
+          ('30 s después del inicio', const Duration(seconds: 30)),
+          ('59 s 999 ms después del inicio', const Duration(seconds: 59, milliseconds: 999)),
+        ]) {
+          test(
+            'con una hora elegida y la siguiente $nombre, no devuelve un rango al revés: pide la '
+            'corrección con la siguiente que hay y no guarda nada',
+            () async {
+              final siguiente = inicioAyer.add(desfase);
+              repositorio
+                ..respuestaActiva = Right(abierta(desde: inicioAyer))
+                ..respuestaSiguiente = Right(_cerrada(siguiente));
+
+              final r = await finalizarJornada(
+                FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 22, 22, 30)),
+              );
+
+              final falla = r.fold((f) => f, (_) => fail('se esperaba Left'));
+              expect(
+                falla,
+                FailureJornadaDeDiaAnterior(
+                  inicio: inicioAyer.toUtc(),
+                  inicioSiguiente: siguiente.toUtc(),
+                ),
+              );
+              expect(falla.mensaje, isNot(contains('entre las')));
+              expect(repositorio.finalizadas, isEmpty);
+              expect(backup.pedidos, isEmpty);
+            },
+          );
+        }
+
+        test(
+          'con la siguiente en el primer minuto válido (22:01:00) queda ese único minuto: la hora '
+          '22:01 cierra, la 22:02 no, y ninguna sale con el rango al revés',
+          () async {
+            repositorio
+              ..respuestaActiva = Right(abierta(desde: inicioAyer))
+              ..respuestaSiguiente = Right(_cerrada(DateTime(2026, 9, 22, 22, 1)));
+
+            final fuera = await finalizarJornada(
+              FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 22, 22, 2)),
+            );
+            final falla = fuera.fold((f) => f, (_) => fail('se esperaba Left'));
+            expect(falla, isA<FailureHoraFueraDeRango>());
+            expect(falla.mensaje, 'La hora tiene que estar entre las 22:01 y las 22:01.');
+            expect(repositorio.finalizadas, isEmpty);
+
+            final dentro = await finalizarJornada(
+              FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 22, 22, 1)),
+            );
+            expect(
+              dentro.getOrElse(() => fail('se esperaba Right')).fin,
+              DateTime(2026, 9, 22, 22, 1).toUtc(),
+            );
+          },
+        );
+
+        test('sin hora elegida sigue pidiendo la corrección, con la siguiente que hay', () async {
+          final siguiente = inicioAyer.add(const Duration(seconds: 30));
+          repositorio
+            ..respuestaActiva = Right(abierta(desde: inicioAyer))
+            ..respuestaSiguiente = Right(_cerrada(siguiente));
+
+          final r = await finalizarJornada(const FinalizarJornadaParams(colportorId: 'u-1'));
+
+          expect(
+            r.fold((f) => f, (_) => null),
+            FailureJornadaDeDiaAnterior(
+              inicio: inicioAyer.toUtc(),
+              inicioSiguiente: siguiente.toUtc(),
+            ),
+          );
+        });
+      },
+    );
+
+    test('con el reloj del teléfono antes del inicio y una hora elegida de antes, sale el aviso '
+        'del reloj y no un rango al revés (#339)', () async {
+      // Ahora (12:00) es anterior al inicio (13:15) del mismo día: cierre normal, no corrección.
+      final atrasado = FinalizarJornadaUseCase(
+        repositorio,
+        backup,
+        ahora: () => _hoy(12, 0).toLocal(),
+      );
+
+      final r = await atrasado(FinalizarJornadaParams(colportorId: 'u-1', hora: _hoy(12, 0)));
+
+      final falla = r.fold((f) => f, (_) => fail('se esperaba Left'));
+      expect(falla, isA<FailureValidacion>());
+      expect(falla.mensaje, JornadaSinCerrar.avisoRelojAtrasado);
+      expect(falla.mensaje, isNot(contains('entre las')));
+      expect(repositorio.finalizadas, isEmpty);
+      expect(backup.pedidos, isEmpty);
+    });
+
+    test('un cierre normal (la jornada de hoy) no consulta la siguiente', () async {
+      finalizarJornada = FinalizarJornadaUseCase(repositorio, backup, ahora: () => ahora);
+
+      await finalizarJornada(const FinalizarJornadaParams(colportorId: 'u-1'));
+
+      expect(repositorio.consultasSiguiente, isEmpty);
+    });
+
     test(
-      'con una hora elegida a mano que ni siquiera cae en el día del inicio (de hoy, no de la '
-      'corrección), sigue siendo la jornada de un día anterior — no "rango" (bug #118)',
+      'una hora de la mañana siguiente es válida: la jornada cruza la medianoche y la corrección '
+      'la acepta mientras no pase de 12 h después del inicio (#250)',
       () async {
         final inicioAyer = DateTime(2026, 9, 22, 23, 50);
         repositorio.respuestaActiva = Right(abierta(desde: inicioAyer));
@@ -261,21 +508,16 @@ void main() {
           FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 7, 50)),
         );
 
-        expect(
-          resultado,
-          // `Jornada.inicio` siempre queda en UTC (ver su constructor): la comparación por
-          // `Equatable` de dos `DateTime` con el mismo instante pero `isUtc` distinto no dio
-          // igual en la práctica — `.toUtc()` de los dos lados para que coincida con lo que
-          // devuelve el caso de uso.
-          Left<Failure, Jornada>(FailureJornadaDeDiaAnterior(inicio: inicioAyer.toUtc())),
-        );
-        expect(repositorio.finalizadas, isEmpty);
+        final cerrada = resultado.getOrElse(() => fail('se esperaba Right'));
+        expect(cerrada.fin, DateTime(2026, 9, 23, 7, 50).toUtc());
+        expect(cerrada.duracion, const Duration(hours: 8));
+        expect(repositorio.finalizadas, hasLength(1));
       },
     );
 
     test('reproduce el bug #118: una hora de HOY que el selector normal de "Hora de fin" ofrecía '
-        'para una jornada de ayer (antes del fix de `JornadaPage._maximoAtrasFin`) también da '
-        'FailureJornadaDeDiaAnterior, no un rango que atrapa al colportor', () async {
+        'para una jornada de ayer (antes del fix de `JornadaPage._maximoAtrasFin`) está más de 12 h '
+        'después del inicio: rechaza con el rango real, sin cerrar', () async {
       final ahoraDeHoy = FinalizarJornadaUseCase(
         repositorio,
         backup,
@@ -285,20 +527,25 @@ void main() {
       repositorio.respuestaActiva = Right(abierta(desde: inicioAyer));
 
       // Repro exacta del revisor: inicio 22/09 18:00, ahora 23/09 10:00, "hace 15 min" (09:45 de
-      // HOY, no de ayer).
+      // HOY, no de ayer). Con el tope de 12 h (#250) el último minuto válido son las 06:00.
       final resultado = await ahoraDeHoy(
         FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 9, 45)),
       );
 
+      final failure = resultado.fold((f) => f, (_) => fail('se esperaba Left'));
       expect(
-        resultado.fold((f) => f, (_) => null),
-        FailureJornadaDeDiaAnterior(inicio: inicioAyer.toUtc()),
+        failure,
+        FailureHoraFueraDeRango(
+          desde: DateTime(2026, 9, 22, 18, 1).toUtc(),
+          hasta: DateTime(2026, 9, 23, 6).toUtc(),
+        ),
       );
+      expect(failure.mensaje, 'La hora tiene que estar entre las 18:01 y las 06:00.');
       expect(repositorio.finalizadas, isEmpty);
     });
 
     test('la corrección de "jornada que quedó abierta" cierra con la hora elegida, entre el inicio '
-        'y las 23:59 de ese día, sin el margen de 30 min (#109)', () async {
+        'y 12 h después, sin el margen de 30 min (#109)', () async {
       final inicioAyer = DateTime(2026, 9, 22, 13);
       repositorio.respuestaActiva = Right(abierta(desde: inicioAyer));
 
@@ -350,23 +597,153 @@ void main() {
       );
     });
 
-    test(
-      'a las 00:10, elegir las 00:05 de hoy no vale: la jornada cruzaría la medianoche',
-      () async {
+    test('a las 00:10, con el margen de 30 min todavía en el día del inicio, cerrar con la hora '
+        'del toque o con las 00:05 de hoy vale: el fin cruza la medianoche (#250)', () async {
+      final medianoche = FinalizarJornadaUseCase(
+        repositorio,
+        backup,
+        ahora: () => DateTime(2026, 9, 23, 0, 10),
+      );
+      repositorio.respuestaActiva = Right(abierta(desde: DateTime(2026, 9, 22, 20)));
+
+      final sinElegir = await medianoche(const FinalizarJornadaParams(colportorId: 'u-1'));
+      repositorio.finalizadas.clear();
+      final hoy = await medianoche(
+        FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 0, 5)),
+      );
+
+      expect(
+        sinElegir.getOrElse(() => fail('se esperaba Right')).fin,
+        DateTime(2026, 9, 23, 0, 10).toUtc(),
+      );
+      expect(
+        hoy.getOrElse(() => fail('se esperaba Right')).fin,
+        DateTime(2026, 9, 23, 0, 5).toUtc(),
+      );
+    });
+
+    group('jornada iniciada a las 23:59 (la trampa de #250)', () {
+      final inicioTarde = DateTime(2026, 9, 22, 23, 59);
+
+      setUp(() => repositorio.respuestaActiva = Right(abierta(desde: inicioTarde)));
+
+      test('a las 00:05, cierra con la hora del toque o con las 00:03: ya no hay que adivinar una '
+          'hora que no existe', () async {
         final medianoche = FinalizarJornadaUseCase(
           repositorio,
           backup,
-          ahora: () => DateTime(2026, 9, 23, 0, 10),
+          ahora: () => DateTime(2026, 9, 23, 0, 5),
         );
-        repositorio.respuestaActiva = Right(abierta(desde: DateTime(2026, 9, 22, 20)));
 
         final sinElegir = await medianoche(const FinalizarJornadaParams(colportorId: 'u-1'));
-        final hoy = await medianoche(
-          FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 0, 5)),
+        final elegida = await medianoche(
+          FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 0, 3)),
         );
 
+        expect(
+          sinElegir.getOrElse(() => fail('se esperaba Right')).fin,
+          DateTime(2026, 9, 23, 0, 5).toUtc(),
+        );
+        expect(
+          elegida.getOrElse(() => fail('se esperaba Right')).fin,
+          DateTime(2026, 9, 23, 0, 3).toUtc(),
+        );
+      });
+
+      test('a la mañana, sin hora pide la corrección y con una hora del día siguiente la cierra '
+          'a esa hora (nunca se inventa un fin)', () async {
+        final sinElegir = await finalizarJornada(const FinalizarJornadaParams(colportorId: 'u-1'));
         expect(sinElegir.fold((f) => f, (_) => null), isA<FailureJornadaDeDiaAnterior>());
-        expect(hoy.fold((f) => f, (_) => null), isA<FailureJornadaDeDiaAnterior>());
+        expect(repositorio.finalizadas, isEmpty);
+
+        final elegida = await finalizarJornada(
+          FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 0, 30)),
+        );
+
+        final cerrada = elegida.getOrElse(() => fail('se esperaba Right'));
+        expect(cerrada.fin, DateTime(2026, 9, 23, 0, 30).toUtc());
+        expect(cerrada.duracion, const Duration(minutes: 31));
+        expect(backup.pedidos, ['u-1']);
+      });
+
+      test('el tope son 12 h exactas después del inicio: las 11:59 valen, las 12:00 no', () async {
+        final tarde = FinalizarJornadaUseCase(
+          repositorio,
+          backup,
+          ahora: () => DateTime(2026, 9, 23, 15),
+        );
+
+        final enElTope = await tarde(
+          FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 11, 59)),
+        );
+        expect(
+          enElTope.getOrElse(() => fail('se esperaba Right')).fin,
+          DateTime(2026, 9, 23, 11, 59).toUtc(),
+        );
+
+        repositorio.finalizadas.clear();
+        final pasado = await tarde(
+          FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 12)),
+        );
+        expect(
+          pasado.fold((f) => f, (_) => null),
+          FailureHoraFueraDeRango(
+            desde: DateTime(2026, 9, 23).toUtc(),
+            hasta: DateTime(2026, 9, 23, 11, 59).toUtc(),
+          ),
+        );
+        expect(repositorio.finalizadas, isEmpty);
+      });
+    });
+
+    test(
+      'sin horas futuras: si pasaron menos de 12 h desde el inicio, el tope es ahora (#250)',
+      () async {
+        final inicioAyer = DateTime(2026, 9, 22, 22);
+        repositorio.respuestaActiva = Right(abierta(desde: inicioAyer));
+        // 23/09 01:00: el margen de 30 min ya cae en otro día, así que es una corrección.
+        final unaDeLaMadrugada = FinalizarJornadaUseCase(
+          repositorio,
+          backup,
+          ahora: () => DateTime(2026, 9, 23, 1),
+        );
+
+        final futura = await unaDeLaMadrugada(
+          FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 1, 30)),
+        );
+        final valida = await unaDeLaMadrugada(
+          FinalizarJornadaParams(colportorId: 'u-1', hora: DateTime(2026, 9, 23, 0, 45)),
+        );
+
+        expect(
+          futura.fold((f) => f, (_) => null),
+          FailureHoraFueraDeRango(
+            desde: DateTime(2026, 9, 22, 22, 1).toUtc(),
+            hasta: DateTime(2026, 9, 23, 1).toUtc(),
+          ),
+        );
+        expect(
+          valida.getOrElse(() => fail('se esperaba Right')).fin,
+          DateTime(2026, 9, 23, 0, 45).toUtc(),
+        );
+        expect(repositorio.finalizadas, hasLength(1));
+      },
+    );
+
+    test(
+      'si el reloj del teléfono quedó antes del inicio, no cierra: dice qué revisar (#250)',
+      () async {
+        final inicioAyer = DateTime(2026, 9, 22, 18);
+        repositorio.respuestaActiva = Right(abierta(desde: inicioAyer));
+        final atrasado = FinalizarJornadaUseCase(
+          repositorio,
+          backup,
+          ahora: () => DateTime(2026, 9, 22, 17),
+        );
+
+        final resultado = await atrasado(const FinalizarJornadaParams(colportorId: 'u-1'));
+
+        expect(resultado.fold((f) => f, (_) => null), isA<FailureValidacion>());
         expect(repositorio.finalizadas, isEmpty);
       },
     );

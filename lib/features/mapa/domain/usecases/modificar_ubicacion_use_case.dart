@@ -1,9 +1,11 @@
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 
+import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/domain/instante.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../entities/espacio.dart';
 import '../entities/resultado_modificacion_ubicacion.dart';
 import '../entities/ubicacion.dart';
 import '../repositories/ubicacion_repository.dart';
@@ -89,8 +91,16 @@ final class ModificarUbicacionParams extends Equatable {
 ///    pedidos (doble toque en "Guardar": el primero entró), es un éxito idempotente:
 ///    `Right(UbicacionModificada)` con la fila tal cual, sin escribir ni encolar.
 ///    Si no es ese caso y la fila cambió desde que se cargó la pantalla: `Left(FailureUbicacionCambio)`.
-/// 4. `EDIFICIO` → `CASA`/`NEGOCIO` con espacios activos: `Left(FailureUbicacionConEspacios)`
-///    (S17). Es un bloqueo, no una confirmación.
+/// 4. `EDIFICIO` → `CASA`/`NEGOCIO` y `NEGOCIO` → `CASA` ([TipoUbicacion.reduceAUnEspacioHacia])
+///    con **dos o más** espacios activos: `Left(FailureUbicacionConEspacios)` (S17). Es un
+///    bloqueo, no una confirmación. Con un solo espacio activo se permite (decisión de Cristian,
+///    07/10): ese depto pasa a ser el espacio de la casa o del negocio y en la misma transacción
+///    se le quita el `numero_depto`; con ninguno y si pasa a `CASA`, la casa recibe su espacio
+///    default (id nuevo, `numero_depto` nulo) en esa misma transacción, igual que en el alta
+///    (S13, decisión de Cristian 21/10 «Casa vacía»); con ninguno y a `NEGOCIO`, no hay nada más
+///    que hacer. Solo cuentan los activos. Al revés (`CASA`/`NEGOCIO` → `EDIFICIO`, `CASA` → `NEGOCIO`) no se toca ningún
+///    espacio: el de la casa ya tiene `numero_depto` nulo y pasa a ser el primer depto, que la
+///    lista de deptos muestra «Sin número» (HU-UBI-007).
 /// 5. Si se mueve (cambia el punto o la ciudad), la zona pasa a ser la que contiene el punto nuevo,
 ///    o `null` fuera de toda zona ([UbicadorZona]); si no se mueve, conserva la que tenía. Si la
 ///    ubicación la registró otro colportor y la zona nueva no es una de las de quien la mueve:
@@ -114,10 +124,13 @@ final class ModificarUbicacionParams extends Equatable {
 /// Todo es local: sin red la modificación se aplica igual y el sync queda en la cola.
 final class ModificarUbicacionUseCase
     implements UseCase<ResultadoModificacionUbicacion, ModificarUbicacionParams> {
-  /// [_ubicador] y [_criterio] se pasan como `ubicador:` y `criterio:`.
+  /// [_ubicador], [_generarId] y [_criterio] se pasan como `ubicador:`, `generarId:` y `criterio:`
+  /// (parámetros nombrados privados, Dart ≥ 3.10). [_generarId] da el id del espacio default de la
+  /// casa que se crea al pasar a `CASA` sin espacios.
   ModificarUbicacionUseCase(
     this._repository, {
     required this._ubicador,
+    required this._generarId,
     DateTime Function()? ahora,
     this._criterio = const CriterioDuplicadoUbicacion(),
   }) : _ahora = ahora ?? DateTime.now;
@@ -127,6 +140,7 @@ final class ModificarUbicacionUseCase
 
   final UbicacionRepository _repository;
   final UbicadorZona _ubicador;
+  final String Function() _generarId;
   final DateTime Function() _ahora;
   final CriterioDuplicadoUbicacion _criterio;
 
@@ -197,11 +211,15 @@ final class ModificarUbicacionUseCase
     }
     if (filaCambio) return const Left(FailureUbicacionCambio());
 
-    if (actual.tipo == TipoUbicacion.edificio && params.tipo != TipoUbicacion.edificio) {
+    // S17: el repositorio vuelve a contar dentro de la transacción (un espacio puede aparecer entre
+    // esta lectura y la escritura); acá se corta antes, para que el bloqueo salga antes que las
+    // confirmaciones.
+    final reduceAUnEspacio = actual.tipo.reduceAUnEspacioHacia(params.tipo);
+    if (reduceAUnEspacio) {
       final espacios = await _repository.contarEspaciosActivos(actual.id);
       final bloqueo = espacios.fold<Failure?>(
         (falla) => falla,
-        (cantidad) => cantidad > 0 ? FailureUbicacionConEspacios(cantidadEspacios: cantidad) : null,
+        (cantidad) => cantidad > 1 ? FailureUbicacionConEspacios(cantidadEspacios: cantidad) : null,
       );
       if (bloqueo != null) return Left(bloqueo);
     }
@@ -244,6 +262,7 @@ final class ModificarUbicacionUseCase
     }
 
     final reactiva = actual.estaBorrada;
+    final ahora = _ahora();
     final nueva = Ubicacion(
       id: actual.id,
       tipo: params.tipo,
@@ -254,10 +273,25 @@ final class ModificarUbicacionUseCase
       ciudadId: ciudadId,
       zonaId: zonaId,
       auditoria: actual.auditoria.copyWith(
-        updatedAt: _ahora(),
+        updatedAt: ahora,
         deletedAt: reactiva ? null : actual.auditoria.deletedAt,
       ),
     );
+
+    // Al pasar a CASA el repositorio crea este espacio si, dentro de la transacción, no hay ninguno
+    // activo (el id se genera acá, una vez por intento: el que falla no deja nada).
+    final espacioSiNoTiene = reduceAUnEspacio && params.tipo == TipoUbicacion.casa
+        ? Espacio(
+            id: _generarId(),
+            ubicacionId: actual.id,
+            numeroDepto: Espacio.deptoPorDefecto,
+            auditoria: Auditoria(
+              createdAt: ahora,
+              updatedAt: ahora,
+              createdBy: params.colportorId.trim(),
+            ),
+          )
+        : null;
 
     // Solo lo que cambia el criterio de duplicado (ciudad, dirección, punto) —o volver a estar
     // activa— justifica volver a buscar. "Seguir igual" solo pasa las candidatas que lo admiten.
@@ -270,6 +304,9 @@ final class ModificarUbicacionUseCase
           : seguirIgual
           ? _criterio.alSeguirIgual
           : _criterio,
+      reduceAUnEspacio: reduceAUnEspacio,
+      espacioSiNoTiene: espacioSiNoTiene,
+      justificacion: buscaDuplicados && seguirIgual ? _texto(params.justificacionDuplicado) : null,
     );
     return resultado.map(
       (r) => r is UbicacionModificada

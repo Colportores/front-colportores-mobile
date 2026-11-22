@@ -1,0 +1,152 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../../../core/database/database_providers.dart';
+import '../../../../core/sync/sync_providers.dart';
+import '../../../../datos/encolador_marcar_duplicado_motor.dart';
+import '../../data/datasources/campanias_del_colportor_local_data_source.dart';
+import '../../data/datasources/ubicacion_local_data_source_drift.dart';
+import '../../data/datasources/zona_local_data_source.dart';
+import '../../data/repositories/ubicacion_repository_impl.dart';
+import '../../data/repositories/zona_repository_impl.dart';
+import '../../data/services/ciudades_para_alta_local.dart';
+import '../../data/services/fuentes_sin_adaptador_ubicaciones.dart';
+import '../../data/services/geocodificador_nominatim.dart';
+import '../../data/services/plataforma_gps.dart';
+import '../../data/services/plataforma_gps_geolocator.dart';
+import '../../data/services/proveedor_gps_plataforma.dart';
+import '../../domain/entities/marcador_mapa.dart';
+import '../../domain/repositories/ubicacion_repository.dart';
+import '../../domain/repositories/zona_repository.dart';
+import '../../domain/services/activador_gps.dart';
+import '../../domain/services/ciudades_para_alta.dart';
+import '../../domain/services/encolador_marcar_duplicado.dart';
+import '../../domain/services/geocodificador_inverso.dart';
+import '../../domain/services/inscripciones_colportor.dart';
+import '../../domain/services/proveedor_gps.dart';
+import '../../domain/services/seguidor_gps.dart';
+import '../../domain/services/ubicador_zona.dart';
+import '../../domain/usecases/capturar_posicion_gps_use_case.dart';
+import '../../domain/usecases/registrar_ubicacion_use_case.dart';
+import '../../domain/value_objects/area_mapa.dart';
+
+/// El motor de sync (#178) vive en `core/sync/sync_providers.dart`; se reexporta acá porque el
+/// alta lo cablea y sus tests lo sobreescriben desde este archivo.
+export '../../../../core/sync/sync_providers.dart' show encoladorSyncProvider;
+
+// Cableado del alta de ubicación (HU-UBI-001, vistas 03 y 04). Presentation conoce domain; data se
+// inyecta acá. Todo lo que todavía no tiene fuente real (inscripciones, motor de sync) usa un `...SinFuente` que no inventa datos: ver `fuentes_sin_adaptador_ubicaciones`.
+
+/// El trabajo «marcar como duplicado» del motor de sync (contrato-sync-engine §6.2, RPC 0026), como
+/// [encoladorSyncProvider] hace con las filas. Sin DB abierta no hay motor:
+/// [EncoladorMarcarDuplicadoSinMotor] falla y unir dos ubicaciones no cambia nada, en vez de dejar
+/// la unión hecha en el teléfono sin avisarle nunca al servidor.
+final encoladorMarcarDuplicadoProvider = Provider<EncoladorMarcarDuplicado>((ref) {
+  final motor = ref.watch(motorSyncProvider);
+  return motor == null
+      ? const EncoladorMarcarDuplicadoSinMotor()
+      : EncoladorMarcarDuplicadoMotor(motor);
+});
+
+/// La DB local abierta (`dbLocalProvider`). Sin DB abierta no hay dónde guardar: lanza, y quien lo
+/// lee lo traduce a una falla.
+final ubicacionRepositoryProvider = Provider<UbicacionRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return UbicacionRepositoryImpl(
+    UbicacionLocalDataSourceDrift(
+      db,
+      encolador: ref.watch(encoladorSyncProvider),
+      marcarDuplicado: ref.watch(encoladorMarcarDuplicadoProvider),
+    ),
+  );
+});
+
+final zonaRepositoryProvider = Provider<ZonaRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return ZonaRepositoryImpl(ZonaLocalDataSourceDrift(db));
+});
+
+/// Sin fuente de inscripciones hasta coord#20: [InscripcionesColportorSinFuente].
+final inscripcionesColportorProvider = Provider<InscripcionesColportor>(
+  (ref) => InscripcionesColportorSinFuente(),
+);
+
+final ubicadorZonaProvider = Provider<UbicadorZona>(
+  (ref) =>
+      UbicadorZona(ref.watch(zonaRepositoryProvider), ref.watch(inscripcionesColportorProvider)),
+);
+
+/// Cuánto se espera con el punto quieto antes de pedir la dirección y la ciudad (el mapa se
+/// mueve con el dedo: no se pregunta en cada fotograma). Un test lo acorta.
+final esperaPuntoAltaProvider = Provider<Duration>((ref) => const Duration(milliseconds: 600));
+
+/// Generador de UUID v7 del alta; un test lo reemplaza para fijar los ids.
+final generadorIdUbicacionProvider = Provider<String Function()>((ref) => const Uuid().v7);
+
+/// Reloj del alta; un test lo reemplaza.
+final relojAltaUbicacionProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+final registrarUbicacionUseCaseProvider = Provider<RegistrarUbicacionUseCase>(
+  (ref) => RegistrarUbicacionUseCase(
+    ref.watch(ubicacionRepositoryProvider),
+    generarId: ref.watch(generadorIdUbicacionProvider),
+    ubicador: ref.watch(ubicadorZonaProvider),
+    ahora: ref.watch(relojAltaUbicacionProvider),
+  ),
+);
+
+/// El plugin de GPS. Un test lo reemplaza por un fake.
+final plataformaGpsProvider = Provider<PlataformaGps>((ref) => const PlataformaGpsGeolocator());
+
+final proveedorGpsPlataformaProvider = Provider<ProveedorGpsPlataforma>(
+  (ref) => ProveedorGpsPlataforma(ref.watch(plataformaGpsProvider)),
+);
+
+final proveedorGpsProvider = Provider<ProveedorGps>(
+  (ref) => ref.watch(proveedorGpsPlataformaProvider),
+);
+
+/// El GPS mientras la colportora se mueve (#670): lo abre solo el GPS único del colportor.
+final seguidorGpsProvider = Provider<SeguidorGps>(
+  (ref) => ref.watch(proveedorGpsPlataformaProvider),
+);
+
+final activadorGpsProvider = Provider<ActivadorGps>(
+  (ref) => ref.watch(proveedorGpsPlataformaProvider),
+);
+
+final capturarPosicionGpsUseCaseProvider = Provider<CapturarPosicionGpsUseCase>(
+  (ref) => CapturarPosicionGpsUseCase(ref.watch(proveedorGpsProvider)),
+);
+
+/// Nominatim público como respaldo (ADR-011); el índice offline de Photon llega con la descarga de
+/// paquetes (#189).
+final geocodificadorInversoProvider = Provider<GeocodificadorInverso>(
+  (ref) => GeocodificadorNominatim(lectorHttpIo()),
+);
+
+/// Las ciudades de la campaña del colportor, leídas de las réplicas locales del pull de catálogos
+/// (`ciudad`, `campania`, `campania_ciudad`, `campania_colportor` y las zonas): sin red (#274). Sin la
+/// base abierta, o con el catálogo sin bajar, contesta que no pudo leerlas ([CiudadesParaAltaLocal]).
+final ciudadesParaAltaProvider = Provider<CiudadesParaAlta>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return CiudadesParaAltaLocal.sinBaseAbierta();
+  return CiudadesParaAltaLocal(
+    campanias: CampaniasDelColportorLocalDataSourceDrift(db),
+    zonas: ref.watch(zonaRepositoryProvider),
+    ahora: ref.watch(relojAltaUbicacionProvider),
+  );
+});
+
+/// Las ubicaciones del colportor dentro de [consulta] (colportor y área visible), para el contexto
+/// del mapa del alta. Emite vacío si la DB no está abierta.
+final marcadoresCercanosProvider = StreamProvider.autoDispose
+    .family<List<MarcadorMapa>, ({String colportorId, AreaMapa area})>((ref, consulta) {
+      final db = ref.watch(dbLocalProvider);
+      if (db == null) return Stream.value(const []);
+      return ref
+          .watch(ubicacionRepositoryProvider)
+          .observarMarcadoresEnArea(colportorId: consulta.colportorId, area: consulta.area);
+    });

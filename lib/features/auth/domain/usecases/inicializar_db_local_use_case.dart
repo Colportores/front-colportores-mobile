@@ -13,10 +13,9 @@ import '../repositories/vigencia_sesion.dart';
 import '../services/turno_db_local.dart';
 
 /// Pasos que la UI muestra como progreso ("Preparando tu espacio seguro… 1/3, 2/3, 3/3",
-/// HU-AUTH-009). Al crear la DB son los tres, salvo [protegiendoClave] sin contraseña (login con
-/// Google); al abrir una DB existente, [abriendoDb], antecedido por [protegiendoClave] si hay que
-/// armar el envoltorio. Renovar un envoltorio desactualizado (#125) no suma un paso: su Argon2id
-/// corre después de abrir, dentro de [abriendoDb].
+/// HU-AUTH-009). Al crear la DB son los tres; al abrir una DB existente, [abriendoDb], antecedido
+/// por [protegiendoClave] si hay que armar el envoltorio. Renovar un envoltorio desactualizado
+/// (#125) no suma un paso: su Argon2id corre después de abrir, dentro de [abriendoDb].
 enum PasoInicializacionDb {
   /// Genera la DEK y la guarda en el almacén seguro.
   generandoClave,
@@ -41,31 +40,32 @@ enum ResultadoInicializacionDb {
 final class InicializarDbLocalParams extends Equatable {
   const InicializarDbLocalParams({
     this.password,
-    this.requiereEnvoltorio = false,
     this.aceptaAlmacenSoftware = false,
     this.alAvanzar,
     this.usuarioId,
+    this.descartaInterrumpida = false,
   });
 
   /// `usuario_id` de la sesión. Un envoltorio desactualizado (#125) solo se renueva con la
   /// [password] de la cuenta que lo dejó así; sin el id no se renueva.
   final String? usuarioId;
 
-  /// Contraseña con la que el usuario acaba de autenticarse, o `null` si no hay (login con Google,
-  /// sesión restaurada). Solo se usa al crear la DB, para envolver la DEK (ADR-006): sin ella no hay
-  /// envoltorio por contraseña.
+  /// Contraseña con la que el usuario acaba de autenticarse, o `null` si no hay (sesión
+  /// restaurada al abrir la app). Toda cuenta tiene contraseña y toda DB nace con la DEK envuelta
+  /// con ella (ADR-006): sin [password], no se crea la DB ni se da por lista una que no tiene
+  /// envoltorio. Devuelve [FailurePasswordParaProteger] sin tocar nada, y la UI pide la contraseña
+  /// (revisión del PR #130).
   final String? password;
-
-  /// La cuenta entra con contraseña, así que la DB tiene que quedar con envoltorio (ADR-006). Sin
-  /// [password], no se crea la DB ni se da por lista una que no lo tiene: devuelve
-  /// [FailurePasswordParaProteger] sin tocar nada, y la UI pide la contraseña (revisión del PR
-  /// #130).
-  final bool requiereEnvoltorio;
 
   /// El usuario ya aceptó seguir con un Keystore por software (S10): la UI lo pasa en `true`
   /// después de mostrar [FailureAlmacenPocoSeguro] y recibir "Entiendo el riesgo y quiero
   /// continuar".
   final bool aceptaAlmacenSoftware;
+
+  /// El usuario ya vio «La preparación se cortó» (A09) y tocó «Empezar de nuevo»: lo que quedó de
+  /// una inicialización interrumpida se descarta y se prepara de cero. Sin esto, una interrumpida
+  /// devuelve [FailurePreparacionInterrumpida] sin tocar nada.
+  final bool descartaInterrumpida;
 
   /// Avisa cada [PasoInicializacionDb] al empezarlo. Se llama en forma sincrónica.
   final void Function(PasoInicializacionDb paso)? alAvanzar;
@@ -78,10 +78,10 @@ final class InicializarDbLocalParams extends Equatable {
   @override
   List<Object?> get props => [
     password,
-    requiereEnvoltorio,
     aceptaAlmacenSoftware,
     alAvanzar,
     usuarioId,
+    descartaInterrumpida,
   ];
 }
 
@@ -91,11 +91,11 @@ final class InicializarDbLocalParams extends Equatable {
 ///
 /// **DB existente** (marca puesta y archivo en disco): lee la DEK del almacén seguro y abre, sin
 /// Argon2id y sin contraseña. Si algo falla **no se borra nada**: la DB tiene datos del usuario.
-/// Si el login fue con contraseña y el equipo no tiene envoltorio (entró con Google, o se perdió),
-/// lo arma antes de abrir; si eso falla, abre igual. Si el envoltorio quedó **desactualizado** por
-/// un cambio de contraseña que no llegó a re-envolver (HU-AUTH-005, #125) y el login es de esa
-/// cuenta, lo renueva con la contraseña del login **después** de abrir, cuando ya se sabe que la
-/// DEK del almacén es la buena. Si el login es de otra cuenta, no lo toca.
+/// Si el login fue con contraseña y el equipo no tiene envoltorio (se perdió), lo arma antes de
+/// abrir; si eso falla, abre igual. Si el envoltorio quedó **desactualizado** por un cambio de
+/// contraseña que no llegó a re-envolver (HU-AUTH-005, #125) y el login es de esa cuenta, lo
+/// renueva con la contraseña del login **después** de abrir, cuando ya se sabe que la DEK del
+/// almacén es la buena. Si el login es de otra cuenta, no lo toca.
 /// Si el almacén falla o perdió la DEK rige la recuperación guiada: con envoltorio por contraseña,
 /// [FailureAlmacenSeguroRecuperable] (sigue `RecuperarDbLocalConPasswordUseCase`); sin él,
 /// [FailureAlmacenSeguroSinRecuperacion] (la UI ofrece "empezar de nuevo" y pregunta).
@@ -105,7 +105,7 @@ final class InicializarDbLocalParams extends Equatable {
 /// 2. Mira el nivel del Keystore; por software y sin consentimiento, no sigue
 ///    ([FailureAlmacenPocoSeguro]). Con consentimiento lo registra.
 /// 3. Deja el dispositivo limpio, genera la DEK y la guarda en el almacén seguro.
-/// 4. Si hay contraseña, envuelve la DEK con Argon2id(contraseña).
+/// 4. Envuelve la DEK con Argon2id(contraseña).
 /// 5. Crea la DB con la DEK y recién al final marca el dispositivo como inicializado.
 ///
 /// Si algo falla desde el paso 3, vuelve a dejarlo limpio: nunca queda una DB a medio hacer ni una
@@ -176,10 +176,27 @@ final class InicializarDbLocalUseCase
         case MarcaDbLocal.ausente:
           final interrumpida = await _esInicializacionInterrumpida(e);
           if (interrumpida case Left(value: final falla)) return Left(falla);
+          if (!params.descartaInterrumpida) return Left(_interrumpida(params, e));
+      }
+    } else if (e.marca == MarcaDbLocal.ausente && !params.descartaInterrumpida) {
+      // Sin archivo pero con la DEK guardada: se cortó antes de crear la DB (A09).
+      final leida = await _repository.leerDek();
+      if (leida case Right(value: final ClaveDb dek)) {
+        dek.destruir();
+        return Left(_interrumpida(params, e));
       }
     }
     return _crearDesdeCero(params, testigo);
   }
+
+  /// La falla de una inicialización cortada. Sin envoltorio se cortó protegiendo la clave; con él,
+  /// creando la base.
+  static Failure _interrumpida(InicializarDbLocalParams params, EstadoDbLocal estado) =>
+      FailurePreparacionInterrumpida(
+        pasoCortado: !estado.envoltorioExiste
+            ? PasoInicializacionDb.protegiendoClave.index
+            : PasoInicializacionDb.abriendoDb.index,
+      );
 
   /// Archivo sin marca: ¿una inicialización que se cortó, o un almacén que perdió todo con la DB
   /// en disco?
@@ -214,10 +231,12 @@ final class InicializarDbLocalUseCase
     final dek = leida._valor!;
 
     final password = params.password;
-    if (password == null && params.requiereEnvoltorio && !estado.envoltorioExiste) {
+    if (password == null && !estado.envoltorioExiste) {
       // Abriría sin envoltorio una cuenta que tiene contraseña: primero, la contraseña.
       dek.destruir();
-      return const Left(FailurePasswordParaProteger());
+      return Left(
+        FailurePasswordParaProteger(porPreparacionInterrumpida: params.descartaInterrumpida),
+      );
     }
     if (password != null && !estado.envoltorioExiste) {
       // Login con contraseña en un equipo sin envoltorio: se arma ahora, así hay con qué recuperar
@@ -273,10 +292,12 @@ final class InicializarDbLocalUseCase
     InicializarDbLocalParams params,
     TestigoSesion testigo,
   ) async {
-    // Una DB nueva de una cuenta con contraseña nace con envoltorio: sin la contraseña, no se toca
-    // nada y se pide.
-    if (params.password == null && params.requiereEnvoltorio) {
-      return const Left(FailurePasswordParaProteger());
+    // Una DB nueva nace con envoltorio: sin la contraseña, no se toca nada y se pide.
+    final password = params.password;
+    if (password == null) {
+      return Left(
+        FailurePasswordParaProteger(porPreparacionInterrumpida: params.descartaInterrumpida),
+      );
     }
 
     // Las dos verificaciones van antes de tocar nada: si no se sigue, el dispositivo queda como
@@ -304,14 +325,11 @@ final class InicializarDbLocalUseCase
     if (creada case Left(value: final falla)) return _abortar(falla);
     final dek = creada._valor;
 
-    final password = params.password;
-    if (password != null) {
-      params.alAvanzar?.call(PasoInicializacionDb.protegiendoClave);
-      final envuelta = await _repository.envolverConPassword(dek, password);
-      if (envuelta case Left(value: final falla)) {
-        dek.destruir();
-        return _abortar(falla);
-      }
+    params.alAvanzar?.call(PasoInicializacionDb.protegiendoClave);
+    final envuelta = await _repository.envolverConPassword(dek, password);
+    if (envuelta case Left(value: final falla)) {
+      dek.destruir();
+      return _abortar(falla);
     }
 
     params.alAvanzar?.call(PasoInicializacionDb.abriendoDb);

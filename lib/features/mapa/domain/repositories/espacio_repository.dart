@@ -18,11 +18,12 @@ abstract interface class EspacioRepository {
   /// (idempotente ante doble toque).
   Future<Either<Failure, Espacio>> agregar(Espacio espacio);
 
-  /// Cambia el `numero_depto` del espacio [id] a [numeroDepto]. Sin cambios, no escribe ni
-  /// encola.
+  /// Cambia el `numero_depto` del espacio [id] a [numeroDepto] y su `piso` a [piso] (`null`: sin
+  /// piso). Sin cambios, no escribe ni encola.
   Future<Either<Failure, Espacio>> modificar(
     String id, {
     required String numeroDepto,
+    String? piso,
     required DateTime ahora,
   });
 

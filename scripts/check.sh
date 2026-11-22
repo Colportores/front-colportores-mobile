@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Verificación completa — la misma secuencia que corre CI. Uso local:
 #   docker compose -f compose.dev.yml run --rm flutter scripts/check.sh
+# Local, en secuencia (un solo flutter_tester: bajo pico de RAM; así corren los agentes):
+#   docker compose -f compose.dev.yml run --rm -e J=1 flutter scripts/check.sh
+# Sin J los tests corren en paralelo (concurrencia por defecto de flutter test), que es lo que usa CI.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -11,6 +14,6 @@ echo "▶ format";         git ls-files -z -- 'lib/*.dart' 'test/*.dart' | xargs
 # `dart analyze` y no `flutter analyze`: este último no muestra los diagnósticos de plugins, y las
 # reglas de Riverpod vienen del plugin (analysis_options.yaml → plugins).
 echo "▶ analyze";        dart analyze --fatal-infos
-echo "▶ test";           flutter test --coverage
+echo "▶ test";           flutter test --coverage ${J:+--concurrency=$J}
 echo "▶ coverage";       bash scripts/coverage_check.sh
 echo "✓ todo verde"

@@ -8,15 +8,25 @@ import '../services/descargador_paquetes_tiles.dart';
 
 /// Parámetros de [DescargarPaqueteTilesUseCase].
 final class DescargarPaqueteTilesParams extends Equatable {
-  const DescargarPaqueteTilesParams({required this.paquete, this.permitirDatosMoviles = false});
+  const DescargarPaqueteTilesParams({
+    required this.paquete,
+    this.permitirDatosMoviles = false,
+    this.esperarConexion = false,
+  });
 
   final PaqueteTiles paquete;
 
   /// El override manual de HU-SYNC-010: descargar aunque no haya Wi-Fi.
   final bool permitirDatosMoviles;
 
+  /// Sin conexión permitida en este momento, la descarga queda en cola y arranca sola con la
+  /// primera conexión que sirva, en vez de fallar. «Descargar mapa» lo pide junto con
+  /// [permitirDatosMoviles] (arranca con la primera conexión que vuelva, aunque sea de datos
+  /// móviles); lo que la app baja sola lo pide sin [permitirDatosMoviles] (espera el Wi-Fi).
+  final bool esperarConexion;
+
   @override
-  List<Object?> get props => [paquete, permitirDatosMoviles];
+  List<Object?> get props => [paquete, permitirDatosMoviles, esperarConexion];
 }
 
 /// HU-SYNC-010 — arranca o reanuda la descarga de un paquete. Las reglas (Wi-Fi, espacio, Range,
@@ -30,7 +40,11 @@ final class DescargarPaqueteTilesUseCase implements UseCase<Unit, DescargarPaque
   @override
   Future<Either<Failure, Unit>> call(DescargarPaqueteTilesParams params) {
     final paquete = params.paquete;
-    return _descargador.descargar(paquete, permitirDatosMoviles: params.permitirDatosMoviles);
+    return _descargador.descargar(
+      paquete,
+      permitirDatosMoviles: params.permitirDatosMoviles,
+      esperarConexion: params.esperarConexion,
+    );
   }
 }
 

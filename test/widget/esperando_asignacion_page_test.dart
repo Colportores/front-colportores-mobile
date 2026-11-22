@@ -249,14 +249,139 @@ void main() {
       await tester.tap(_login);
       await tester.pumpAndSettle();
 
-      expect(find.text('No pudimos revisar tu cuenta'), findsOneWidget);
-      expect(find.text(TextosEsperaAsignacion.sinEstadoSinConexion), findsOneWidget);
+      // Decisión de Cristian (02/10): un aviso de sin conexión explícito, no el genérico.
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(find.text('No pudimos revisar tu cuenta'), findsNothing);
+      expect(find.text(TextosEsperaAsignacion.sinConexionSinEstado), findsOneWidget);
+      expect(find.byKey(const Key('espera_sin_conexion')), findsOneWidget);
+      expect(find.byKey(const Key('espera_error')), findsNothing);
+      expect(find.text('Reintentar'), findsOneWidget);
       expect(_principal, findsNothing);
 
       _backend.simularSinConexion = false;
       await tester.tap(_actualizar);
       await tester.pumpAndSettle();
       expect(find.text('Esperando asignación'), findsOneWidget);
+      expect(find.byKey(const Key('espera_sin_conexion')), findsNothing);
+    });
+
+    testWidgets('sin conexión y sin estado: dice qué pasa y qué hacer', (tester) async {
+      await _montar(tester, entrar: false);
+      _backend.simularSinConexion = true;
+      await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
+      await tester.enterText(find.byKey(const Key('login_password')), 'secreto123');
+      await tester.tap(_login);
+      await tester.pumpAndSettle();
+
+      const texto = TextosEsperaAsignacion.sinConexionSinEstado;
+      expect(texto, contains('No hay conexión para revisar tu cuenta'));
+      expect(texto, contains('Conectate'));
+      expect(texto, contains('Reintentar'), reason: 'nombra el botón que hay en pantalla');
+    });
+
+    testWidgets('sin conexión y sin estado: si «Reintentar» sigue sin red, queda igual y se puede '
+        'volver a tocar; si falla el servidor, pasa al error genérico', (tester) async {
+      await _montar(tester, entrar: false);
+      _backend.simularSinConexion = true;
+      await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
+      await tester.enterText(find.byKey(const Key('login_password')), 'secreto123');
+      await tester.tap(_login);
+      await tester.pumpAndSettle();
+
+      await tester.tap(_actualizar);
+      await tester.pumpAndSettle();
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(tester.widget<FilledButton>(_actualizar).onPressed, isNotNull);
+
+      _backend.simularSinConexion = false;
+      _backend.falla = const ServidorException(status: 503);
+      await tester.tap(_actualizar);
+      await tester.pumpAndSettle();
+      expect(find.text('Sin conexión'), findsNothing);
+      expect(find.text('No pudimos revisar tu cuenta'), findsOneWidget);
+      expect(find.byKey(const Key('espera_sin_conexion')), findsNothing);
+      expect(tester.widget<FilledButton>(_actualizar).onPressed, isNotNull);
+    });
+
+    testWidgets('sin conexión y sin estado: doble toque en «Reintentar» consulta una sola vez', (
+      tester,
+    ) async {
+      await _montar(tester, entrar: false);
+      _backend.simularSinConexion = true;
+      await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
+      await tester.enterText(find.byKey(const Key('login_password')), 'secreto123');
+      await tester.tap(_login);
+      await tester.pumpAndSettle();
+      final antes = _backend.consultas;
+
+      _backend.demora = Completer<void>();
+      await tester.tap(_actualizar);
+      await tester.pump();
+      await tester.tap(_actualizar, warnIfMissed: false);
+      await tester.pump();
+      expect(find.text('Consultando…'), findsOneWidget);
+      expect(
+        find.text('Sin conexión'),
+        findsNothing,
+        reason: 'mientras consulta no hay aviso viejo',
+      );
+
+      _backend.demora!.complete();
+      await tester.pumpAndSettle();
+      expect(_backend.consultas, antes + 1);
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(tester.widget<FilledButton>(_actualizar).onPressed, isNotNull);
+    });
+
+    testWidgets('sin conexión y sin estado: volver atrás y reentrar vuelve a mostrar el aviso', (
+      tester,
+    ) async {
+      await _montar(tester, entrar: false);
+      _backend.simularSinConexion = true;
+      await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
+      await tester.enterText(find.byKey(const Key('login_password')), 'secreto123');
+      await tester.tap(_login);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('espera_configuracion')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('configuracion_pagina')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('configuracion_atras')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(find.text(TextosEsperaAsignacion.sinConexionSinEstado), findsOneWidget);
+    });
+
+    testWidgets('sin conexión y sin estado: cumple las guías y no desborda con texto al 200 %', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      tester.view
+        ..physicalSize = const Size(390, 844)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _montar(tester, entrar: false);
+      _backend.simularSinConexion = true;
+      await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
+      await tester.enterText(find.byKey(const Key('login_password')), 'secreto123');
+      await tester.tap(_login);
+      await tester.pumpAndSettle();
+
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+
+      tester.view
+        ..physicalSize = const Size(360, 740)
+        ..devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpAndSettle();
+      expect(find.text('Sin conexión'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      semantica.dispose();
     });
 
     testWidgets('sin conexión al reabrir: rige el último estado que informó el backend', (
@@ -299,6 +424,9 @@ void main() {
 
     await tester.tap(find.byKey(const Key('espera_configuracion')));
     await tester.pumpAndSettle();
+    // Con la fila «Mostrar el aviso de privacidad» (#445) el botón queda bajo el pliegue de 800 × 600.
+    await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
+    await tester.pump();
     await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('configuracion_dialogo_confirmar')));
@@ -392,7 +520,7 @@ void main() {
       expect(find.byKey(const Key('espera_configuracion')), findsOneWidget);
     });
 
-    testWidgets('A01: la barra inferior muestra «Hoy» y los cuatro módulos bloqueados', (
+    testWidgets('A01: la barra inferior muestra «Hoy» y los cinco módulos bloqueados', (
       tester,
     ) async {
       await _montar(tester);
@@ -400,7 +528,7 @@ void main() {
       for (final pestana in PestanaInicio.values) {
         expect(find.byKey(Key('inicio_pestana_${pestana.name}')), findsOneWidget);
       }
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
       expect(find.byIcon(Icons.home), findsOneWidget, reason: '«Hoy» sin candado');
     });
 
@@ -504,7 +632,7 @@ void main() {
       expect(find.text('Revisado recién, a las 14:36.'), findsOneWidget);
       expect(find.byKey(const Key('espera_linea_de_tiempo')), findsNothing);
       expect(find.text('Actualizar'), findsOneWidget);
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
     });
 
     testWidgets('volver atrás y reentrar desde Configuración: la pantalla queda como estaba', (
@@ -610,7 +738,7 @@ void main() {
       expect(find.text('CUENTA PENDIENTE'), findsNothing);
       expect(find.text('Esperando asignación'), findsNothing);
       expect(find.text('Reintentar'), findsOneWidget);
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
     });
   });
 
@@ -625,7 +753,7 @@ void main() {
       expect(find.text('Tu cuenta está suspendida. Contactá al administrador.'), findsOneWidget);
       expect(find.text('Ir a Configuración'), findsOneWidget);
       expect(_actualizar, findsNothing);
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
     });
 
     testWidgets('A06: «Ir a Configuración» abre Configuración y se puede volver', (tester) async {
@@ -705,7 +833,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('inicio_barra')), findsOneWidget);
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
 
       await tester.tap(find.byKey(const Key('inicio_pestana_mapa')));
       await tester.pump();
@@ -752,7 +880,7 @@ void main() {
       },
     );
 
-    testWidgets('A07: sin la fuente de la asignación (BFF pendiente) no inventa campaña ni zona', (
+    testWidgets('A07: sin la fuente de la asignación (llega con #62) no inventa campaña ni zona', (
       tester,
     ) async {
       await _montar(tester);
@@ -946,7 +1074,7 @@ void main() {
         tester.getSemantics(find.byKey(const Key('espera_sin_conexion'))),
         isSemantics(isLiveRegion: true),
       );
-      expect(find.bySemanticsLabel(RegExp('Bloqueado')), findsNWidgets(4));
+      expect(find.bySemanticsLabel(RegExp('Bloqueado')), findsNWidgets(5));
       semantica.dispose();
     });
   });

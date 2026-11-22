@@ -14,7 +14,7 @@ part 'password_para_db_local.g.dart';
 final class PasswordParaDbLocal {
   String? _password;
 
-  /// La contraseña guardada, o `null` si no hay (login con Google, sesión restaurada).
+  /// La contraseña guardada, o `null` si no hay (sesión restaurada).
   String? get actual => _password;
 
   /// Guarda [password] para la próxima preparación de la DB.

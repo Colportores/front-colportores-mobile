@@ -13,7 +13,7 @@ class ColoresColportaje extends ThemeExtension<ColoresColportaje> {
     required this.placeholder,
     required this.borde,
     required this.bordeInput,
-    required this.googleAzul,
+    required this.rellenoSuave,
   });
 
   /// Texto atenuado / labels de campo.
@@ -28,21 +28,22 @@ class ColoresColportaje extends ThemeExtension<ColoresColportaje> {
   /// Borde/underline de los inputs en reposo.
   final Color bordeInput;
 
-  /// Letra "G" del botón de Google.
-  final Color googleAzul;
+  /// Relleno cálido, apenas más oscuro que el crema, de lo que avanza dentro de un botón apagado:
+  /// la cuenta regresiva «Reenviar en Ns» (canvas 12-A03). El texto `gris` sobre él da 4,8:1.
+  final Color rellenoSuave;
 
   static const _gris = Color(0xFF5B6B82);
   static const _placeholder = Color(0xFF90A0B7);
   static const _borde = Color(0xFFE3E7EE);
   static const _bordeInput = Color(0xFFCFD6E1);
-  static const _googleAzul = Color(0xFF4285F4);
+  static const _rellenoSuave = Color(0xFFF3F1EA);
 
   static const unica = ColoresColportaje(
     gris: _gris,
     placeholder: _placeholder,
     borde: _borde,
     bordeInput: _bordeInput,
-    googleAzul: _googleAzul,
+    rellenoSuave: _rellenoSuave,
   );
 
   @override
@@ -51,14 +52,14 @@ class ColoresColportaje extends ThemeExtension<ColoresColportaje> {
     Color? placeholder,
     Color? borde,
     Color? bordeInput,
-    Color? googleAzul,
+    Color? rellenoSuave,
   }) {
     return ColoresColportaje(
       gris: gris ?? this.gris,
       placeholder: placeholder ?? this.placeholder,
       borde: borde ?? this.borde,
       bordeInput: bordeInput ?? this.bordeInput,
-      googleAzul: googleAzul ?? this.googleAzul,
+      rellenoSuave: rellenoSuave ?? this.rellenoSuave,
     );
   }
 
@@ -70,7 +71,7 @@ class ColoresColportaje extends ThemeExtension<ColoresColportaje> {
       placeholder: Color.lerp(placeholder, other.placeholder, t)!,
       borde: Color.lerp(borde, other.borde, t)!,
       bordeInput: Color.lerp(bordeInput, other.bordeInput, t)!,
-      googleAzul: Color.lerp(googleAzul, other.googleAzul, t)!,
+      rellenoSuave: Color.lerp(rellenoSuave, other.rellenoSuave, t)!,
     );
   }
 }

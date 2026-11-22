@@ -5,10 +5,12 @@ import 'package:dartz/dartz.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/motivo_expiracion.dart';
+import '../../domain/entities/politica_password.dart';
 import '../../domain/entities/resultado_cierre_sesion.dart';
 import '../../domain/entities/resultado_registro.dart';
 import '../../domain/entities/sesion.dart';
 import '../../domain/repositories/auth_repository.dart';
+import '../../domain/services/validador_email.dart';
 import '../datasources/auth_local_data_source.dart';
 import '../datasources/auth_remote_data_source.dart';
 import '../models/sesion_model.dart';
@@ -62,11 +64,11 @@ final class AuthRepositoryImpl implements AuthRepository {
       _log.warn(LogModulo.auth, 'RECUPERACION_SIN_CONEXION', 'solicitud sin conectividad');
       return const Left(FailureSinConexion());
     } on AuthRemoteException catch (e) {
-      // HU-AUTH-004 (líneas 824-828, "Edge - rate limit"): el único caso además de "el email no
-      // existe" (que Supabase ni siquiera reporta como error) que la HU pide enmascarar como
-      // éxito — si no, un atacante distingue "ya gastaste el límite" de "se mandó". Supabase
-      // reporta el rate limit siempre como 429 (ver AuthRemoteDataSourceSupabase._traducir: tanto
-      // por over_email_send_rate_limit/over_request_rate_limit como por el fallback sin código).
+      // HU-AUTH-004 (líneas 824-828, "Edge - rate limit"): además de "el email no existe" (que
+      // Supabase ni siquiera reporta como error), la HU pide enmascarar como éxito el rate limit —
+      // si no, un atacante distingue "ya gastaste el límite" de "se mandó". Supabase reporta el
+      // rate limit siempre como 429 (ver AuthRemoteDataSourceSupabase._traducir: tanto por
+      // over_email_send_rate_limit/over_request_rate_limit como por el fallback sin código).
       // Cualquier otro error (servidor caído, contrato roto, etc.) sí es visible: anti-
       // enumeración protege "el email existe" y el rate limit, no una falla genuina del
       // servicio — el usuario tiene que poder reintentar (mismo patrón que HU-AUTH-002).
@@ -75,6 +77,21 @@ final class AuthRepositoryImpl implements AuthRepository {
           LogModulo.auth,
           'RECUPERACION_RATE_LIMIT',
           'rate limit de Supabase (enmascarado)',
+        );
+        return const Right(unit);
+      }
+      // HU-AUTH-004 (líneas 836 y 846-858, «nunca debe revelar si el email existe»): el servidor
+      // rechaza con 400 `email_address_invalid` una dirección que no puede recibir correos recién
+      // al armarlos, o sea solo si la cuenta existe (con la validación extendida de direcciones
+      // activa): mostrarlo distinguiría esa cuenta de una que no existe (#363, decisión del
+      // agente de decisiones del 16/10). Se trata como el 429 y, como el éxito de verdad, la
+      // pantalla guarda la hora del envío y muestra su «Reenviar en Ns»: otra diferencia visible
+      // también revelaría. El log no lleva el correo.
+      if (e is EmailInvalidoException) {
+        _log.warn(
+          LogModulo.auth,
+          'RECUPERACION_EMAIL_RECHAZADO',
+          'dirección rechazada por el servidor (enmascarado)',
         );
         return const Right(unit);
       }
@@ -136,34 +153,6 @@ final class AuthRepositoryImpl implements AuthRepository {
       return Left(failure);
     } on Object catch (e, st) {
       _log.error(LogModulo.auth, 'REGISTRO_FAIL', 'error inesperado en registro', const {}, e, st);
-      return Left(FailureInesperado(causa: e));
-    }
-  }
-
-  @override
-  Future<Either<Failure, Sesion>> iniciarSesionConGoogle() async {
-    try {
-      final sesion = await _remote.iniciarSesionConGoogle();
-      await _local.guardarSesion(sesion);
-      _log.info(LogModulo.auth, 'LOGIN_GOOGLE_OK', 'login con Google exitoso', {
-        'user_id': sesion.usuarioId,
-      });
-      return Right(sesion.toEntity());
-    } on AuthRemoteException catch (e) {
-      final failure = _traducir(e);
-      _log.warn(LogModulo.auth, 'LOGIN_GOOGLE_FAIL', 'login con Google rechazado', {
-        'codigo': failure.codigo,
-      });
-      return Left(failure);
-    } on Object catch (e, st) {
-      _log.error(
-        LogModulo.auth,
-        'LOGIN_GOOGLE_FAIL',
-        'error inesperado en Google',
-        const {},
-        e,
-        st,
-      );
       return Left(FailureInesperado(causa: e));
     }
   }
@@ -474,8 +463,14 @@ final class AuthRepositoryImpl implements AuthRepository {
     EmailNoConfirmadoException() => const FailureEmailNoVerificado(),
     SinConexionException() => const FailureSinConexion(),
     SesionRevocadaException() => const FailureSesionRevocada(),
+    EmailInvalidoException() => const FailureValidacion(
+      campos: {'email': ValidadorEmail.avisoDireccionRechazada},
+    ),
     PasswordDebilException() => const FailureValidacion(
       campos: {'password': 'La contraseña es demasiado débil.'},
+    ),
+    PasswordDemasiadoLargaException() => const FailureValidacion(
+      campos: {'password': PoliticaPassword.demasiadoLarga},
     ),
     // Solo los lanza la recuperación de contraseña (HU-AUTH-005), que tiene su propio repositorio:
     // acá no llegan, pero el switch es exhaustivo.

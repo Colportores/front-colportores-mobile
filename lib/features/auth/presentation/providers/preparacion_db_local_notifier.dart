@@ -73,11 +73,11 @@ final class AlmacenSoftwareRechazado extends EstadoPreparacionDbLocal {
 /// Prepara la DB local cada vez que alguien entra o se restaura la sesión (HU-AUTH-009, #27), y
 /// lleva los caminos de la recuperación guiada de ADR-006.
 ///
-/// Se dispara solo: observa el usuario de `sesionProvider`, así que cubre el login con contraseña,
-/// el de Google, el registro con sesión y la sesión restaurada al abrir la app. Con la contraseña
-/// del login ([PasswordParaDbLocal]) arma el envoltorio. Si la cuenta entra con contraseña y no
-/// está (sesión restaurada), la pide antes de crear la DB o de dar por lista una sin envoltorio
-/// ([FailurePasswordParaProteger], revisión del PR #130); con Google, abre sin él (ADR-006).
+/// Se dispara solo: observa el usuario de `sesionProvider`, así que cubre el login, el registro
+/// con sesión y la sesión restaurada al abrir la app. Con la contraseña del login
+/// ([PasswordParaDbLocal]) arma el envoltorio. Si no está (sesión restaurada), la pide antes de
+/// crear la DB o de dar por lista una sin envoltorio ([FailurePasswordParaProteger], revisión del
+/// PR #130): toda cuenta tiene contraseña (ADR-006).
 ///
 /// Cada método guarda `ref` antes de esperar y mira `mounted` en esa copia: si la sesión cambió
 /// en el medio, el provider se reconstruyó y lo que termina tarde no pisa el estado nuevo.
@@ -86,8 +86,14 @@ final class AlmacenSoftwareRechazado extends EstadoPreparacionDbLocal {
 /// encuentra la DB abierta y termina en [DbLocalLista].
 @Riverpod(keepAlive: true)
 class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
+  /// El usuario tocó «Empezar de nuevo» en A09: las preparaciones que siguen (por ejemplo, después
+  /// de confirmar la contraseña) descartan lo que quedó de la interrumpida en vez de volver a
+  /// avisarla. Se baja al terminar y al cambiar la sesión.
+  bool _descartaInterrumpida = false;
+
   @override
   EstadoPreparacionDbLocal build() {
+    _descartaInterrumpida = false;
     final usuarioId = ref.watch(
       sesionProvider.select((AsyncValue<Sesion?> s) => s.value?.usuarioId),
     );
@@ -108,6 +114,14 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
       _ => (null, 0),
     };
     await _preparar(fallaAnterior: anterior, reintentos: reintentos);
+  }
+
+  /// «Empezar de nuevo» de A09 (vista 13): descarta lo parcial de la preparación que se cortó y
+  /// prepara de cero, sin pedir el login otra vez. No borra nada del usuario: la DB interrumpida
+  /// nunca se usó.
+  Future<void> empezarDeNuevoInterrumpida() {
+    _descartaInterrumpida = true;
+    return _preparar();
   }
 
   /// "Entiendo el riesgo y quiero continuar" (S10): sigue con el Keystore por software y registra
@@ -157,7 +171,7 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
     if (!r.mounted) return;
     if (falla != null) {
       state = PreparacionDbLocalFallida(
-        const FailurePasswordParaProteger(),
+        FailurePasswordParaProteger(porPreparacionInterrumpida: _descartaInterrumpida),
         errorRecuperacion: falla,
       );
       return;
@@ -190,12 +204,12 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
     final resultado = await r.read(inicializarDbLocalUseCaseProvider)(
       InicializarDbLocalParams(
         password: r.read(passwordParaDbLocalProvider).actual,
-        requiereEnvoltorio: r.read(sesionProvider).value?.entraConPassword ?? true,
         aceptaAlmacenSoftware: aceptaAlmacenSoftware,
         alAvanzar: (paso) {
           if (r.mounted) state = PreparandoDbLocal(paso: paso);
         },
         usuarioId: r.read(sesionProvider).value?.usuarioId,
+        descartaInterrumpida: _descartaInterrumpida,
       ),
     );
     if (!r.mounted) return;
@@ -210,6 +224,7 @@ class PreparacionDbLocalNotifier extends _$PreparacionDbLocalNotifier {
   }
 
   EstadoPreparacionDbLocal _lista() {
+    _descartaInterrumpida = false;
     ref.read(passwordParaDbLocalProvider).olvidar();
     return const DbLocalLista();
   }

@@ -29,6 +29,7 @@ final class _RepositorioQueAnota
           Espacio? espacio,
           OrigenCoordenadas origen,
           CriterioDuplicadoUbicacion? duplicados,
+          String? justificacion,
         })
       >[];
   Either<Failure, ResultadoAltaUbicacion>? respuesta;
@@ -45,8 +46,15 @@ final class _RepositorioQueAnota
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) async {
-    llamadas.add((ubicacion: ubicacion, espacio: espacio, origen: origen, duplicados: duplicados));
+    llamadas.add((
+      ubicacion: ubicacion,
+      espacio: espacio,
+      origen: origen,
+      duplicados: duplicados,
+      justificacion: justificacion,
+    ));
     return respuesta ?? Right(AltaRegistrada(ubicacion: ubicacion, espacio: espacio));
   }
 
@@ -226,25 +234,39 @@ void main() {
         },
       );
 
-      test('cuando elige "Crear igual" con justificación, no pide validar duplicados', () async {
+      test('con D1, cuando elige "Crear igual" con justificación, pide validar solo las candidatas '
+          'que no admiten conservar las dos (la misma dirección a menos de 100 m)', () async {
+        await registrar(params(justificacionDuplicado: 'Es la casa del fondo'));
+
+        expect(repositorio.llamadas.single.duplicados?.esSeguirIgual, isTrue);
+      });
+
+      test('con la regla anterior a D1 (opción (c)), cuando elige "Crear igual" con justificación, '
+          'no pide validar duplicados', () async {
+        registrar = RegistrarUbicacionUseCase(
+          repositorio,
+          generarId: () => 'id-opcion-c',
+          ubicador: ubicadorSinZonas(),
+          ahora: () => ahora,
+          criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: true),
+        );
+
         await registrar(params(justificacionDuplicado: 'Es la casa del fondo'));
 
         expect(repositorio.llamadas.single.duplicados, isNull);
       });
 
-      test('con D1 en la opción (a), cuando elige "Crear igual", pide validar solo las candidatas '
-          'que no admiten conservar las dos', () async {
-        registrar = RegistrarUbicacionUseCase(
-          repositorio,
-          generarId: () => 'id-d1a',
-          ubicador: ubicadorSinZonas(),
-          ahora: () => ahora,
-          criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: false),
-        );
+      test('cuando elige "Crear igual", la justificación (sin espacios en los bordes) llega al '
+          'repositorio para guardarla en la auditoría local', () async {
+        await registrar(params(justificacionDuplicado: '  Es la casa del fondo  '));
 
-        await registrar(params(justificacionDuplicado: 'Es la casa del fondo'));
+        expect(repositorio.llamadas.single.justificacion, 'Es la casa del fondo');
+      });
 
-        expect(repositorio.llamadas.single.duplicados?.esSeguirIgual, isTrue);
+      test('sin "Crear igual", no manda ninguna justificación', () async {
+        await registrar(params());
+
+        expect(repositorio.llamadas.single.justificacion, isNull);
       });
 
       test('cuando elige "Crear igual" con la justificación en blanco, devuelve FailureValidacion '

@@ -30,6 +30,10 @@ final class _RepositorioFalso implements JornadaRepository {
   @override
   Future<Either<Failure, Jornada>> finalizar(Jornada jornada) =>
       throw UnimplementedError('no se usa en este caso de uso');
+
+  @override
+  Future<Either<Failure, Jornada?>> siguienteA(Jornada jornada) =>
+      throw UnimplementedError('no se usa en este caso de uso');
 }
 
 void main() {
@@ -75,7 +79,6 @@ void main() {
       expect(jornada.totalVisitas, 0);
       expect(jornada.totalVentas, 0);
       expect(jornada.acompananteId, isNull);
-      expect(jornada.tipoAcompanamiento, isNull);
       expect(repositorio.consultas, ['u-1']);
       expect(repositorio.creadas, [jornada]);
     });

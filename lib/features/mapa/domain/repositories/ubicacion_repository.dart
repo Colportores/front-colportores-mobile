@@ -2,10 +2,13 @@ import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../entities/espacio.dart';
+import '../entities/espacios_activos.dart';
 import '../entities/marcador_mapa.dart';
 import '../entities/resultado_alta_ubicacion.dart';
 import '../entities/resultado_modificacion_ubicacion.dart';
+import '../entities/resultado_union_duplicados.dart';
 import '../entities/ubicacion.dart';
+import '../entities/ubicacion_con_resumen.dart';
 import '../services/criterio_duplicado_ubicacion.dart';
 import '../value_objects/area_mapa.dart';
 import '../value_objects/punto_capturado.dart';
@@ -32,11 +35,17 @@ abstract interface class UbicacionRepository {
   /// [origen] es el `coords_source` de HU-UBI-001 ("para auditoría"). La tabla `ubicacion` no
   /// tiene esa columna —ni local ni en el cloud—, así que hoy queda en el log del alta. Dónde se
   /// guarda está para decidir en #192.
+  ///
+  /// [justificacion] es el texto de «Crear igual»: se guarda en la auditoría local (`audit_log`,
+  /// evento `ubicacion_crear_igual`, R-UB09) con el `id` de la ubicación, en la misma transacción que
+  /// el alta y solo si el alta se escribe. Nunca va a la cola de sync, a una columna ni a los logs
+  /// (decisión de Cristian, 06/10, «Justificar»).
   Future<Either<Failure, ResultadoAltaUbicacion>> registrar(
     Ubicacion ubicacion, {
     Espacio? espacio,
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   });
 
   /// La ubicación [id], **con baja o sin ella**, o `null` si no está en el teléfono.
@@ -45,6 +54,16 @@ abstract interface class UbicacionRepository {
   /// Cuántos espacios sin baja tiene la ubicación [ubicacionId] (para bloquear el cambio de tipo,
   /// HU-UBI-004).
   Future<Either<Failure, int>> contarEspaciosActivos(String ubicacionId);
+
+  /// Los espacios sin baja de [ubicacionId] —cuántos son y, si es uno solo, su `numero_depto`—,
+  /// como stream: emite la cuenta de ahora al suscribirse y de nuevo cada vez que cambia (un espacio
+  /// que llega del sync, que se da de baja o al que se le cambia el número), sin repetir un valor
+  /// igual al anterior. Es lo que la hoja de edición mira mientras está abierta para avisar antes
+  /// de guardar que el cambio de tipo está bloqueado (dos o más) o que le quita el número al único
+  /// depto (S17); el que decide al guardar es [modificar].
+  ///
+  /// Si la lectura falla, el stream emite el error.
+  Stream<EspaciosActivos> observarEspaciosActivos(String ubicacionId);
 
   /// Guarda [nueva] —la ubicación ya modificada: mismo `id`, `updated_at` nuevo— y encola el
   /// `update` para el sync, en **una sola transacción** (HU-UBI-004; contrato-sync-engine §3).
@@ -56,12 +75,34 @@ abstract interface class UbicacionRepository {
   ///   transacción** y, si hay, no escribe nada y devuelve [ModificacionConDuplicados]. "Seguir
   ///   igual" (el colportor ya las vio) llega como `CriterioDuplicadoUbicacion.alSeguirIgual`.
   ///
+  /// Si [nueva] reactiva una baja por unión de duplicados (`duplicado_de_*`), no escribe nada y
+  /// devuelve [FailureReactivacionDeUnion] (con la ubicación a la que se unió, si sigue activa): la
+  /// unión es definitiva (HU-UBI-005, «Reactivar»). Va antes que la búsqueda de duplicados.
+  ///
   /// `sync_version` de [nueva] tiene que ser la que la fila ya tiene: es la versión base del
   /// compare-and-swap del servidor, que es quien la incrementa (backend-supabase 0002).
+  ///
+  /// [reduceAUnEspacio] es `true` cuando la edición deja a la ubicación con un solo espacio: de
+  /// `EDIFICIO` a `CASA` o `NEGOCIO`, o de `NEGOCIO` a `CASA` (S17). Dentro de la misma transacción se cuentan los espacios activos: con dos o más
+  /// no escribe nada y devuelve [FailureUbicacionConEspacios]; con exactamente uno, ese depto pasa a
+  /// ser el espacio de la casa y se le quita el `numero_depto` (decisión de Cristian, 07/10), y el
+  /// `update` del espacio se encola junto al de la ubicación. Contar acá y no antes evita que un
+  /// espacio que aparece entre la lectura y la escritura quede con número en una casa.
+  ///
+  /// [espacioSiNoTiene] es el espacio default que el caso de uso arma al pasar a `CASA` (S13,
+  /// decisión de Cristian 21/10): si al contar dentro de la transacción no hay ningún espacio
+  /// activo, se inserta y se encola su `insert` junto al `update` de la ubicación; con alguno, no
+  /// se crea otro.
+  ///
+  /// [justificacion] es el texto del «Crear igual» de la edición: va a la auditoría local como en
+  /// [registrar], con el `id` de [nueva], y solo si la edición se escribe.
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool reduceAUnEspacio = false,
+    Espacio? espacioSiNoTiene,
+    String? justificacion,
   });
 
   /// Da de baja ([baja] `true`, `deleted_at` = [ahora]) o reactiva ([baja] `false`) la ubicación
@@ -75,15 +116,42 @@ abstract interface class UbicacionRepository {
   /// Con [conservadaId], esa otra ubicación tiene que seguir activa en la misma transacción (la que
   /// se conserva al marcar un duplicado): si no está, [FailureUbicacionInexistente]; si está de
   /// baja, [FailureUbicacionCambio]; en los dos casos no escribe.
-  /// [conMotivo] solo va al log (`ubicacion_baja`, R-UB09): el motivo es texto libre y no se
-  /// registra.
+  /// [motivo] (solo al dar de baja, `baja: true`) va al `audit_log` local (`ubicacion_baja`, R-UB09),
+  /// en la misma transacción que la baja. Es texto libre: al log de la app solo llega si hubo motivo,
+  /// nunca cuál.
+  ///
+  /// Al **reactivar** (`baja: false` sobre una baja), en la misma transacción y antes de escribir
+  /// (HU-UBI-005, «Reactivar»): una baja por unión de duplicados (`duplicado_de_*`) no se reactiva,
+  /// [FailureReactivacionDeUnion] (con la conservada si sigue activa); y si llega [duplicados] y hay otra activa que choca con ella (con
+  /// el criterio de `alSeguirIgual`, la misma dirección a menos de 100 m, D1),
+  /// [FailureReactivacionChocaConActiva] con la más cercana. En los dos casos no escribe nada.
   Future<Either<Failure, CambioDeBaja>> cambiarBaja(
     String id, {
     required bool baja,
     required DateTime baseUpdatedAt,
     required DateTime ahora,
-    bool conMotivo = false,
+    String? motivo,
     String? conservadaId,
+    CriterioDuplicadoUbicacion? duplicados,
+  });
+
+  /// HU-UBI-006, la unión de un par de duplicados, **una sola transacción local**: pasa a
+  /// [conservadaId] los espacios de [duplicadaId] (los únicos se funden en el de la conservada), la
+  /// conservada pasa a edificio si es una casa y queda con más de un espacio, la duplicada queda de
+  /// baja con el motivo `duplicado_de_<conservadaId>` en la auditoría local y se encola el trabajo
+  /// «marcar como duplicado». Lo que colgaba de un espacio fundido (personas, visitas, agendas) pasa
+  /// al único de la conservada, y el `house_status` de las dos se recalcula en la misma transacción.
+  /// Ver `UnirDuplicadosUseCase`.
+  ///
+  /// - [conservadaId] no existe, o [duplicadaId] no existe: `Left(FailureUbicacionInexistente)`.
+  /// - [conservadaId] de baja: `Left(FailureConservadaDeBaja)`; no cambia nada.
+  /// - La duplicada ya de baja y sin espacios: `Right(ResultadoUnionDuplicados.yaUnida)`.
+  /// - Si el encolado falla (no hay motor de sync, #178) la transacción se revierte entera:
+  ///   `Left(FailureInesperado)` y nada cambió.
+  Future<Either<Failure, ResultadoUnionDuplicados>> unirDuplicada(
+    String conservadaId,
+    String duplicadaId, {
+    required DateTime ahora,
   });
 
   /// Las ubicaciones del colportor [colportorId] (`created_by`), como stream: emite de nuevo ante
@@ -94,6 +162,21 @@ abstract interface class UbicacionRepository {
   Stream<List<Ubicacion>> observarDelColportor({
     required String colportorId,
     String? ciudadId,
+    bool incluirBajas = false,
+  });
+
+  /// Las ubicaciones del colportor [colportorId] (`created_by`) con su número de espacios sin baja y
+  /// su estado de casa, para la lista (HU-UBI-002): lo mismo que [observarDelColportor] más lo que
+  /// la fila muestra al lado de la dirección, en una sola lectura (no hay que combinar streams).
+  /// Reactivo: emite de nuevo ante cualquier cambio de ubicaciones o espacios. Trae las de baja solo
+  /// si [incluirBajas].
+  ///
+  /// `UbicacionConResumen.estado` sale de `house_status` (HU-VIS-005): una ubicación sin fila es
+  /// «Sin visita». También emite de nuevo cuando cambia el estado de una casa.
+  ///
+  /// Si la lectura falla, el stream termina con el error.
+  Stream<List<UbicacionConResumen>> observarListaDelColportor({
+    required String colportorId,
     bool incluirBajas = false,
   });
 

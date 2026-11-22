@@ -25,4 +25,9 @@ abstract interface class JornadaRepository {
   /// existe) devuelve `Left(FailureSinJornadaActiva)` y no pisa el `fin` que ya tenía: como en
   /// [crear], comprobar y escribir es atómico en el almacenamiento, no en el caso de uso.
   Future<Either<Failure, Jornada>> finalizar(Jornada jornada);
+
+  /// La jornada siguiente a [jornada] (HU-JOR-002, "Jornada que quedó abierta"): la del mismo
+  /// colportor, sin soft delete, con el `inicio` más cercano **después** del de [jornada] —abierta
+  /// o ya cerrada—, o `null` si no hay ninguna. El fin de [jornada] no puede pasar de ese inicio.
+  Future<Either<Failure, Jornada?>> siguienteA(Jornada jornada);
 }

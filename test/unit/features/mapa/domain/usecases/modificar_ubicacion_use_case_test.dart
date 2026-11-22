@@ -2,6 +2,7 @@
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
@@ -18,6 +19,9 @@ typedef _Escritura = ({
   Ubicacion nueva,
   DateTime baseUpdatedAt,
   CriterioDuplicadoUbicacion? duplicados,
+  bool reduceAUnEspacio,
+  Espacio? espacioSiNoTiene,
+  String? justificacion,
 });
 
 /// Un repositorio con una ubicación y N espacios, que anota lo que se le manda a escribir.
@@ -27,6 +31,7 @@ final class _Repositorio implements UbicacionRepository {
   Ubicacion? actual;
   int espacios;
   Failure? falloAlLeer;
+  Failure? fallaAlContar;
   Either<Failure, ResultadoModificacionUbicacion>? respuesta;
   final escrituras = <_Escritura>[];
 
@@ -35,15 +40,26 @@ final class _Repositorio implements UbicacionRepository {
       falloAlLeer != null ? Left(falloAlLeer!) : Right(actual);
 
   @override
-  Future<Either<Failure, int>> contarEspaciosActivos(String ubicacionId) async => Right(espacios);
+  Future<Either<Failure, int>> contarEspaciosActivos(String ubicacionId) async =>
+      fallaAlContar != null ? Left(fallaAlContar!) : Right(espacios);
 
   @override
   Future<Either<Failure, ResultadoModificacionUbicacion>> modificar(
     Ubicacion nueva, {
     required DateTime baseUpdatedAt,
     CriterioDuplicadoUbicacion? duplicados,
+    bool reduceAUnEspacio = false,
+    Espacio? espacioSiNoTiene,
+    String? justificacion,
   }) async {
-    escrituras.add((nueva: nueva, baseUpdatedAt: baseUpdatedAt, duplicados: duplicados));
+    escrituras.add((
+      nueva: nueva,
+      baseUpdatedAt: baseUpdatedAt,
+      duplicados: duplicados,
+      reduceAUnEspacio: reduceAUnEspacio,
+      espacioSiNoTiene: espacioSiNoTiene,
+      justificacion: justificacion,
+    ));
     return respuesta ?? Right(UbicacionModificada(ubicacion: nueva));
   }
 
@@ -119,6 +135,7 @@ void main() {
     inscripciones = InscripcionesEnMemoria();
     modificar = ModificarUbicacionUseCase(
       repo,
+      generarId: () => 'esp-nuevo',
       ubicador: UbicadorZona(zonas, inscripciones),
       ahora: () => t1,
     );
@@ -272,25 +289,39 @@ void main() {
       expect(repo.escrituras.single.duplicados, isNull);
     });
 
-    test('dado "seguir igual" con motivo, cuando modifica, no busca duplicados', () async {
-      await ok(params(numero: '1236', justificacion: 'Son dos locales distintos'));
+    test('dado "seguir igual" con motivo, cuando modifica, la justificación llega al repositorio '
+        'sin espacios en los bordes; sin "seguir igual" no llega ninguna', () async {
+      await ok(params(numero: '1236', justificacion: '  Son dos locales distintos '));
+      await ok(params(numero: '1237'));
 
-      expect(repo.escrituras.single.duplicados, isNull);
+      expect(repo.escrituras.first.justificacion, 'Son dos locales distintos');
+      expect(repo.escrituras.last.justificacion, isNull);
     });
 
-    test('dado D1 en la opción (a) y "seguir igual", cuando modifica, busca solo las candidatas '
-        'que no admiten conservar las dos', () async {
-      modificar = ModificarUbicacionUseCase(
-        repo,
-        ubicador: ubicadorSinZonas(),
-        ahora: () => t1,
-        criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: false),
-      );
-
+    test('dado D1 y "seguir igual" con motivo, cuando modifica, busca solo las candidatas que no '
+        'admiten conservar las dos (la misma dirección a menos de 100 m)', () async {
       await ok(params(numero: '1236', justificacion: 'Son dos locales distintos'));
 
       expect(repo.escrituras.single.duplicados?.esSeguirIgual, isTrue);
     });
+
+    test(
+      'dado la regla anterior a D1 (opción (c)) y "seguir igual" con motivo, cuando modifica, no '
+      'busca duplicados',
+      () async {
+        modificar = ModificarUbicacionUseCase(
+          repo,
+          generarId: () => 'esp-nuevo',
+          ubicador: ubicadorSinZonas(),
+          ahora: () => t1,
+          criterio: const CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: true),
+        );
+
+        await ok(params(numero: '1236', justificacion: 'Son dos locales distintos'));
+
+        expect(repo.escrituras.single.duplicados, isNull);
+      },
+    );
 
     test(
       'dado que el repositorio encuentra candidatas, cuando modifica, las devuelve tal cual',
@@ -308,46 +339,220 @@ void main() {
     );
   });
 
-  group('Cambio de tipo bloqueado', () {
+  group('Cambio de tipo de un edificio o un negocio (S17, decisión de Cristian del 07/10)', () {
+    void conTipo(TipoUbicacion tipo, int espacios) {
+      repo = _Repositorio(ubicacion(tipo: tipo), espacios: espacios);
+      modificar = ModificarUbicacionUseCase(
+        repo,
+        ubicador: ubicadorSinZonas(),
+        generarId: () => 'esp-nuevo',
+        ahora: () => t1,
+      );
+    }
+
+    void conEdificio(int espacios) => conTipo(TipoUbicacion.edificio, espacios);
+
+    void conNegocio(int espacios) => conTipo(TipoUbicacion.negocio, espacios);
+
+    test('dado un NEGOCIO con 2 espacios activos, cuando lo pasa a CASA, se bloquea con el mismo '
+        'texto que un edificio y no se escribe', () async {
+      conNegocio(2);
+
+      final f = await falla(params(tipo: TipoUbicacion.casa));
+
+      expect(f, const FailureUbicacionConEspacios(cantidadEspacios: 2));
+      expect(f.mensaje, 'Esta ubicación tiene 2 espacios. Borralos o reubicalos primero.');
+      expect(repo.escrituras, isEmpty);
+    });
+
+    test('dado un NEGOCIO con un solo espacio activo, cuando lo pasa a CASA, se permite y le avisa '
+        'al repositorio que deje un solo espacio', () async {
+      conNegocio(1);
+
+      expect(await ok(params(tipo: TipoUbicacion.casa)), isA<UbicacionModificada>());
+
+      expect(repo.escrituras.single.nueva.tipo, TipoUbicacion.casa);
+      expect(repo.escrituras.single.reduceAUnEspacio, isTrue);
+    });
+
+    test('dado un NEGOCIO con 2 espacios activos, cuando lo pasa a EDIFICIO, se permite y no toca '
+        'los espacios', () async {
+      conNegocio(2);
+
+      expect(await ok(params(tipo: TipoUbicacion.edificio)), isA<UbicacionModificada>());
+
+      expect(repo.escrituras.single.reduceAUnEspacio, isFalse);
+    });
+
+    test('dado un EDIFICIO con 2 espacios activos, cuando lo pasa a NEGOCIO, sigue bloqueado '
+        '(igual que a CASA)', () async {
+      conEdificio(2);
+
+      expect(
+        await falla(params(tipo: TipoUbicacion.negocio)),
+        const FailureUbicacionConEspacios(cantidadEspacios: 2),
+      );
+      expect(repo.escrituras, isEmpty);
+    });
+
+    test('dado un EDIFICIO con 3 espacios activos, cuando lo pasa a CASA o NEGOCIO, se bloquea con '
+        'el texto literal y no se escribe', () async {
+      conEdificio(3);
+
+      for (final tipo in [TipoUbicacion.casa, TipoUbicacion.negocio]) {
+        final f = await falla(params(tipo: tipo));
+
+        expect(f, const FailureUbicacionConEspacios(cantidadEspacios: 3));
+        expect(f.mensaje, 'Esta ubicación tiene 3 espacios. Borralos o reubicalos primero.');
+      }
+      expect(repo.escrituras, isEmpty);
+    });
+
+    test('dado un EDIFICIO con 2 espacios activos, ya se bloquea', () async {
+      conEdificio(2);
+
+      final f = await falla(params(tipo: TipoUbicacion.casa));
+
+      expect(f, const FailureUbicacionConEspacios(cantidadEspacios: 2));
+      expect(f.mensaje, 'Esta ubicación tiene 2 espacios. Borralos o reubicalos primero.');
+      expect(repo.escrituras, isEmpty);
+    });
+
+    test('dado un EDIFICIO con un solo espacio activo, cuando lo pasa a CASA o NEGOCIO, se permite '
+        'y le avisa al repositorio que deje de ser edificio', () async {
+      conEdificio(1);
+
+      for (final tipo in [TipoUbicacion.casa, TipoUbicacion.negocio]) {
+        expect(await ok(params(tipo: tipo)), isA<UbicacionModificada>());
+      }
+
+      expect(repo.escrituras.map((e) => e.nueva.tipo), [TipoUbicacion.casa, TipoUbicacion.negocio]);
+      expect(repo.escrituras.map((e) => e.reduceAUnEspacio), [true, true]);
+    });
+
+    test('dado un EDIFICIO sin espacios activos, cuando lo pasa a CASA, se permite', () async {
+      conEdificio(0);
+
+      expect(await ok(params(tipo: TipoUbicacion.casa)), isA<UbicacionModificada>());
+      // Igual se avisa: el repositorio vuelve a contar dentro de la transacción.
+      expect(repo.escrituras.single.reduceAUnEspacio, isTrue);
+    });
+
     test(
-      'dado un EDIFICIO con 3 espacios activos, cuando lo pasa a CASA o NEGOCIO, se bloquea con el '
-      'texto literal y no se escribe',
+      'dado un EDIFICIO o NEGOCIO sin espacios, cuando pasa a CASA, le manda al repositorio el '
+      'espacio default de la casa: id nuevo, sin número y a nombre de quien edita (#382)',
       () async {
-        repo = _Repositorio(ubicacion(tipo: TipoUbicacion.edificio), espacios: 3);
-        modificar = ModificarUbicacionUseCase(repo, ubicador: ubicadorSinZonas(), ahora: () => t1);
+        for (final tipo in [TipoUbicacion.edificio, TipoUbicacion.negocio]) {
+          conTipo(tipo, 0);
 
-        for (final tipo in [TipoUbicacion.casa, TipoUbicacion.negocio]) {
-          final f = await falla(params(tipo: tipo));
+          await ok(params(tipo: TipoUbicacion.casa));
 
-          expect(f, const FailureUbicacionConEspacios(cantidadEspacios: 3));
-          expect(f.mensaje, 'Esta ubicación tiene 3 espacios. Borralos o reubicalos primero.');
+          final e = repo.escrituras.single.espacioSiNoTiene!;
+          expect(e.id, 'esp-nuevo');
+          expect(e.ubicacionId, 'ub-1');
+          expect(e.numeroDepto, isNull);
+          expect((e.piso, e.estaBorrada), (null, false));
+          expect(e.auditoria.createdAt, t1);
+          expect(e.auditoria.updatedAt, repo.escrituras.single.nueva.auditoria.updatedAt);
+          expect(e.auditoria.createdBy, 'col-1');
         }
+      },
+    );
+
+    test('dado un EDIFICIO sin espacios, cuando pasa a NEGOCIO, o una CASA, cuando cambia a otro '
+        'tipo, no manda ningún espacio (#382)', () async {
+      conEdificio(0);
+      await ok(params(tipo: TipoUbicacion.negocio));
+      expect(repo.escrituras.single.espacioSiNoTiene, isNull);
+
+      conTipo(TipoUbicacion.casa, 0);
+      await ok(params(tipo: TipoUbicacion.edificio));
+      expect(repo.escrituras.single.espacioSiNoTiene, isNull);
+    });
+
+    test('dado dos guardados que pasan a CASA, cada intento genera su propio id (#382)', () async {
+      var n = 0;
+      conEdificio(0);
+      modificar = ModificarUbicacionUseCase(
+        repo,
+        ubicador: ubicadorSinZonas(),
+        generarId: () => 'esp-${++n}',
+        ahora: () => t1,
+      );
+
+      await ok(params(tipo: TipoUbicacion.casa));
+      await ok(params(tipo: TipoUbicacion.casa));
+
+      expect(repo.escrituras.map((e) => e.espacioSiNoTiene?.id), ['esp-1', 'esp-2']);
+    });
+
+    test(
+      'dado que el bloqueo por espacios o por zona corta antes, no se genera ningún id (#382)',
+      () async {
+        var n = 0;
+        conEdificio(2);
+        modificar = ModificarUbicacionUseCase(
+          repo,
+          ubicador: ubicadorSinZonas(),
+          generarId: () => 'esp-${++n}',
+          ahora: () => t1,
+        );
+
+        await falla(params(tipo: TipoUbicacion.casa));
+
+        expect(n, 0);
         expect(repo.escrituras, isEmpty);
       },
     );
 
-    test('dado un EDIFICIO sin espacios activos, cuando lo pasa a CASA, se permite', () async {
-      repo = _Repositorio(ubicacion(tipo: TipoUbicacion.edificio));
-      modificar = ModificarUbicacionUseCase(repo, ubicador: ubicadorSinZonas(), ahora: () => t1);
+    test('dado que no se pueden contar los espacios, cuando saca el edificio de su tipo, falla y '
+        'no escribe', () async {
+      conEdificio(1);
+      repo.fallaAlContar = const FailureInesperado();
 
-      expect(await ok(params(tipo: TipoUbicacion.casa)), isA<UbicacionModificada>());
+      expect(await falla(params(tipo: TipoUbicacion.casa)), isA<FailureInesperado>());
+      expect(repo.escrituras, isEmpty);
     });
 
-    test('dado una CASA con espacios, cuando pasa a EDIFICIO o NEGOCIO, no se bloquea', () async {
+    test('dado una CASA con espacios, cuando pasa a EDIFICIO o NEGOCIO, no se bloquea ni toca '
+        'los espacios', () async {
       repo.espacios = 2;
 
       expect(await ok(params(tipo: TipoUbicacion.edificio)), isA<UbicacionModificada>());
       expect(await ok(params(tipo: TipoUbicacion.negocio)), isA<UbicacionModificada>());
+      expect(repo.escrituras.map((e) => e.reduceAUnEspacio), [false, false]);
     });
 
-    test('dado un EDIFICIO con espacios, cuando cambia solo el número, no se bloquea', () async {
-      repo = _Repositorio(ubicacion(tipo: TipoUbicacion.edificio), espacios: 3);
-      modificar = ModificarUbicacionUseCase(repo, ubicador: ubicadorSinZonas(), ahora: () => t1);
+    test('dado un EDIFICIO con espacios, cuando cambia solo el número, no se bloquea ni toca los '
+        'espacios', () async {
+      conEdificio(3);
 
       expect(
         await ok(params(tipo: TipoUbicacion.edificio, numero: '1236')),
         isA<UbicacionModificada>(),
       );
+      expect(repo.escrituras.single.reduceAUnEspacio, isFalse);
+    });
+
+    test('dado un EDIFICIO con un espacio, cuando además mueve el punto más de 100 m, primero pide '
+        'confirmar y recién con la confirmación escribe', () async {
+      conEdificio(1);
+      final lejos = params(tipo: TipoUbicacion.casa, coordenadas: alNorte(150));
+
+      final pide = await ok(lejos);
+
+      expect(pide, isA<ModificacionRequiereConfirmacion>());
+      expect(repo.escrituras, isEmpty);
+
+      await ok(
+        params(
+          tipo: TipoUbicacion.casa,
+          coordenadas: alNorte(150),
+          confirmadas: {ConfirmacionModificacion.desplazamiento},
+        ),
+      );
+
+      expect(repo.escrituras.single.reduceAUnEspacio, isTrue);
     });
   });
 

@@ -5,8 +5,10 @@ import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_loca
 import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/color_house_status.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
@@ -27,19 +29,24 @@ class _SalidaEnMemoria extends LogOutput {
 
 /// Data source que responde lo que se le fije (o lanza [error]).
 final class _LocalFijo with UbicacionLocalSinModificar implements UbicacionLocalDataSource {
-  _LocalFijo({this.respuesta, this.error});
+  _LocalFijo({this.respuesta, this.error, this.lista = const Stream.empty()});
 
   final InsercionUbicacion? respuesta;
   final Object? error;
+  final Stream<List<UbicacionConEspacios>> lista;
+  ({String colportorId, bool incluirBajas})? listaPedida;
   CriterioDuplicadoUbicacion? duplicadosRecibido;
   EspacioModel? espacioRecibido;
+  String? justificacionRecibida;
 
   @override
   Future<InsercionUbicacion> insertar(
     UbicacionModel ubicacion, {
     EspacioModel? espacio,
     CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
   }) async {
+    justificacionRecibida = justificacion;
     duplicadosRecibido = duplicados;
     espacioRecibido = espacio;
     final e = error;
@@ -59,6 +66,15 @@ final class _LocalFijo with UbicacionLocalSinModificar implements UbicacionLocal
     String? ciudadId,
     bool incluirBajas = false,
   }) => const Stream.empty();
+
+  @override
+  Stream<List<UbicacionConEspacios>> observarListaDelColportor({
+    required String colportorId,
+    bool incluirBajas = false,
+  }) {
+    listaPedida = (colportorId: colportorId, incluirBajas: incluirBajas);
+    return lista;
+  }
 }
 
 void main() {
@@ -149,17 +165,31 @@ void main() {
       expect(salida.lineas.single, isNot(contains('Italia')));
     });
 
-    test('dado "Crear igual" con D1 en la opción (a) (criterio que solo frena la misma dirección), '
+    test('dado "Crear igual" con D1 (criterio que solo frena la misma dirección a menos de 100 m), '
         'cuando guarda, el log lo marca como crear igual', () async {
-      final alSeguirIgual = const CriterioDuplicadoUbicacion(
-        mismaDireccionAdmiteConservarAmbos: false,
-      ).alSeguirIgual;
+      final alSeguirIgual = criterio.alSeguirIgual;
 
       await repositorio(
         _LocalFijo(),
       ).registrar(ubicacion, origen: OrigenCoordenadas.gps, duplicados: alSeguirIgual);
 
       expect(salida.lineas.single, contains('"crear_igual":true'));
+    });
+
+    test('dado "Crear igual" con justificación, se la pasa al almacenamiento y el log no la '
+        'imprime', () async {
+      const texto = 'Es la casa de Juan Pérez, la de al lado';
+      final local = _LocalFijo();
+
+      await repositorio(local).registrar(
+        ubicacion,
+        origen: OrigenCoordenadas.gps,
+        duplicados: criterio.alSeguirIgual,
+        justificacion: texto,
+      );
+
+      expect(local.justificacionRecibida, texto);
+      expect(salida.lineas.join(), isNot(contains('Juan')));
     });
 
     test(
@@ -185,6 +215,112 @@ void main() {
       ]);
 
       expect(e.toString(), 'UbicacionDuplicadaException(1)');
+    });
+  });
+  group('UbicacionRepositoryImpl.observarListaDelColportor', () {
+    test(
+      'devuelve entidades con sus espacios y «Sin visita» si la casa no tiene house_status',
+      () async {
+        final modelo = UbicacionModel.fromEntity(ubicacion);
+        final local = _LocalFijo(
+          lista: Stream.value([
+            (
+              ubicacion: modelo,
+              cantidadEspacios: 3,
+              color: null,
+              motivoBaja: 'Ya no existe',
+              proximaEntrevista: null,
+            ),
+          ]),
+        );
+
+        final lista = await UbicacionRepositoryImpl(
+          local,
+        ).observarListaDelColportor(colportorId: 'col-1', incluirBajas: true).first;
+
+        expect(local.listaPedida, (colportorId: 'col-1', incluirBajas: true));
+        expect(lista.single.ubicacion, ubicacion);
+        expect(lista.single.cantidadEspacios, 3);
+        expect(lista.single.motivoBaja, 'Ya no existe');
+        expect(lista.single.estado, EstadoCasa.sinVisita);
+        expect(lista.single.proximaEntrevista, isNull);
+      },
+    );
+
+    test('el color de house_status pasa al estado de la casa, uno por uno', () async {
+      final modelo = UbicacionModel.fromEntity(ubicacion);
+      final esperados = {
+        ColorHouseStatus.entregaYCobranzaPendiente: EstadoCasa.entregaYPago,
+        ColorHouseStatus.cobranzaPendiente: EstadoCasa.cobranzaPendiente,
+        ColorHouseStatus.entrevistaProgramada: EstadoCasa.entrevistaAgendada,
+        ColorHouseStatus.ventaCompleta: EstadoCasa.ventaCompleta,
+        ColorHouseStatus.entrevistaSinVenta: EstadoCasa.entrevistaHecha,
+        ColorHouseStatus.sinContestar: EstadoCasa.noContesto,
+        ColorHouseStatus.rechazo: EstadoCasa.rechazo,
+      };
+      expect(esperados.keys.toSet(), ColorHouseStatus.values.toSet());
+      final local = _LocalFijo(
+        lista: Stream.value([
+          for (final color in esperados.keys)
+            (
+              ubicacion: modelo,
+              cantidadEspacios: 1,
+              color: color,
+              motivoBaja: null,
+              proximaEntrevista: null,
+            ),
+        ]),
+      );
+
+      final lista = await UbicacionRepositoryImpl(
+        local,
+      ).observarListaDelColportor(colportorId: 'col-1').first;
+
+      expect([for (final f in lista) f.estado], esperados.values.toList());
+    });
+
+    test(
+      'la próxima entrevista de la agenda local llega a la fila, y sin agenda queda en null',
+      () async {
+        final modelo = UbicacionModel.fromEntity(ubicacion);
+        final cuando = DateTime.utc(2026, 10, 30, 14, 30);
+        final local = _LocalFijo(
+          lista: Stream.value([
+            (
+              ubicacion: modelo,
+              cantidadEspacios: 1,
+              color: ColorHouseStatus.entrevistaProgramada,
+              motivoBaja: null,
+              proximaEntrevista: cuando,
+            ),
+            (
+              ubicacion: modelo,
+              cantidadEspacios: 1,
+              color: null,
+              motivoBaja: null,
+              proximaEntrevista: null,
+            ),
+          ]),
+        );
+
+        final lista = await UbicacionRepositoryImpl(
+          local,
+        ).observarListaDelColportor(colportorId: 'col-1').first;
+
+        expect(lista.first.proximaEntrevista, cuando);
+        expect(lista.first.estado, EstadoCasa.entrevistaAgendada);
+        expect(lista.last.proximaEntrevista, isNull);
+      },
+    );
+
+    test('un error de lectura llega al stream', () async {
+      final local = _LocalFijo(lista: Stream.error(StateError('db cerrada')));
+      final repo = UbicacionRepositoryImpl(local);
+
+      await expectLater(
+        repo.observarListaDelColportor(colportorId: 'col-1'),
+        emitsError(isA<StateError>()),
+      );
     });
   });
 }

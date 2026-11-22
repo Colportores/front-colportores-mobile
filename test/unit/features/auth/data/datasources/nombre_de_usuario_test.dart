@@ -14,7 +14,7 @@ void main() {
     expect(nombre({'nombre': '  Lucía \n'}), 'Lucía');
   });
 
-  test('ingreso con Google: el trigger deja el nombre vacío y queda sin nombre', () {
+  test('una cuenta cuyo trigger dejó el nombre vacío queda sin nombre', () {
     expect(nombre({'nombre': ''}), isNull);
     expect(nombre({'nombre': '   '}), isNull);
     expect(nombre({'full_name': 'Lucía Silva', 'avatar_url': 'https://x'}), isNull);

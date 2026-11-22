@@ -84,9 +84,7 @@ void main() {
     bool vencida = false,
     String? email = 'ana@example.com',
     String accessToken = 'jwt',
-    // Las sesiones de este helper representan, salvo que se diga lo contrario, un login con
-    // Google (es el único flujo que las consume vía onAuthStateChange en estos tests).
-    String proveedor = 'google',
+    String proveedor = 'email',
     Map<String, dynamic>? metadata,
   }) => _FakeSession(
     user: _FakeUser(
@@ -106,14 +104,10 @@ void main() {
   late RegistroEnlacesAuth registro;
 
   AuthRemoteDataSourceSupabase dataSource({
-    LanzadorOAuth? lanzarOAuth,
-    Duration esperaOAuth = const Duration(seconds: 1),
     Stream<Uri>? enlaces,
     AlmacenSesionSupabase? sesionPersistida,
   }) => AuthRemoteDataSourceSupabase(
     auth,
-    lanzarOAuth: lanzarOAuth,
-    esperaOAuth: esperaOAuth,
     enlacesEntrantes: enlaces ?? const Stream<Uri>.empty(),
     sesionPersistida: sesionPersistida,
     registroEnlaces: registro,
@@ -180,7 +174,7 @@ void main() {
     );
 
     test(
-      'dado un ingreso con Google (nombre vacío o sin metadata), la sesión no trae nombre (#243)',
+      'dado un usuario sin nombre (vacío o sin metadata), la sesión no trae nombre (#243)',
       () async {
         when(
           () => auth.signInWithPassword(email: 'ana@example.com', password: 'secreto123'),
@@ -347,12 +341,9 @@ void main() {
         throwsA(
           isA<ServidorException>()
               .having((e) => e.status, 'status', 500)
-              .having(
-                (e) => e.mensaje,
-                'mensaje',
-                'No se pudo completar la operación (unexpected_failure).',
-              )
-              .having((e) => e.mensaje, 'mensaje', isNot(contains('boom con datos del usuario'))),
+              // Sin texto: ni el código ni el mensaje de Supabase llegan a la pantalla; el código
+              // queda en el log y cada pantalla dice qué hacer (#542).
+              .having((e) => e.mensaje, 'mensaje', isNull),
         ),
       );
     });
@@ -390,7 +381,7 @@ void main() {
           redirectTo: ConfigSupabase.redirectRecuperacion,
         ),
       ).called(1);
-      expect(ConfigSupabase.redirectRecuperacion, startsWith(ConfigSupabase.redirectOAuth));
+      expect(ConfigSupabase.redirectRecuperacion, startsWith(ConfigSupabase.redirectBase));
     });
 
     test('dado el límite de emails de Supabase, lanza ServidorException con mensaje', () {
@@ -455,6 +446,45 @@ void main() {
       );
 
       expect(sesion?.usuarioId, usuarioId);
+    });
+
+    test('dado el tope de 72 bytes del servidor (400 validation_failed), lanza '
+        'PasswordDemasiadoLargaException', () {
+      when(
+        () => auth.signUp(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+          data: any(named: 'data'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
+        ),
+      ).thenThrow(
+        const AuthApiException(
+          'Password cannot be longer than 72 characters',
+          statusCode: '400',
+          code: 'validation_failed',
+        ),
+      );
+
+      expect(() => registrar(dataSource()), throwsA(isA<PasswordDemasiadoLargaException>()));
+    });
+
+    test('otro validation_failed sigue siendo un error del servidor, no el del largo', () {
+      when(
+        () => auth.signUp(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+          data: any(named: 'data'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
+        ),
+      ).thenThrow(
+        const AuthApiException(
+          'Unable to validate email address',
+          statusCode: '400',
+          code: 'validation_failed',
+        ),
+      );
+
+      expect(() => registrar(dataSource()), throwsA(isA<ServidorException>()));
     });
 
     test('dado un email ya registrado (error_code), lanza EmailYaRegistradoException', () {
@@ -719,123 +749,31 @@ void main() {
     });
   });
 
-  group('AuthRemoteDataSourceSupabase.iniciarSesionConGoogle', () {
-    test(
-      'dado que el navegador abre y vuelve el deep link, cuando llega signedIn, devuelve la sesión',
-      () async {
-        OAuthProvider? proveedor;
-        String? redirect;
-        final ds = dataSource(
-          lanzarOAuth: (p, r) async {
-            proveedor = p;
-            redirect = r;
-            // Simula la vuelta del deep link después de abrir el navegador.
-            scheduleMicrotask(
-              () => cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase())),
-            );
-            return true;
-          },
-        );
-
-        final sesion = await ds.iniciarSesionConGoogle();
-
-        expect(sesion.usuarioId, usuarioId);
-        expect(proveedor, OAuthProvider.google);
-        expect(redirect, ConfigSupabase.redirectOAuth);
-        expect(cambios.hasListener, isFalse, reason: 'cancela la suscripción al terminar');
-      },
-    );
-
-    test('ignora eventos que no son signedIn con sesión', () async {
-      final ds = dataSource(
-        lanzarOAuth: (_, _) async {
-          scheduleMicrotask(() {
-            cambios.add(const AuthState(AuthChangeEvent.initialSession, null));
-            cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
-          });
-          return true;
-        },
-      );
-
-      final sesion = await ds.iniciarSesionConGoogle();
-
-      expect(sesion.accessToken, 'jwt');
-    });
-
-    test(
-      'dado que el usuario no vuelve del navegador, cuando vence la espera, lanza ServidorException',
-      () async {
-        final ds = dataSource(
-          lanzarOAuth: (_, _) async => true,
-          esperaOAuth: const Duration(milliseconds: 20),
-        );
-
-        await expectLater(
-          ds.iniciarSesionConGoogle(),
-          throwsA(isA<ServidorException>().having((e) => e.mensaje, 'mensaje', contains('Google'))),
-        );
-        expect(cambios.hasListener, isFalse);
-      },
-    );
-
-    test('ignora un signedIn de otro proveedor (p. ej. confirmar email, mismo redirect) y sigue '
-        'esperando al de Google', () async {
-      final ds = dataSource(
-        lanzarOAuth: (_, _) async {
-          // Mismo redirect que Google: llega primero el signedIn de confirmar el email, y
-          // recién después el de Google — no hay que resolver con el primero.
-          scheduleMicrotask(
-            () => cambios.add(
-              AuthState(AuthChangeEvent.signedIn, sesionSupabase(proveedor: 'email')),
-            ),
-          );
-          Future<void>.delayed(const Duration(milliseconds: 10), () {
-            cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
-          });
-          return true;
-        },
-      );
-
-      final sesion = await ds.iniciarSesionConGoogle();
-
-      expect(sesion.usuarioId, usuarioId);
-    });
-
-    test('dado que no se pudo abrir el navegador (false), lanza ServidorException', () {
-      final ds = dataSource(lanzarOAuth: (_, _) async => false);
-
-      expect(ds.iniciarSesionConGoogle(), throwsA(isA<ServidorException>()));
-    });
-
-    test('dado que signInWithOAuth lanza AuthException, la traduce', () {
-      final ds = dataSource(
-        lanzarOAuth: (_, _) => throw AuthRetryableFetchException(message: 'sin red'),
-      );
-
-      expect(ds.iniciarSesionConGoogle(), throwsA(isA<SinConexionException>()));
-    });
-  });
-
   group('AuthRemoteDataSourceSupabase.reenviarVerificacion', () {
-    test('cuando reenvía, llama a resend con type signup y el emailRedirectTo', () async {
-      when(
-        () => auth.resend(
-          email: 'ana@example.com',
-          type: OtpType.signup,
-          emailRedirectTo: ConfigSupabase.redirectOAuth,
-        ),
-      ).thenAnswer((_) async => ResendResponse());
+    // #679: el enlace reenviado vuelve a `/verificado`, como el del registro; con la base sola la
+    // app no lo reconocía y quedaba en «El enlace expiró».
+    test(
+      'cuando reenvía, llama a resend con type signup y el emailRedirectTo de la verificación',
+      () async {
+        when(
+          () => auth.resend(
+            email: 'ana@example.com',
+            type: OtpType.signup,
+            emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
+          ),
+        ).thenAnswer((_) async => ResendResponse());
 
-      await dataSource().reenviarVerificacion('ana@example.com');
+        await dataSource().reenviarVerificacion('ana@example.com');
 
-      verify(
-        () => auth.resend(
-          email: 'ana@example.com',
-          type: OtpType.signup,
-          emailRedirectTo: ConfigSupabase.redirectOAuth,
-        ),
-      ).called(1);
-    });
+        verify(
+          () => auth.resend(
+            email: 'ana@example.com',
+            type: OtpType.signup,
+            emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
+          ),
+        ).called(1);
+      },
+    );
 
     test('dado el límite de emails de Supabase, lanza ServidorException con mensaje', () {
       when(
@@ -861,6 +799,90 @@ void main() {
             contains('Demasiados intentos'),
           ),
         ),
+      );
+    });
+  });
+
+  group('AuthRemoteDataSourceSupabase — 400 email_address_invalid (#353)', () {
+    // El servidor frena la dirección al mandar el correo (dominio de prueba, mal tipeado, `lucia.@…`)
+    // si el proyecto tiene activa la validación de direcciones: en todas las operaciones que mandan
+    // un correo llega el mismo error tipado, no el genérico con el código.
+    const direccionRechazada = AuthApiException(
+      'Email address "lucia@gmial.com" is invalid',
+      statusCode: '400',
+      code: 'email_address_invalid',
+    );
+
+    test('al registrar, lanza EmailInvalidoException', () {
+      when(
+        () => auth.signUp(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+          data: any(named: 'data'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
+        ),
+      ).thenThrow(direccionRechazada);
+
+      expect(
+        () => dataSource().registrar(
+          nombre: 'Lucía',
+          apellido: 'Silva',
+          cedula: '12345678',
+          email: 'lucia@gmial.com',
+          password: 'secreto123',
+        ),
+        throwsA(isA<EmailInvalidoException>()),
+      );
+    });
+
+    test('al reenviar la verificación, lanza EmailInvalidoException', () {
+      when(
+        () => auth.resend(
+          email: any(named: 'email'),
+          type: any(named: 'type'),
+          emailRedirectTo: any(named: 'emailRedirectTo'),
+        ),
+      ).thenThrow(direccionRechazada);
+
+      expect(
+        () => dataSource().reenviarVerificacion('lucia@gmial.com'),
+        throwsA(isA<EmailInvalidoException>()),
+      );
+    });
+
+    test('al pedir la recuperación, lanza EmailInvalidoException', () {
+      when(
+        () => auth.resetPasswordForEmail(any(), redirectTo: any(named: 'redirectTo')),
+      ).thenThrow(direccionRechazada);
+
+      expect(
+        () => dataSource().solicitarRecuperacionPassword('lucia@gmial.com'),
+        throwsA(isA<EmailInvalidoException>()),
+      );
+    });
+
+    test('al iniciar sesión, lanza EmailInvalidoException', () {
+      when(
+        () => auth.signInWithPassword(
+          email: any(named: 'email'),
+          password: any(named: 'password'),
+        ),
+      ).thenThrow(direccionRechazada);
+
+      expect(
+        () => dataSource().iniciarSesion(email: 'lucia@gmial.com', password: 'secreto123'),
+        throwsA(isA<EmailInvalidoException>()),
+      );
+    });
+
+    test('sin el código (un 400 con otro texto), sigue siendo un error del servidor', () {
+      when(
+        () => auth.resetPasswordForEmail(any(), redirectTo: any(named: 'redirectTo')),
+      ).thenThrow(const AuthApiException('Bad request', statusCode: '400'));
+
+      expect(
+        () => dataSource().solicitarRecuperacionPassword('lucia@gmial.com'),
+        throwsA(isA<ServidorException>()),
       );
     });
   });
@@ -899,7 +921,7 @@ void main() {
       },
     );
 
-    test('ignora otros errores del stream (p. ej. un OAuth cancelado)', () async {
+    test('ignora otros errores del stream (p. ej. un acceso denegado)', () async {
       final eventos = <void>[];
       final suscripcion = dataSource().erroresVerificacionEmail.listen(eventos.add);
       addTearDown(suscripcion.cancel);
@@ -953,7 +975,7 @@ void main() {
       },
     );
 
-    test('deep link a otro path (el del OAuth): no emite', () async {
+    test('deep link a otro path (la base del redirect, sin tipo de enlace): no emite', () async {
       final enlaces = StreamController<Uri>();
       addTearDown(enlaces.close);
       final eventos = <void>[];
@@ -962,7 +984,7 @@ void main() {
       ).verificacionesExitosas.listen(eventos.add);
       addTearDown(suscripcion.cancel);
 
-      enlaces.add(Uri.parse(ConfigSupabase.redirectOAuth));
+      enlaces.add(Uri.parse(ConfigSupabase.redirectBase));
       await Future<void>.delayed(Duration.zero);
       cambios.add(AuthState(AuthChangeEvent.signedIn, sesionSupabase()));
       await Future<void>.delayed(Duration.zero);
@@ -1045,7 +1067,7 @@ void main() {
           final suscripcion = dataSource().enlacesRecuperacion.listen(eventos.add);
           addTearDown(suscripcion.cancel);
           registro.esCallbackDeAuth(
-            Uri.parse('${ConfigSupabase.redirectOAuth}#error_code=otp_expired'),
+            Uri.parse('${ConfigSupabase.redirectBase}#error_code=otp_expired'),
           );
 
           cambios

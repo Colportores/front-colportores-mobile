@@ -24,6 +24,10 @@ class Espacios extends Table {
 
   TextColumn get piso => text().nullable()();
 
+  /// Heredada: la saca del cloud la migración 0104 (backend-supabase#79, «Notas depto» del
+  /// 06/10) y ninguna parte de la app la lee, la escribe ni la manda por sync. Sigue en la tabla
+  /// local para no forzar una migración de esquema solo por ella: se saca con la próxima que haga
+  /// falta.
   TextColumn get descripcion => text().nullable()();
 
   IntColumn get createdAt => integer().map(const FechaUtcConverter())();

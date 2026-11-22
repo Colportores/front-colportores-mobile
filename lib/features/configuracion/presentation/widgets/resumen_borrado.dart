@@ -23,7 +23,9 @@ class ResumenBorrado extends StatelessWidget {
     required this.onContinuar,
   });
 
-  final ResumenDatosLocales resumen;
+  /// Lo contado, o `null` si no se pudo contar nada (artboard 03): las filas muestran «—» y, como
+  /// con el conteo de pendientes fallido, "Continuar" queda apagado hasta que el conteo funcione.
+  final ResumenDatosLocales? resumen;
   final bool soloEsteTelefono;
   final bool irreversible;
 
@@ -43,9 +45,9 @@ class ResumenBorrado extends StatelessWidget {
   final VoidCallback onContinuar;
 
   /// No se pudo contar lo pendiente: se trata como "posiblemente pendiente" y bloquea.
-  bool get _sinConteo => resumen.operacionesSinSincronizar == null;
+  bool get _sinConteo => resumen?.operacionesSinSincronizar == null;
 
-  int get _pendientes => resumen.operacionesSinSincronizar ?? 0;
+  int get _pendientes => resumen?.operacionesSinSincronizar ?? 0;
 
   bool get _bloqueado => _sinConteo || _pendientes > 0;
 
@@ -56,6 +58,7 @@ class ResumenBorrado extends StatelessWidget {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>()!;
     final ocupado = sincronizando || recontando;
+    final resumen = this.resumen;
     final puedeContinuar = !_bloqueado && _casillasMarcadas && !ocupado;
 
     return Column(
@@ -76,14 +79,14 @@ class ResumenBorrado extends StatelessWidget {
               _Fila(
                 icono: Icons.people_outline,
                 titulo: 'Personas registradas en este teléfono',
-                valor: _sinConteo ? '—' : '${resumen.personas}',
+                valor: resumen == null || _sinConteo ? '—' : '${resumen.personas}',
                 valorKey: const Key('borrar_datos_personas'),
               ),
               const Divider(),
               _Fila(
                 icono: Icons.event_note_outlined,
                 titulo: 'Visitas registradas en este teléfono',
-                valor: _sinConteo ? '—' : '${resumen.visitas}',
+                valor: resumen == null || _sinConteo ? '—' : '${resumen.visitas}',
                 valorKey: const Key('borrar_datos_visitas'),
               ),
               const Divider(),
@@ -97,7 +100,11 @@ class ResumenBorrado extends StatelessWidget {
               _Fila(
                 icono: Icons.cloud_outlined,
                 titulo: 'Backup en Drive',
-                valor: resumen.hayBackupEnDrive ? 'Sí, vas a elegir si se borra' : 'No hay',
+                valor: resumen == null
+                    ? '—'
+                    : resumen.hayBackupEnDrive
+                    ? 'Sí, vas a elegir si se borra'
+                    : 'No hay',
                 valorKey: const Key('borrar_datos_backup'),
               ),
             ],

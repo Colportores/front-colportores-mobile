@@ -36,7 +36,9 @@ Ubicacion _ubicacion({
 
 void main() {
   const criterio = CriterioDuplicadoUbicacion();
-  const conD1a = CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: false);
+  // La regla anterior a D1 (opción (c)): la misma dirección admite conservar ambos a cualquier
+  // distancia. Ya no es la decisión; se prueba para que el punto único siga siendo uno solo.
+  const conOpcionC = CriterioDuplicadoUbicacion(mismaDireccionAdmiteConservarAmbos: true);
   final nueva = _ubicacion(id: 'ub-nueva');
 
   group('CriterioDuplicadoUbicacion.comparar — misma dirección', () {
@@ -58,13 +60,45 @@ void main() {
       expect(criterio.comparar(nueva, existente)?.motivo, MotivoDuplicado.mismaDireccion);
     });
 
-    test('dado espacios internos o acentos distintos, cuando se compara, no es la misma dirección '
-        '(solo trim y minúsculas, como el índice de la opción (a) de D1)', () {
+    test(
+      'dado espacios internos, espacios raros o tildes distintos, cuando se compara, es la misma '
+      'dirección (la normalización de la HU: la del servidor)',
+      () {
+        for (final calle in [
+          'Av.  Italia', // dos espacios
+          'Av.\tItalia', // tab
+          'Av. Italia', // espacio duro
+          'Av.   Italia', // espacio largo
+          'Av. Itália',
+          'av.  itália', // el caso del revisor de #267
+          'AV. ITALIA',
+          'Av. Italiá', // la «a» y la tilde escritas por separado
+        ]) {
+          final candidata = criterio.comparar(nueva, _ubicacion(calle: calle, metrosAlNorte: 200));
+
+          expect(candidata?.motivo, MotivoDuplicado.mismaDireccion, reason: calle);
+        }
+      },
+    );
+
+    test(
+      'dado un número con espacios raros o con tildes (por ejemplo «12 bís»), cuando se compara, '
+      'también es la misma dirección',
+      () {
+        final con = _ubicacion(id: 'n', numero: '12 bís');
+        final otra = _ubicacion(numero: '12  BIS', metrosAlNorte: 200);
+
+        expect(criterio.comparar(con, otra)?.motivo, MotivoDuplicado.mismaDireccion);
+      },
+    );
+
+    test('dado un texto que difiere en algo más que tildes y espacios, cuando se compara, no es la '
+        'misma dirección', () {
       expect(
-        criterio.comparar(nueva, _ubicacion(calle: 'Av.  Italia', metrosAlNorte: 200)),
+        criterio.comparar(nueva, _ubicacion(calle: 'Av. Italía 2', metrosAlNorte: 200)),
         isNull,
       );
-      expect(criterio.comparar(nueva, _ubicacion(calle: 'Av. Itália', metrosAlNorte: 200)), isNull);
+      expect(criterio.comparar(nueva, _ubicacion(calle: 'Av.Italia', metrosAlNorte: 200)), isNull);
     });
 
     test(
@@ -146,35 +180,72 @@ void main() {
   });
 
   group('CriterioDuplicadoUbicacion — decisión D1 (conservar ambos con la misma dirección)', () {
-    test('dado el criterio por defecto, cuando hay una candidata por misma dirección, admite '
-        'conservar ambos (hoy: opción (c) de D1)', () {
-      expect(CriterioDuplicadoUbicacion.mismaDireccionAdmiteConservarAmbosPorDefecto, isTrue);
+    test('dado el criterio por defecto, cuando hay una candidata por misma dirección a menos de '
+        '100 m, no admite conservar ambos (D1)', () {
+      expect(CriterioDuplicadoUbicacion.mismaDireccionAdmiteConservarAmbosPorDefecto, isFalse);
+      expect(CriterioDuplicadoUbicacion.radioMismaDireccionMetros, 100);
+      for (final metros in [0.0, 2.0, 15.0, 50.0, 99.9]) {
+        final candidata = criterio.comparar(nueva, _ubicacion(metrosAlNorte: metros))!;
+
+        expect(candidata.motivo, MotivoDuplicado.mismaDireccion, reason: '$metros m');
+        expect(candidata.admiteConservarAmbos, isFalse, reason: '$metros m');
+      }
+    });
+
+    test(
+      'dado la misma dirección a 100 m o más, cuando se compara, sigue siendo candidata (el aviso) '
+      'pero admite conservar ambos: son dos casas con el mismo número',
+      () {
+        for (final metros in [100.1, 150.0, 200.0, 5000.0]) {
+          final candidata = criterio.comparar(nueva, _ubicacion(metrosAlNorte: metros))!;
+
+          expect(candidata.motivo, MotivoDuplicado.mismaDireccion, reason: '$metros m');
+          expect(candidata.admiteConservarAmbos, isTrue, reason: '$metros m');
+        }
+      },
+    );
+
+    test('dado la misma dirección escrita distinto a 15 m, cuando se compara, tampoco admite '
+        'conservar ambos: la normalización de la HU decide que es la misma', () {
+      final existente = _ubicacion(metrosAlNorte: 15);
+
+      final conEspacios = criterio.comparar(_ubicacion(id: 'n', calle: 'av.  itália'), existente);
+      final igual = criterio.comparar(nueva, existente);
+
+      expect(conEspacios, isNotNull);
+      expect(conEspacios!.admiteConservarAmbos, isFalse);
+      expect(igual!.admiteConservarAmbos, isFalse);
+    });
+
+    test('dado otra dirección a menos de 5 m, cuando se compara, la de cercanía admite conservar '
+        'ambos con cualquier criterio', () {
+      final cercana = _ubicacion(calle: 'Comercio', metrosAlNorte: 3);
+
+      expect(criterio.comparar(nueva, cercana)!.admiteConservarAmbos, isTrue);
+      expect(conOpcionC.comparar(nueva, cercana)!.admiteConservarAmbos, isTrue);
+    });
+
+    test('dado la regla anterior a D1 (opción (c)), cuando hay una candidata por misma dirección a '
+        '15 m, admite conservar ambos y no hay criterio de «seguir igual»', () {
       expect(
-        criterio.comparar(nueva, _ubicacion(metrosAlNorte: 200))!.admiteConservarAmbos,
+        conOpcionC.comparar(nueva, _ubicacion(metrosAlNorte: 15))!.admiteConservarAmbos,
         isTrue,
       );
-      expect(criterio.alSeguirIgual, isNull);
-      expect(criterio.esSeguirIgual, isFalse);
+      expect(conOpcionC.alSeguirIgual, isNull);
+      expect(conOpcionC.esSeguirIgual, isFalse);
     });
 
-    test('dado D1 en la opción (a), cuando hay candidatas, la de misma dirección no admite '
-        'conservar ambos y la de cercanía sí', () {
-      final mismaDireccion = conD1a.comparar(nueva, _ubicacion(metrosAlNorte: 200))!;
-      final cercana = conD1a.comparar(nueva, _ubicacion(calle: 'Comercio', metrosAlNorte: 3))!;
-
-      expect(mismaDireccion.admiteConservarAmbos, isFalse);
-      expect(cercana.admiteConservarAmbos, isTrue);
-    });
-
-    test('dado D1 en la opción (a), cuando el colportor sigue igual, solo frenan las de misma '
-        'dirección', () {
-      final alSeguir = conD1a.alSeguirIgual!;
-      final mismaDireccion = _ubicacion(id: 'misma', metrosAlNorte: 200);
+    test('dado D1, cuando el colportor sigue igual, solo frenan las de misma dirección a menos de '
+        '100 m (ni las lejanas ni las de cercanía)', () {
+      final alSeguir = criterio.alSeguirIgual!;
+      final choca = _ubicacion(id: 'choca', metrosAlNorte: 15);
+      final lejana = _ubicacion(id: 'lejana', metrosAlNorte: 200);
       final cercana = _ubicacion(id: 'cerca', calle: 'Comercio', metrosAlNorte: 3);
 
+      expect(criterio.esSeguirIgual, isFalse);
       expect(alSeguir.esSeguirIgual, isTrue);
-      expect(alSeguir.candidatas(nueva, [mismaDireccion, cercana]).map((c) => c.ubicacion.id), [
-        'misma',
+      expect(alSeguir.candidatas(nueva, [choca, lejana, cercana]).map((c) => c.ubicacion.id), [
+        'choca',
       ]);
     });
   });
@@ -208,7 +279,7 @@ void main() {
       expect(par.b, nueva);
       expect(par.motivo, MotivoDuplicado.mismaDireccion);
       expect(par.distanciaMetros, closeTo(200, 0.01));
-      expect(par.admiteConservarAmbos, isTrue);
+      expect(par.admiteConservarAmbos, isTrue); // 200 m: dos casas con el mismo número (D1)
     });
 
     test('dado dos creadas en el mismo instante, cuando se escanea, A es la de id menor', () {
@@ -278,14 +349,51 @@ void main() {
       expect(claves(pares), ['n1|n2', 'm1|m2', 'd1|d2', 'c1|c2']);
     });
 
-    test('dado D1 en la opción (a), cuando se escanea, el par de misma dirección no admite '
-        'conservar ambos', () {
-      final par = conD1a.pares([
+    test(
+      'dado D1, cuando se escanea, el par de misma dirección a menos de 100 m no admite conservar '
+      'ambos y el de 100 m o más sí',
+      () {
+        final cerca = criterio.pares([
+          _ubicacion(id: 'a'),
+          _ubicacion(id: 'b', metrosAlNorte: 15),
+        ]).single;
+        final casiCien = criterio.pares([
+          _ubicacion(id: 'a'),
+          _ubicacion(id: 'b', metrosAlNorte: 99.9),
+        ]).single;
+        final cien = criterio.pares([
+          _ubicacion(id: 'a'),
+          _ubicacion(id: 'b', metrosAlNorte: 100.1),
+        ]).single;
+
+        expect(cerca.admiteConservarAmbos, isFalse);
+        expect(casiCien.admiteConservarAmbos, isFalse);
+        expect(cien.admiteConservarAmbos, isTrue);
+      },
+    );
+
+    test(
+      'dado el par que el servidor llama igual aunque la app lo escriba distinto («av.  itália» '
+      'contra «Av. Italia» a 15 m), cuando se escanea, es un par que no admite conservar ambos',
+      () {
+        final par = criterio.pares([
+          _ubicacion(id: 'a', calle: 'av.  itália'),
+          _ubicacion(id: 'b', metrosAlNorte: 15),
+        ]).single;
+
+        expect(par.motivo, MotivoDuplicado.mismaDireccion);
+        expect(par.admiteConservarAmbos, isFalse);
+      },
+    );
+
+    test('dado la regla anterior a D1 (opción (c)), cuando se escanea, el par de misma dirección a '
+        '15 m admite conservar ambos', () {
+      final par = conOpcionC.pares([
         _ubicacion(id: 'a'),
-        _ubicacion(id: 'b', metrosAlNorte: 100),
+        _ubicacion(id: 'b', metrosAlNorte: 15),
       ]).single;
 
-      expect(par.admiteConservarAmbos, isFalse);
+      expect(par.admiteConservarAmbos, isTrue);
     });
 
     test('dado muchas ubicaciones al azar, cuando se escanea, da los mismos pares que comparar '
@@ -326,9 +434,37 @@ void main() {
   });
 
   group('CriterioDuplicadoUbicacion — normalización', () {
-    test('dado una calle o número, cuando se normaliza para duplicados, queda sin espacios en los '
-        'bordes y en minúsculas', () {
-      expect(CriterioDuplicadoUbicacion.normalizarDireccion('  Av. ÑANDÚ  '), 'av. ñandú');
+    // El vector de la HU y del servidor (`direccion_normalizada()`, migración 0017): texto, salida.
+    const vector = {
+      '  Av.  Itália ': 'av. italia',
+      'AV. ITALIA': 'av. italia',
+      'Av.\tItalia': 'av. italia',
+      'Av.  Italia': 'av. italia',
+      ' Av. 　Italia﻿': 'av. italia',
+      'Av.\r\nItalia': 'av. italia',
+      'Italiá': 'italia',
+      '  Av. ÑANDÚ  ': 'av. nandu',
+      'Güemes': 'guemes',
+      'Françoise': 'francoise',
+      'Ångström': 'angstrom',
+      'Æsir': 'aesir',
+      'Straße': 'strasse',
+      '12 bís': '12 bis',
+      '12-B': '12-b',
+      '   ': '',
+      '': '',
+    };
+
+    test('dado los textos del vector de la HU, cuando se normalizan para duplicados, dan lo mismo '
+        'que la función del servidor', () {
+      vector.forEach((texto, esperado) {
+        expect(CriterioDuplicadoUbicacion.normalizarDireccion(texto), esperado, reason: texto);
+      });
+    });
+
+    test('dado una calle o número, cuando se normaliza, queda sin espacios en los bordes, en '
+        'minúsculas y sin tildes', () {
+      expect(CriterioDuplicadoUbicacion.normalizarDireccion('  Av. ÑANDÚ  '), 'av. nandu');
     });
 
     test('dado un texto con acentos, ñ y espacios de más, cuando se normaliza para buscar, queda '

@@ -9,11 +9,13 @@ import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_loca
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/zona_local_data_source.dart';
 import 'package:colportores_mobile/features/mapa/data/models/campania_ciudad_model.dart';
+import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/zona_model.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
 import 'package:colportores_mobile/features/mapa/data/repositories/zona_repository_impl.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/espacios_activos.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_modificacion_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/ubicador_zona.dart';
@@ -73,6 +75,7 @@ void main() {
     repositorio = UbicacionRepositoryImpl(local, logger: loggerMudo());
     modificar = ModificarUbicacionUseCase(
       repositorio,
+      generarId: () => 'esp-nuevo',
       ubicador: ubicadorSinZonas(),
       ahora: () => t1,
     );
@@ -111,17 +114,58 @@ void main() {
 
   Future<UbicacionModel> guardada([String id = 'ub-1']) async => (await local.obtener(id))!;
 
-  Future<void> espacioEn(String ubicacionId, String id, {DateTime? deletedAt}) => db
+  Future<void> espacioEn(
+    String ubicacionId,
+    String id, {
+    DateTime? deletedAt,
+    String? numeroDepto,
+    String? piso,
+    String? descripcion,
+  }) => db
       .into(db.espacios)
       .insert(
         EspaciosCompanion.insert(
           id: id,
           ubicacionId: ubicacionId,
+          numeroDepto: Value(numeroDepto),
+          piso: Value(piso),
+          descripcion: Value(descripcion),
           createdAt: t0,
           updatedAt: t0,
+          createdBy: const Value('col-1'),
           deletedAt: Value(deletedAt),
+          syncVersion: const Value(7),
         ),
       );
+
+  Future<EspacioFila> espacio(String id) =>
+      (db.select(db.espacios)..where((e) => e.id.equals(id))).getSingle();
+
+  /// La primera cuenta de espacios que emite el stream de [local] para `ub-1`.
+  Future<EspaciosActivos> primera() => local.observarEspaciosActivos('ub-1').first;
+
+  /// Espera (hasta 2 s) a que [cuentas] tenga al menos [n] emisiones.
+  Future<void> esperar(List<EspaciosActivos> cuentas, int n) async {
+    for (var i = 0; i < 200 && cuentas.length < n; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
+  /// El `update` que el sync tiene que subir para [id] cuando se le quitó el número.
+  Map<String, Object?> payloadEspacioSinNumero(String id, {String? piso}) => {
+    'id': id,
+    'ubicacion_id': 'ub-1',
+    'numero_depto': null,
+    'piso': piso,
+    'created_at': t0.toIso8601String(),
+    'updated_at': t1.toIso8601String(),
+    'created_by': 'col-1',
+    'deleted_at': null,
+    'sync_version': 7,
+  };
+
+  /// Las entidades encoladas, solo por nombre (`ubicacion`, `espacio`), en orden.
+  List<String> entidadesEncoladas() => [for (final c in encolador.encolados) c.entidad];
 
   List<Object?> cambiosEncolados() => [
     for (final c in encolador.encolados) [c.entidad, c.operacion, c.payload],
@@ -164,6 +208,7 @@ void main() {
       }
       modificar = ModificarUbicacionUseCase(
         repositorio,
+        generarId: () => 'esp-nuevo',
         ubicador: UbicadorZona(
           ZonaRepositoryImpl(ZonaLocalDataSourceDrift(db), logger: loggerMudo()),
           InscripcionesEnMemoria([inscripcion('col-1', 'camp-1', zonaId: 'z-centro')]),
@@ -253,12 +298,12 @@ void main() {
     });
   });
 
-  group('Cambio de tipo bloqueado', () {
+  group('Cambio de tipo bloqueado (dos o más espacios activos)', () {
     test('dado un EDIFICIO con 3 espacios activos y uno dado de baja, cuando intenta pasarlo a '
         'CASA, se bloquea con 3 y no se escribe nada', () async {
       await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
       for (final id in ['e1', 'e2', 'e3']) {
-        await espacioEn('ub-1', id);
+        await espacioEn('ub-1', id, numeroDepto: id);
       }
       await espacioEn('ub-1', 'e4-baja', deletedAt: t0);
       encolador.encolados.clear();
@@ -267,20 +312,540 @@ void main() {
 
       expect(f, const FailureUbicacionConEspacios(cantidadEspacios: 3));
       expect((await guardada()).tipo, TipoUbicacion.edificio);
+      expect((await espacio('e1')).numeroDepto, 'e1');
       expect(encolador.encolados, isEmpty);
     });
 
     test(
-      'dado un EDIFICIO con todos los espacios dados de baja, cuando pasa a NEGOCIO, se permite',
+      'dado un NEGOCIO con 2 espacios activos, cuando intenta pasarlo a CASA, se bloquea y no se '
+      'escribe nada',
+      () async {
+        await local.insertar(ubicacion(tipo: TipoUbicacion.negocio));
+        await espacioEn('ub-1', 'e1', numeroDepto: '1');
+        await espacioEn('ub-1', 'e2', numeroDepto: '2');
+        await espacioEn('ub-1', 'e3-baja', deletedAt: t0);
+        encolador.encolados.clear();
+
+        final f = await falla(params(tipo: TipoUbicacion.casa));
+
+        expect(f, const FailureUbicacionConEspacios(cantidadEspacios: 2));
+        expect((await guardada()).tipo, TipoUbicacion.negocio);
+        expect([(await espacio('e1')).numeroDepto, (await espacio('e2')).numeroDepto], ['1', '2']);
+        expect(encolador.encolados, isEmpty);
+      },
+    );
+
+    test('dado un NEGOCIO con 2 espacios activos, cuando pasa a EDIFICIO, se permite y los '
+        'espacios no se tocan', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.negocio));
+      await espacioEn('ub-1', 'e1', numeroDepto: '1');
+      await espacioEn('ub-1', 'e2', numeroDepto: '2');
+      encolador.encolados.clear();
+
+      await ok(params(tipo: TipoUbicacion.edificio));
+
+      expect((await guardada()).tipo, TipoUbicacion.edificio);
+      expect([(await espacio('e1')).numeroDepto, (await espacio('e2')).numeroDepto], ['1', '2']);
+      expect(entidadesEncoladas(), ['ubicacion']);
+    });
+
+    test('dado un EDIFICIO con 2 espacios activos, cuando intenta pasarlo a NEGOCIO, se bloquea y '
+        'ningún depto pierde su número', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1', numeroDepto: '3B');
+      await espacioEn('ub-1', 'e2', numeroDepto: '4C');
+      encolador.encolados.clear();
+
+      final f = await falla(params(tipo: TipoUbicacion.negocio));
+
+      expect(f, const FailureUbicacionConEspacios(cantidadEspacios: 2));
+      expect((await guardada()).tipo, TipoUbicacion.edificio);
+      expect([(await espacio('e1')).numeroDepto, (await espacio('e2')).numeroDepto], ['3B', '4C']);
+      expect(encolador.encolados, isEmpty);
+    });
+
+    test('dado un EDIFICIO con todos los espacios dados de baja, cuando pasa a NEGOCIO, se permite '
+        'y no toca los de baja', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1', deletedAt: t0, numeroDepto: '2A');
+      encolador.encolados.clear();
+
+      await ok(params(tipo: TipoUbicacion.negocio));
+
+      expect((await guardada()).tipo, TipoUbicacion.negocio);
+      expect((await espacio('e1')).numeroDepto, '2A');
+      expect(entidadesEncoladas(), ['ubicacion']);
+    });
+
+    test('dado un espacio que aparece entre que se contó y que se escribe, cuando el repositorio '
+        'escribe, vuelve a contar en la transacción: bloquea y no suelta ningún número', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1', numeroDepto: '3B');
+      await espacioEn('ub-1', 'e2', numeroDepto: '4C');
+      encolador.encolados.clear();
+      final editada = UbicacionModel(
+        id: 'ub-1',
+        tipo: TipoUbicacion.casa,
+        calle: 'Av. Italia',
+        numero: '1234',
+        lat: italia.lat,
+        lon: italia.lon,
+        ciudadId: 'mvd',
+        zonaId: 'zona-9',
+        auditoria: Auditoria(createdAt: t0, updatedAt: t1, createdBy: 'col-1', syncVersion: 4),
+      ).toEntity();
+
+      final r = await repositorio.modificar(editada, baseUpdatedAt: t0, reduceAUnEspacio: true);
+
+      expect(
+        r.swap().getOrElse(() => throw StateError('era un Right')),
+        const FailureUbicacionConEspacios(cantidadEspacios: 2),
+      );
+      expect((await guardada()).tipo, TipoUbicacion.edificio);
+      expect([(await espacio('e1')).numeroDepto, (await espacio('e2')).numeroDepto], ['3B', '4C']);
+      expect(encolador.encolados, isEmpty);
+    });
+
+    test('dado el data source, cuando hay 2 espacios activos y deja de ser edificio, lanza la '
+        'excepción tipada con la cuenta', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1');
+      await espacioEn('ub-1', 'e2');
+
+      await expectLater(
+        local.actualizar(
+          ubicacion(tipo: TipoUbicacion.casa),
+          baseUpdatedAt: t0,
+          reduceAUnEspacio: true,
+        ),
+        throwsA(isA<UbicacionConEspaciosException>().having((e) => e.cantidad, 'cantidad', 2)),
+      );
+    });
+  });
+
+  group('Un solo departamento: Edificio ↔ Casa/Negocio (decisión de Cristian, 07/10)', () {
+    test(
+      'dado un único espacio activo con número, cuando se observan los espacios, emite la cuenta '
+      'y el número; con dos activos, sin número o sin espacios, la cuenta sin número',
       () async {
         await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
-        await espacioEn('ub-1', 'e1', deletedAt: t0);
+        expect(await primera(), (cantidad: 0, numeroDeptoUnico: null), reason: 'sin espacios');
+
+        await espacioEn('ub-1', 'baja', numeroDepto: '9Z', deletedAt: t0);
+        expect(await primera(), (
+          cantidad: 0,
+          numeroDeptoUnico: null,
+        ), reason: 'el de baja no cuenta');
+
+        await espacioEn('ub-1', 'e1', numeroDepto: '3B');
+        expect(await primera(), (cantidad: 1, numeroDeptoUnico: '3B'));
+
+        await espacioEn('ub-1', 'e2', numeroDepto: '4C');
+        expect(await primera(), (cantidad: 2, numeroDeptoUnico: null), reason: 'dos activos');
+      },
+    );
+
+    test('dado el único espacio activo sin número, cuando se observan los espacios, emite la '
+        'cuenta 1 sin número', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.negocio));
+      await espacioEn('ub-1', 'e1');
+
+      expect(await primera(), (cantidad: 1, numeroDeptoUnico: null));
+    });
+
+    test(
+      'dado que los espacios son de otra ubicación, cuando se observan, no los cuenta',
+      () async {
+        await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+        await local.insertar(ubicacion(id: 'ub-2', tipo: TipoUbicacion.edificio));
+        await espacioEn('ub-2', 'otro', numeroDepto: '1A');
+
+        expect(await primera(), (cantidad: 0, numeroDeptoUnico: null));
+      },
+    );
+
+    test('dado el stream abierto, cuando llega un espacio, se da de baja o cambia de número, '
+        'emite la cuenta de ahora, y no repite una escritura que no cambia nada', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1', numeroDepto: '3B');
+      final cuentas = <EspaciosActivos>[];
+      final sub = local.observarEspaciosActivos('ub-1').listen(cuentas.add);
+      addTearDown(sub.cancel);
+      await esperar(cuentas, 1);
+      expect(cuentas, [(cantidad: 1, numeroDeptoUnico: '3B')]);
+
+      await espacioEn('ub-1', 'e2', numeroDepto: '4C');
+      await esperar(cuentas, 2);
+      expect(cuentas.last, (cantidad: 2, numeroDeptoUnico: null));
+
+      // Un cambio que no mueve ni la cuenta ni el número (la `descripcion` heredada): sin emisión.
+      await (db.update(db.espacios)..where((e) => e.id.equals('e2'))).write(
+        const EspaciosCompanion(descripcion: Value('al fondo')),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(cuentas, hasLength(2), reason: 'distinct: igual a la anterior');
+
+      await (db.update(
+        db.espacios,
+      )..where((e) => e.id.equals('e2'))).write(EspaciosCompanion(deletedAt: Value(t1)));
+      await esperar(cuentas, 3);
+      expect(cuentas.last, (cantidad: 1, numeroDeptoUnico: '3B'));
+
+      await (db.update(
+        db.espacios,
+      )..where((e) => e.id.equals('e1'))).write(const EspaciosCompanion(numeroDepto: Value(null)));
+      await esperar(cuentas, 4);
+      expect(cuentas.last, (cantidad: 1, numeroDeptoUnico: null));
+    });
+
+    test('dado un EDIFICIO con un solo depto "3B", cuando pasa a CASA, el depto queda como el '
+        'espacio de la casa, sin número, y se encolan los dos cambios', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1', numeroDepto: '3B', piso: '3', descripcion: 'al fondo');
+      encolador.encolados.clear();
+
+      final r = await ok(params(tipo: TipoUbicacion.casa));
+
+      expect(r, isA<UbicacionModificada>());
+      expect((await guardada()).tipo, TipoUbicacion.casa);
+      final e = await espacio('e1');
+      expect(e.numeroDepto, isNull);
+      expect((e.piso, e.descripcion), ('3', 'al fondo'), reason: 'lo demás queda igual');
+      // Y la `descripcion` heredada no sale nunca (HU-UBI-007, «Nota por depto»; backend 0104).
+      final subido = encolador.encolados.last.payload;
+      expect(subido.containsKey('descripcion'), isFalse);
+      expect(e.updatedAt, t1);
+      expect((e.createdAt, e.createdBy, e.syncVersion, e.deletedAt), (t0, 'col-1', 7, null));
+      expect(cambiosEncolados(), [
+        [
+          'ubicacion',
+          OperacionSync.update,
+          {...ubicacion(tipo: TipoUbicacion.casa).toJson(), 'updated_at': t1.toIso8601String()},
+        ],
+        ['espacio', OperacionSync.update, payloadEspacioSinNumero('e1', piso: '3')],
+      ]);
+    });
+
+    test(
+      'dado un EDIFICIO con un solo depto, cuando pasa a NEGOCIO, también queda sin número',
+      () async {
+        await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+        await espacioEn('ub-1', 'e1', numeroDepto: '12');
 
         await ok(params(tipo: TipoUbicacion.negocio));
 
         expect((await guardada()).tipo, TipoUbicacion.negocio);
+        expect((await espacio('e1')).numeroDepto, isNull);
       },
     );
+
+    test('dado un NEGOCIO con un solo espacio "L2", cuando pasa a CASA, el espacio queda sin '
+        'número y se encolan los dos cambios', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.negocio));
+      await espacioEn('ub-1', 'e1', numeroDepto: 'L2', piso: '1');
+      encolador.encolados.clear();
+
+      final r = await ok(params(tipo: TipoUbicacion.casa));
+
+      expect(r, isA<UbicacionModificada>());
+      expect((await guardada()).tipo, TipoUbicacion.casa);
+      final e = await espacio('e1');
+      expect((e.numeroDepto, e.piso, e.updatedAt), (null, '1', t1));
+      expect(entidadesEncoladas(), ['ubicacion', 'espacio']);
+    });
+
+    test('dado un depto activo y otros dados de baja, cuando pasa a CASA, cuenta solo el activo y '
+        'los de baja quedan como están', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'activo', numeroDepto: '3B');
+      await espacioEn('ub-1', 'baja-1', numeroDepto: '4C', deletedAt: t0);
+      await espacioEn('ub-1', 'baja-2', numeroDepto: '5D', deletedAt: t0);
+      encolador.encolados.clear();
+
+      await ok(params(tipo: TipoUbicacion.casa));
+
+      expect((await espacio('activo')).numeroDepto, isNull);
+      for (final (id, numero) in [('baja-1', '4C'), ('baja-2', '5D')]) {
+        final e = await espacio(id);
+        expect((e.numeroDepto, e.updatedAt, e.deletedAt), (numero, t0, t0), reason: id);
+      }
+      expect(entidadesEncoladas(), ['ubicacion', 'espacio']);
+    });
+
+    test('dado un depto que ya no tenía número, cuando pasa a CASA, no escribe ni encola nada del '
+        'espacio', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1');
+      encolador.encolados.clear();
+
+      await ok(params(tipo: TipoUbicacion.casa));
+
+      expect((await guardada()).tipo, TipoUbicacion.casa);
+      expect((await espacio('e1')).updatedAt, t0);
+      expect(entidadesEncoladas(), ['ubicacion']);
+    });
+
+    test('dado un EDIFICIO sin ningún espacio, cuando pasa a CASA, la casa recibe su espacio '
+        'default y se encolan el update de la ubicación y el insert del espacio (#382)', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      encolador.encolados.clear();
+
+      final r = await ok(params(tipo: TipoUbicacion.casa));
+
+      expect(r, isA<UbicacionModificada>());
+      expect((await guardada()).tipo, TipoUbicacion.casa);
+      final e = await espacio('esp-nuevo');
+      expect((e.ubicacionId, e.numeroDepto, e.piso, e.descripcion), ('ub-1', null, null, null));
+      expect((e.createdAt, e.updatedAt, e.createdBy, e.deletedAt), (t1, t1, 'col-1', null));
+      expect(cambiosEncolados(), [
+        [
+          'ubicacion',
+          OperacionSync.update,
+          {...ubicacion(tipo: TipoUbicacion.casa).toJson(), 'updated_at': t1.toIso8601String()},
+        ],
+        [
+          'espacio',
+          OperacionSync.insert,
+          {
+            'id': 'esp-nuevo',
+            'ubicacion_id': 'ub-1',
+            'numero_depto': null,
+            'piso': null,
+            'created_at': t1.toIso8601String(),
+            'updated_at': t1.toIso8601String(),
+            'created_by': 'col-1',
+            'deleted_at': null,
+            'sync_version': 0,
+          },
+        ],
+      ]);
+    });
+
+    test('dado un NEGOCIO sin ningún espacio, cuando pasa a CASA, también recibe su espacio '
+        'default (#382)', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.negocio));
+      encolador.encolados.clear();
+
+      await ok(params(tipo: TipoUbicacion.casa));
+
+      expect((await guardada()).tipo, TipoUbicacion.casa);
+      expect((await espacio('esp-nuevo')).numeroDepto, isNull);
+      expect(await local.contarEspaciosActivos('ub-1'), 1);
+      expect(entidadesEncoladas(), ['ubicacion', 'espacio']);
+    });
+
+    test('dado un EDIFICIO con todos sus deptos dados de baja, cuando pasa a CASA, recibe su '
+        'espacio y los de baja quedan como están (#382)', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'baja-1', numeroDepto: '4C', deletedAt: t0);
+      encolador.encolados.clear();
+
+      await ok(params(tipo: TipoUbicacion.casa));
+
+      expect(await local.contarEspaciosActivos('ub-1'), 1);
+      expect((await espacio('esp-nuevo')).deletedAt, isNull);
+      final baja = await espacio('baja-1');
+      expect((baja.numeroDepto, baja.updatedAt, baja.deletedAt), ('4C', t0, t0));
+      expect(entidadesEncoladas(), ['ubicacion', 'espacio']);
+    });
+
+    test(
+      'dado un EDIFICIO o NEGOCIO con un espacio, cuando pasa a CASA, no se crea otro (#382)',
+      () async {
+        for (final (id, tipo) in [
+          ('ub-e', TipoUbicacion.edificio),
+          ('ub-n', TipoUbicacion.negocio),
+        ]) {
+          await local.insertar(ubicacion(id: id, tipo: tipo));
+          await espacioEn(id, 'e-$id', numeroDepto: '3B');
+          encolador.encolados.clear();
+
+          await ok(params(id: id, tipo: TipoUbicacion.casa));
+
+          expect(await local.contarEspaciosActivos(id), 1, reason: id);
+          expect(
+            (await db.select(db.espacios).get()).where((e) => e.id == 'esp-nuevo'),
+            isEmpty,
+            reason: id,
+          );
+          expect(entidadesEncoladas(), [
+            'ubicacion',
+            'espacio',
+          ], reason: 'el update del depto, $id');
+        }
+      },
+    );
+
+    test('dado un EDIFICIO sin ningún espacio, cuando pasa a NEGOCIO, no se crea ninguno: el '
+        'espacio default es solo de la casa (#382)', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      encolador.encolados.clear();
+
+      await ok(params(tipo: TipoUbicacion.negocio));
+
+      expect((await guardada()).tipo, TipoUbicacion.negocio);
+      expect(await db.select(db.espacios).get(), isEmpty);
+      expect(entidadesEncoladas(), ['ubicacion']);
+    });
+
+    test('dado que el encolado del espacio nuevo falla, cuando pasa a CASA, no queda a medias: '
+        'sigue siendo edificio y sin espacio (#382)', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      encolador
+        ..fallarCon = StateError('motor apagado')
+        ..fallarDespuesDe = encolador.encolados.length + 1;
+
+      final f = await falla(params(tipo: TipoUbicacion.casa));
+
+      expect(f, isA<FailureInesperado>());
+      final u = await guardada();
+      expect((u.tipo, u.auditoria.updatedAt), (TipoUbicacion.edificio, t0));
+      expect(await db.select(db.espacios).get(), isEmpty);
+    });
+
+    test('dado un doble toque en "Guardar", cuando pasa a CASA sin espacios, el segundo no crea '
+        'otro espacio (#382)', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      encolador.encolados.clear();
+
+      final primero = await ok(params(tipo: TipoUbicacion.casa));
+      final segundo = await ok(params(tipo: TipoUbicacion.casa));
+
+      expect(primero, isA<UbicacionModificada>());
+      expect(segundo, isA<UbicacionModificada>());
+      expect(await local.contarEspaciosActivos('ub-1'), 1);
+      expect(entidadesEncoladas(), ['ubicacion', 'espacio']);
+    });
+
+    test('dado que la casa sin espacios vuelve a EDIFICIO, el espacio nuevo queda como su primer '
+        'depto, sin número (#382)', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await ok(params(tipo: TipoUbicacion.casa));
+      encolador.encolados.clear();
+
+      await ok(params(tipo: TipoUbicacion.edificio, base: t1));
+
+      expect((await guardada()).tipo, TipoUbicacion.edificio);
+      expect(await local.contarEspaciosActivos('ub-1'), 1);
+      expect((await espacio('esp-nuevo')).numeroDepto, isNull);
+      expect(entidadesEncoladas(), ['ubicacion']);
+    });
+
+    test('dado el data source, cuando llega espacioSiNoTiene sin reduceAUnEspacio, no lo usa: '
+        'solo el cambio de tipo que deja un espacio crea el de la casa (#382)', () async {
+      await local.insertar(ubicacion());
+
+      await local.actualizar(
+        ubicacion(tipo: TipoUbicacion.casa, calle: 'Otra calle'),
+        baseUpdatedAt: t0,
+        espacioSiNoTiene: EspacioModel(
+          id: 'esp-x',
+          ubicacionId: 'ub-1',
+          auditoria: Auditoria(createdAt: t1, updatedAt: t1),
+        ),
+      );
+
+      expect(await db.select(db.espacios).get(), isEmpty);
+    });
+
+    test('dado el cambio de tipo junto con otros (la calle y el número), cuando guarda, el depto '
+        'también queda sin número', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1', numeroDepto: '3B');
+
+      await ok(params(tipo: TipoUbicacion.casa, calle: 'Bulevar Artigas', numero: '99'));
+
+      final u = await guardada();
+      expect((u.tipo, u.calle, u.numero), (TipoUbicacion.casa, 'Bulevar Artigas', '99'));
+      expect((await espacio('e1')).numeroDepto, isNull);
+    });
+
+    test('dado que el encolado del espacio falla, cuando guarda, no queda a medias: la ubicación '
+        'sigue siendo edificio y el depto conserva el número', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1', numeroDepto: '3B');
+      encolador
+        ..fallarCon = StateError('motor apagado')
+        ..fallarDespuesDe = encolador.encolados.length + 1;
+
+      final f = await falla(params(tipo: TipoUbicacion.casa));
+
+      expect(f, isA<FailureInesperado>());
+      final u = await guardada();
+      expect((u.tipo, u.auditoria.updatedAt), (TipoUbicacion.edificio, t0));
+      final e = await espacio('e1');
+      expect((e.numeroDepto, e.updatedAt), ('3B', t0));
+    });
+
+    test('dado un aviso de posible duplicado, cuando el colportor todavía no confirmó, no se toca '
+        'el depto; con "seguir igual" se guardan los dos cambios', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await local.insertar(ubicacion(id: 'ub-2', numero: '1237', punto: alNorte(150)));
+      await espacioEn('ub-1', 'e1', numeroDepto: '3B');
+      encolador.encolados.clear();
+
+      final frenada = await ok(params(tipo: TipoUbicacion.casa, numero: '1237'));
+
+      expect(frenada, isA<ModificacionConDuplicados>());
+      expect((await guardada()).tipo, TipoUbicacion.edificio);
+      expect((await espacio('e1')).numeroDepto, '3B');
+      expect(encolador.encolados, isEmpty);
+
+      await ok(
+        params(
+          tipo: TipoUbicacion.casa,
+          numero: '1237',
+          justificacion: 'Son dos casas del mismo número',
+        ),
+      );
+
+      expect((await guardada()).tipo, TipoUbicacion.casa);
+      expect((await espacio('e1')).numeroDepto, isNull);
+      expect(entidadesEncoladas(), ['ubicacion', 'espacio']);
+    });
+
+    test('dado un doble toque en "Guardar", cuando el segundo llega con la base vieja, no vuelve a '
+        'tocar el espacio', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1', numeroDepto: '3B');
+      encolador.encolados.clear();
+
+      final primero = await ok(params(tipo: TipoUbicacion.casa));
+      final segundo = await ok(params(tipo: TipoUbicacion.casa));
+
+      expect(primero, isA<UbicacionModificada>());
+      expect(segundo, isA<UbicacionModificada>());
+      expect(entidadesEncoladas(), ['ubicacion', 'espacio']);
+    });
+
+    test('dado una CASA con su espacio sin número, cuando pasa a EDIFICIO, el espacio queda como '
+        'el primer depto, sin número, y no se toca', () async {
+      await local.insertar(ubicacion());
+      await espacioEn('ub-1', 'e1', piso: 'PB');
+      encolador.encolados.clear();
+
+      await ok(params(tipo: TipoUbicacion.edificio));
+
+      expect((await guardada()).tipo, TipoUbicacion.edificio);
+      final e = await espacio('e1');
+      expect((e.numeroDepto, e.piso, e.updatedAt, e.deletedAt), (null, 'PB', t0, null));
+      expect(entidadesEncoladas(), ['ubicacion']);
+    });
+
+    test('dado un EDIFICIO con un depto "3B" que pasa a CASA y vuelve a EDIFICIO, el depto sigue '
+        'ahí, ahora sin número', () async {
+      await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
+      await espacioEn('ub-1', 'e1', numeroDepto: '3B');
+      await ok(params(tipo: TipoUbicacion.casa));
+      encolador.encolados.clear();
+
+      await ok(params(tipo: TipoUbicacion.edificio, base: t1));
+
+      expect((await guardada()).tipo, TipoUbicacion.edificio);
+      final e = await espacio('e1');
+      expect((e.numeroDepto, e.deletedAt), (null, null));
+      expect(entidadesEncoladas(), ['ubicacion']);
+    });
   });
 
   group('Desplazamiento y ciudad', () {
@@ -381,13 +946,36 @@ void main() {
       expect(encolador.encolados, isEmpty);
     });
 
-    test('dado "seguir igual" con motivo, cuando modifica, guarda aunque haya candidata', () async {
+    test('D1: dado "seguir igual" con motivo y la misma dirección a ~10 m, cuando modifica, no '
+        'guarda: sigue devolviendo la candidata, que no admite conservar las dos', () async {
       final r = await ok(params(numero: '1236', justificacion: 'Son dos locales distintos'));
 
-      expect(r, isA<UbicacionModificada>());
-      expect((await guardada()).numero, '1236');
-      expect(encolador.encolados, hasLength(1));
+      expect(r, isA<ModificacionConDuplicados>());
+      final candidata = (r as ModificacionConDuplicados).candidatas.single;
+      expect((candidata.ubicacion.id, candidata.admiteConservarAmbos), ('ub-2', false));
+      expect((await guardada()).numero, '1234');
+      expect(encolador.encolados, isEmpty);
     });
+
+    test(
+      'D1: dado la misma dirección a 150 m, cuando modifica avisa, y con "seguir igual" y motivo '
+      'guarda (dos casas con el mismo número)',
+      () async {
+        await local.insertar(ubicacion(id: 'ub-5', numero: '1237', punto: alNorte(150)));
+        encolador.encolados.clear();
+
+        final aviso = await ok(params(numero: '1237'));
+        expect(aviso, isA<ModificacionConDuplicados>());
+        expect((aviso as ModificacionConDuplicados).candidatas.single.admiteConservarAmbos, isTrue);
+        expect((await guardada()).numero, '1234');
+
+        final r = await ok(params(numero: '1237', justificacion: 'Son dos casas del mismo número'));
+
+        expect(r, isA<UbicacionModificada>());
+        expect((await guardada()).numero, '1237');
+        expect(encolador.encolados, hasLength(1));
+      },
+    );
 
     test(
       'dado que la otra está dada de baja o es de otra ciudad, cuando modifica, no es candidata',

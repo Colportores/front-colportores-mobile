@@ -35,8 +35,8 @@ final class _RemoteQueLanzaExcepcionGenerica
     with RemotoSinSesionDeslizante
     implements AuthRemoteDataSource {
   @override
-  Future<SesionModel> iniciarSesion({required String email, required String password}) {
-    throw UnimplementedError();
+  Future<SesionModel> iniciarSesion({required String email, required String password}) async {
+    throw Exception('boom');
   }
 
   @override
@@ -49,9 +49,6 @@ final class _RemoteQueLanzaExcepcionGenerica
   }) async {
     throw Exception('boom');
   }
-
-  @override
-  Future<SesionModel> iniciarSesionConGoogle() async => throw Exception('boom');
 
   @override
   Future<SesionModel?> obtenerSesionActual() async => throw Exception('boom');
@@ -92,9 +89,6 @@ final class _RemoteConSesionRecordada
 
   final SesionModel? recordada;
   final AuthRemoteException? falla;
-  final AuthRemoteDataSourceEnMemoria _interno = AuthRemoteDataSourceEnMemoria(
-    credenciales: const {},
-  );
 
   @override
   Future<SesionModel?> obtenerSesionActual() async {
@@ -106,14 +100,10 @@ final class _RemoteConSesionRecordada
   SesionModel? sesionEnElCliente() => recordada;
 
   @override
-  Future<SesionModel> iniciarSesionConGoogle() {
+  Future<SesionModel> iniciarSesion({required String email, required String password}) async {
     if (falla != null) throw falla!;
-    return _interno.iniciarSesionConGoogle();
+    throw UnimplementedError();
   }
-
-  @override
-  Future<SesionModel> iniciarSesion({required String email, required String password}) =>
-      throw UnimplementedError();
 
   @override
   Future<SesionModel?> registrar({
@@ -164,9 +154,6 @@ final class _RemoteQueLanzaEnRegistrar
     required String email,
     required String password,
   }) async => throw excepcion;
-
-  @override
-  Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
 
   @override
   Future<SesionModel?> obtenerSesionActual() => throw UnimplementedError();
@@ -236,9 +223,6 @@ final class _RemoteConTokenRenovado with RemotoSinSesionDeslizante implements Au
   );
 
   @override
-  Future<SesionModel> iniciarSesionConGoogle() => interno.iniciarSesionConGoogle();
-
-  @override
   Future<void> cerrarSesion(String accessToken) => interno.cerrarSesion(accessToken);
 
   @override
@@ -284,9 +268,6 @@ final class _RemoteQueFallaAlRenovar
     required String email,
     required String password,
   }) => throw UnimplementedError();
-
-  @override
-  Future<SesionModel> iniciarSesionConGoogle() => throw UnimplementedError();
 
   @override
   Future<SesionModel?> obtenerSesionActual() => throw UnimplementedError();
@@ -368,6 +349,39 @@ void main() {
         expect(resultado, const Left<Failure, Sesion>(FailureSinConexion()));
       });
     });
+
+    group('dado que el data source falla de otra forma', () {
+      test('cuando lanza algo no tipado, devuelve FailureInesperado y no persiste', () async {
+        final repo = AuthRepositoryImpl(
+          _RemoteQueLanzaExcepcionGenerica(),
+          local,
+          logger: loggerMudo(),
+        );
+
+        final resultado = await repo.iniciarSesion(
+          email: 'ana@example.com',
+          password: 'secreto123',
+        );
+
+        expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
+        expect(await local.leerSesion(), isNull);
+      });
+
+      test('un ServidorException con mensaje llega como FailureServidor con ese mensaje', () async {
+        final repo = AuthRepositoryImpl(
+          _RemoteConSesionRecordada(falla: const ServidorException(mensaje: 'No se completó')),
+          local,
+          logger: loggerMudo(),
+        );
+
+        final resultado = await repo.iniciarSesion(
+          email: 'ana@example.com',
+          password: 'secreto123',
+        );
+
+        expect(resultado, const Left<Failure, Sesion>(FailureServidor(mensaje: 'No se completó')));
+      });
+    });
   });
 
   group('AuthRepositoryImpl.solicitarRecuperacionPassword', () {
@@ -401,22 +415,12 @@ void main() {
 
     test('dado que el proveedor falla por un error genérico del servidor (no rate limit), '
         'devuelve la falla visible en vez de enmascararla', () async {
-      remote.fallaAlSolicitarRecuperacion = const ServidorException(
-        status: 500,
-        mensaje: 'No se pudo completar la operación (unexpected_failure).',
-      );
+      remote.fallaAlSolicitarRecuperacion = const ServidorException(status: 500);
 
       final resultado = await repository.solicitarRecuperacionPassword(email: 'ana@example.com');
 
-      expect(
-        resultado,
-        const Left<Failure, Unit>(
-          FailureServidor(
-            status: 500,
-            mensaje: 'No se pudo completar la operación (unexpected_failure).',
-          ),
-        ),
-      );
+      // Sin texto propio: la falla trae el genérico y cada pantalla compone el suyo (#542).
+      expect(resultado, const Left<Failure, Unit>(FailureServidor(status: 500)));
     });
 
     test('dado que no hay conexión, devuelve FailureSinConexion', () async {
@@ -608,6 +612,34 @@ void main() {
       });
     });
 
+    group('dado que el servidor rechaza la contraseña por larga (72 bytes)', () {
+      test(
+        'cuando registra, devuelve FailureValidacion con el texto del tope en password',
+        () async {
+          final repositorioRoto = AuthRepositoryImpl(
+            _RemoteQueLanzaEnRegistrar(const PasswordDemasiadoLargaException()),
+            local,
+            logger: loggerMudo(),
+          );
+
+          final resultado = await repositorioRoto.registrar(
+            nombre: 'Bruno',
+            apellido: 'Díaz',
+            cedula: '12345678',
+            email: 'bruno@example.com',
+            password: 'Aa1${'x' * 80}',
+          );
+
+          expect(
+            resultado,
+            const Left<Failure, ResultadoRegistro>(
+              FailureValidacion(campos: {'password': 'Es demasiado larga. Acortala.'}),
+            ),
+          );
+        },
+      );
+    });
+
     group('dado un error inesperado del data source', () {
       test('cuando registra, devuelve FailureInesperado en vez de dejarla escapar', () async {
         final repositorioRoto = AuthRepositoryImpl(
@@ -651,52 +683,6 @@ void main() {
 
         expect(resultado, const Left<Failure, ResultadoRegistro>(FailureServidor(status: 503)));
       });
-    });
-  });
-
-  group('AuthRepositoryImpl.iniciarSesionConGoogle', () {
-    test('cuando el proveedor entra, devuelve la Sesion y la persiste localmente', () async {
-      final resultado = await repository.iniciarSesionConGoogle();
-
-      expect(resultado.isRight(), isTrue);
-      final sesion = resultado.getOrElse(() => throw StateError('Left'));
-      expect(sesion, isA<Sesion>().having((s) => s.runtimeType, 'tipo', Sesion));
-      expect(sesion.email, AuthRemoteDataSourceEnMemoria.emailGoogle);
-      expect(remote.llamadasIniciarSesionConGoogle, 1);
-      expect(await local.leerSesion(), SesionModel.fromEntity(sesion));
-    });
-
-    test('cuando no hay conexión, devuelve FailureSinConexion y no persiste nada', () async {
-      remote.simularSinConexion = true;
-
-      final resultado = await repository.iniciarSesionConGoogle();
-
-      expect(resultado, const Left<Failure, Sesion>(FailureSinConexion()));
-      expect(await local.leerSesion(), isNull);
-    });
-
-    test('cuando el data source lanza algo no tipado, devuelve FailureInesperado', () async {
-      final repo = AuthRepositoryImpl(
-        _RemoteQueLanzaExcepcionGenerica(),
-        local,
-        logger: loggerMudo(),
-      );
-
-      final resultado = await repo.iniciarSesionConGoogle();
-
-      expect(resultado.fold((f) => f, (_) => null), isA<FailureInesperado>());
-    });
-
-    test('un ServidorException con mensaje llega como FailureServidor con ese mensaje', () async {
-      final repo = AuthRepositoryImpl(
-        _RemoteConSesionRecordada(falla: const ServidorException(mensaje: 'No se completó')),
-        local,
-        logger: loggerMudo(),
-      );
-
-      final resultado = await repo.iniciarSesionConGoogle();
-
-      expect(resultado, const Left<Failure, Sesion>(FailureServidor(mensaje: 'No se completó')));
     });
   });
 
@@ -1011,6 +997,67 @@ void main() {
     });
   });
 
+  group('AuthRepositoryImpl — el servidor no manda correos a la dirección (#353)', () {
+    // 400 `email_address_invalid`: llega al campo del email con un aviso que dice qué hacer, igual
+    // en las cuatro pantallas, y no es un error general ni una falla del servidor.
+    const aviso = FailureValidacion(
+      campos: {'email': 'Revisá el email: no podemos mandar correos a esa dirección.'},
+    );
+
+    test('al registrar, devuelve FailureValidacion en el campo email', () async {
+      final repo = AuthRepositoryImpl(
+        _RemoteQueLanzaEnRegistrar(const EmailInvalidoException()),
+        local,
+        logger: loggerMudo(),
+      );
+
+      final resultado = await repo.registrar(
+        nombre: 'Lucía',
+        apellido: 'Silva',
+        cedula: '12345678',
+        email: 'lucia@gmial.com',
+        password: 'Secreto123',
+      );
+
+      expect(resultado, const Left<Failure, ResultadoRegistro>(aviso));
+    });
+
+    test('al reenviar la verificación, devuelve FailureValidacion en el campo email', () async {
+      remote.fallaAlReenviar = const EmailInvalidoException();
+
+      final resultado = await repository.reenviarVerificacion(email: 'lucia@gmial.com');
+
+      expect(resultado, const Left<Failure, Unit>(aviso));
+    });
+
+    // HU-AUTH-004 «nunca debe revelar si el email existe» (#363): el servidor rechaza la dirección
+    // solo al armar el correo, o sea solo si la cuenta existe; mostrarlo la distinguiría de una que
+    // no existe. Vuelve como el éxito de siempre.
+    test('al pedir la recuperación, vuelve como éxito (no revela que la cuenta existe)', () async {
+      remote.fallaAlSolicitarRecuperacion = const EmailInvalidoException();
+
+      final resultado = await repository.solicitarRecuperacionPassword(email: 'lucia@gmial.com');
+
+      expect(resultado, const Right<Failure, Unit>(unit));
+    });
+
+    test('al pedir la recuperación, el rechazo deja un warn sin el correo', () async {
+      remote.fallaAlSolicitarRecuperacion = const EmailInvalidoException();
+      final salida = _SalidaEnMemoria();
+      final repo = AuthRepositoryImpl(remote, local, logger: AppLogger(output: salida));
+
+      await repo.solicitarRecuperacionPassword(email: 'lucia@gmial.com');
+
+      expect(
+        salida.lineas,
+        anyElement(startsWith('[WARN][AUTH][RECUPERACION_EMAIL_RECHAZADO]')),
+        reason: 'queda registrado que el servidor rechazó la dirección',
+      );
+      expect(salida.lineas.join('\n'), isNot(contains('lucia')));
+      expect(salida.lineas.join('\n'), isNot(contains('gmial')));
+    });
+  });
+
   group('AuthRepositoryImpl.erroresVerificacionEmail', () {
     test('reenvía lo que emite el remoto', () async {
       final futuro = repository.erroresVerificacionEmail.first;
@@ -1076,7 +1123,7 @@ void main() {
       );
       expect(
         const FailureSesionRevocada().mensaje,
-        'Tu sesión se cerró desde el servidor. Iniciá sesión nuevamente.',
+        'Tu sesión se cerró porque se cerró sesión en todos tus teléfonos o se cambió la contraseña. Entrá de nuevo.',
       );
     });
 

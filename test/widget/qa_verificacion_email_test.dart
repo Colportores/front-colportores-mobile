@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/casos_email.dart';
 import '../helpers/db_local_repository_en_memoria.dart';
 
 const _correo = 'lucia.silva@correo.com';
@@ -75,6 +76,9 @@ Future<void> _tocar(WidgetTester tester, String key) async {
   await tester.tap(find.byKey(Key(key)));
   await tester.pumpAndSettle();
 }
+
+/// Lo que dice el campo del email cuando está incompleto o mal armado (#700).
+const _emailIncompleto = 'El email no es válido. Revisá que esté completo, como nombre@correo.com.';
 
 void main() {
   const tamanios = {'360x640': Size(360, 640), '412x915': Size(412, 915)};
@@ -155,15 +159,16 @@ void main() {
     for (final (entrada, mensaje) in [
       ('', 'Ingresá tu email'),
       ('     ', 'Ingresá tu email'),
-      ('lucia', 'El email no es válido'),
-      ('lucia@', 'El email no es válido'),
-      ('lucia@correo', 'El email no es válido'),
-      ('lu cia@correo.com', 'El email no es válido'),
-      ('😀@😀.com', null),
-      ('${'a' * 300}@correo.com', null),
+      ('lucia', _emailIncompleto),
+      ('lucia@', _emailIncompleto),
+      ('lucia@correo', _emailIncompleto),
+      ('lu cia@correo.com', avisoCaracterNoPermitido),
+      ('😀@😀.com', avisoCaracterNoPermitido),
+      // Más largo que cualquier dirección (254): no sale al servidor y no rompe la pantalla.
+      ('${'a' * 300}@correo.com', _emailIncompleto),
     ]) {
       testWidgets('"${entrada.length > 20 ? '${entrada.substring(0, 20)}…' : entrada}": '
-          '${mensaje ?? 'no rompe la pantalla'}', (tester) async {
+          '$mensaje', (tester) async {
         _pantalla(tester, const Size(390, 844));
         final remote = _remoto();
         await _montar(
@@ -176,13 +181,11 @@ void main() {
         await reenviarCon(tester, entrada);
 
         expect(tester.takeException(), isNull);
-        if (mensaje != null) {
-          expect(find.text(mensaje), findsOneWidget);
-          expect(remote.reenviosPorEmail, isEmpty);
-          // Lo tipeado no se pierde tras el error.
-          final campo = tester.widget<TextField>(find.byKey(const Key('verificacion_email_campo')));
-          expect(campo.controller!.text, entrada);
-        }
+        expect(find.text(mensaje), findsOneWidget);
+        expect(remote.reenviosPorEmail, isEmpty);
+        // Lo tipeado no se pierde tras el error.
+        final campo = tester.widget<TextField>(find.byKey(const Key('verificacion_email_campo')));
+        expect(campo.controller!.text, entrada);
       });
     }
 
@@ -203,6 +206,26 @@ void main() {
       expect(remote.reenviosPorEmail.keys, ['lucia.silva@correo.com']);
     });
 
+    testWidgets(
+      'un correo pegado con un carácter invisible en el medio (U+200B, U+200E) se reenvía '
+      'limpio, sin avisar de lo que no se ve',
+      (tester) async {
+        _pantalla(tester, const Size(390, 844));
+        final remote = _remoto();
+        await _montar(
+          tester,
+          remote,
+          email: '',
+          password: null,
+          estado: EstadoVerificacionEmail.expirado,
+        );
+        await reenviarCon(tester, 'lu\u200Bcia.\u200Esilva@correo.com\u200B');
+
+        expect(find.text(avisoCaracterNoPermitido), findsNothing);
+        expect(remote.reenviosPorEmail.keys, ['lucia.silva@correo.com']);
+      },
+    );
+
     testWidgets('el aviso del campo se va cuando el usuario empieza a corregir', (tester) async {
       _pantalla(tester, const Size(390, 844));
       await _montar(
@@ -213,12 +236,12 @@ void main() {
         estado: EstadoVerificacionEmail.expirado,
       );
       await reenviarCon(tester, 'lucia');
-      expect(find.text('El email no es válido'), findsOneWidget);
+      expect(find.text(_emailIncompleto), findsOneWidget);
 
       await tester.enterText(find.byKey(const Key('verificacion_email_campo')), 'lucia@correo.com');
       await tester.pump();
 
-      expect(find.text('El email no es válido'), findsNothing);
+      expect(find.text(_emailIncompleto), findsNothing);
     });
   });
 

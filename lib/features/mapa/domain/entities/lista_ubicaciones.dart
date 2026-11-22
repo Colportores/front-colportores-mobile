@@ -1,16 +1,37 @@
 import 'package:equatable/equatable.dart';
 
 import 'consulta_lista_ubicaciones.dart';
+import 'estado_casa.dart';
+import 'motivo_baja.dart';
 import 'ubicacion.dart';
 
 /// Una fila de la lista de ubicaciones.
 final class ItemListaUbicacion extends Equatable {
-  const ItemListaUbicacion({required this.ubicacion, this.distanciaMetros});
+  const ItemListaUbicacion({
+    required this.ubicacion,
+    this.distanciaMetros,
+    this.cantidadEspacios = 0,
+    this.estado,
+    this.proximaEntrevista,
+    this.motivoBaja,
+  });
 
   final Ubicacion ubicacion;
 
   /// Distancia en metros desde la posición del GPS; `null` si no había posición.
   final double? distanciaMetros;
+
+  /// Espacios (deptos) sin baja de la ubicación.
+  final int cantidadEspacios;
+
+  /// Estado de la casa (`house_status`): ver `UbicacionConResumen.estado`.
+  final EstadoCasa? estado;
+
+  /// Hora de la entrevista agendada, si el estado es [EstadoCasa.entrevistaAgendada] y se conoce.
+  final DateTime? proximaEntrevista;
+
+  /// El motivo de la baja (`UbicacionConResumen.motivoBaja`), si la fila es una baja y se conoce.
+  final String? motivoBaja;
 
   /// Está dada de baja (soft delete): la vista la etiqueta "Baja".
   bool get esBaja => ubicacion.estaBorrada;
@@ -18,8 +39,27 @@ final class ItemListaUbicacion extends Equatable {
   /// Una baja no permite visitas ni ventas (HU-UBI-002, escenario "incluir bajas").
   bool get esInteractiva => !esBaja;
 
+  /// Es una baja por unión de duplicados (`duplicado_de_*`, HU-UBI-006): la unión es definitiva y la
+  /// fila dice «Unida a otra ubicación» en el lugar del motivo (HU-UBI-005, «Reactivar»).
+  bool get esBajaPorUnion => esBaja && MotivosBaja.esUnion(motivoBaja);
+
+  /// «Reactivar» se ofrece en toda baja menos en la que nació de unir duplicados.
+  bool get puedeReactivarse => esBaja && !esBajaPorUnion;
+
   @override
-  List<Object?> get props => [ubicacion, distanciaMetros];
+  List<Object?> get props => [
+    ubicacion,
+    distanciaMetros,
+    cantidadEspacios,
+    estado,
+    proximaEntrevista,
+    motivoBaja,
+  ];
+
+  /// [motivoBaja] es texto libre del colportor y está en [props]: `EquatableConfig.stringify` arranca
+  /// en `true` en debug y lo imprimiría en el `toString` (R-UB09, ni a logs ni a telemetría).
+  @override
+  bool? get stringify => false;
 }
 
 /// Resultado de [ConsultaListaUbicaciones]: la página pedida y los contadores.
@@ -28,9 +68,14 @@ final class ListaUbicaciones extends Equatable {
     required this.items,
     required this.total,
     required this.porTipo,
+    required this.porEstado,
+    required this.totalGeneral,
+    required this.totalBajas,
+    required this.estadosConocidos,
     required this.hayMas,
     required this.ordenAplicado,
     required this.sinUbicaciones,
+    this.bajasOcultas = 0,
   });
 
   /// Como mucho `consulta.limite` ítems, ya ordenados.
@@ -43,6 +88,24 @@ final class ListaUbicaciones extends Equatable {
   /// Cuántas habría por tipo si no se filtrara por tipo pero sí por todo lo demás: sirve para el
   /// número al lado de cada chip de tipo. Están los tres tipos, aunque sea con 0.
   final Map<TipoUbicacion, int> porTipo;
+
+  /// Lo mismo por estado de la casa: cuántas habría por estado si no se filtrara por estado pero sí
+  /// por todo lo demás («Casa 8» quiere decir 8 casas con cobranza pendiente). Están los ocho
+  /// estados, aunque sea con 0; las de estado desconocido no cuentan en ninguno.
+  final Map<EstadoCasa, int> porEstado;
+
+  /// Cuántas ubicaciones del colportor hay antes de aplicar ningún filtro (el «de 30» de «8 de 30»),
+  /// con las bajas dentro solo si se pidieron.
+  final int totalGeneral;
+
+  /// Cuántas de esas [totalGeneral] están dadas de baja («25 de 33 · 3 bajas»). Es 0 sin
+  /// `incluirBajas`.
+  final int totalBajas;
+
+  /// Al menos una ubicación del colportor trae su estado: la vista ofrece el filtro por estado y
+  /// muestra el estado de cada fila. Con la lista leída de `house_status` (HU-VIS-005) es `true`
+  /// apenas hay una ubicación.
+  final bool estadosConocidos;
 
   /// Hay más ubicaciones que las devueltas: la vista puede pedir la página siguiente.
   final bool hayMas;
@@ -57,6 +120,16 @@ final class ListaUbicaciones extends Equatable {
   /// baja y "Mostrar bajas" está apagado, es `true` (no hay nada que listar).
   final bool sinUbicaciones;
 
+  /// Cuántas ubicaciones del colportor están dadas de baja y **no** se listan porque «Mostrar
+  /// bajas» está apagado (0 si está prendido). Con [sinUbicaciones] distingue «todavía no
+  /// registraste ubicaciones» de «no tenés ubicaciones activas»: solo hay bajas, y la vista ofrece
+  /// mostrarlas.
+  final int bajasOcultas;
+
+  /// El colportor no tiene ninguna ubicación activa pero sí bajas que «Mostrar bajas» mostraría:
+  /// el vacío no puede decir que no registró ninguna.
+  bool get soloBajas => sinUbicaciones && bajasOcultas > 0;
+
   /// No hay filas que mostrar (`total == 0`), sea por [sinUbicaciones] o por los filtros.
   bool get estaVacia => total == 0;
 
@@ -65,5 +138,17 @@ final class ListaUbicaciones extends Equatable {
   bool get sinResultados => total == 0 && !sinUbicaciones;
 
   @override
-  List<Object?> get props => [items, total, porTipo, hayMas, ordenAplicado, sinUbicaciones];
+  List<Object?> get props => [
+    items,
+    total,
+    porTipo,
+    porEstado,
+    totalGeneral,
+    totalBajas,
+    estadosConocidos,
+    hayMas,
+    ordenAplicado,
+    sinUbicaciones,
+    bajasOcultas,
+  ];
 }

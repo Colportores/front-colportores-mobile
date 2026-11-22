@@ -155,6 +155,34 @@ void main() {
       expect(await filas('espacio'), 1);
     });
 
+    test('dado "PB A" activo, cuando agrega "pb  a" (espacios de más), lo rechaza como '
+        'duplicado', () async {
+      await conEdificio();
+      await local.insertarEspacio(espacio(numeroDepto: 'PB A'));
+
+      await expectLater(
+        local.insertarEspacio(espacio(id: 'esp-2', numeroDepto: 'pb  a')),
+        rechaza(MotivoRechazoEspacio.deptoDuplicado),
+      );
+    });
+
+    test('dado un piso, cuando agrega el espacio, guarda el piso y lo encola', () async {
+      await conEdificio();
+      final e = EspacioModel(
+        id: 'esp-1',
+        ubicacionId: 'ub-1',
+        numeroDepto: '101',
+        piso: '1',
+        auditoria: Auditoria(createdAt: t0, updatedAt: t0, createdBy: 'col-1'),
+      );
+
+      final r = await local.insertarEspacio(e);
+
+      expect(r.espacio.piso, '1');
+      final fila = await db.customSelect('SELECT piso FROM espacio').getSingle();
+      expect(fila.read<String>('piso'), '1');
+    });
+
     test('dado "5B" en otra ubicación o dado de baja, cuando agrega "5B", lo permite', () async {
       await conEdificio();
       await local.insertar(ubicacion(id: 'ub-2'));
@@ -179,7 +207,7 @@ void main() {
     });
   });
 
-  group('actualizarNumeroDepto', () {
+  group('actualizarEspacio', () {
     setUp(() async {
       await conEdificio();
       await local.insertarEspacio(espacio());
@@ -189,7 +217,7 @@ void main() {
 
     test('dado un espacio "5B", cuando lo cambia a "5C", guarda el número y updated_at, deja '
         'sync_version y encola el update con la fila entera', () async {
-      final r = await local.actualizarNumeroDepto('esp-1', numeroDepto: '5C', ahora: t1);
+      final r = await local.actualizarEspacio('esp-1', numeroDepto: '5C', ahora: t1);
 
       expect(r.numeroDepto, '5C');
       expect(r.auditoria.updatedAt, t1);
@@ -201,15 +229,85 @@ void main() {
     });
 
     test('dado el mismo número, cuando lo "cambia", no escribe ni encola', () async {
-      final r = await local.actualizarNumeroDepto('esp-1', numeroDepto: '5B', ahora: t1);
+      final r = await local.actualizarEspacio('esp-1', numeroDepto: '5B', ahora: t1);
 
       expect(r.auditoria.updatedAt, t0);
       expect(encolador.encolados, isEmpty);
     });
 
+    test('dado un espacio sin piso, cuando le pone el piso "2", lo guarda, deja el número y encola '
+        'el update', () async {
+      final r = await local.actualizarEspacio('esp-1', numeroDepto: '5B', piso: '2', ahora: t1);
+
+      expect(r.numeroDepto, '5B');
+      expect(r.piso, '2');
+      expect(r.auditoria.updatedAt, t1);
+      expect(cola(), [
+        ['espacio', OperacionSync.update, r.toJson()],
+      ]);
+    });
+
+    test('dado un espacio con piso, cuando le saca el piso, queda sin piso', () async {
+      await local.actualizarEspacio('esp-1', numeroDepto: '5B', piso: '2', ahora: t1);
+      encolador.encolados.clear();
+
+      final r = await local.actualizarEspacio('esp-1', numeroDepto: '5B', ahora: t1);
+
+      expect(r.piso, isNull);
+      expect(encolador.encolados, hasLength(1));
+    });
+
+    test('dado el mismo número y el mismo piso, no escribe ni encola', () async {
+      await local.actualizarEspacio('esp-1', numeroDepto: '5B', piso: '2', ahora: t1);
+      encolador.encolados.clear();
+
+      final r = await local.actualizarEspacio(
+        'esp-1',
+        numeroDepto: '5B',
+        piso: '2',
+        ahora: t1.add(const Duration(minutes: 1)),
+      );
+
+      expect(r.auditoria.updatedAt, t1);
+      expect(encolador.encolados, isEmpty);
+    });
+
+    test('dado un espacio sin número (el de una casa que se unió), cuando le pone "7D", guarda el '
+        'número y conserva todo lo demás', () async {
+      await db.customStatement(
+        'INSERT INTO espacio (id, ubicacion_id, created_at, updated_at) '
+        "VALUES ('esp-sin', 'ub-1', 1, 1)",
+      );
+
+      final r = await local.actualizarEspacio('esp-sin', numeroDepto: '7D', ahora: t1);
+
+      expect(r.numeroDepto, '7D');
+      expect(r.piso, isNull);
+    });
+
+    test('dado que otro espacio activo tiene "6C", cuando lo cambia a "6 c", lo rechaza (los '
+        'espacios no cuentan)', () async {
+      await expectLater(
+        local.actualizarEspacio('esp-1', numeroDepto: '6 c', ahora: t1),
+        rechaza(MotivoRechazoEspacio.deptoDuplicado),
+      );
+    });
+
+    test('dado un depto repetido que ya estaba, cuando solo cambia el piso, no lo rechaza (el '
+        'número no cambió)', () async {
+      await db.customStatement(
+        'INSERT INTO espacio (id, ubicacion_id, numero_depto, created_at, updated_at) '
+        "VALUES ('esp-igual', 'ub-1', '5B', 1, 1)",
+      );
+
+      final r = await local.actualizarEspacio('esp-1', numeroDepto: '5B', piso: '3', ahora: t1);
+
+      expect(r.piso, '3');
+    });
+
     test('dado que otro espacio activo tiene "6c", cuando lo cambia a "6c", lo rechaza', () async {
       await expectLater(
-        local.actualizarNumeroDepto('esp-1', numeroDepto: '6c', ahora: t1),
+        local.actualizarEspacio('esp-1', numeroDepto: '6c', ahora: t1),
         rechaza(MotivoRechazoEspacio.deptoDuplicado),
       );
       expect(encolador.encolados, isEmpty);
@@ -217,7 +315,7 @@ void main() {
 
     test('dado un espacio que no existe, lo rechaza', () async {
       await expectLater(
-        local.actualizarNumeroDepto('nada', numeroDepto: '1', ahora: t1),
+        local.actualizarEspacio('nada', numeroDepto: '1', ahora: t1),
         rechaza(MotivoRechazoEspacio.espacioInexistente),
       );
     });
@@ -226,7 +324,7 @@ void main() {
       await local.darDeBajaEspacio('esp-1', ahora: t1);
 
       await expectLater(
-        local.actualizarNumeroDepto('esp-1', numeroDepto: '5C', ahora: t1),
+        local.actualizarEspacio('esp-1', numeroDepto: '5C', ahora: t1),
         rechaza(MotivoRechazoEspacio.espacioDeBaja),
       );
     });
@@ -239,7 +337,7 @@ void main() {
       );
 
       await expectLater(
-        local.actualizarNumeroDepto('esp-casa', numeroDepto: '1', ahora: t1),
+        local.actualizarEspacio('esp-casa', numeroDepto: '1', ahora: t1),
         rechaza(MotivoRechazoEspacio.ubicacionCasa),
       );
     });

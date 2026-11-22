@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_dat
 import 'package:colportores_mobile/features/auth/presentation/pages/verificacion_email_page.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
+import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -80,7 +81,7 @@ void _pantalla(WidgetTester tester, [Size tamanio = const Size(390, 844)]) {
 
 void main() {
   group('Caso 1 — sesión activa: «Tu email ya está verificado» y entra a la app', () {
-    testWidgets('muestra el texto de la vista 12 (A05) y, pasados unos segundos, vuelve a Inicio', (
+    testWidgets('muestra el texto de la vista 12 (A05) y se queda hasta que se toca el botón', (
       tester,
     ) async {
       _pantalla(tester);
@@ -94,22 +95,31 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Tu email ya está verificado'), findsOneWidget);
-      expect(find.text('Te llevamos al login…'), findsOneWidget);
+      // Decisión de Cristian (02/10): sin salida automática; el botón dice a dónde se va de verdad.
+      expect(find.text('Ya podés entrar a tu inicio.'), findsOneWidget);
+      expect(find.textContaining('Te llevamos'), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(find.text('Ir a mi inicio'), findsOneWidget);
+      expect(find.text('Ir al login'), findsNothing);
       expect(find.byKey(const Key('verificacion_email_ir_login')), findsOneWidget);
       // No es la pantalla de «enlace vencido»: ya no se trata el enlace usado como expirado.
       expect(find.text('El enlace expiró'), findsNothing);
       expect(find.byKey(const Key('verificacion_email_reenviar')), findsNothing);
 
-      await tester.pump(const Duration(seconds: 3));
+      // No sale sola: ni a los 4 segundos que tenía antes ni mucho después.
+      await tester.pump(const Duration(seconds: 5));
       expect(find.text('Tu email ya está verificado'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 60));
+      expect(find.text('Tu email ya está verificado'), findsOneWidget);
+      expect(find.byKey(const Key('inicio_principal')), findsNothing);
 
-      await tester.pump(const Duration(seconds: 2));
+      await tester.tap(find.byKey(const Key('verificacion_email_ir_login')));
       await tester.pumpAndSettle();
       expect(find.text('Tu email ya está verificado'), findsNothing);
       expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
     });
 
-    testWidgets('«Ir al login ahora» sale sin esperar; el temporizador después no hace nada', (
+    testWidgets('«Ir a mi inicio» sale en el momento y después no queda nada pendiente', (
       tester,
     ) async {
       _pantalla(tester);
@@ -148,8 +158,13 @@ void main() {
       remote.simularEnlaceVerificacionInvalido();
       await tester.pumpAndSettle();
       expect(find.text('Tu email ya está verificado'), findsOneWidget);
+      expect(find.text('otra pantalla'), findsNothing);
 
       await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(find.text('Tu email ya está verificado'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('verificacion_email_ir_login')));
       await tester.pumpAndSettle();
       expect(find.text('otra pantalla'), findsNothing);
       expect(find.byKey(const Key('inicio_principal')), findsOneWidget);
@@ -194,6 +209,10 @@ void main() {
 
       expect(remote.llamadasIniciarSesion, 1);
       expect(find.text('Tu email ya está verificado'), findsOneWidget);
+      // El login en silencio dejó la sesión abierta: la salida es Inicio, no el login.
+      expect(find.text('Ya podés entrar a tu inicio.'), findsOneWidget);
+      expect(find.text('Ir a mi inicio'), findsOneWidget);
+      expect(find.textContaining('Te llevamos'), findsNothing);
       expect(find.text('El enlace expiró'), findsNothing);
       expect(find.text('Ya verifiqué mi email'), findsNothing);
 
@@ -510,17 +529,91 @@ void main() {
       await montar(tester, estado: EstadoVerificacionEmail.yaVerificado);
 
       expect(find.text('Tu email ya está verificado'), findsOneWidget);
-      expect(find.text('Te llevamos al login…'), findsOneWidget);
-      expect(find.text('Ir al login ahora'), findsOneWidget);
+      expect(find.text('Ya podés entrar a tu inicio.'), findsOneWidget);
+      expect(find.text('Ir al login'), findsOneWidget);
+      expect(find.textContaining('Te llevamos'), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
       expect(find.text('VERIFICACIÓN DE EMAIL'), findsNothing);
       expect(find.byKey(const Key('verificacion_email_tarjeta')), findsNothing);
       expect(find.byKey(const Key('verificacion_email_reenviar')), findsNothing);
       expect(find.byKey(const Key('verificacion_email_volver_login')), findsNothing);
     });
 
-    testWidgets('«ya verificado»: doble toque en «Ir al login ahora» sale una sola vez', (
+    testWidgets('«ya verificado» con sesión: el botón dice «Ir a mi inicio» y sigue a la sesión', (
       tester,
     ) async {
+      _pantalla(tester);
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {_correo: _clave});
+      final container = ProviderContainer(
+        overrides: [
+          dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(sesionProvider.future);
+      await container.read(sesionProvider.notifier).iniciarSesion(email: _correo, password: _clave);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: temaClaro(),
+            home: const VerificacionEmailPage(
+              email: _correo,
+              estadoInicial: EstadoVerificacionEmail.yaVerificado,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ya podés entrar a tu inicio.'), findsOneWidget);
+      expect(find.text('Ir a mi inicio'), findsOneWidget);
+      expect(find.text('Ir al login'), findsNothing);
+
+      // Si la sesión termina con la pantalla abierta, el botón pasa a decir la verdad.
+      await container.read(sesionProvider.notifier).cerrarSesion();
+      await tester.pump();
+      expect(find.text('Ya podés entrar a tu inicio.'), findsOneWidget);
+      expect(find.text('Ir al login'), findsOneWidget);
+      expect(find.text('Ir a mi inicio'), findsNothing);
+    });
+
+    testWidgets('«ya verificado» con sesión a 200 % de texto: sin overflow', (tester) async {
+      _pantalla(tester, const Size(360, 640));
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final remote = AuthRemoteDataSourceEnMemoria(credenciales: const {_correo: _clave});
+      final container = ProviderContainer(
+        overrides: [
+          dbLocalRepositoryProvider.overrideWithValue(dbLocalYaPreparada()),
+          authRemoteDataSourceProvider.overrideWithValue(remote),
+          authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(sesionProvider.future);
+      await container.read(sesionProvider.notifier).iniciarSesion(email: _correo, password: _clave);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: temaClaro(),
+            home: const VerificacionEmailPage(
+              email: _correo,
+              estadoInicial: EstadoVerificacionEmail.yaVerificado,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ir a mi inicio'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('«ya verificado»: doble toque en «Ir al login» sale una sola vez', (tester) async {
       _pantalla(tester);
       await montar(tester, estado: EstadoVerificacionEmail.yaVerificado, pilaDeDos: true);
 
@@ -534,7 +627,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('«ya verificado»: salir con el atrás del sistema cancela el temporizador', (
+    testWidgets('«ya verificado»: salir con el atrás del sistema no deja nada pendiente', (
       tester,
     ) async {
       _pantalla(tester);

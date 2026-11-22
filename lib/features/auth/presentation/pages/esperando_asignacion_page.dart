@@ -13,6 +13,7 @@ import '../providers/asignacion_campania_providers.dart';
 import '../providers/estado_cuenta_providers.dart';
 import '../providers/sesion_notifier.dart';
 import '../widgets/aviso_modulo_bloqueado.dart';
+import '../widgets/terminar_jornada_de_la_cuenta.dart';
 
 /// Textos de la pantalla de espera (HU-AUTH-008, vista 18). Los literales de la HU van tal cual;
 /// el resto es propuesta del diseño.
@@ -44,12 +45,18 @@ abstract final class TextosEsperaAsignacion {
   static const irAConfiguracion = 'Ir a Configuración';
 
   static const tituloSinEstado = 'No pudimos revisar tu cuenta';
+
+  /// Sin conexión y sin estado conocido (nunca se pudo consultar; decisión de Cristian, 02/10): lo
+  /// dice tal cual, qué pasa y qué hacer, en vez del genérico «No pudimos revisar tu cuenta».
+  static const tituloSinConexion = 'Sin conexión';
+  static const sinConexionSinEstado =
+      'No hay conexión para revisar tu cuenta. Conectate a internet y tocá Reintentar.';
   static const probarDeNuevo = 'Probá de nuevo en unos minutos.';
   static const sinEstadoSinConexion =
       'Necesitás conexión para saber si ya te asignaron a una campaña. Conectate y tocá '
       'Actualizar.';
   static const sinEstado =
-      'No pudimos consultar el estado de tu cuenta. Tocá Actualizar para probar de nuevo; si '
+      'No pudimos consultar el estado de tu cuenta. Tocá Reintentar para probar de nuevo; si '
       'sigue pasando, avisale a tu coordinador.';
 
   static String revisadoRecien(String hora) => 'Revisado recién, a las $hora.';
@@ -97,9 +104,16 @@ class EsperandoAsignacionPage extends ConsumerStatefulWidget {
   ConsumerState<EsperandoAsignacionPage> createState() => _EsperandoAsignacionPageState();
 }
 
-class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPage> {
+class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPage>
+    with CierraSusAvisos<EsperandoAsignacionPage> {
   bool _consultando = false;
   _Resultado? _resultado;
+
+  /// «Terminar jornada» (#472) cambia de lugar en el árbol según el resultado de la revisión (18-A04
+  /// la lleva al final, el resto antes de los botones) y entre pendiente y suspendida: la clave
+  /// global la mueve sin perder la hora de fin que la persona eligió ni un cierre en vuelo (sin ella,
+  /// cada «Reintentar» la remontaba con el estado en cero).
+  final _terminarJornada = GlobalKey(debugLabel: 'espera_terminar_jornada');
 
   /// El resultado a mostrar: el de la última revisión pedida o, si todavía no se pidió ninguna y
   /// no se conoce el estado, la razón por la que no se conoce.
@@ -116,6 +130,16 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
     return ref.read(cuentaRepositoryProvider).ultimaConsultaExitosa(usuarioId);
   }
 
+  @override
+  void didUpdateWidget(EsperandoAsignacionPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Un aviso del módulo que habla de otra situación (sin conexión, y ahora la cuenta está
+    // pendiente) ya no es cierto.
+    if (oldWidget.estado != widget.estado || oldWidget.falla != widget.falla) {
+      cerrarAvisoAlTerminarElCuadro();
+    }
+  }
+
   Future<void> _actualizar() async {
     if (_consultando) return; // Doble tap o deslizar con el botón ya apretado: una sola consulta.
     setState(() => _consultando = true);
@@ -125,6 +149,8 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
     } on Object catch (e) {
       falla = FailureInesperado(causa: e);
     }
+    // La consulta contestó: el aviso del módulo (con su «Reintentar») ya no dice lo que pasa.
+    cerrarAviso();
     if (!mounted) return; // Pasó a activa: la raíz ya cambió de pantalla.
 
     final estado = ref.read(estadoCuentaProvider).value;
@@ -150,7 +176,16 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
 
   void _tocoModulo(PestanaInicio pestana) {
     if (pestana == PestanaInicio.hoy) return; // «Hoy» es esta pantalla.
-    avisarModuloBloqueado(context, widget.estado);
+    // Sin estado conocido, el aviso es el de esta pantalla para la misma causa y trae «Reintentar»
+    // (#278): consulta igual que el botón de la pantalla.
+    recordarAviso(
+      avisarModuloBloqueado(
+        context,
+        widget.estado,
+        sinConexion: _resultadoVisible == _Resultado.sinConexion,
+        alReintentar: () => unawaited(_actualizar()),
+      ),
+    );
   }
 
   @override
@@ -197,8 +232,13 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
               child: ConstrainedBox(
                 constraints: BoxConstraints(minHeight: math.max(0, constraints.maxHeight - 40)),
                 child: suspendida
-                    ? _Suspendida(alto: constraints.maxHeight, onConfiguracion: _abrirConfiguracion)
+                    ? _Suspendida(
+                        alto: constraints.maxHeight,
+                        onConfiguracion: _abrirConfiguracion,
+                        terminarJornada: TerminarJornadaDeLaCuenta(key: _terminarJornada),
+                      )
                     : _Pendiente(
+                        terminarJornada: TerminarJornadaDeLaCuenta(key: _terminarJornada),
                         estado: widget.estado,
                         consultando: _consultando,
                         resultado: _consultando ? null : _resultadoVisible,
@@ -224,6 +264,7 @@ class _EsperandoAsignacionPageState extends ConsumerState<EsperandoAsignacionPag
 /// 18-A01 a 18-A05: la cuenta pendiente (o sin estado conocido) con su revisión.
 class _Pendiente extends StatelessWidget {
   const _Pendiente({
+    required this.terminarJornada,
     required this.estado,
     required this.consultando,
     required this.resultado,
@@ -232,6 +273,9 @@ class _Pendiente extends StatelessWidget {
     required this.detalleError,
     required this.onActualizar,
   });
+
+  /// «Terminar jornada» (#472), con la clave global de la pantalla.
+  final Widget terminarJornada;
 
   /// `null`: no se conoce el estado (nunca se pudo consultar).
   final EstadoCuenta? estado;
@@ -252,6 +296,9 @@ class _Pendiente extends StatelessWidget {
     // 18-A01: el cuerpo completo con la línea de tiempo. Mientras consulta o con un resultado a la
     // vista (18-A02 a 18-A05) queda lo esencial.
     final completo = conocido && !consultando && resultado == null;
+    // Sin estado conocido y sin red: un aviso de sin conexión explícito, no el error genérico.
+    final sinConexionSinEstado = !conocido && !consultando && resultado == _Resultado.sinConexion;
+    final sinConexion = !consultando && resultado == _Resultado.sinConexion;
 
     final cuerpo = <Widget>[
       if (conocido)
@@ -265,6 +312,8 @@ class _Pendiente extends StatelessWidget {
         child: Text(
           conocido
               ? TextosEsperaAsignacion.tituloPendiente
+              : sinConexionSinEstado
+              ? TextosEsperaAsignacion.tituloSinConexion
               : TextosEsperaAsignacion.tituloSinEstado,
           key: const Key('espera_titulo'),
           style: theme.textTheme.headlineMedium,
@@ -293,10 +342,12 @@ class _Pendiente extends StatelessWidget {
             ? null
             : TextosEsperaAsignacion.revisadoRecien(TextosEsperaAsignacion.horaDe(revisadoA!)),
       ),
-      _Resultado.sinConexion => const _Aviso(
-        key: Key('espera_sin_conexion'),
+      _Resultado.sinConexion => _Aviso(
+        key: const Key('espera_sin_conexion'),
         tipo: _TipoAviso.sinConexion,
-        texto: TextosEsperaAsignacion.sinEstadoSinConexion,
+        texto: conocido
+            ? TextosEsperaAsignacion.sinEstadoSinConexion
+            : TextosEsperaAsignacion.sinConexionSinEstado,
       ),
       _Resultado.error => _Aviso(
         key: const Key('espera_error'),
@@ -328,7 +379,8 @@ class _Pendiente extends StatelessWidget {
         ),
       _BotonActualizar(
         consultando: consultando,
-        texto: resultado == _Resultado.error
+        // Sin estado conocido, siempre «Reintentar» (el texto del aviso lo nombra así).
+        texto: resultado == _Resultado.error || !conocido
             ? TextosEsperaAsignacion.reintentar
             : TextosEsperaAsignacion.actualizar,
         onPressed: onActualizar,
@@ -347,10 +399,15 @@ class _Pendiente extends StatelessWidget {
             if (completo) const Padding(padding: EdgeInsets.only(top: 10), child: _LineaDeTiempo()),
           ],
         ),
+        // Solo con una jornada abierta (#472); si no, no ocupa lugar. En 18-A04 (sin conexión) va
+        // debajo del bloque del canvas (título, aviso y «Reintentar»), no entre el título y el aviso
+        // (decisión del 29/10, QA P1).
+        if (!sinConexion) terminarJornada,
         Padding(
           padding: const EdgeInsets.only(top: 24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 10, children: pie),
         ),
+        if (sinConexion) terminarJornada,
       ],
     );
   }
@@ -358,10 +415,17 @@ class _Pendiente extends StatelessWidget {
 
 /// 18-A06: la cuenta suspendida. Solo Configuración, sin «Actualizar».
 class _Suspendida extends StatelessWidget {
-  const _Suspendida({required this.alto, required this.onConfiguracion});
+  const _Suspendida({
+    required this.alto,
+    required this.onConfiguracion,
+    required this.terminarJornada,
+  });
 
   final double alto;
   final VoidCallback onConfiguracion;
+
+  /// «Terminar jornada» (#472), con la clave global de la pantalla.
+  final Widget terminarJornada;
 
   @override
   Widget build(BuildContext context) {
@@ -412,6 +476,8 @@ class _Suspendida extends StatelessWidget {
             ),
           ),
         ),
+        // Solo con una jornada abierta (#472); si no, no ocupa lugar.
+        terminarJornada,
         const SizedBox(height: 24),
         OutlinedButton(
           key: const Key('espera_ir_a_configuracion'),

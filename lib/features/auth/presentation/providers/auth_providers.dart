@@ -5,6 +5,8 @@ import '../../../../core/config/config_supabase.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/secure_storage/secure_storage_providers.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../respaldo/presentation/providers/respaldo_drive_providers.dart';
+import '../../../tickets/presentation/providers/tickets_providers.dart';
 import '../../data/datasources/almacen_sesion_supabase.dart';
 import '../../data/datasources/auth_local_data_source.dart';
 import '../../data/datasources/auth_remote_data_source.dart';
@@ -13,15 +15,24 @@ import '../../data/datasources/backup_drive_data_source.dart';
 import '../../data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import '../../data/datasources/reloj_sesion_en_almacen.dart';
 import '../../data/repositories/auth_repository_impl.dart';
+import '../../data/repositories/bloqueo_reenvio_verificacion_repository_impl.dart';
+import '../../data/repositories/cierre_forzado_repository_impl.dart';
 import '../../data/repositories/datos_locales_repository_impl.dart';
+import '../../data/repositories/ultimo_correo_repository_impl.dart';
+import '../../data/repositories/ultimo_envio_recuperacion_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
+import '../../domain/repositories/bloqueo_reenvio_verificacion_repository.dart';
+import '../../domain/repositories/cierre_forzado_repository.dart';
 import '../../domain/repositories/datos_locales_repository.dart';
+import '../../domain/repositories/ultimo_correo_repository.dart';
+import '../../domain/repositories/ultimo_envio_recuperacion_repository.dart';
 import '../../domain/services/reloj_sesion.dart';
+import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
 import '../../domain/usecases/borrar_datos_locales_use_case.dart';
 import '../../domain/usecases/cerrar_sesion_use_case.dart';
 import '../../domain/usecases/confirmar_password_use_case.dart';
+import '../../domain/usecases/espera_recuperacion_use_cases.dart';
 import '../../domain/usecases/expiraciones_sesion_use_cases.dart';
-import '../../domain/usecases/iniciar_sesion_con_google_use_case.dart';
 import '../../domain/usecases/iniciar_sesion_use_case.dart';
 import '../../domain/usecases/observar_errores_verificacion_use_case.dart';
 import '../../domain/usecases/observar_verificaciones_exitosas_use_case.dart';
@@ -78,10 +89,6 @@ IniciarSesionUseCase iniciarSesionUseCase(Ref ref) =>
     IniciarSesionUseCase(ref.watch(authRepositoryProvider));
 
 @Riverpod(keepAlive: true)
-IniciarSesionConGoogleUseCase iniciarSesionConGoogleUseCase(Ref ref) =>
-    IniciarSesionConGoogleUseCase(ref.watch(authRepositoryProvider));
-
-@Riverpod(keepAlive: true)
 RegistrarUsuarioUseCase registrarUsuarioUseCase(Ref ref) =>
     RegistrarUsuarioUseCase(ref.watch(authRepositoryProvider));
 
@@ -89,11 +96,43 @@ RegistrarUsuarioUseCase registrarUsuarioUseCase(Ref ref) =>
 ObtenerSesionActualUseCase obtenerSesionActualUseCase(Ref ref) =>
     ObtenerSesionActualUseCase(ref.watch(authRepositoryProvider), ref.watch(relojSesionProvider));
 
+/// La revisión al volver al frente con la sesión abierta (#347): dice si venció, sin descartarla.
+@Riverpod(keepAlive: true)
+RevisarVigenciaSesionUseCase revisarVigenciaSesionUseCase(Ref ref) =>
+    RevisarVigenciaSesionUseCase(ref.watch(authRepositoryProvider), ref.watch(relojSesionProvider));
+
 /// Reloj de la ventana de la sesión (HU-AUTH-007). En el equipo, `main.dart` lo sobreescribe con
 /// el que recuerda en el almacén seguro el instante más alto visto (la misma instancia que usa
 /// `AlmacenSesionSupabase`); por defecto (tests), en memoria.
 @Riverpod(keepAlive: true)
 RelojSesion relojSesion(Ref ref) => RelojSesionEnMemoria();
+
+/// El correo de la última cuenta (decisión de Cristian, 01/10). En el equipo, `main.dart` lo
+/// sobreescribe con el almacén seguro; por defecto (tests), en memoria.
+@Riverpod(keepAlive: true)
+UltimoCorreoRepository ultimoCorreoRepository(Ref ref) => UltimoCorreoEnMemoria();
+
+/// El motivo y la fecha del último cierre de sesión que la persona no pidió (decisión de Cristian,
+/// 07/10, #302): el aviso de «Sesión vencida» vale en cada arranque sin sesión hasta que entra. En
+/// el equipo, `main.dart` lo sobreescribe con el almacén seguro; por defecto (tests), en memoria.
+@Riverpod(keepAlive: true)
+CierreForzadoRepository cierreForzadoRepository(Ref ref) => CierreForzadoEnMemoria();
+
+/// Cuándo salió el último enlace de recuperación de contraseña pedido desde este teléfono (decisión
+/// de Cristian, 02/10, #223; seguimiento #281): la espera de 60 s de «Olvidé mi contraseña» no se
+/// reinicia al salir y volver a entrar. En el equipo, `main.dart` lo sobreescribe con el almacén
+/// seguro; por defecto (tests), en memoria.
+@Riverpod(keepAlive: true)
+UltimoEnvioRecuperacionRepository ultimoEnvioRecuperacionRepository(Ref ref) =>
+    UltimoEnvioRecuperacionEnMemoria();
+
+/// Lo que el teléfono recuerda del reenvío del email de verificación, por dirección: los candados
+/// de 60 minutos (decisión de Cristian, 30/09, #221 y #239; seguimiento #249) y la espera de 60 s
+/// desde el último correo que salió (#325). Sobrevive a reiniciar la app. En el equipo, `main.dart`
+/// lo sobreescribe con el almacén seguro; por defecto (tests), en memoria.
+@Riverpod(keepAlive: true)
+BloqueoReenvioVerificacionRepository bloqueoReenvioVerificacionRepository(Ref ref) =>
+    BloqueoReenvioVerificacionEnMemoria();
 
 @Riverpod(keepAlive: true)
 CerrarSesionUseCase cerrarSesionUseCase(Ref ref) =>
@@ -124,7 +163,7 @@ ReintentarRevocacionPendienteUseCase reintentarRevocacionPendienteUseCase(Ref re
 ConfirmarPasswordUseCase confirmarPasswordUseCase(Ref ref) =>
     ConfirmarPasswordUseCase(ref.watch(authRepositoryProvider));
 
-/// Backup en Drive (HU-SYNC): hasta que exista, [BackupDriveNoDisponible].
+/// Backup en Drive (#184 y #185, HU-SYNC-004/005): hasta que exista, [BackupDriveNoDisponible].
 @Riverpod(keepAlive: true)
 BackupDriveDataSource backupDriveDataSource(Ref ref) => const BackupDriveNoDisponible();
 
@@ -137,6 +176,8 @@ DatosLocalesRepository datosLocalesRepository(Ref ref) => DatosLocalesRepository
   () => ref.read(dbLocalProvider.notifier).cerrar(),
   ref.watch(custodiaClaveDbProvider),
   ref.watch(backupDriveDataSourceProvider),
+  retirarPermisoDrive: () => ref.read(respaldoDriveRepositoryProvider).retirarPermisoGoogle(),
+  borrarFotosDeTickets: () => ref.read(almacenDeFotosDeTicketProvider).borrarTodo(),
 );
 
 @Riverpod(keepAlive: true)
@@ -154,6 +195,33 @@ ObtenerResumenDatosLocalesUseCase obtenerResumenDatosLocalesUseCase(Ref ref) =>
 @riverpod
 SolicitarRecuperacionPasswordUseCase solicitarRecuperacionPasswordUseCase(Ref ref) =>
     SolicitarRecuperacionPasswordUseCase(ref.watch(authRepositoryProvider));
+
+// autoDispose: lo usa solo `RecuperacionPasswordPage`.
+@riverpod
+ConsultarEsperaRecuperacionUseCase consultarEsperaRecuperacionUseCase(Ref ref) =>
+    ConsultarEsperaRecuperacionUseCase(ref.watch(ultimoEnvioRecuperacionRepositoryProvider));
+
+// autoDispose: lo usa solo `RecuperacionPasswordPage`.
+@riverpod
+RegistrarEnvioRecuperacionUseCase registrarEnvioRecuperacionUseCase(Ref ref) =>
+    RegistrarEnvioRecuperacionUseCase(ref.watch(ultimoEnvioRecuperacionRepositoryProvider));
+
+// autoDispose: lo usa solo `VerificacionEmailPage`.
+@riverpod
+ConsultarReenviosVerificacionUseCase consultarReenviosVerificacionUseCase(Ref ref) =>
+    ConsultarReenviosVerificacionUseCase(ref.watch(bloqueoReenvioVerificacionRepositoryProvider));
+
+// autoDispose: lo usa solo `VerificacionEmailPage`.
+@riverpod
+RegistrarBloqueoReenvioVerificacionUseCase registrarBloqueoReenvioVerificacionUseCase(Ref ref) =>
+    RegistrarBloqueoReenvioVerificacionUseCase(
+      ref.watch(bloqueoReenvioVerificacionRepositoryProvider),
+    );
+
+// autoDispose: lo usan `RegistroPage` y `VerificacionEmailPage`.
+@riverpod
+RegistrarEnvioVerificacionUseCase registrarEnvioVerificacionUseCase(Ref ref) =>
+    RegistrarEnvioVerificacionUseCase(ref.watch(bloqueoReenvioVerificacionRepositoryProvider));
 
 /// Kept-alive porque la raíz de la app (`ColportoresApp`) se suscribe una sola vez, para toda la
 /// vida de la app, a `erroresVerificacionEmailProvider` (el `StreamProvider` que envuelve este

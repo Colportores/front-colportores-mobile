@@ -35,22 +35,3 @@ final class MarcadorMapa extends Equatable {
   @override
   List<Object?> get props => [ubicacionId, tipo, lat, lon, calle, numero, cantidadEspacios];
 }
-
-/// Uno o varios marcadores que se dibujan como uno solo a un zoom dado (cluster).
-final class GrupoMarcadores extends Equatable {
-  const GrupoMarcadores({required this.marcadores, required this.centro});
-
-  /// Al menos uno, ordenados por `ubicacionId`.
-  final List<MarcadorMapa> marcadores;
-
-  /// Promedio de las coordenadas de los marcadores (el punto del cluster).
-  final Coordenadas centro;
-
-  int get cantidad => marcadores.length;
-
-  /// Un solo marcador: se dibuja tal cual, no como cluster con contador.
-  bool get esIndividual => marcadores.length == 1;
-
-  @override
-  List<Object?> get props => [marcadores, centro];
-}

@@ -21,6 +21,7 @@ class Venta extends Equatable {
     required this.colportorId,
     required this.visitaId,
     required this.auditoria,
+    this.motivoMontoManual,
   }) : fecha = fecha.toUtc();
 
   final String id;
@@ -31,11 +32,9 @@ class Venta extends Equatable {
   /// El esquema no especifica el formato del talonario — se modela como texto libre.
   final String numeroTalonario;
 
-  /// Monto total en centavos (flutter-clean-arch.md, regla 6).
-  ///
-  /// TODO(#8): el nombre del campo (`montoTotalCentavos` vs `montoTotal` del template de
-  /// flutter-clean-arch.md) es decisión pendiente — ver comentario en el issue #8. El tipo no:
-  /// centavos como `int` está decidido.
+  /// Monto total en centavos (flutter-clean-arch.md, regla 6). El nombre lleva la unidad a
+  /// propósito; en el contrato es `monto_total` (`VentaModel.toJson`) y en la tabla local
+  /// `montoTotal` (`monto_total`), siempre en centavos como `int`.
   final int montoTotalCentavos;
 
   /// Siempre en UTC — ver el invariante de fechas en [Auditoria].
@@ -44,8 +43,13 @@ class Venta extends Equatable {
   /// FK a `usuario.id`.
   final String colportorId;
 
-  /// FK a `visita.id`.
-  final String visitaId;
+  /// FK a `visita.id`; `null` si la venta se registró desde la pestaña Ventas, sin una visita.
+  final String? visitaId;
+
+  /// Por qué la colportora cambió el total a mano (HU-VEN-001, «Monto manual»); `null` si no lo
+  /// cambió o no lo explicó. Es el único texto libre que sube con la venta (decisión de Cristian,
+  /// 23/10): el coordinador lo lee. Nunca va a un log.
+  final String? motivoMontoManual;
 
   final Auditoria auditoria;
 
@@ -60,6 +64,7 @@ class Venta extends Equatable {
     fecha,
     colportorId,
     visitaId,
+    motivoMontoManual,
     auditoria,
   ];
 }

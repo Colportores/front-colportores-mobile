@@ -11,6 +11,7 @@ import 'package:colportores_mobile/core/secure_storage/cripto_sodium.dart';
 import 'package:colportores_mobile/core/secure_storage/custodia_clave_db.dart';
 import 'package:colportores_mobile/core/secure_storage/envoltorio_dek.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
+import 'package:colportores_mobile/core/secure_storage/generacion_datos_locales.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -105,15 +106,19 @@ void main() {
   late ProveedorClaveDbFalso proveedor;
   late CustodiaClaveDb custodia;
 
-  CustodiaClaveDb custodiaCon(AlmacenSeguro almacen, {ParametrosArgon2id? parametros}) =>
-      CustodiaClaveDb(
-        almacen,
-        archivo,
-        proveedor,
-        CriptoSodium(),
-        parametros: parametros ?? _parametros,
-        logger: loggerMudo(),
-      );
+  CustodiaClaveDb custodiaCon(
+    AlmacenSeguro almacen, {
+    ParametrosArgon2id? parametros,
+    GeneracionDatosLocales? generacion,
+  }) => CustodiaClaveDb(
+    almacen,
+    archivo,
+    proveedor,
+    CriptoSodium(),
+    parametros: parametros ?? _parametros,
+    generacion: generacion,
+    logger: loggerMudo(),
+  );
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('custodia_');
@@ -319,6 +324,52 @@ void main() {
     });
   });
 
+  group('CustodiaClaveDb — envoltorio que viaja con el backup (HU-SYNC-006)', () {
+    test('sin envoltorio en el equipo, no hay texto que subir', () async {
+      expect(await custodia.leerEnvoltorioCodificado(), isNull);
+    });
+
+    test(
+      'el texto que se sube es el del archivo y otro equipo lo abre con la contraseña',
+      () async {
+        final dek = custodia.generarDek();
+        await custodia.envolverConPassword(dek, 'secreto123');
+
+        final texto = await custodia.leerEnvoltorioCodificado();
+        final recuperada = await custodia.abrirEnvoltorio(
+          EnvoltorioDek.decodificar(texto!),
+          'secreto123',
+        );
+
+        expect(texto, EnvoltorioDek.decodificar(await contenidoDelEnvoltorio()).codificar());
+        expect(texto, isNot(contains(base64Encode(dek.bytes))), reason: 'nunca la DEK en claro');
+        expect(recuperada.bytes, dek.bytes);
+      },
+    );
+
+    test('un archivo roto no se sube: lanza EnvoltorioCorruptoException', () async {
+      await File(
+        p.join(dir.path, ArchivoEnvoltorioDek.nombreArchivoPorDefecto),
+      ).writeAsString('esto no es un envoltorio');
+
+      await expectLater(
+        custodia.leerEnvoltorioCodificado(),
+        throwsA(isA<EnvoltorioCorruptoException>()),
+      );
+    });
+
+    test('con otra contraseña, el envoltorio de Drive no abre', () async {
+      await custodia.envolverConPassword(custodia.generarDek(), 'secreto123');
+      final envoltorio = EnvoltorioDek.decodificar((await custodia.leerEnvoltorioCodificado())!);
+
+      await expectLater(
+        custodia.abrirEnvoltorio(envoltorio, 'otra'),
+        throwsA(isA<EnvoltorioNoAbreException>()),
+      );
+      expect(proveedor.entregadas.every((c) => c.destruida), isTrue);
+    });
+  });
+
   group('CustodiaClaveDb — marca de inicialización', () {
     test('dado un dispositivo nuevo, no está inicializado', () async {
       expect(await custodia.dbInicializada(), isFalse);
@@ -402,6 +453,104 @@ void main() {
       expect(almacen.contenido[ClaveSegura.relojSesion], '2026-09-25T12:00:00.000Z');
       expect(almacen.contenido[ClaveSegura.sesionMigrada], 'true');
     });
+
+    test('conserva el correo y el motivo del último cierre forzado (#302): recuperar los datos '
+        'no borra el aviso de «Sesión vencida»', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(ClaveSegura.ultimoCorreo, 'ana@example.com');
+      await almacen.escribir(ClaveSegura.cierreForzado, 'inactividad|2026-10-07T08:02:30.000Z');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.ultimoCorreo], 'ana@example.com');
+      expect(almacen.contenido[ClaveSegura.cierreForzado], 'inactividad|2026-10-07T08:02:30.000Z');
+    });
+
+    test('conserva la hora del último enlace de recuperación pedido (#281): recuperar los datos '
+        'no reinicia la espera de 60 s', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(ClaveSegura.ultimoEnvioRecuperacion, '2026-10-08T10:30:15.000Z');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.ultimoEnvioRecuperacion], '2026-10-08T10:30:15.000Z');
+    });
+
+    test('conserva los candados del reenvío de verificación (#249): recuperar los datos no '
+        'libera una dirección que Supabase todavía bloquea', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(
+        ClaveSegura.bloqueoReenvioVerificacion,
+        '{"ana@correo.com":"2026-10-08T11:00:00.000Z"}',
+      );
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(
+        almacen.contenido[ClaveSegura.bloqueoReenvioVerificacion],
+        '{"ana@correo.com":"2026-10-08T11:00:00.000Z"}',
+      );
+    });
+
+    test('conserva las zonas ya avisadas (#251): recuperar los datos no repite «Te asignaron la '
+        'zona…»', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(ClaveSegura.zonasAvisadas, '{"insc-1":"zona-1","insc-2":null}');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.zonasAvisadas], '{"insc-1":"zona-1","insc-2":null}');
+    });
+
+    test(
+      'conserva las preferencias de los recordatorios (HU-NOT-004) al recuperar los datos',
+      () async {
+        final dek = custodia.generarDek();
+        await almacen.escribir(ClaveSegura.recordatoriosActivados, '0');
+        await almacen.escribir(ClaveSegura.anticipacionRecordatorios, '90');
+
+        await custodia.reconstruirAlmacen(dek);
+
+        expect(almacen.contenido[ClaveSegura.recordatoriosActivados], '0');
+        expect(almacen.contenido[ClaveSegura.anticipacionRecordatorios], '90');
+      },
+    );
+
+    test(
+      'conserva hasta dónde se revisaron los recordatorios (HU-NOT-005) al recuperar los datos',
+      () async {
+        final dek = custodia.generarDek();
+        await almacen.escribir(ClaveSegura.ultimaConciliacionRecordatorios, '1790000000000');
+
+        await custodia.reconstruirAlmacen(dek);
+
+        expect(almacen.contenido[ClaveSegura.ultimaConciliacionRecordatorios], '1790000000000');
+      },
+    );
+
+    test('conserva lo contestado sobre las notificaciones (HU-NOT-001): recuperar los datos no '
+        'vuelve a pedir el permiso ni a mostrar el aviso cerrado', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(ClaveSegura.permisoNotificaciones, 'ahora_no');
+      await almacen.escribir(ClaveSegura.avisoNotificacionesCerrado, '1');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.permisoNotificaciones], 'ahora_no');
+      expect(almacen.contenido[ClaveSegura.avisoNotificacionesCerrado], '1');
+    });
+    test(
+      'conserva quién escondió el aviso de privacidad (#445): recuperar los datos no lo vuelve a '
+      'mostrar',
+      () async {
+        final dek = custodia.generarDek();
+        await almacen.escribir(ClaveSegura.avisoPrivacidadOculto, '["u-1"]');
+
+        await custodia.reconstruirAlmacen(dek);
+
+        expect(almacen.contenido[ClaveSegura.avisoPrivacidadOculto], '["u-1"]');
+      },
+    );
 
     for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
       test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
@@ -532,6 +681,226 @@ void main() {
 
       await expectLater(custodia.olvidarDatosDelUsuario(), completes);
     });
+
+    test('borra también el correo de la última cuenta (vista 19)', () async {
+      await almacen.escribir(ClaveSegura.ultimoCorreo, 'ana@example.com');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.ultimoCorreo), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también el motivo del último cierre forzado (#302)', () async {
+      await almacen.escribir(ClaveSegura.cierreForzado, 'revocada|2026-10-07T08:02:30.000Z');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.cierreForzado), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también la hora del último enlace de recuperación pedido (#281): es de la '
+        'persona que se va', () async {
+      await almacen.escribir(ClaveSegura.ultimoEnvioRecuperacion, '2026-10-08T10:30:15.000Z');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.ultimoEnvioRecuperacion), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también los candados del reenvío de verificación (#249): son de la persona que '
+        'se va', () async {
+      await almacen.escribir(
+        ClaveSegura.bloqueoReenvioVerificacion,
+        '{"ana@correo.com":"2026-10-08T11:00:00.000Z"}',
+      );
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.bloqueoReenvioVerificacion), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también las zonas ya avisadas (#251): son de la persona que se va', () async {
+      await almacen.escribir(ClaveSegura.zonasAvisadas, '{"insc-1":"zona-1"}');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.zonasAvisadas), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también lo contestado sobre las notificaciones (HU-NOT-001): la próxima persona '
+        'que entre en este teléfono ve el pedido', () async {
+      await almacen.escribir(ClaveSegura.permisoNotificaciones, 'sistema');
+      await almacen.escribir(ClaveSegura.avisoNotificacionesCerrado, '1');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.permisoNotificaciones), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.avisoNotificacionesCerrado), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también las preferencias de los recordatorios (HU-NOT-004)', () async {
+      await almacen.escribir(ClaveSegura.recordatoriosActivados, '0');
+      await almacen.escribir(ClaveSegura.anticipacionRecordatorios, '60');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.recordatoriosActivados), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.anticipacionRecordatorios), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('borra también hasta dónde se revisaron los recordatorios (HU-NOT-005)', () async {
+      await almacen.escribir(ClaveSegura.ultimaConciliacionRecordatorios, '1790000000000');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.ultimaConciliacionRecordatorios), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca las preferencias de los recordatorios', () async {
+      await almacen.escribir(ClaveSegura.recordatoriosActivados, '0');
+      await almacen.escribir(ClaveSegura.anticipacionRecordatorios, '60');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.recordatoriosActivados], '0');
+      expect(almacen.contenido[ClaveSegura.anticipacionRecordatorios], '60');
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca lo contestado sobre las notificaciones', () async {
+      await almacen.escribir(ClaveSegura.permisoNotificaciones, 'sistema');
+      await almacen.escribir(ClaveSegura.avisoNotificacionesCerrado, '1');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.permisoNotificaciones], 'sistema');
+      expect(almacen.contenido[ClaveSegura.avisoNotificacionesCerrado], '1');
+    });
+    test(
+      'borra también quién escondió el aviso de privacidad (#445): es de la persona que se va',
+      () async {
+        await almacen.escribir(ClaveSegura.avisoPrivacidadOculto, '["u-1"]');
+        await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+        await custodia.olvidarDatosDelUsuario();
+
+        expect(almacen.contenido.containsKey(ClaveSegura.avisoPrivacidadOculto), isFalse);
+        expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+      },
+    );
+
+    test('«Empezar de nuevo» (olvidar) no toca las zonas ya avisadas', () async {
+      await almacen.escribir(ClaveSegura.zonasAvisadas, '{"insc-1":"zona-1"}');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.zonasAvisadas], '{"insc-1":"zona-1"}');
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca los candados del reenvío de verificación', () async {
+      await almacen.escribir(
+        ClaveSegura.bloqueoReenvioVerificacion,
+        '{"ana@correo.com":"2026-10-08T11:00:00.000Z"}',
+      );
+
+      await custodia.olvidar();
+
+      expect(
+        almacen.contenido[ClaveSegura.bloqueoReenvioVerificacion],
+        '{"ana@correo.com":"2026-10-08T11:00:00.000Z"}',
+      );
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca la hora del último enlace de recuperación '
+        'pedido', () async {
+      await almacen.escribir(ClaveSegura.ultimoEnvioRecuperacion, '2026-10-08T10:30:15.000Z');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.ultimoEnvioRecuperacion], '2026-10-08T10:30:15.000Z');
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca el motivo del último cierre forzado', () async {
+      await almacen.escribir(ClaveSegura.cierreForzado, 'revocada|2026-10-07T08:02:30.000Z');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.cierreForzado], 'revocada|2026-10-07T08:02:30.000Z');
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca el correo de la última cuenta', () async {
+      await almacen.escribir(ClaveSegura.ultimoCorreo, 'ana@example.com');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.ultimoCorreo], 'ana@example.com');
+    });
+  });
+
+  group('CustodiaClaveDb.olvidarDatosDelUsuario — generación de los datos locales (#319)', () {
+    late GeneracionDatosLocales generacion;
+
+    setUp(() {
+      generacion = GeneracionDatosLocales();
+      custodia = custodiaCon(almacen, generacion: generacion);
+    });
+
+    test('dado un borrado de datos, cuando termina, la generación ya no es la de antes', () async {
+      final antes = generacion.valor;
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(generacion.valor, isNot(antes));
+    });
+
+    test('dado un borrado en curso, la generación ya cambió antes de que termine: lo que se '
+        'pida mientras tanto tampoco vale', () async {
+      final antes = generacion.valor;
+
+      final borrado = custodia.olvidarDatosDelUsuario();
+      final alEmpezar = generacion.valor;
+      await borrado;
+
+      expect(alEmpezar, isNot(antes));
+      expect(generacion.valor, isNot(alEmpezar));
+    });
+
+    test('dado un borrado que falla a mitad, la generación cambia igual', () async {
+      final antes = generacion.valor;
+      final fragil = custodiaCon(
+        _AlmacenQueFallaAlBorrar(almacen, fallaEn: ClaveSegura.relojSesion),
+        generacion: generacion,
+      );
+
+      await expectLater(fragil.olvidarDatosDelUsuario(), throwsA(isA<AlmacenSeguroException>()));
+
+      expect(generacion.valor, isNot(antes));
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca el estado de cuenta ni la generación', () async {
+      await almacen.escribir(ClaveSegura.estadoCuenta, 'u-1:activa');
+      final antes = generacion.valor;
+
+      await custodia.olvidar();
+
+      expect(generacion.valor, antes);
+      expect(almacen.contenido[ClaveSegura.estadoCuenta], 'u-1:activa');
+    });
   });
 
   group('CustodiaClaveDb — cada ClaveSegura tiene un destino (#122)', () {
@@ -552,6 +921,20 @@ void main() {
         ...CustodiaClaveDb.seBorranAlBorrarDatos,
         ...CustodiaClaveDb.quedanFueraDelBorradoDeDatos,
       ], unorderedEquals(ClaveSegura.values));
+    });
+
+    test('la cuenta de Drive del respaldo (HU-SYNC-004) sobrevive a reconstruir el almacén y se '
+        'va con el borrado de datos', () {
+      expect(CustodiaClaveDb.seConservanAlReconstruir, contains(ClaveSegura.respaldoDrive));
+      expect(CustodiaClaveDb.seBorranAlBorrarDatos, contains(ClaveSegura.respaldoDrive));
+      expect(CustodiaClaveDb.seBorranAlOlvidar, isNot(contains(ClaveSegura.respaldoDrive)));
+    });
+
+    test('la marca de que el asistente de recuperación se resolvió (HU-SYNC-006) sobrevive a '
+        'reconstruir el almacén y se va con el borrado de datos', () {
+      expect(CustodiaClaveDb.seConservanAlReconstruir, contains(ClaveSegura.recuperacionResuelta));
+      expect(CustodiaClaveDb.seBorranAlBorrarDatos, contains(ClaveSegura.recuperacionResuelta));
+      expect(CustodiaClaveDb.seBorranAlOlvidar, isNot(contains(ClaveSegura.recuperacionResuelta)));
     });
   });
 

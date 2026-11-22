@@ -1,0 +1,352 @@
+import 'dart:async';
+
+import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
+import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/repositories/ubicacion_repository.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/activador_gps.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/ciudades_para_alta.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_inverso.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/proveedor_gps.dart';
+import 'package:colportores_mobile/features/mapa/domain/services/seguidor_gps.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/area_mapa.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/punto_capturado.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_notifier.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/situacion_mapa_providers.dart';
+import 'package:dartz/dartz.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
+
+import 'mapa_base_falso.dart';
+import 'ubicacion_colportor_falsos.dart';
+import 'ubicacion_sin_modificar.dart';
+import 'zonas_falsas.dart';
+
+/// Av. Italia, Montevideo: el punto de los artboards de la vista 03.
+const puntoItalia = Coordenadas(lat: -34.88761, lon: -56.13024);
+
+const montevideo = CiudadCatalogo(id: 'ciu-mvd', nombre: 'Montevideo');
+const canelones = CiudadCatalogo(id: 'ciu-can', nombre: 'Canelones');
+
+LecturaGps lecturaGps(double precision, {Coordenadas punto = puntoItalia}) =>
+    LecturaGps(coordenadas: punto, precisionMetros: precision);
+
+/// El GPS del teléfono, que el test controla: qué devuelve, cuánto tarda y qué se activó.
+final class GpsFalso implements ProveedorGps, SeguidorGps, ActivadorGps {
+  GpsFalso([Either<Failure, LecturaGps>? respuesta])
+    : respuesta = respuesta ?? Right(lecturaGps(6));
+
+  Either<Failure, LecturaGps> respuesta;
+
+  /// Si no es `null`, la lectura espera a que se complete.
+  Completer<void>? bloqueo;
+
+  var lecturas = 0;
+  final activaciones = <MotivoSinGps>[];
+
+  /// Qué hace «Activar GPS»: por ejemplo, cambiar [respuesta].
+  void Function()? alActivar;
+
+  /// Si no es `null`, «Activar GPS» espera a que se complete (el diálogo del sistema sigue abierto).
+  Completer<void>? bloqueoActivacion;
+
+  /// Si no es `null`, decide qué devuelve cada lectura según su número (la primera es la 1) en vez
+  /// de [respuesta]: sirve para tener dos lecturas en vuelo y completarlas en el orden que se quiera.
+  Future<Either<Failure, LecturaGps>> Function(int numero)? porLectura;
+
+  @override
+  Future<Either<Failure, LecturaGps>> posicionActual() async {
+    lecturas++;
+    final decide = porLectura;
+    if (decide != null) return decide(lecturas);
+    final espera = bloqueo;
+    if (espera != null) await espera.future;
+    return respuesta;
+  }
+
+  // ---- seguimiento (#670): el stream que abre el GPS único mientras el mapa sigue ----
+
+  late final StreamController<Either<Failure, LecturaGps>> _seguimiento =
+      StreamController<Either<Failure, LecturaGps>>.broadcast(
+        onListen: () => seguimientosAbiertos++,
+        onCancel: () => seguimientosCerrados++,
+      );
+
+  /// Cuántas veces se abrió y se cerró el stream del seguimiento.
+  var seguimientosAbiertos = 0;
+  var seguimientosCerrados = 0;
+
+  /// El seguimiento está abierto ahora.
+  bool get siguiendo => seguimientosAbiertos > seguimientosCerrados;
+
+  @override
+  Stream<Either<Failure, LecturaGps>> seguir() => _seguimiento.stream;
+
+  /// El teléfono se movió: llega una lectura por el stream del seguimiento.
+  void moverse(LecturaGps lectura) => _seguimiento.add(Right(lectura));
+
+  /// El seguimiento falla (el GPS se apagó, se retiró el permiso…).
+  void fallarElSeguimiento(MotivoSinGps motivo) =>
+      _seguimiento.add(Left(FailureGpsNoDisponible(motivo: motivo)));
+
+  /// El sistema cierra el stream sin avisar.
+  Future<void> cerrarElSeguimiento() => _seguimiento.close();
+
+  @override
+  Future<void> activar(MotivoSinGps motivo) async {
+    activaciones.add(motivo);
+    alActivar?.call();
+    final espera = bloqueoActivacion;
+    if (espera != null) await espera.future;
+  }
+}
+
+/// El geocodificador inverso: devuelve [respuesta] para cada punto y guarda lo pedido.
+final class GeocodificadorFalso implements GeocodificadorInverso {
+  GeocodificadorFalso([this.respuesta]);
+
+  DireccionDelPunto? Function(Coordenadas punto)? respuesta;
+  final pedidos = <Coordenadas>[];
+  Completer<void>? bloqueo;
+
+  @override
+  Future<DireccionDelPunto?> direccionDe(Coordenadas punto) async {
+    pedidos.add(punto);
+    final espera = bloqueo;
+    if (espera != null) await espera.future;
+    return respuesta?.call(punto);
+  }
+}
+
+/// Las ciudades de la campaña en memoria: qué propone y qué lista tiene «Cambiar».
+final class CiudadesFalsas implements CiudadesParaAlta {
+  CiudadesFalsas({this.propone = _montevideo, this.campania = const [montevideo, canelones]});
+
+  /// Lo que haría la fuente real con Montevideo de zona asignada: con punto, la de la zona que lo
+  /// contiene; sin punto, la de la zona asignada.
+  static PropuestaCiudad _montevideo(Coordenadas? punto) => CiudadPropuesta(
+    montevideo,
+    punto == null ? OrigenPropuesta.deZona : OrigenPropuesta.detectada,
+  );
+
+  /// Qué propone para cada pedido (`null` = sin punto).
+  PropuestaCiudad Function(Coordenadas? punto) propone;
+
+  /// Las ciudades de la campaña.
+  List<CiudadCatalogo> campania;
+
+  /// Si no es `null`, `proponer` devuelve esta falla.
+  Failure? fallaPropuesta;
+
+  /// Si no es `null`, `proponer` lanza esto en vez de devolver una falla.
+  Object? lanzaAlProponer;
+
+  /// Si no es `null`, `proponer` espera a que se complete.
+  Completer<void>? bloqueoPropuesta;
+
+  /// Cada pedido de `proponer`, con el punto que llevó.
+  final propuestas = <Coordenadas?>[];
+
+  Failure? fallaCampania;
+  Completer<void>? bloqueoCampania;
+
+  /// Si no es `null`, `deMiCampania` lanza esto en el acto (sin devolver un `Future`), como un
+  /// puerto mal escrito.
+  Object? lanzaAlListar;
+  var consultasCampania = 0;
+
+  @override
+  Future<Either<Failure, PropuestaCiudad>> proponer({
+    required String colportorId,
+    Coordenadas? punto,
+  }) async {
+    propuestas.add(punto);
+    final espera = bloqueoPropuesta;
+    if (espera != null) await espera.future;
+    final lanza = lanzaAlProponer;
+    if (lanza != null) throw lanza;
+    return fallaPropuesta != null ? Left(fallaPropuesta!) : Right(propone(punto));
+  }
+
+  @override
+  Future<Either<Failure, List<CiudadCatalogo>>> deMiCampania(String colportorId) {
+    consultasCampania++;
+    final lanza = lanzaAlListar;
+    if (lanza != null) throw lanza;
+    return _campania();
+  }
+
+  Future<Either<Failure, List<CiudadCatalogo>>> _campania() async {
+    final espera = bloqueoCampania;
+    if (espera != null) await espera.future;
+    return fallaCampania != null ? Left(fallaCampania!) : Right(campania);
+  }
+}
+
+/// Unas ciudades que no se pueden leer (la base local ilegible, o el catálogo sin bajar): contesta
+/// la falla de lectura, nunca «la campaña no tiene ciudades».
+final class CiudadesQueNoSePuedenLeer implements CiudadesParaAlta {
+  const CiudadesQueNoSePuedenLeer();
+
+  @override
+  Future<Either<Failure, PropuestaCiudad>> proponer({
+    required String colportorId,
+    Coordenadas? punto,
+  }) async => const Left(FailureCiudadesNoDisponibles());
+
+  @override
+  Future<Either<Failure, List<CiudadCatalogo>>> deMiCampania(String colportorId) async =>
+      const Left(FailureCiudadesNoDisponibles());
+}
+
+/// El repositorio de ubicaciones, con el resultado de `registrar` a gusto del test.
+final class RepoAltaFalso with UbicacionRepositorySinModificar implements UbicacionRepository {
+  /// Qué devuelve `registrar`. Por defecto, el alta hecha.
+  Future<Either<Failure, ResultadoAltaUbicacion>> Function(Ubicacion ubicacion)? comportamiento;
+
+  /// Lo que recibió cada llamada a `registrar`.
+  final llamadas =
+      <
+        ({
+          Ubicacion ubicacion,
+          Espacio? espacio,
+          OrigenCoordenadas origen,
+          CriterioDuplicadoUbicacion? duplicados,
+          String? justificacion,
+        })
+      >[];
+
+  Completer<void>? bloqueo;
+
+  @override
+  Future<Either<Failure, ResultadoAltaUbicacion>> registrar(
+    Ubicacion ubicacion, {
+    Espacio? espacio,
+    required OrigenCoordenadas origen,
+    CriterioDuplicadoUbicacion? duplicados,
+    String? justificacion,
+  }) async {
+    llamadas.add((
+      ubicacion: ubicacion,
+      espacio: espacio,
+      origen: origen,
+      duplicados: duplicados,
+      justificacion: justificacion,
+    ));
+    final espera = bloqueo;
+    if (espera != null) await espera.future;
+    final f = comportamiento;
+    if (f != null) return f(ubicacion);
+    return Right(AltaRegistrada(ubicacion: ubicacion, espacio: espacio));
+  }
+
+  @override
+  Stream<List<Ubicacion>> observarDelColportor({
+    required String colportorId,
+    String? ciudadId,
+    bool incluirBajas = false,
+  }) => throw UnimplementedError();
+
+  @override
+  Stream<List<MarcadorMapa>> observarMarcadoresEnArea({
+    required String colportorId,
+    required AreaMapa area,
+  }) => Stream.value(const []);
+}
+
+/// Una candidata a duplicado, [metros] metros al norte de [puntoItalia].
+CandidataDuplicado candidata(
+  String id, {
+  double metros = 12,
+  String? calle = 'Av. Italia',
+  String? numero = '1234',
+  MotivoDuplicado motivo = MotivoDuplicado.mismaDireccion,
+  bool admiteConservarAmbos = true,
+  TipoUbicacion tipo = TipoUbicacion.casa,
+  String ciudadId = 'ciu-mvd',
+  DateTime? actualizada,
+  EstadoCasa? estado,
+  int? espacios,
+}) {
+  final cuando = actualizada ?? DateTime.utc(2026, 9, 29, 12);
+  return CandidataDuplicado(
+    ubicacion: Ubicacion(
+      id: id,
+      tipo: tipo,
+      calle: calle,
+      numero: numero,
+      lat: puntoItalia.lat + metros / 111320,
+      lon: puntoItalia.lon,
+      ciudadId: ciudadId,
+      auditoria: Auditoria(createdAt: cuando, updatedAt: cuando, createdBy: 'col-2'),
+    ),
+    motivo: motivo,
+    distanciaMetros: metros,
+    admiteConservarAmbos: admiteConservarAmbos,
+    estado: estado,
+    cantidadEspacios: espacios,
+  );
+}
+
+/// Overrides de Riverpod para probar el alta sin plugins, red ni base de datos.
+///
+/// [puertoCiudades] reemplaza a [ciudades] con otro puerto (por ejemplo `CiudadesQueNoSePuedenLeer`): un provider no se puede sobrescribir dos veces en el mismo contenedor.
+/// [generadorId] reemplaza los ids secuenciales (`id-1`…) por otro generador, por ejemplo el UUID v7
+/// de producción.
+List<Override> overridesAlta({
+  GpsFalso? gps,
+  GeocodificadorFalso? geocodificador,
+  CiudadesFalsas? ciudades,
+  CiudadesParaAlta? puertoCiudades,
+  UbicacionRepository? repo,
+  Duration espera = const Duration(milliseconds: 20),
+  DateTime? ahora,
+  List<MarcadorMapa> marcadores = const [],
+  FabricaMapaFalsa? mapa,
+  FuenteMapa? fuente,
+  SituacionMapa? situacion,
+  bool situacionReal = false,
+  String Function()? generadorId,
+  bool gpsAbierto = true,
+}) {
+  final gpsFalso = gps ?? GpsFalso();
+  var secuencia = 0;
+  return [
+    proveedorGpsProvider.overrideWithValue(gpsFalso),
+    seguidorGpsProvider.overrideWithValue(gpsFalso),
+    // El alta no pide el permiso (#651): lee el GPS del colportor, que ya abrió el mapa. Con
+    // [gpsAbierto] `false` el mapa todavía no se abrió (nadie lo lee hasta que el test lo pida).
+    if (gpsAbierto) ubicacionColportorYaAbierta(),
+    activadorGpsProvider.overrideWithValue(gpsFalso),
+    geocodificadorInversoProvider.overrideWithValue(geocodificador ?? GeocodificadorFalso()),
+    ciudadesParaAltaProvider.overrideWithValue(puertoCiudades ?? ciudades ?? CiudadesFalsas()),
+    ubicacionRepositoryProvider.overrideWithValue(repo ?? RepoAltaFalso()),
+    ubicadorZonaProvider.overrideWithValue(ubicadorSinZonas()),
+    esperaPuntoAltaProvider.overrideWithValue(espera),
+    generadorIdUbicacionProvider.overrideWithValue(generadorId ?? () => 'id-${++secuencia}'),
+    relojAltaUbicacionProvider.overrideWithValue(() => ahora ?? DateTime.utc(2026, 10, 2, 14, 35)),
+    marcadoresCercanosProvider.overrideWith((ref, consulta) => Stream.value(marcadores)),
+    // MapLibre no se dibuja en `flutter test`: el mapa es la vista falsa.
+    (mapa ?? FabricaMapaFalsa()).override,
+    // El mapa y su aviso: por defecto sin tiles y sin aviso (la conexión, lo descargado y el catálogo
+    // son de los tests de `aviso_mapa`). Con [fuente] el mapa tiene tiles (se dibuja la atribución
+    // «© OpenStreetMap»); con [situacionReal] la situación sale de los puertos de tiles, que el test
+    // sobreescribe.
+    if (!situacionReal)
+      situacionMapaProvider.overrideWith(
+        (ref, ambito) => situacion ?? SituacionMapa(fuente: fuente ?? const FuenteMapa.sinTiles()),
+      ),
+  ];
+}
+
+/// Los parámetros de alta que usan los tests.
+const parametrosAlta = ParametrosAlta(colportorId: 'col-1');

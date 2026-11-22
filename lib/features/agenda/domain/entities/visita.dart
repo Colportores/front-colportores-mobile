@@ -1,62 +1,108 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../../core/domain/entities/auditoria.dart';
+import '../../../../core/domain/instante.dart';
 
-/// Contacto realizado por el colportor (esquema-datos.md §Operaciones de campo, tabla
-/// `visita`).
-enum TipoResultadoVisita { venta, noContesto, rechazo, entrevista }
+/// Resultado de una visita (`visita.tipo_resultado`, esquema-datos.md §Operaciones de campo).
+/// [codigo] es el valor de la columna.
+///
+/// `COBRANZA` es la pasada a cobrar (HU-VIS-005; decisión de Cristian del 23/10, «Visita cobro»):
+/// un resultado más, que queda en el historial aunque no se cobre, cumple la cita de cobranza y **no**
+/// cuenta como presentación.
+enum TipoResultadoVisita {
+  venta('VENTA'),
+  noContesto('NO_CONTESTO'),
+  rechazo('RECHAZO'),
+  entrevista('ENTREVISTA'),
+  cobranza('COBRANZA');
 
+  const TipoResultadoVisita(this.codigo);
+
+  final String codigo;
+
+  /// Si el resultado cuenta como **presentación** (HU-VIS-005, decisión de Cristian del 21/10,
+  /// docs#69): la visita con la entrevista hecha. Cuentan `VENTA` y `ENTREVISTA`; no `NO_CONTESTO`
+  /// (nadie atendió) ni `COBRANZA` (fue a cobrar). `RECHAZO` tampoco, hasta que se confirme (S62). Es la misma definición que usa
+  /// el servidor para el tablero del coordinador: la app no guarda ningún campo aparte, el resultado
+  /// ya queda distinguible por su [codigo].
+  bool get cuentaComoPresentacion => this == venta || this == entrevista;
+
+  /// Si la visita **cumple** la agenda que tenía la casa (la agenda pasa a `CUMPLIDA`). Con
+  /// `NO_CONTESTO` la agenda pasa a `NO_CUMPLIDA` (HU-VIS-005; decisión del 23/10, «No cumplida»).
+  /// Los otros resultados la cumplen: la HU solo nombra a `NO_CONTESTO` como «no cumplida» (lectura
+  /// del mapa de decisiones, §2; `COBRANZA` cumple la cita de cobranza).
+  bool get cumpleLaAgenda => this != noContesto;
+
+  /// Inversa de [codigo]. Lanza `ArgumentError` con un valor desconocido (lo frena el `CHECK`).
+  static TipoResultadoVisita desdeCodigo(String codigo) => values.firstWhere(
+    (t) => t.codigo == codigo,
+    orElse: () => throw ArgumentError.value(codigo, 'codigo', 'resultado de visita desconocido'),
+  );
+}
+
+/// Contacto realizado por el colportor (esquema-datos.md §Operaciones de campo, tabla `visita`).
+///
+/// **No lleva notas**: las de una visita son filas de `nota` (`target_type = VISITA`, local-only,
+/// ADR-017), nunca una columna. Así la fila que sube es la entidad entera y no hay dato personal.
 class Visita extends Equatable {
   Visita({
     required this.id,
-    required this.espacioPersonaId,
+    required this.espacioId,
+    this.espacioPersonaId,
     required DateTime fecha,
     required this.tipoResultado,
-    this.notas,
     required this.colportorId,
-    required this.jornadaId,
+    this.jornadaId,
+    DateTime? entrevistaEntrada,
+    DateTime? entrevistaSalida,
     required this.auditoria,
-  }) : fecha = fecha.toUtc();
+  }) : fecha = instanteMs(fecha),
+       entrevistaEntrada = entrevistaEntrada == null ? null : instanteMs(entrevistaEntrada),
+       entrevistaSalida = entrevistaSalida == null ? null : instanteMs(entrevistaSalida);
 
   final String id;
 
-  /// FK a `espacio_persona.id`.
-  final String espacioPersonaId;
+  /// FK a `espacio.id`: la casa o el depto de la visita. Es a lo que cuelga la visita
+  /// (backend-supabase 0069; decisión del 23/10, «Sin persona»).
+  final String espacioId;
 
-  /// Siempre en UTC — ver el invariante de fechas en [Auditoria].
+  /// FK opcional a `espacio_persona.id`: con quién fue la visita. «No contestó» y «Rechazo» no piden
+  /// persona; con persona, es el vínculo de ese espacio (ADR-017).
+  final String? espacioPersonaId;
+
+  /// Siempre en UTC y al milisegundo — ver [instanteMs].
   final DateTime fecha;
 
   final TipoResultadoVisita tipoResultado;
 
-  /// Generalmente contiene PII (esquema-datos.md, tabla de clasificación de PII) — no loguear
-  /// (convenciones-desarrollo.md §7.5).
-  final String? notas;
-
   /// FK a `usuario.id`.
   final String colportorId;
 
-  /// FK a `jornada.id`.
-  final String jornadaId;
+  /// FK a `jornada.id`. Opcional, como en el servidor.
+  final String? jornadaId;
+
+  /// La hora de entrada y la de salida de la entrevista que confirmó la colportora (vista 39, R·06 y
+  /// R·07; decisión de Cristian, 23/10, «Horas entrev», #466). `null` en una visita sin entrevista
+  /// (registrada antes, o que no fue una entrevista): no se inventan. Suben con la visita
+  /// (backend-supabase 0069; el servidor exige salida ≥ entrada).
+  final DateTime? entrevistaEntrada;
+  final DateTime? entrevistaSalida;
 
   final Auditoria auditoria;
 
   bool get estaBorrada => auditoria.estaBorrada;
 
-  /// [notas] está en [props] y `EquatableConfig.stringify` arranca en `true` en debug: sin esto,
-  /// cualquier interpolación del objeto o `logger.d(visita)` imprimiría las notas del cliente
-  /// (convenciones-desarrollo.md §7.5, "sin PII en logs: solo IDs").
-  @override
-  bool? get stringify => false;
-
   @override
   List<Object?> get props => [
     id,
+    espacioId,
     espacioPersonaId,
     fecha,
     tipoResultado,
-    notas,
     colportorId,
     jornadaId,
+    entrevistaEntrada,
+    entrevistaSalida,
     auditoria,
   ];
 }
