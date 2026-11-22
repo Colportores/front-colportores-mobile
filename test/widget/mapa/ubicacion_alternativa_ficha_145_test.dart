@@ -277,6 +277,52 @@ void main() {
     });
   });
 
+  group('cambiar sin quitar (decisión R6 del issue #145)', () {
+    testWidgets('tocar la tarjeta vigente abre el selector y lo elegido se fija encima', (
+      tester,
+    ) async {
+      final m = mundo(estado: UbicacionAlternativaVigente(italia));
+      await montarFicha(tester, m, tamano: alto);
+
+      await tocar(tester, vigente);
+      expect(selector, findsOneWidget);
+      await elegirFila(tester, 'ub-3');
+
+      expect(m.alternativas.establecidas, ['ub-3']);
+      expect(m.alternativas.quitadas, isEmpty);
+      expect(
+        find.text('Las cobranzas de María se van a proponer en Mataojo 2051.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('«Quitar» sigue abriendo su hoja y no el selector', (tester) async {
+      await montarFicha(tester, mundo(estado: UbicacionAlternativaVigente(italia)), tamano: alto);
+
+      await tocar(tester, quitar);
+
+      expect(find.byKey(ClavesAlternativa.hojaQuitar), findsOneWidget);
+      expect(selector, findsNothing);
+    });
+
+    testWidgets('cerrar el selector sin elegir deja la vigente y se puede volver a tocar', (
+      tester,
+    ) async {
+      final m = mundo(estado: UbicacionAlternativaVigente(italia));
+      await montarFicha(tester, m, tamano: alto);
+
+      await tocar(tester, vigente);
+      await tester.tap(find.byKey(ClavesAlternativa.selectorCerrar));
+      await asentar(tester);
+      expect(selector, findsNothing);
+      expect(vigente, findsOneWidget);
+      expect(m.alternativas.establecidas, isEmpty);
+
+      await tocar(tester, vigente);
+      expect(selector, findsOneWidget);
+    });
+  });
+
   group('22A·10 · sin conexión', () {
     testWidgets('vincula igual y dice «Guardado en tu teléfono.»', (tester) async {
       final m = mundo()..telefono.conexion.tipo = TipoConexion.sinConexion;
@@ -603,6 +649,10 @@ void main() {
       expect(vigente, findsOneWidget);
       expect(find.text('SE COBRA ACÁ'), findsOneWidget);
       expect(quitar, findsNothing);
+      // Sin permiso para editar, tocar la tarjeta no abre el selector.
+      await tester.tap(vigente);
+      await asentar(tester);
+      expect(selector, findsNothing);
     });
 
     testWidgets('con la alternativa dada de baja avisa pero no ofrece cambiarla', (tester) async {

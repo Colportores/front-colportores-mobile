@@ -398,6 +398,8 @@ class SeccionCobranzaAlternativa extends StatelessWidget {
           rotulo: TextosUbicacionAlternativa.seCobraAca,
           titulo: FormatoUbicaciones.direccion(ubicacion),
           detalle: FormatoUbicaciones.tipo(ubicacion.tipo),
+          // Cambiarla es el gesto natural: tocar la tarjeta abre el selector y lo elegido se fija encima.
+          alTocar: soloLectura ? null : alElegir,
           derecha: soloLectura
               ? null
               : AccionDeTarjeta(

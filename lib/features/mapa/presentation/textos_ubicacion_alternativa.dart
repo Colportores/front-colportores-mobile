@@ -2,7 +2,7 @@
 /// avisos son los del canvas, tal cual; el canvas manda sobre el texto de la HU cuando difieren.
 ///
 /// Los que el canvas no dibuja (el aviso al quitar, los errores de lectura, la alternativa que no está
-/// en el teléfono) están marcados «a confirmar»: salen de un archivo de pendientes, no de la vista.
+/// en el teléfono) son provisorios decididos aparte (issue #145): cumplen decir qué pasó y qué hacer.
 abstract final class TextosUbicacionAlternativa {
   // ---- Escenarios de la HU (los rótulos de las acciones de la HU).
 
@@ -48,14 +48,14 @@ abstract final class TextosUbicacionAlternativa {
       'No pudimos guardar la ubicación alternativa en tu teléfono. Probá de nuevo.';
   static const reintentar = 'Reintentar';
 
-  /// A confirmar: la referencia guardada no está en el teléfono (el sync no garantiza el orden, o se
+  /// La referencia guardada no está en el teléfono (el sync no garantiza el orden, o se
   /// recuperó la cuenta sin copia). No se afirma que esté de baja.
   static const faltanteRotulo = 'NO ESTÁ EN TU TELÉFONO';
   static const faltanteTitulo = 'Ubicación alternativa';
   static const avisoFaltante =
       'No encontramos la ubicación alternativa en tu teléfono. Elegí otra o quitala.';
 
-  /// A confirmar: la lectura de dónde se le cobra falló.
+  /// La lectura de dónde se le cobra falló.
   static String noPudimosLeer(String nombre) =>
       'No pudimos leer dónde se le cobra a $nombre. Probá de nuevo.';
 
@@ -68,7 +68,7 @@ abstract final class TextosUbicacionAlternativa {
   /// 22A·10: sin conexión el vínculo igual se guarda (vive en el teléfono) y se sube al volver la red.
   static const guardadoEnElTelefono = 'Guardado en tu teléfono.';
 
-  /// A confirmar: se quitó la alternativa (el canvas no dibuja el aviso).
+  /// Se quitó la alternativa (el canvas no dibuja el aviso).
   static String quitada(String nombre) => 'Las cobranzas de $nombre se van a proponer en su casa.';
 
   // ---- El selector (22A·02 a 22A·05).
@@ -94,7 +94,7 @@ abstract final class TextosUbicacionAlternativa {
   static const sinResultadosTitulo = 'Ninguna ubicación coincide';
   static const sinResultadosDetalle = 'Probá con otra parte de la dirección o registrala.';
 
-  /// A confirmar: la lectura de las ubicaciones del selector falló.
+  /// La lectura de las ubicaciones del selector falló.
   static const noPudimosLeerUbicaciones =
       'No pudimos leer tus ubicaciones en tu teléfono. Probá de nuevo.';
 
@@ -122,7 +122,7 @@ abstract final class TextosUbicacionAlternativa {
   static const quitando = 'Quitando…';
   static const cancelar = 'Cancelar';
 
-  /// A confirmar: no se pudo quitar.
+  /// No se pudo quitar.
   static String noPudimosQuitar(String nombre) =>
       'No pudimos quitar la ubicación alternativa de $nombre. Probá de nuevo.';
 
