@@ -68,7 +68,9 @@ final class ServicioSincronizacionMotor implements ServicioSincronizacion {
           tabla: f.entity,
           tipo: switch (f.op) {
             Op.insert => TipoOperacion.alta,
-            Op.update => TipoOperacion.cambio,
+            // Unir dos casas duplicadas (HU-UBI-006) modifica el registro: para la persona es un
+            // cambio, no un alta ni una baja.
+            Op.update || Op.marcarComoDuplicado => TipoOperacion.cambio,
             Op.delete => TipoOperacion.baja,
           },
           fecha: f.createdAt,

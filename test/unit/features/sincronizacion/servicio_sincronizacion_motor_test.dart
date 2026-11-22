@@ -277,6 +277,22 @@ void main() {
         expect(tipos, {'venta': TipoOperacion.alta, 'visita': TipoOperacion.baja});
       });
 
+      test(
+        'should show a rejected duplicate merge as a change, not as a new or removed record',
+        () async {
+          await b.motor.stage('ubicacion', Op.marcarComoDuplicado, {
+            'duplicada_id': 'u-b',
+            'conservada_id': 'u-a',
+          }, clientOpId: 'op-dup');
+          b.transport.rejectJob('op-dup', 'X');
+          await b.servicio.actualizarAhora();
+
+          final fallidas = await b.servicio.operacionesFallidas();
+
+          expect(fallidas.single.tipo, TipoOperacion.cambio);
+        },
+      );
+
       test('should requeue every rejected operation and send them again', () async {
         await _stage(b.motor, 'venta', 'v-1');
         await _stage(b.motor, 'venta', 'v-2');
