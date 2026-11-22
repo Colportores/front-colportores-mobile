@@ -72,7 +72,7 @@ void main() {
           numeroTalonario: '0042',
         ),
       ]);
-      await montarFicha(tester, m);
+      await montarFicha(tester, m, tamano: _altaParaTodaLaFicha);
 
       await tester.tap(find.byKey(ClavesFicha.fila('cob-1')));
       await asentar(tester);
@@ -94,8 +94,9 @@ void main() {
           ventaId: 'ven-1',
         ),
       ]);
-      await montarFicha(tester, m);
+      await montarFicha(tester, m, tamano: _altaParaTodaLaFicha);
 
+      expect(find.byKey(ClavesFicha.fila('cob-1')), findsOneWidget);
       expect(
         find.descendant(of: find.byKey(ClavesFicha.fila('cob-1')), matching: find.byType(InkWell)),
         findsNothing,

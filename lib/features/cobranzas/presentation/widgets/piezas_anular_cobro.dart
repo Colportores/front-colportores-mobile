@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../textos_anular_cobro.dart';
 
@@ -143,10 +144,9 @@ Future<bool> mostrarHojaConfirmarAnulacion(
   required String titulo,
   required String texto,
 }) async {
-  final confirmo = await showModalBottomSheet<bool>(
+  final confirmo = await mostrarHojaInferior<bool>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
     backgroundColor: Colors.white,
     shape: _formaHoja,
     builder: (_) => HojaConfirmarAnulacion(titulo: titulo, texto: texto),
