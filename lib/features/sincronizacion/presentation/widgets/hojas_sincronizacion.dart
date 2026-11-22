@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/estado_sincronizacion.dart';
 import '../formato_sincronizacion.dart';
@@ -9,10 +10,9 @@ import 'componentes_sincronizacion.dart';
 /// Abre «¿Actualizar con datos móviles?» (25-09). Devuelve `true` si la persona eligió «Actualizar
 /// igual», `false` con «Esperar al Wi-Fi» y `null` si la cerró sin elegir (atrás o tocando afuera):
 /// quien llama trata `null` como «esperar», nunca como «actualizar».
-Future<bool?> mostrarHojaActualizarConDatos(BuildContext context) => showModalBottomSheet<bool>(
+Future<bool?> mostrarHojaActualizarConDatos(BuildContext context) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: false,
   backgroundColor: Colors.white,
   shape: const RoundedRectangleBorder(
@@ -24,10 +24,9 @@ Future<bool?> mostrarHojaActualizarConDatos(BuildContext context) => showModalBo
 /// Abre el detalle de una operación que el servidor rechazó (25-07). Devuelve `true` si la persona
 /// tocó «Reintentar» y `null`/`false` si la cerró.
 Future<bool?> mostrarHojaDetalleOperacion(BuildContext context, OperacionFallida operacion) =>
-    showModalBottomSheet<bool>(
+    mostrarHojaInferior<bool>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
       showDragHandle: false,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(

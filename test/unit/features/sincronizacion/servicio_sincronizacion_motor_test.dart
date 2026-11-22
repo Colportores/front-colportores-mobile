@@ -7,8 +7,13 @@ import 'package:sync_engine/sync_engine.dart';
 import 'package:sync_engine/testing.dart';
 
 SpecRegistry _registro() => SpecRegistry(
-  [SyncSpec.push('venta'), SyncSpec.push('visita'), SyncSpec.pull('producto')],
-  allEntities: {'venta', 'visita', 'producto'},
+  [
+    SyncSpec.push('venta'),
+    SyncSpec.push('visita'),
+    SyncSpec.push('ubicacion'),
+    SyncSpec.pull('producto'),
+  ],
+  allEntities: {'venta', 'visita', 'ubicacion', 'producto'},
 );
 
 typedef _Banco = ({
