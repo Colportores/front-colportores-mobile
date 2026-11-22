@@ -21,14 +21,37 @@ abstract final class TextosBajaPersona {
 
   static String titulo(String nombre) => '¿Dar de baja a $nombre?';
 
-  /// «María te debe $ 1.200 y tiene 1 entrega pendiente.» Sin entregas pendientes, solo la deuda.
+  /// «1 entrega pendiente», «2 entregas pendientes».
+  static String entregasPendientes(int cantidad) =>
+      cantidad == 1 ? '1 entrega pendiente' : '$cantidad entregas pendientes';
+
+  /// «María te debe $ 1.200 y tiene 1 entrega pendiente.» Sin entregas pendientes, solo la deuda; sin
+  /// deuda, solo las entregas: «Jorge tiene 1 entrega pendiente.» (decisión de Cristian, 27/10).
   static String resumenDeSaldo(String nombre, ResumenCuentaPersona cuenta) {
-    final deuda = '$nombre te debe ${FormatoBajaPersona.monto(cuenta.saldoCentavos)}';
     final pendientes = cuenta.entregasPendientes;
+    if (!cuenta.tieneSaldo) return '$nombre tiene ${entregasPendientes(pendientes)}.';
+    final deuda = '$nombre te debe ${FormatoBajaPersona.monto(cuenta.saldoCentavos)}';
     if (pendientes == 0) return '$deuda.';
-    final entregas = pendientes == 1 ? '1 entrega pendiente' : '$pendientes entregas pendientes';
-    return '$deuda y tiene $entregas.';
+    return '$deuda y tiene ${entregasPendientes(pendientes)}.';
   }
+
+  /// El cuerpo de la segunda confirmación (32D·03). Con deuda, el del canvas, tal cual («Deuda baja»
+  /// no cambia nada). Con entregas pendientes, el canvas no lo dibuja: se suma que la entrega no se
+  /// cancela (decisión del agente de decisiones, #509 P2), primero la frase de la deuda si la hay.
+  static String segundaConfirmacion(String nombre, ResumenCuentaPersona cuenta) {
+    final deuda = cuenta.tieneSaldo ? deudaSigue(nombre, cuenta.saldoCentavos) : null;
+    final pendientes = cuenta.entregasPendientes;
+    if (pendientes == 0) return deuda ?? '';
+    final entrega = entregaSigue(nombre, pendientes);
+    return deuda == null ? entrega : '$deuda $entrega';
+  }
+
+  /// «La entrega pendiente no se cancela: queda registrada aunque Jorge esté de baja.» (plural:
+  /// «Las 3 entregas pendientes no se cancelan: quedan registradas aunque Jorge esté de baja.»)
+  static String entregaSigue(String nombre, int cantidad) => cantidad == 1
+      ? 'La entrega pendiente no se cancela: queda registrada aunque $nombre esté de baja.'
+      : 'Las $cantidad entregas pendientes no se cancelan: quedan registradas aunque $nombre esté '
+            'de baja.';
 
   /// «La deuda de $ 1.200 sigue en tu cuenta aunque María esté de baja.»
   static String deudaSigue(String nombre, int saldoCentavos) =>

@@ -8,10 +8,12 @@ import '../../../../core/database/fecha_utc_converter.dart';
 /// 0122), con las diferencias de motor de [Cobranzas]: fechas en epoch ms UTC, sin claves foráneas y
 /// sin defaults de servidor. El dinero va en **centavos** (`int`), nunca `double`.
 ///
-/// Las columnas que pone el servidor no están acá, porque el push las descarta y todavía no bajan al
-/// teléfono (contrato §2): `colportor_id` (sale del JWT; en el teléfono es el `created_by`),
-/// `validado_en` y `validado_por` (al validar el coordinador, HU-COB-008) y `rechazado_en`,
-/// `rechazado_por` y `motivo_rechazo` (al rechazar un retiro, 0152).
+/// Las columnas que pone el servidor **no viajan por el push** (lo descartaría, `columnas_servidor`):
+/// `colportor_id` (sale del JWT; en el teléfono es el `created_by`), `validado_en` y `validado_por`
+/// (al validar el coordinador, HU-COB-008) y `rechazado_en` y `motivo_rechazo` (al rechazar un
+/// retiro, 0152). Las cuatro últimas **bajan por el pull** (`deposito` es `push` con `alsoPull`,
+/// backend-supabase#231, #596) y se guardan acá: de ellas sale si el depósito está por validar,
+/// validado o rechazado. `colportor_id` y `rechazado_por` no bajan ni se guardan.
 ///
 /// Los CHECK repiten los del servidor: un depósito que el servidor rechazaría con `23514` no entra ni
 /// en el teléfono. El caso de uso nunca arma otra cosa.
@@ -42,6 +44,20 @@ class Depositos extends Table {
 
   /// El ticket del banco; obligatorio con `BANCO` y `OFICINA`, ausente con `RETIRO_COORDINADOR`.
   TextColumn get ticketId => text().nullable()();
+
+  /// Cuándo lo validó el coordinador (al validar el ticket o confirmar el retiro). Solo la pone el
+  /// servidor: baja por el pull y el teléfono nunca la escribe. `null` = todavía no se validó.
+  IntColumn get validadoEn => integer().nullable().map(const FechaUtcConverter())();
+
+  /// Quién lo validó (id opaco). Baja por el pull; el teléfono no la escribe.
+  TextColumn get validadoPor => text().nullable()();
+
+  /// Cuándo lo rechazó el coordinador (hoy, solo un retiro sin ticket, 0152). Baja por el pull.
+  IntColumn get rechazadoEn => integer().nullable().map(const FechaUtcConverter())();
+
+  /// Por qué lo rechazó, escrito por el coordinador (hasta 500 caracteres). Baja por el pull. Es
+  /// texto libre: nunca va a un log (convenciones §7.5).
+  TextColumn get motivoRechazo => text().nullable()();
 
   IntColumn get createdAt => integer().map(const FechaUtcConverter())();
 

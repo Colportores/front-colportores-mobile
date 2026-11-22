@@ -138,13 +138,16 @@ class EstadoRespaldoDriveNotifier extends AsyncNotifier<EstadoRespaldoDrive> {
   /// Conecta Drive: abre la pantalla de Google, y con el permiso queda guardado y se intenta el
   /// primer respaldo. Una sola conexión (o desconexión) a la vez: la segunda llamada devuelve
   /// [DriveOcupado]. Nunca lanza.
-  Future<ResultadoConexionDrive> conectar() async {
+  ///
+  /// Con [conPrimerRespaldo] en `false` no se hace el primer respaldo: es la conexión de «Recuperar
+  /// mi respaldo» (16G·03, #707), que no sube el teléfono vacío.
+  Future<ResultadoConexionDrive> conectar({bool conPrimerRespaldo = true}) async {
     final usuarioId = _usuarioId;
     if (_enCurso || usuarioId == null) return const DriveOcupado();
     _enCurso = true;
     _generacion++;
     try {
-      final resultado = await _repo.conectar(usuarioId);
+      final resultado = await _repo.conectar(usuarioId, conPrimerRespaldo: conPrimerRespaldo);
       return resultado.fold(DriveNoQuedoConectado.new, (conexion) {
         if (ref.mounted && _usuarioId == usuarioId) state = AsyncData(conexion.estado);
         return DriveQuedoConectado(primerRespaldoHecho: conexion.primerRespaldoHecho);
@@ -216,6 +219,16 @@ final ultimoRespaldoDriveProvider = StreamProvider.autoDispose<DateTime?>((ref) 
   yield (await motor.statusNow()).lastBackupAt;
   yield* motor.status.map((estado) => estado.lastBackupAt);
 });
+
+/// Desde cuándo está conectado el Drive de la persona con la sesión iniciada (#583): de ahí se
+/// cuentan los días «sin respaldo» cuando todavía no hubo ninguno. `null` sin sesión, sin cuenta o si
+/// el almacén no se deja leer. Se vuelve a leer cuando Drive pasa a estar conectado.
+final conectadaDesdeDriveProvider = FutureProvider.autoDispose<DateTime?>((ref) async {
+  final usuarioId = ref.watch(sesionProvider.select((s) => s.value?.usuarioId));
+  if (usuarioId == null) return null;
+  ref.watch(estadoRespaldoDriveProvider.select((estado) => estado.value is DriveConectada));
+  return ref.watch(respaldoDriveRepositoryProvider).conectadaDesde(usuarioId);
+}, retry: _sinReintentos);
 
 /// Se avisó «No conectamos tu Drive. Podés hacerlo cuando quieras.» (16D·07): la persona cerró la
 /// pantalla de Google. El aviso se queda en Configuración hasta que vuelva a intentarlo o salga de

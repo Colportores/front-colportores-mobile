@@ -14,6 +14,7 @@ abstract final class TextosCancelarAgenda {
   static String titulo(TipoAgenda tipo) => switch (tipo) {
     TipoAgenda.entrevista => '¿Cancelar la entrevista?',
     TipoAgenda.cobranza => '¿Cancelar la cobranza?',
+    TipoAgenda.entrega => '¿Cancelar la entrega?',
   };
 
   /// El cuerpo de 23C·04. La cobranza todavía no pinta la casa (su color llega con la venta, S9), así
@@ -24,6 +25,9 @@ abstract final class TextosCancelarAgenda {
           'casa vuelve a su estado anterior.',
     TipoAgenda.cobranza =>
       'Queda como cancelada (la ves con el filtro «Canceladas») y se borra el recordatorio.',
+    TipoAgenda.entrega =>
+      'Queda como cancelada (la ves con el filtro «Canceladas») y se borra el recordatorio. Lo '
+          'que falta entregar sigue pendiente.',
   };
 
   // A confirmar: estados que el canvas no dibuja.

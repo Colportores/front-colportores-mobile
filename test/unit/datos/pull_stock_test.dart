@@ -174,6 +174,7 @@ void main() {
         'nombre': 'Libro',
         'descripcion': null,
         'tipo': 'LIBRO',
+        'categoria': 'ESPIRITUALES',
         'es_bonificable': true,
         'es_misionero': false,
         'precio_base_compra': null,

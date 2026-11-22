@@ -28,6 +28,7 @@ Map<String, Object?> _producto(
   String id,
   String nombre, {
   String tipo = 'LIBRO',
+  String? categoria = 'ESPIRITUALES',
   bool bonificable = false,
   bool misionero = false,
   String? codigo,
@@ -37,6 +38,7 @@ Map<String, Object?> _producto(
   'nombre': nombre,
   'descripcion': null,
   'tipo': tipo,
+  'categoria': categoria,
   'es_bonificable': bonificable,
   'es_misionero': misionero,
   'precio_base_compra': null,
@@ -359,13 +361,19 @@ void main() {
       },
     );
 
-    test('el material de trabajo y un tipo que la app no conoce no se ofrecen', () async {
+    test('el material de trabajo y una categoría que la app no conoce no se ofrecen', () async {
       await bajar({
         'producto': [
-          _producto('pro-1', 'Mochila', tipo: 'MATERIAL'),
-          _producto('pro-2', 'Algo nuevo', tipo: 'JUGO'),
-          _producto('pro-3', 'Revista', tipo: 'REVISTA'),
-          _producto('pro-4', 'Ejemplar misionero', tipo: 'MISIONERO', misionero: true),
+          _producto('pro-1', 'Mochila', tipo: 'MATERIAL', categoria: 'MATERIAL'),
+          _producto('pro-2', 'Algo nuevo', tipo: 'JUGO', categoria: 'JUGOS'),
+          _producto('pro-3', 'Revista', tipo: 'REVISTA', categoria: 'REVISTAS'),
+          _producto(
+            'pro-4',
+            'Ejemplar misionero',
+            tipo: 'MISIONERO',
+            categoria: 'MISIONEROS',
+            misionero: true,
+          ),
         ],
         'precio_general': [
           _general('pg-1', 10000, producto: 'pro-1'),
@@ -383,8 +391,8 @@ void main() {
     test('las marcas de bonificable y misionero llegan al ítem', () async {
       await bajar({
         'producto': [
-          _producto('pro-1', 'Bonificable', bonificable: true),
-          _producto('pro-2', 'Misionero', misionero: true),
+          _producto('pro-1', 'Bonificable', categoria: 'BONIFICABLES', bonificable: true),
+          _producto('pro-2', 'Misionero', categoria: 'MISIONEROS', misionero: true),
         ],
         'precio_general': [
           _general('pg-1', 10000, producto: 'pro-1'),
@@ -398,7 +406,29 @@ void main() {
       expect(producto(items, 'Bonificable').esMisionero, isFalse);
       expect(producto(items, 'Misionero').esMisionero, isTrue);
       expect(producto(items, 'Misionero').categoria, CategoriaDePrecios.misioneros);
+      expect(producto(items, 'Bonificable').categoriaDelProducto, CategoriaDeProducto.bonificables);
+      expect(producto(items, 'Misionero').categoriaDelProducto, CategoriaDeProducto.misioneros);
     });
+
+    test(
+      'un producto sin categoría (todavía no bajó) no se ofrece ni se deriva de su tipo',
+      () async {
+        await bajar({
+          'producto': [
+            _producto('pro-1', 'Sin categoría', categoria: null),
+            _producto('pro-2', 'Con categoría'),
+          ],
+          'precio_general': [
+            _general('pg-1', 10000, producto: 'pro-1'),
+            _general('pg-2', 10000, producto: 'pro-2'),
+          ],
+        });
+
+        final items = await precios(_rivera);
+
+        expect(items.map((i) => i.nombre), ['Con categoría']);
+      },
+    );
 
     test(
       'todavía sin nada bajado el catálogo es vacío y no falla: la pantalla decide qué decir',

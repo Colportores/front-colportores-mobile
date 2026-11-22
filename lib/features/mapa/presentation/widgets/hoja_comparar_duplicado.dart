@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
@@ -33,10 +34,9 @@ Future<void> mostrarHojaCompararDuplicado(
   BuildContext context, {
   required String colportorId,
   required ParaRevisar par,
-}) => showModalBottomSheet<void>(
+}) => mostrarHojaInferior<void>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // Sin arrastrar para cerrar: mientras se guarda una decisión la hoja no se puede cerrar de costado
   // (el arrastre no pasa por el `PopScope`). Las salidas son los botones y atrás.
   enableDrag: false,

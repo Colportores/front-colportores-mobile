@@ -43,8 +43,6 @@ final class _BackupFalso implements DisparadorBackup {
   Future<void> solicitar(String colportorId) async {}
 }
 
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 final _campana = find.byKey(const Key('inicio_notificaciones'));
 final _numero = find.byKey(const Key('inicio_notificaciones_numero'));
 
@@ -160,8 +158,6 @@ void main() {
             reason: 'el globo $globo pisa el engranaje $engranaje',
           );
         },
-        // skip: QA #156: a 360x640 y texto 2.0x el globo «99+» de la campana tapa el engranaje.
-        skip: !_hallazgos,
       );
     }
   });

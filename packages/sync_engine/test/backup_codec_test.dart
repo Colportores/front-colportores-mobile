@@ -18,6 +18,9 @@ class CryptoDePrueba extends CompressingCrypto {
   Future<String> keyId() async => 'de-prueba';
 
   @override
+  Future<String> sign(String mensaje) async => 'firma-de-prueba';
+
+  @override
   Future<List<int>> encryptBytes(List<int> plaintext) async {
     recibido.add(plaintext);
     return plaintext.reversed.toList();

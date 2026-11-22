@@ -23,7 +23,7 @@ abstract final class ResolvedorDePrecios {
 
     final productos = <PrecioDeProducto>[];
     for (final p in catalogo.productos) {
-      if (p.dadoDeBaja || !_seVende(p.tipo)) continue;
+      if (p.dadoDeBaja || !p.categoria.seVende) continue;
       final excepcion = porProducto[p.id];
       final precio = excepcion ?? generalesProducto[p.id];
       if (precio == null) continue;
@@ -33,7 +33,7 @@ abstract final class ResolvedorDePrecios {
           nombre: p.nombre,
           centavos: precio.centavos,
           origen: excepcion != null ? OrigenDelPrecio.ciudad : OrigenDelPrecio.general,
-          tipo: p.tipo,
+          categoriaDelProducto: p.categoria,
           esBonificable: p.esBonificable,
           esMisionero: p.esMisionero,
           codigoEditor: _codigoONulo(p.codigoEditor),
@@ -142,11 +142,6 @@ abstract final class ResolvedorDePrecios {
     String dos(int n) => n.toString().padLeft(2, '0');
     return '${d.year.toString().padLeft(4, '0')}-${dos(d.month)}-${dos(d.day)}';
   }
-
-  static bool _seVende(TipoDeProducto tipo) =>
-      tipo == TipoDeProducto.libro ||
-      tipo == TipoDeProducto.revista ||
-      tipo == TipoDeProducto.misionero;
 
   /// Un código en blanco es «sin código».
   static String? _codigoONulo(String? codigo) {

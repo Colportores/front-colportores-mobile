@@ -7,6 +7,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda
 import 'package:colportores_mobile/features/agenda/domain/entities/item_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -182,6 +183,52 @@ void main() {
     expect(item.lugar?.calle, 'Rivera');
   });
 
+  test('dado una dirección alternativa dada de baja, la cobranza sigue en la agenda y la dirección '
+      'viene marcada (#608, «Alt. de baja»)', () async {
+    await sembrarUbicacion(db, id: 'ub-alt');
+    await (db.update(db.ubicaciones)..where((u) => u.id.equals('ub-alt'))).write(
+      UbicacionesCompanion(
+        calle: const Value('Rivera'),
+        numero: const Value('77'),
+        deletedAt: Value(DateTime.utc(2026, 10, 27)),
+      ),
+    );
+    await agendar(
+      'age-1',
+      DateTime.utc(2026, 10, 29, 12),
+      tipo: TipoAgenda.cobranza,
+      alternativa: 'ub-alt',
+    );
+
+    final item = (await leer()).single;
+
+    expect(item.agenda.id, 'age-1');
+    expect(item.alternativa?.deBaja, isTrue);
+    expect(item.lugarDadoDeBaja, isTrue);
+    expect(item.casa?.deBaja, isFalse);
+  });
+
+  test('dado una alternativa viva, la dirección no lleva marca; con la casa de baja la agenda '
+      'sigue oculta (Agenda baja)', () async {
+    await sembrarUbicacion(db, id: 'ub-alt');
+    await agendar(
+      'viva',
+      DateTime.utc(2026, 10, 29, 12),
+      tipo: TipoAgenda.cobranza,
+      alternativa: 'ub-alt',
+    );
+    await agendar('sin-alt', DateTime.utc(2026, 10, 29, 13));
+
+    final items = await leer();
+
+    expect(items.map((i) => i.lugarDadoDeBaja), [false, false]);
+
+    await (db.update(db.ubicaciones)..where((u) => u.id.equals('ub-1'))).write(
+      UbicacionesCompanion(deletedAt: Value(DateTime.utc(2026, 10, 27))),
+    );
+    expect(await leer(), isEmpty);
+  });
+
   test('una agenda sin persona o con el espacio todavía sin bajar se muestra igual', () async {
     await agendar('sin-persona', DateTime.utc(2026, 10, 29, 12), vinculo: null);
     await agendar('huerfana', DateTime.utc(2026, 10, 29, 13), espacio: 'esp-que-no-llego');
@@ -220,5 +267,38 @@ void main() {
     )..where((p) => p.id.equals('per-1'))).write(const PersonasCompanion(nombre: Value('Beatriz')));
     await pumpEventQueue();
     expect(emisiones.last.first.nombrePersona, 'Beatriz Martínez');
+  });
+
+  test('trae el punto del lugar y la venta, el monto y la entrega de la cita (hoja «Agendados» del '
+      'mapa, #407)', () async {
+    await sembrarUbicacion(db, id: 'ub-alt', lat: -34.91, lon: -56.17);
+    await insertarAgenda(
+      db,
+      Agenda(
+        id: 'cuota',
+        espacioId: 'esp-1',
+        espacioPersonaId: 'ep-1',
+        tipo: TipoAgenda.cobranza,
+        fechaProgramada: DateTime.utc(2026, 10, 29, 15),
+        ubicacionAltId: 'ub-alt',
+        colportorId: 'col-1',
+        ventaId: 'v-1',
+        montoPrevistoCentavos: 145000,
+        auditoria: auditoriaDe(),
+      ),
+    );
+    // `insertarAgenda` no escribe la venta: se completa acá.
+    await (db.update(db.agendas)..where((a) => a.id.equals('cuota'))).write(
+      const AgendasCompanion(ventaId: Value('v-1'), montoPrevisto: Value(145000)),
+    );
+
+    final item = (await leer()).single;
+
+    expect(item.casa?.coordenadas, const Coordenadas(lat: -34.9, lon: -56.16));
+    expect(item.alternativa?.coordenadas, const Coordenadas(lat: -34.91, lon: -56.17));
+    expect(item.lugar?.ubicacionId, 'ub-alt');
+    expect(item.agenda.ventaId, 'v-1');
+    expect(item.agenda.montoPrevistoCentavos, 145000);
+    expect(item.agenda.esCuota, isTrue);
   });
 }

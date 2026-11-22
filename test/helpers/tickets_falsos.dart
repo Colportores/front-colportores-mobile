@@ -78,6 +78,9 @@ final class AlmacenDeFotosEnMemoria implements AlmacenDeFotosDeTicket {
     if (error != null) throw error;
     archivos.remove(ruta);
   }
+
+  @override
+  Future<void> borrarTodo() async => archivos.clear();
 }
 
 /// [ServidorDeFotosDeTicket] guionado: devuelve las respuestas en orden (la última se repite) y anota

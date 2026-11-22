@@ -36,7 +36,11 @@ class _CampanaNotificacionesState extends ConsumerState<CampanaNotificaciones> {
   Widget build(BuildContext context) {
     // Si no se puede leer, la campana queda sin número: el motivo se ve en el centro.
     final sinLeer = ref.watch(notificacionesNoLeidasProvider).value ?? 0;
-    return IconButton(
+    // El globo crece con el texto y sobresale a la derecha de la campana: con el texto grande tapaba
+    // al engranaje de al lado (#156). Se le deja lugar en proporción al aumento (solo con globo).
+    final aumento = MediaQuery.textScalerOf(context).scale(14) / 14 - 1;
+    final lugarDelGlobo = sinLeer > 0 && aumento > 0 ? 44.0 * aumento : 0.0;
+    final boton = IconButton(
       key: const Key('inicio_notificaciones'),
       tooltip: sinLeer == 0
           ? TextosCentroNotificaciones.campana
@@ -53,5 +57,11 @@ class _CampanaNotificacionesState extends ConsumerState<CampanaNotificaciones> {
         ),
       ),
     );
+    return lugarDelGlobo == 0
+        ? boton
+        : Padding(
+            padding: EdgeInsetsDirectional.only(end: lugarDelGlobo),
+            child: boton,
+          );
   }
 }

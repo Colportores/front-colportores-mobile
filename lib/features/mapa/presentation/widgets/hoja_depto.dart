@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../domain/entities/espacio.dart';
 import '../../domain/entities/motivo_rechazo_espacio.dart';
@@ -88,10 +89,9 @@ Future<SalidaHojaDepto?> mostrarHojaDepto(
   required Ubicacion ubicacion,
   required String colportorId,
   Espacio? espacio,
-}) => showModalBottomSheet<SalidaHojaDepto>(
+}) => mostrarHojaInferior<SalidaHojaDepto>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // Sin arrastrar para cerrar: mientras guarda, la hoja no se puede cerrar de costado.
   enableDrag: false,
   backgroundColor: Colors.white,

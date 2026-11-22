@@ -28,13 +28,19 @@ ItemAgenda itemAgenda(
   String colportorId = 'col-1',
   String? espacioId,
   String? ubicacionId,
+  String? slotCodigo,
+  String? espacioPersonaId,
+  String? ubicacionAltId,
+  DireccionDeAgenda? alternativa,
 }) {
   final creada = DateTime.utc(2026, 10, 20, 12);
   return ItemAgenda(
     agenda: Agenda(
       id: id,
       espacioId: espacioId ?? 'esp-$id',
-      espacioPersonaId: nombre == null ? null : 'ep-$id',
+      espacioPersonaId: espacioPersonaId ?? (nombre == null ? null : 'ep-$id'),
+      slotCodigo: slotCodigo,
+      ubicacionAltId: ubicacionAltId,
       tipo: tipo,
       fechaProgramada: cuando.toUtc(),
       estado: estado,
@@ -57,6 +63,7 @@ ItemAgenda itemAgenda(
           )
         : null,
     numeroDepto: numeroDepto,
+    alternativa: alternativa,
   );
 }
 
@@ -72,6 +79,10 @@ final class ConsultaAgendaFalsa implements ConsultaAgendaRepository {
   final pedidos = <({String colportorId, DateTime desde, DateTime hasta})>[];
   final pedidosCampania = <({String colportorId, DateTime hoy})>[];
   final pedidosDeLaCasa = <({String colportorId, String ubicacionId})>[];
+  final pedidosDeLaPersona = <({String colportorId, String personaId})>[];
+
+  /// Los vínculos (`espacio_persona.id`) de cada persona, para `observarDeLaPersona`.
+  Map<String, Set<String>> vinculosDe = {};
   final _abiertos = <({StreamController<List<ItemAgenda>> c, List<ItemAgenda> Function() lista})>[];
 
   Stream<List<ItemAgenda>> _abrir(List<ItemAgenda> Function() lista) {
@@ -117,6 +128,23 @@ final class ConsultaAgendaFalsa implements ConsultaAgendaRepository {
           if (i.agenda.estado == EstadoAgenda.programada &&
               i.casa?.ubicacionId == ubicacionId &&
               i.agenda.colportorId == colportorId)
+            i,
+      ]..sort((a, b) => a.agenda.fechaProgramada.compareTo(b.agenda.fechaProgramada)),
+    );
+  }
+
+  @override
+  Stream<List<ItemAgenda>> observarDeLaPersona({
+    required String colportorId,
+    required String personaId,
+  }) {
+    pedidosDeLaPersona.add((colportorId: colportorId, personaId: personaId));
+    return _abrir(
+      () => [
+        for (final i in items)
+          if (i.agenda.estado == EstadoAgenda.programada &&
+              i.agenda.colportorId == colportorId &&
+              (vinculosDe[personaId]?.contains(i.agenda.espacioPersonaId) ?? false))
             i,
       ]..sort((a, b) => a.agenda.fechaProgramada.compareTo(b.agenda.fechaProgramada)),
     );

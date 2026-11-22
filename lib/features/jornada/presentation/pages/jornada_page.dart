@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/domain/entities/sesion.dart';
+import '../../../notificaciones/presentation/widgets/ancla_aviso_push.dart';
 import '../../domain/entities/jornada.dart';
 import '../../domain/usecases/iniciar_jornada_use_case.dart';
 import '../formato_jornada.dart';
@@ -401,50 +402,62 @@ class _Cabecera extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       spacing: 12,
       children: [
-        Text(
-          fechaLarga(ahora).toUpperCase(),
-          key: const Key('jornada_fecha'),
-          style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
-        ),
-        if (estado case final estado?)
-          Container(
-            key: const Key('jornada_chip'),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: estadoActivo ? esquema.primary.withValues(alpha: .08) : null,
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: estadoActivo ? esquema.primary : colores.bordeInput,
-                width: 1.5,
+        // El aviso de una push con la app abierta arranca debajo de la fecha y el estado: nunca los
+        // tapa (decisión del 03/11, «P1 del QA»; en el canvas 24C·08 queda sobre «Jornada en curso»).
+        AnclaAvisoPush(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 12,
+            children: [
+              Text(
+                fechaLarga(ahora).toUpperCase(),
+                key: const Key('jornada_fecha'),
+                style: theme.textTheme.labelSmall?.copyWith(color: colores.gris),
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              spacing: 7,
-              children: [
-                ExcludeSemantics(
-                  child: Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: estadoActivo ? colorEstado : null,
-                      border: estadoActivo ? null : Border.all(color: colorEstado, width: 1.5),
+              if (estado case final estado?)
+                Container(
+                  key: const Key('jornada_chip'),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: estadoActivo ? esquema.primary.withValues(alpha: .08) : null,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: estadoActivo ? esquema.primary : colores.bordeInput,
+                      width: 1.5,
                     ),
                   ),
-                ),
-                Flexible(
-                  child: Text(
-                    estado,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: estadoActivo ? FontWeight.w600 : FontWeight.w500,
-                      color: estadoActivo ? esquema.primary : esquema.onSurfaceVariant,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 7,
+                    children: [
+                      ExcludeSemantics(
+                        child: Container(
+                          width: 9,
+                          height: 9,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: estadoActivo ? colorEstado : null,
+                            border: estadoActivo
+                                ? null
+                                : Border.all(color: colorEstado, width: 1.5),
+                          ),
+                        ),
+                      ),
+                      Flexible(
+                        child: Text(
+                          estado,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: estadoActivo ? FontWeight.w600 : FontWeight.w500,
+                            color: estadoActivo ? esquema.primary : esquema.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
+        ),
         Semantics(
           liveRegion: true,
           child: Text(

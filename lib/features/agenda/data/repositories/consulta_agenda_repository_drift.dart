@@ -6,6 +6,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/database/fecha_utc_converter.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../mapa/data/models/ubicacion_model.dart';
+import '../../../mapa/domain/value_objects/coordenadas.dart';
 import '../../domain/entities/agenda.dart';
 import '../../domain/entities/estado_agenda.dart';
 import '../../domain/entities/item_agenda.dart';
@@ -25,6 +26,10 @@ import '../../domain/repositories/consulta_agenda_repository.dart';
 /// (casa) dados de baja no se lee —queda guardada, no se borra ni se cancela, y vuelve sola si se
 /// reactiva—; con la **persona** de baja la cita se lee igual, sin nombre. Vale para las dos lecturas
 /// de acá, y por ende para la pestaña y para los conteos de los días.
+///
+/// **Alt. de baja** (decisión de Cristian, 03/11): una cobranza agendada en una dirección alternativa
+/// dada de baja **sigue** en la Agenda (con la persona y su casa activas) y la dirección sale marcada
+/// ([DireccionDeAgenda.deBaja]) para que la colportora la reagende.
 final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
   ConsultaAgendaRepositoryDrift(this._db);
 
@@ -62,6 +67,24 @@ final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
       (agendas) =>
           agendas.estado.equals(EstadoAgenda.programada.codigo) &
           agendas.espacioId.isInQuery(deLaCasa),
+      ascendente: true,
+    );
+  }
+
+  @override
+  Stream<List<ItemAgenda>> observarDeLaPersona({
+    required String colportorId,
+    required String personaId,
+  }) {
+    final vinculos = _db.espacioPersonas;
+    final dePersona = _db.selectOnly(vinculos)
+      ..addColumns([vinculos.id])
+      ..where(vinculos.personaId.equals(personaId));
+    return _leer(
+      colportorId,
+      (agendas) =>
+          agendas.estado.equals(EstadoAgenda.programada.codigo) &
+          agendas.espacioPersonaId.isInQuery(dePersona),
       ascendente: true,
     );
   }
@@ -227,6 +250,8 @@ final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
     tipo: UbicacionModel.tipoDesdeCodigo(fila.tipo),
     calle: fila.calle,
     numero: fila.numero,
+    deBaja: fila.deletedAt != null,
+    coordenadas: Coordenadas(lat: fila.lat, lon: fila.lon),
   );
 
   static Agenda _aAgenda(AgendaFila fila) => Agenda(
@@ -241,6 +266,11 @@ final class ConsultaAgendaRepositoryDrift implements ConsultaAgendaRepository {
     estado: EstadoAgenda.desdeCodigo(fila.estado),
     colportorId: fila.colportorId,
     visitaId: fila.visitaId,
+    // La venta, el monto y la entrega: la hoja «Agendados» del mapa (06C·03) dice la cuota y lo que
+    // falta cobrar, y si la entrega lleva un pago.
+    ventaId: fila.ventaId,
+    montoPrevistoCentavos: fila.montoPrevisto,
+    entregaId: fila.entregaId,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,

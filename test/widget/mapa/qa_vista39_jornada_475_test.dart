@@ -80,6 +80,7 @@ void main() {
     Future<void> Function()? sembrar,
     bool cobrar = false,
     Size tamano = const Size(412, 915),
+    DateTime? ahora,
   }) async {
     resultados.clear();
     lecturaLenta = null;
@@ -113,7 +114,7 @@ void main() {
           ),
           generadorIdVisitaProvider.overrideWithValue(() => 'vis-${++v}'),
           relojVisitaProvider.overrideWithValue(
-            () => DateTime.utc(2026, 10, 25, 15).add(Duration(minutes: minutos++)),
+            () => (ahora ?? DateTime.utc(2026, 10, 25, 15)).add(Duration(minutes: minutos++)),
           ),
           personaRepositoryProvider.overrideWithValue(personas),
           espacioRepositoryProvider.overrideWithValue(EspacioRepositorioParaPersonas(casaGrecia())),
@@ -415,9 +416,9 @@ void main() {
     );
   });
 
-  group('lo que queda como pregunta (no es un hallazgo)', () {
-    testWidgets('documenta: una jornada que quedó abierta de un día anterior sigue siendo «la '
-        'abierta» y la visita de hoy la lleva (P1)', (tester) async {
+  group('HU-VIS-005 (#524): la jornada que quedó abierta de otro día no es la de hoy', () {
+    testWidgets('dado una jornada del 23/10 que quedó abierta, cuando el 25/10 toco «No contestó», '
+        'la visita va sin jornada (jornada_id nulo, también en el job que sube)', (tester) async {
       await montar(
         tester,
         sembrar: () =>
@@ -427,10 +428,137 @@ void main() {
       await tester.tap(renglon(OpcionQuePaso.noContesto));
       await esperar(tester);
 
-      // La visita se hizo el 25/10 a las 15:00 UTC y la jornada empezó el 23/10: la HU-JOR-002 la
-      // trata como «quedó abierta» y pide corregirla al finalizar. Si la visita de hoy debe colgar de
-      // ella o ir sin jornada no lo dice ni la HU ni el issue: va como pregunta.
-      expect((await visitas(tester)).single.jornadaId, 'jor-ayer');
+      expect(resultados, [true]);
+      expect((await visitas(tester)).single.jornadaId, isNull);
+      expect(subidas('visita').single['jornada_id'], isNull);
+      await cerrar(tester);
+    });
+
+    testWidgets('dado una jornada que quedó abierta, cuando toco «Rechazo», la visita va sin '
+        'jornada', (tester) async {
+      await montar(
+        tester,
+        sembrar: () =>
+            jornadas.insertar(_jornada('jor-ayer', inicio: DateTime.utc(2026, 10, 23, 12))),
+      );
+
+      await tester.tap(renglon(OpcionQuePaso.rechazo));
+      await esperar(tester);
+
+      expect((await visitas(tester)).single.jornadaId, isNull);
+      await cerrar(tester);
+    });
+
+    testWidgets('dado una jornada que quedó abierta y un cobro hecho, la «Cobranza» va sin '
+        'jornada', (tester) async {
+      await montar(
+        tester,
+        cobrar: true,
+        sembrar: () =>
+            jornadas.insertar(_jornada('jor-ayer', inicio: DateTime.utc(2026, 10, 23, 12))),
+      );
+
+      await tester.tap(renglon(OpcionQuePaso.cobranza));
+      await esperar(tester);
+
+      final v = (await visitas(tester)).single;
+      expect(v.tipoResultado, 'COBRANZA');
+      expect(v.jornadaId, isNull);
+      await cerrar(tester);
+    });
+
+    testWidgets('dado una jornada de las 23:30 y son las 00:10, todavía es la de hoy (ahora − 30 '
+        'min cae en el día del inicio) y la visita la lleva', (tester) async {
+      await montar(
+        tester,
+        ahora: DateTime(2026, 10, 25, 0, 10),
+        sembrar: () =>
+            jornadas.insertar(_jornada('jor-noche', inicio: DateTime(2026, 10, 24, 23, 30))),
+      );
+
+      await tester.tap(renglon(OpcionQuePaso.noContesto));
+      await esperar(tester);
+
+      expect((await visitas(tester)).single.jornadaId, 'jor-noche');
+      await cerrar(tester);
+    });
+
+    testWidgets('dado una jornada de las 23:30 y son las 00:40, ya quedó abierta de otro día y la '
+        'visita va sin jornada', (tester) async {
+      await montar(
+        tester,
+        ahora: DateTime(2026, 10, 25, 0, 40),
+        sembrar: () =>
+            jornadas.insertar(_jornada('jor-noche', inicio: DateTime(2026, 10, 24, 23, 30))),
+      );
+
+      await tester.tap(renglon(OpcionQuePaso.noContesto));
+      await esperar(tester);
+
+      expect((await visitas(tester)).single.jornadaId, isNull);
+      await cerrar(tester);
+    });
+
+    testWidgets('dado que la colportora cierra la vieja y empieza la de hoy, las visitas '
+        'siguientes llevan la nueva y la primera sigue sin jornada', (tester) async {
+      await montar(
+        tester,
+        sembrar: () =>
+            jornadas.insertar(_jornada('jor-ayer', inicio: DateTime.utc(2026, 10, 23, 12))),
+      );
+      await tester.tap(renglon(OpcionQuePaso.noContesto));
+      await esperar(tester);
+      expect(resultados, [true]);
+
+      final fin = DateTime.utc(2026, 10, 23, 18);
+      await enBase(tester, () async {
+        await jornadas.finalizar(
+          JornadaModel(
+            id: 'jor-ayer',
+            colportorId: 'col-1',
+            inicio: DateTime.utc(2026, 10, 23, 12),
+            fin: fin,
+            auditoria: Auditoria(
+              createdAt: DateTime.utc(2026, 10, 23, 12),
+              updatedAt: fin,
+              createdBy: 'col-1',
+            ),
+          ),
+        );
+        await jornadas.insertar(_jornada('jor-hoy', inicio: DateTime.utc(2026, 10, 25, 14)));
+      });
+      await tester.tap(find.text('registrar visita'));
+      await esperar(tester);
+      await tester.tap(renglon(OpcionQuePaso.rechazo));
+      await esperar(tester);
+
+      final porTipo = {for (final f in await visitas(tester)) f.tipoResultado: f.jornadaId};
+      expect(porTipo, {'NO_CONTESTO': null, 'RECHAZO': 'jor-hoy'});
+      await cerrar(tester);
+    });
+
+    testWidgets('dado una jornada que quedó abierta y un guardado lento, cuando toco dos veces '
+        '«No contestó», hay una sola visita sin jornada y la hoja no queda trabada', (
+      tester,
+    ) async {
+      await montar(
+        tester,
+        sembrar: () =>
+            jornadas.insertar(_jornada('jor-ayer', inicio: DateTime.utc(2026, 10, 23, 12))),
+      );
+      final compuerta = lecturaLenta = Completer<void>();
+
+      await tester.tap(renglon(OpcionQuePaso.noContesto));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(renglon(OpcionQuePaso.noContesto), warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 100));
+      compuerta.complete();
+      await esperar(tester);
+
+      final v = await visitas(tester);
+      expect(v, hasLength(1));
+      expect(v.single.jornadaId, isNull);
+      expect(resultados, [true]);
       await cerrar(tester);
     });
   });

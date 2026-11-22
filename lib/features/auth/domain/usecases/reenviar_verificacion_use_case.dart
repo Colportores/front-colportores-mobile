@@ -29,7 +29,8 @@ final class ReenviarVerificacionUseCase implements UseCase<Unit, ReenviarVerific
   final AuthRepository _repository;
 
   /// Lo que dice el campo cuando el email está incompleto o mal armado.
-  static const String _emailIncompleto = 'El email no es válido';
+  static const String _emailIncompleto =
+      'El email no es válido. Revisá que esté completo, como nombre@correo.com.';
 
   @override
   Future<Either<Failure, Unit>> call(ReenviarVerificacionParams params) async {

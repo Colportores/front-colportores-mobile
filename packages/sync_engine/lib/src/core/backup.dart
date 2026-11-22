@@ -5,6 +5,8 @@
 // cadena, cada uno apuntando a su padre. Verificarla es lo que evita descubrir
 // en el peor momento —un colportor sin celular— que falta un eslabón.
 
+import 'dart:convert';
+
 /// Una entrada del `appDataFolder` de Google Drive.
 class BackupEntry {
   const BackupEntry({
@@ -17,6 +19,7 @@ class BackupEntry {
     this.exportedAt,
     this.storedHash,
     this.keyId,
+    this.firma,
   });
 
   /// Identidad en Drive.
@@ -61,6 +64,21 @@ class BackupEntry {
   /// no trae identificador, no se toca nunca. `null` si el archivo no lo trae.
   final String? keyId;
 
+  /// La firma de las anotaciones de este archivo (`parent_id`, `content_hash`,
+  /// `exported_at`), hecha con una llave derivada de la de la usuaria
+  /// ([CryptoPort.sign]). Es lo que impide que alguien con acceso a la carpeta
+  /// de Drive reencadene archivos tocando sus anotaciones sin que se note.
+  /// `null` si el archivo no la trae (un respaldo de antes de la firma): ante
+  /// una verificación cuenta como cadena rota y se regenera.
+  final String? firma;
+
+  /// Lo que dice la firma de este archivo: [mensajeDeFirma] de sus anotaciones.
+  String get mensajeFirmado => mensajeDeFirma(
+        parentId: parentId,
+        contentHash: contentHash,
+        exportedAt: exportedAt,
+      );
+
   bool get isBase => parentId == null;
 
   /// Lo que se subió y lo que Drive guardó no es lo mismo.
@@ -88,7 +106,34 @@ enum ChainProblem {
   /// Una entrada existe pero lo que guarda el archivo remoto no es lo que se
   /// subió: rompe el restore igual que una que falta.
   corrupt,
+
+  /// Una entrada no trae la firma de sus anotaciones, o la que trae no
+  /// coincide con la que da la llave de la usuaria: las anotaciones (padre,
+  /// hash, instante) se tocaron o no las puso esta llave. Se trata como una
+  /// cadena rota: el próximo respaldo parte de una base nueva.
+  badSignature,
 }
+
+/// Lo que se firma de cada archivo del respaldo: el padre, el hash y el instante
+/// de exportación, en ese orden y en un arreglo JSON, para que ningún valor se
+/// pueda confundir con el borde del vecino (cualquier separador de texto
+/// plano permitiría mover un carácter de un campo al otro). Lleva una versión
+/// del esquema como primer elemento. Sin padre (la base) o sin instante, el
+/// campo va como cadena vacía, igual que en las anotaciones de Drive.
+///
+/// El instante va como lo escribe el archivo (UTC, ISO 8601): el mismo que
+/// vuelve al leerlo.
+String mensajeDeFirma({
+  required String? parentId,
+  required String contentHash,
+  required DateTime? exportedAt,
+}) =>
+    jsonEncode([
+      'colportores/backup/anotaciones/v1',
+      parentId ?? '',
+      contentHash,
+      exportedAt?.toUtc().toIso8601String() ?? '',
+    ]);
 
 class ChainStatus {
   const ChainStatus({
@@ -207,4 +252,183 @@ ChainStatus buildChain(List<BackupEntry> entries) {
     );
   }
   return ChainStatus(problems: const {}, ordered: ordenados, superseded: superseded);
+}
+
+/// La parte de una cadena que se puede restaurar.
+///
+/// [buildChain] es todo o nada, porque una cadena a medias no se *extiende*.
+/// Restaurar es otra cosa: si un incremental del medio está dañado, lo que
+/// viene antes sigue siendo la copia de la persona hasta esa fecha, y
+/// descartarla es perder más de lo necesario (HU-SYNC-006, «Restore parcial»).
+class RestorableChain {
+  const RestorableChain({
+    required this.ordered,
+    this.problem = '',
+  });
+
+  /// De la base hacia la punta, hasta antes del primer eslabón dañado o
+  /// ambiguo. Vacío si no hay base.
+  final List<BackupEntry> ordered;
+
+  /// Por qué la cadena no llega entera (`corrupt`, `fork`, `orphan`,
+  /// `brokenLink`, `missingBase`), o vacío si es la cadena completa.
+  final String problem;
+
+  bool get intact => problem.isEmpty && ordered.isNotEmpty;
+}
+
+/// Arma lo que se puede restaurar de [entries]: la base vigente y los
+/// incrementales encadenados sobre ella, cortando en el primero cuyo contenido
+/// remoto no coincide con lo subido, o donde la cadena se bifurca. Solo mira
+/// metadatos: un eslabón dañado que el archivo remoto no delata por su hash se
+/// descubre al bajarlo.
+RestorableChain buildRestorableChain(List<BackupEntry> entries) {
+  final bases = entries.where((e) => e.isBase).toList()
+    ..sort((a, b) {
+      final porFecha = a.createdAt.compareTo(b.createdAt);
+      return porFecha != 0 ? porFecha : a.id.compareTo(b.id);
+    });
+  if (bases.isEmpty) {
+    return const RestorableChain(ordered: [], problem: 'missingBase');
+  }
+  final vigente = bases.last;
+  if (vigente.corrupta) {
+    return const RestorableChain(ordered: [], problem: 'corrupt');
+  }
+
+  final porId = {for (final e in entries) e.id: e};
+  final hijosPorPadre = <String, List<BackupEntry>>{};
+  for (final e in entries) {
+    if (e.isBase || !porId.containsKey(e.parentId)) continue;
+    (hijosPorPadre[e.parentId!] ??= []).add(e);
+  }
+
+  final ordenados = <BackupEntry>[vigente];
+  final vistos = {vigente.id};
+  var problema = '';
+  var actual = vigente;
+  while (true) {
+    final hijos = hijosPorPadre[actual.id];
+    if (hijos == null) break;
+    if (hijos.length > 1) {
+      problema = 'fork';
+      break;
+    }
+    final hijo = hijos.single;
+    if (!vistos.add(hijo.id)) {
+      problema = 'cycle';
+      break;
+    }
+    if (hijo.corrupta) {
+      problema = 'corrupt';
+      break;
+    }
+    ordenados.add(hijo);
+    actual = hijo;
+  }
+
+  if (problema.isEmpty) {
+    // Entradas más nuevas que la base que no cuelgan de ella: quedaron afuera.
+    for (final e in entries) {
+      if (vistos.contains(e.id) || e.createdAt.isBefore(vigente.createdAt)) {
+        continue;
+      }
+      problema = e.isBase
+          ? 'fork'
+          : (porId.containsKey(e.parentId) ? 'orphan' : 'brokenLink');
+      break;
+    }
+  }
+  return RestorableChain(ordered: ordenados, problem: problema);
+}
+
+/// Una cadena de Drive que se puede restaurar, resumida para que la persona (o
+/// la app) elija cuál cuando hay más de una.
+class ChainCandidate {
+  const ChainCandidate({
+    required this.keyId,
+    required this.tip,
+    required this.parts,
+    required this.bytes,
+    required this.intact,
+  });
+
+  /// De qué llave es ([CryptoPort.keyId]); `null` si el archivo no lo trae.
+  final String? keyId;
+
+  /// La entrada más nueva de lo restaurable: de cuándo son los datos.
+  final BackupEntry tip;
+
+  /// Cuántas partes se pueden aplicar.
+  final int parts;
+
+  /// Cuántos bytes pesan, cifrados.
+  final int bytes;
+
+  /// La cadena llega entera; si no, el restore es parcial.
+  final bool intact;
+}
+
+/// Lo que dejó un restore (HU-SYNC-006).
+class RestoreOutcome {
+  const RestoreOutcome({
+    required this.tip,
+    required this.applied,
+    required this.total,
+    required this.bytes,
+    this.problem = '',
+  });
+
+  /// La última parte aplicada: de cuándo son los datos restaurados.
+  final BackupEntry tip;
+
+  /// Cuántas partes se aplicaron (la base y los incrementales).
+  final int applied;
+
+  /// Cuántas partes tenía la cadena.
+  final int total;
+
+  /// Cuántos bytes (cifrados) se aplicaron.
+  final int bytes;
+
+  /// Por qué la cadena no llegó entera, o vacío.
+  final String problem;
+
+  /// Quedaron partes afuera: lo posterior a [tip] no se restauró.
+  bool get partial => problem.isNotEmpty;
+}
+
+/// Una cadena ya bajada, verificada y descifrada, lista para aplicar (HU-SYNC-006).
+///
+/// Todavía no se tocó la DB: [BackupService.applyChains] aplica varias juntas.
+class DownloadedChain {
+  const DownloadedChain({required this.payloads, required this.outcome});
+
+  /// Los payloads descifrados, de la base a la punta.
+  final List<List<int>> payloads;
+
+  /// Qué se bajó: la punta, cuántas partes y si la cadena llegó entera.
+  final RestoreOutcome outcome;
+}
+
+/// Las cadenas que se pueden restaurar de [entries], una por llave
+/// ([BackupEntry.keyId]; las entradas sin identificador son una más). Las que
+/// no tienen ni una base usable no aparecen.
+List<ChainCandidate> chainCandidates(List<BackupEntry> entries) {
+  final porLlave = <String?, List<BackupEntry>>{};
+  for (final e in entries) {
+    (porLlave[e.keyId] ??= []).add(e);
+  }
+  return [
+    for (final MapEntry(:key, :value) in porLlave.entries)
+      if (buildRestorableChain(value) case final cadena
+          when cadena.ordered.isNotEmpty)
+        ChainCandidate(
+          keyId: key,
+          tip: cadena.ordered.last,
+          parts: cadena.ordered.length,
+          bytes: cadena.ordered.fold(0, (n, e) => n + e.bytes),
+          intact: cadena.intact,
+        ),
+  ];
 }

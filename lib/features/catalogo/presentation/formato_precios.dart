@@ -1,5 +1,5 @@
 import '../../mapa/presentation/formato_baja.dart' show FormatoBaja;
-import '../domain/entities/catalogo_local.dart' show TipoDeProducto;
+import '../domain/entities/catalogo_local.dart' show CategoriaDeProducto;
 import '../domain/entities/ciudad_consultable.dart';
 import '../domain/entities/item_de_precio.dart';
 
@@ -22,6 +22,7 @@ abstract final class TextosPrecios {
   static const bonificable = '◆ Bonificable';
   static const misionero = '✦ Misionero';
   static const revista = 'Revista';
+  static const espiritual = '✝ Espiritual';
 
   static const volverADondeEstoy = 'Volver a donde estoy';
   static const sinResultadosSub = 'Si esperabas verlo, puede que no tenga precio en esta ciudad.';
@@ -68,8 +69,44 @@ abstract final class TextosPrecios {
   static const sinCampaniaSub = 'Cuando te inscriban en una campaña, vas a ver sus precios acá.';
 }
 
+/// Las etiquetas que puede llevar la fila de un producto en Precios (26·02): una por su categoría y,
+/// aparte, «◆ Bonificable» del sí/no.
+enum EtiquetaDeProducto {
+  bonificable(TextosPrecios.bonificable, 'bonificable'),
+  misionero(TextosPrecios.misionero, 'misionero'),
+  revista(TextosPrecios.revista, 'revista'),
+  espiritual(TextosPrecios.espiritual, 'espiritual');
+
+  const EtiquetaDeProducto(this.texto, this.palabra);
+
+  /// Lo que se ve en la pastilla.
+  final String texto;
+
+  /// Lo que lee el lector de pantalla (sin el ícono, que no se lee).
+  final String palabra;
+}
+
 /// Cómo se escriben los precios y las ciudades en la vista 26.
 abstract final class FormatoPrecios {
+  /// Las etiquetas de la fila de [producto]: primero la de su categoría (misioneros → «✦ Misionero»,
+  /// revistas → «Revista», espirituales → «✝ Espiritual»; bonificables → «◆ Bonificable», que es la
+  /// del canvas para esa categoría) y después «◆ Bonificable» si cuenta para la beca (`es_bonificable`,
+  /// el sí/no), sin repetirla. El material y lo que no se conoce no se ofrecen, así que no llegan acá.
+  static List<EtiquetaDeProducto> etiquetasDe(PrecioDeProducto producto) {
+    final deLaCategoria = switch (producto.categoriaDelProducto) {
+      CategoriaDeProducto.bonificables => EtiquetaDeProducto.bonificable,
+      CategoriaDeProducto.misioneros => EtiquetaDeProducto.misionero,
+      CategoriaDeProducto.revistas => EtiquetaDeProducto.revista,
+      CategoriaDeProducto.espirituales => EtiquetaDeProducto.espiritual,
+      CategoriaDeProducto.material || CategoriaDeProducto.otra => null,
+    };
+    return [
+      ?deLaCategoria,
+      if (producto.esBonificable && deLaCategoria != EtiquetaDeProducto.bonificable)
+        EtiquetaDeProducto.bonificable,
+    ];
+  }
+
   /// «$ 4.800», o «$ 1.450,50» si no son pesos justos.
   static String monto(int centavos) => FormatoBaja.monto(centavos).replaceFirst(r'$U', r'$');
 
@@ -178,9 +215,7 @@ abstract final class FormatoPrecios {
       PrecioDeProducto() => [
         item.nombre,
         ?(item.codigoEditor == null ? null : 'código ${item.codigoEditor}'),
-        if (item.esBonificable) 'bonificable',
-        if (item.esMisionero) 'misionero',
-        if (item.tipo == TipoDeProducto.revista) 'revista',
+        for (final etiqueta in etiquetasDe(item)) etiqueta.palabra,
         precio,
       ].join(', '),
       final PrecioDeCombo combo => [

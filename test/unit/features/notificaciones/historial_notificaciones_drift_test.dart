@@ -278,15 +278,33 @@ void main() {
       expect(await filasEnLaTabla(), 0);
     });
 
-    test('con hasta, lo que llegó después sobrevive', () async {
-      await repo.registrar(_aviso('antes', hace: const Duration(minutes: 5)), ahora: _ahora);
-      await repo.registrar(_aviso('justo', hace: Duration.zero), ahora: _ahora);
-      await repo.registrar(_aviso('despues', hace: -const Duration(minutes: 1)), ahora: _ahora);
+    test(
+      'con ids, borra solo esos y lo que llegó después sobrevive, aunque su hora sea anterior',
+      () async {
+        await repo.registrar(_aviso('antes', hace: const Duration(minutes: 5)), ahora: _ahora);
+        await repo.registrar(_aviso('justo', hace: Duration.zero), ahora: _ahora);
+        // Un recordatorio que sonó hace una hora pero se guardó recién: no estaba en la cuenta.
+        await repo.registrar(_aviso('tarde', hace: const Duration(hours: 1)), ahora: _ahora);
 
-      final r = await repo.borrarTodas(hasta: _ahora);
+        final r = await repo.borrarTodas(ids: {'antes', 'justo'});
 
-      expect(r, const Right<Failure, int>(2));
-      expect(await ids(), ['despues']);
+        expect(r, const Right<Failure, int>(2));
+        expect(await ids(), ['tarde']);
+      },
+    );
+
+    test('con más ids que el lote de SQLite (1200), los borra a todos', () async {
+      for (var i = 0; i < 1200; i++) {
+        await repo.registrar(
+          _aviso('a$i', hace: Duration(minutes: i)),
+          ahora: _ahora,
+        );
+      }
+
+      final r = await repo.borrarTodas(ids: {for (var i = 0; i < 1200; i++) 'a$i'});
+
+      expect(r, const Right<Failure, int>(1200));
+      expect(await ids(), isEmpty);
     });
 
     test('purgarVencidas borra solo lo que pasó de los 90 días', () async {

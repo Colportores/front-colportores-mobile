@@ -43,6 +43,43 @@ final class AmbitoTrabajo extends Equatable {
   List<Object?> get props => [zonaId, ciudadId, departamentoId];
 }
 
+/// El nombre de un departamento como lo trae el `ambito_id` de su paquete en el catálogo: sin
+/// tildes, en minúsculas y con los espacios colapsados (`San José` → `san jose`, `Río  Negro` →
+/// `rio negro`). Es el mismo texto con el que el panel agrupa por departamento (decisión de Cristian,
+/// 23/10, «Área depto»).
+String normalizarDepartamento(String nombre) {
+  final sb = StringBuffer();
+  for (final rune in nombre.toLowerCase().runes) {
+    final c = String.fromCharCode(rune);
+    sb.write(_sinTilde[c] ?? c);
+  }
+  return sb.toString().trim().replaceAll(RegExp(r'\s+'), ' ');
+}
+
+const _sinTilde = {
+  'á': 'a',
+  'à': 'a',
+  'â': 'a',
+  'ä': 'a',
+  'é': 'e',
+  'è': 'e',
+  'ê': 'e',
+  'ë': 'e',
+  'í': 'i',
+  'ì': 'i',
+  'î': 'i',
+  'ï': 'i',
+  'ó': 'o',
+  'ò': 'o',
+  'ô': 'o',
+  'ö': 'o',
+  'ú': 'u',
+  'ù': 'u',
+  'û': 'u',
+  'ü': 'u',
+  'ñ': 'n',
+};
+
 /// Un archivo `.pmtiles` de un paquete: lo que se baja, con lo que hace falta para validarlo.
 ///
 /// Una ciudad que no entra en un solo archivo (plan Free de Storage: menos de 50 MB cada uno) se
@@ -114,10 +151,18 @@ final class PaqueteTiles extends Equatable {
   String claveDeParte(int indice) => '$id-p${indice + 1}-${partes[indice].huella}';
 
   /// `true` si el paquete tiene los tiles del lugar de [ambito]. Uruguay cubre cualquier lugar.
+  ///
+  /// El departamento se compara por su nombre normalizado ([normalizarDepartamento]): el `ambito_id`
+  /// del catálogo es `san jose` y el departamento de la ciudad puede venir como «San José».
   bool cubre(AmbitoTrabajo ambito) {
     if (nivel == NivelCobertura.uruguay) return true;
     final id = ambito.idPara(nivel);
-    return id != null && id == ambitoId;
+    if (id == null || ambitoId == null) return false;
+    if (nivel == NivelCobertura.departamento) {
+      final propio = normalizarDepartamento(id);
+      return propio.isNotEmpty && propio == normalizarDepartamento(ambitoId!);
+    }
+    return id == ambitoId;
   }
 
   @override

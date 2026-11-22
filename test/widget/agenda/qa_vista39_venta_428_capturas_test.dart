@@ -6,7 +6,8 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
-import 'package:colportores_mobile/features/ventas/presentation/widgets/hoja_cuando_cobrar.dart';
+import 'package:colportores_mobile/features/ventas/presentation/pages/asi_quedo_la_venta_page.dart';
+import 'package:colportores_mobile/features/ventas/presentation/pages/cuando_cobrar_page.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -70,12 +71,19 @@ void main() {
           expect(tester.takeException(), isNull, reason: 'día y hora');
           await _foto(tester, '${etiqueta}_4_dia_y_hora');
 
-          // Cobranza agendada.
+          // «Guardar» y «Así quedó la venta» (42B·01E).
           await tocar(tester, find.byKey(const Key('agendar_hoja_listo')));
+          await tocar(tester, find.byKey(ClavesCuandoCobrar.guardar));
+          expect(tester.takeException(), isNull, reason: 'cierre');
+          expect(find.byKey(ClavesCierreDeVenta.tarjetaCobranza), findsOneWidget);
+          await _foto(tester, '${etiqueta}_5_cierre');
+
+          // Cobranza agendada (42B·01H).
+          await tocar(tester, find.byKey(ClavesCierreDeVenta.volver));
           await tester.pump(const Duration(milliseconds: 400));
           expect(tester.takeException(), isNull, reason: 'cobranza agendada');
-          expect(find.textContaining('Cobranza agendada para'), findsOneWidget);
-          await _foto(tester, '${etiqueta}_5_agendada');
+          expect(find.textContaining('Cobranza agendada:'), findsOneWidget);
+          await _foto(tester, '${etiqueta}_6_agendada');
         },
       );
 

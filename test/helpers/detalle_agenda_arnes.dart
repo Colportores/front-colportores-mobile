@@ -12,6 +12,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_ag
 import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/franja_horaria.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/misionero_dejado.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
@@ -25,6 +26,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/personas
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../widget/mapa/hoja_con_quien_arnes.dart' show ObservadorDeRutas;
@@ -42,6 +44,9 @@ Agenda agendaDelDetalle({
   TipoAgenda tipo = TipoAgenda.entrevista,
   DateTime? cuando,
   String? slot = 'early_afternoon',
+  String? ventaId,
+  String? entregaId,
+  int? montoPrevistoCentavos,
 }) => Agenda(
   id: id,
   espacioId: 'esp-1',
@@ -51,6 +56,9 @@ Agenda agendaDelDetalle({
   slotCodigo: slot,
   estado: estado,
   colportorId: 'col-1',
+  ventaId: ventaId,
+  entregaId: entregaId,
+  montoPrevistoCentavos: montoPrevistoCentavos,
   auditoria: Auditoria(
     createdAt: DateTime.utc(2026, 10, 23),
     updatedAt: DateTime.utc(2026, 10, 23),
@@ -180,6 +188,7 @@ final class AgendaRepositorioDetalle implements AgendaRepository {
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
+    List<MisioneroDejado> misioneros = const [],
   }) => throw UnimplementedError();
 
   @override
@@ -231,6 +240,7 @@ Future<ArnesDetalle> montarDetalle(
   double escala = 1,
   Size tamano = const Size(390, 844),
   bool abrir = true,
+  List<Override> extras = const [],
 }) async {
   final arnes = ArnesDetalle(
     repo: repo ?? AgendaRepositorioDetalle(detalle ?? DetalleDeAgenda(agenda: agendaDelDetalle())),
@@ -255,6 +265,7 @@ Future<ArnesDetalle> montarDetalle(
         espacioRepositoryProvider.overrideWithValue(
           EspacioRepositorioParaPersonas(lugar, falla: fallaDeCasa),
         ),
+        ...extras,
         if (conRegistrar)
           registrarVisitaDesdeLaCasaProvider.overrideWithValue((c) {
             arnes.registros.add(c);

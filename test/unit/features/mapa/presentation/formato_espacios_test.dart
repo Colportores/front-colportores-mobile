@@ -71,9 +71,9 @@ void main() {
       );
     });
 
-    test('el lector de pantalla lee la fila como botón «Editar»', () {
-      expect(TextosEspacios.filaSemantica(espacioDe('e', '101')), 'Depto 101. Editar.');
-      expect(TextosEspacios.filaSemantica(espacioDe('e', null)), 'Sin número. Editar.');
+    test('el lector de pantalla lee la fila como botón con el depto (abre su ficha, #679)', () {
+      expect(TextosEspacios.filaSemantica(espacioDe('e', '101')), 'Depto 101.');
+      expect(TextosEspacios.filaSemantica(espacioDe('e', null)), 'Sin número.');
     });
 
     test('el anuncio de «Agregar y cargar otro»', () {

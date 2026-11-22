@@ -84,16 +84,19 @@ void main() {
   Future<List<SyncQueueFila>> cola() =>
       (db.select(db.syncQueue)..orderBy([(j) => OrderingTerm.asc(j.createdAt)])).get();
 
-  test('dado el catálogo de la app, cuando se pregunta por `deposito`, sube por push, es solo de '
-      'alta y no baja', () {
-    final spec = specsDeLaApp.singleWhere((s) => s.entity == 'deposito');
+  test(
+    'dado el catálogo de la app, cuando se pregunta por `deposito`, sube por push como escritura '
+    'crítica y baja su validación por el pull (#596)',
+    () {
+      final spec = specsDeLaApp.singleWhere((s) => s.entity == 'deposito');
 
-    expect(spec.policy, SyncPolicy.push);
-    expect(spec.alsoPull, isFalse);
-    expect(spec.critical, isFalse);
-    expect(spec.pk, 'id');
-    expect(entidadesDelBackup, contains('deposito'));
-  });
+      expect(spec.policy, SyncPolicy.push);
+      expect(spec.alsoPull, isTrue);
+      expect(spec.critical, isTrue);
+      expect(spec.pk, 'id');
+      expect(entidadesDelBackup, contains('deposito'));
+    },
+  );
 
   test('dado un depósito, cuando se registra, la cola real tiene el alta con las columnas del '
       'servidor', () async {

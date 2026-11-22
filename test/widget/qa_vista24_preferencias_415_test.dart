@@ -300,10 +300,10 @@ void main() {
       expect(_textoDe(_valor), '5 min antes');
     });
 
-    // QA #415 (arreglado en #155): el tramo sin recorrer del control de anticipación era blanco sobre
-    // la tarjeta (1,05:1); el canvas lo dibuja a 4 px en #E3E7EE (Bloques.dc.html), 1,16:1.
+    // QA #415 (#155, #523): el tramo sin recorrer era blanco sobre la tarjeta (1,05:1) y luego #E3E7EE
+    // (1,16:1); WCAG 1.4.11 pide 3:1: ahora es el `gris` de la paleta (#5B6B82, ~5,2:1), a 4 px.
     _prueba(
-      'el tramo sin recorrer del control se distingue de la tarjeta (canvas: #E3E7EE, 4 px)',
+      'el tramo sin recorrer del control llega a 3:1 contra la tarjeta (gris #5B6B82, 4 px)',
       (tester) async {
         await _llegarA(tester, E24B.b01);
 
@@ -334,10 +334,10 @@ void main() {
         final razon = (lp > lt ? lp + 0.05 : lt + 0.05) / (lp > lt ? lt + 0.05 : lp + 0.05);
         expect(
           razon,
-          greaterThanOrEqualTo(1.1),
+          greaterThanOrEqualTo(3.0),
           reason: 'pista $colorPista sobre tarjeta $colorTarjeta: $razon',
         );
-        expect(colorPista, const Color(0xFFE3E7EE));
+        expect(colorPista, const Color(0xFF5B6B82));
       },
     );
 

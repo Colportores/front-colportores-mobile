@@ -29,4 +29,9 @@ class RecordatorioDeVisita extends Equatable {
 
   @override
   List<Object?> get props => [agendaId, tipo, direccion, fechaProgramada];
+
+  /// Apagado: la dirección de una casa visitada no puede salir en un `'$visita'` ni en un log
+  /// (convenciones §7.5); con `stringify` Equatable la imprimiría en debug.
+  @override
+  bool? get stringify => false;
 }

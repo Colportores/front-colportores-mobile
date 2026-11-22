@@ -39,7 +39,9 @@ void main() {
 
     test('una excepción vencida cede al precio general', () {
       const c = CatalogoLocal(
-        productos: [ProductoDelCatalogo(id: 'a', nombre: 'A', tipo: TipoDeProducto.libro)],
+        productos: [
+          ProductoDelCatalogo(id: 'a', nombre: 'A', categoria: CategoriaDeProducto.espirituales),
+        ],
         excepciones: [
           PrecioDelCatalogo(
             id: 'e',
@@ -60,7 +62,9 @@ void main() {
 
     test('un precio que empieza mañana todavía no vale', () {
       const c = CatalogoLocal(
-        productos: [ProductoDelCatalogo(id: 'a', nombre: 'A', tipo: TipoDeProducto.libro)],
+        productos: [
+          ProductoDelCatalogo(id: 'a', nombre: 'A', categoria: CategoriaDeProducto.espirituales),
+        ],
         generales: [
           PrecioDelCatalogo(id: 'g', productoId: 'a', centavos: 200, validoDesde: '2026-10-29'),
         ],
@@ -71,7 +75,9 @@ void main() {
 
     test('si por un dato roto valen dos, gana el que empezó después, siempre el mismo', () {
       const c = CatalogoLocal(
-        productos: [ProductoDelCatalogo(id: 'a', nombre: 'A', tipo: TipoDeProducto.libro)],
+        productos: [
+          ProductoDelCatalogo(id: 'a', nombre: 'A', categoria: CategoriaDeProducto.espirituales),
+        ],
         generales: [
           PrecioDelCatalogo(id: 'g1', productoId: 'a', centavos: 100, validoDesde: '2026-01-01'),
           PrecioDelCatalogo(id: 'g2', productoId: 'a', centavos: 200, validoDesde: '2026-05-01'),
@@ -81,15 +87,15 @@ void main() {
       expect(_producto(_resolver(c), 'a').centavos, 300);
     });
 
-    test('el material de trabajo, el tipo desconocido y los dados de baja no se ofrecen', () {
+    test('el material de trabajo, la categoría desconocida y los dados de baja no se ofrecen', () {
       const c = CatalogoLocal(
         productos: [
-          ProductoDelCatalogo(id: 'm', nombre: 'Material', tipo: TipoDeProducto.material),
-          ProductoDelCatalogo(id: 'o', nombre: 'Otro', tipo: TipoDeProducto.otro),
+          ProductoDelCatalogo(id: 'm', nombre: 'Material', categoria: CategoriaDeProducto.material),
+          ProductoDelCatalogo(id: 'o', nombre: 'Otro', categoria: CategoriaDeProducto.otra),
           ProductoDelCatalogo(
             id: 'b',
             nombre: 'Baja',
-            tipo: TipoDeProducto.libro,
+            categoria: CategoriaDeProducto.espirituales,
             dadoDeBaja: true,
           ),
         ],
@@ -105,7 +111,12 @@ void main() {
     test('un código en blanco es sin código', () {
       const c = CatalogoLocal(
         productos: [
-          ProductoDelCatalogo(id: 'a', nombre: 'A', tipo: TipoDeProducto.libro, codigoEditor: '  '),
+          ProductoDelCatalogo(
+            id: 'a',
+            nombre: 'A',
+            categoria: CategoriaDeProducto.espirituales,
+            codigoEditor: '  ',
+          ),
         ],
         generales: [
           PrecioDelCatalogo(id: 'g', productoId: 'a', centavos: 1, validoDesde: '2026-01-01'),
@@ -189,19 +200,68 @@ void main() {
       expect(ids(CategoriaDePrecios.revistas), ['p-revista']);
     });
 
-    test('un libro marcado misionero va en Misioneros', () {
-      const c = CatalogoLocal(
-        productos: [
-          ProductoDelCatalogo(id: 'a', nombre: 'A', tipo: TipoDeProducto.libro, esMisionero: true),
+    test('la pestaña sale de la categoría del producto, no de sus marcas (#561)', () {
+      final c = CatalogoLocal(
+        productos: const [
+          ProductoDelCatalogo(id: 'b', nombre: 'B', categoria: CategoriaDeProducto.bonificables),
+          ProductoDelCatalogo(id: 'e', nombre: 'E', categoria: CategoriaDeProducto.espirituales),
+          ProductoDelCatalogo(id: 'm', nombre: 'M', categoria: CategoriaDeProducto.misioneros),
+          ProductoDelCatalogo(id: 'r', nombre: 'R', categoria: CategoriaDeProducto.revistas),
+          // Una marca suelta no cambia la categoría: manda la categoría (una por producto).
+          ProductoDelCatalogo(
+            id: 'x',
+            nombre: 'X',
+            categoria: CategoriaDeProducto.espirituales,
+            esMisionero: true,
+          ),
         ],
         generales: [
-          PrecioDelCatalogo(id: 'g', productoId: 'a', centavos: 1, validoDesde: '2026-01-01'),
+          for (final id in ['b', 'e', 'm', 'r', 'x'])
+            PrecioDelCatalogo(id: 'g$id', productoId: id, centavos: 1, validoDesde: '2026-01-01'),
         ],
       );
-      expect(
-        ResolvedorDePrecios.deLaCategoria(_resolver(c), CategoriaDePrecios.misioneros),
-        hasLength(1),
+      List<String> ids(CategoriaDePrecios t) =>
+          ResolvedorDePrecios.deLaCategoria(_resolver(c), t).map((i) => i.id).toList();
+      expect(ids(CategoriaDePrecios.libros), ['b', 'e', 'x']);
+      expect(ids(CategoriaDePrecios.misioneros), ['m']);
+      expect(ids(CategoriaDePrecios.revistas), ['r']);
+    });
+
+    test('cada categoría que se vende llega al ítem y el material no se ofrece (#561)', () {
+      final c = CatalogoLocal(
+        productos: const [
+          ProductoDelCatalogo(id: 'b', nombre: 'B', categoria: CategoriaDeProducto.bonificables),
+          ProductoDelCatalogo(id: 'e', nombre: 'E', categoria: CategoriaDeProducto.espirituales),
+          ProductoDelCatalogo(id: 'm', nombre: 'M', categoria: CategoriaDeProducto.misioneros),
+          ProductoDelCatalogo(id: 'r', nombre: 'R', categoria: CategoriaDeProducto.revistas),
+          ProductoDelCatalogo(id: 'z', nombre: 'Z', categoria: CategoriaDeProducto.material),
+        ],
+        generales: [
+          for (final id in ['b', 'e', 'm', 'r', 'z'])
+            PrecioDelCatalogo(id: 'g$id', productoId: id, centavos: 1, validoDesde: '2026-01-01'),
+        ],
       );
+      final items = _resolver(c);
+      expect(
+        {for (final i in items.whereType<PrecioDeProducto>()) i.id: i.categoriaDelProducto},
+        {
+          'b': CategoriaDeProducto.bonificables,
+          'e': CategoriaDeProducto.espirituales,
+          'm': CategoriaDeProducto.misioneros,
+          'r': CategoriaDeProducto.revistas,
+        },
+      );
+    });
+
+    test('desdeCodigo conoce las cinco categorías y lo demás es «otra» (#561)', () {
+      expect(CategoriaDeProducto.desdeCodigo('BONIFICABLES'), CategoriaDeProducto.bonificables);
+      expect(CategoriaDeProducto.desdeCodigo('MISIONEROS'), CategoriaDeProducto.misioneros);
+      expect(CategoriaDeProducto.desdeCodigo('REVISTAS'), CategoriaDeProducto.revistas);
+      expect(CategoriaDeProducto.desdeCodigo('ESPIRITUALES'), CategoriaDeProducto.espirituales);
+      expect(CategoriaDeProducto.desdeCodigo('MATERIAL'), CategoriaDeProducto.material);
+      expect(CategoriaDeProducto.desdeCodigo('JUGOS'), CategoriaDeProducto.otra);
+      expect(CategoriaDeProducto.desdeCodigo(''), CategoriaDeProducto.otra);
+      expect(CategoriaDeProducto.desdeCodigo(null), CategoriaDeProducto.otra);
     });
   });
 

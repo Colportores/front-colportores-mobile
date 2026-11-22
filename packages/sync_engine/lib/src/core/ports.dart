@@ -134,6 +134,15 @@ abstract interface class JobStorePort {
   /// llama cuando hay algo en espera que se reescribe.
   Future<List<QueuedJob>> listPending();
 
+  /// De [rowPks], las filas de [entity] con alguna escritura todavía no
+  /// aplicada en el servidor (`PENDING`, `IN_FLIGHT`, `BLOCKED` o `WAITING`).
+  ///
+  /// El pull no las pisa: la fila local tiene lo que el colportor escribió y
+  /// el servidor todavía no vio. Si el pull la aplicara, la pantalla volvería
+  /// atrás hasta el próximo push, y la versión nueva haría chocar a la
+  /// escritura que espera (§5.4).
+  Future<Set<String>> withUnapplied(String entity, Iterable<String> rowPks);
+
   /// `BLOCKED`/`WAITING` → `PENDING`, **detrás de todo lo que ya está en la
   /// cola y en el orden de [jobIds]**. Limpia el error y `dependsOn`.
   ///
@@ -235,6 +244,12 @@ abstract interface class SyncMetaPort {
   });
 }
 
+/// De [rowPks], las filas de [entity] que el pull no tiene que pisar porque
+/// tienen escrituras locales sin aplicar en el servidor. Ver
+/// [LocalStorePort.applyDelta].
+typedef UnappliedRows = Future<Set<String>> Function(
+    String entity, List<String> rowPks);
+
 /// La DB local, del lado de las tablas de negocio.
 abstract interface class LocalStorePort {
   /// Aplica el delta y guarda el watermark **en una sola transacción** (§10).
@@ -246,10 +261,30 @@ abstract interface class LocalStorePort {
   /// Un [watermark] `null` deja el del [scope] como está: es para aplicar una
   /// fila suelta que no viene de una página de pull (la `server_row` de un
   /// LWW, §5.4), que no puede inventar un watermark ni borrar el que hay.
+  ///
+  /// [notices] son los avisos de área de esa página del pull (§2.1), en la
+  /// misma transacción. **Nada se borra por un aviso**: las filas fuera del
+  /// área se marcan, y una que vuelve a bajar deja de estarlo. Con un
+  /// `areaReset`, lo que el teléfono tenía de esa entidad queda a la espera de
+  /// volver a bajar; lo que no bajó cuando llega la página `complete`, quedó
+  /// fuera del área. Lo que tiene escrituras locales sin aplicar no cuenta: el
+  /// servidor no lo tiene todavía, no salió de ningún lado.
+  ///
+  /// [unapplied] dice cuáles de esas filas tienen escrituras locales sin
+  /// aplicar en el servidor ([JobStorePort.withUnapplied]): las que nombra no
+  /// se escriben, no salen de la marca ni de la espera, y no se ponen a la
+  /// espera por un `areaReset`. **Se pregunta dentro de la transacción**, no
+  /// antes: una escritura de la app (la fila y su job, en su propia
+  /// transacción) que llega mientras se aplica el delta queda entera antes o
+  /// entera después, y nunca la pisa una fila que ya venía en camino. `null`
+  /// es que ninguna fila está protegida (un catálogo, o la `server_row` de un
+  /// LWW, que se aplica a propósito).
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> rows, {
     required String scope,
     required String? watermark,
+    PullNotices notices = PullNotices.none,
+    UnappliedRows? unapplied,
   });
 
   /// El watermark guardado para [scope], o `null` si nunca se pulleó.
@@ -287,13 +322,15 @@ abstract interface class ArchivePort {
   ///
   /// [exportedAt] es de cuándo, en el reloj del teléfono, se leyó la DB; ver
   /// [BackupEntry.exportedAt]. [keyId] es la llave que cifró el payload; ver
-  /// [BackupEntry.keyId].
+  /// [BackupEntry.keyId]. [firma] es la firma de las anotaciones del archivo
+  /// ([CryptoPort.sign] sobre [mensajeDeFirma]); ver [BackupEntry.firma].
   Future<BackupEntry> upload({
     required List<int> payload,
     required String? parentId,
     required String watermark,
     DateTime? exportedAt,
     String? keyId,
+    String? firma,
   });
 
   Future<List<int>> download(String id);
@@ -324,6 +361,17 @@ abstract interface class CryptoPort {
   /// y una etiqueta propia (ver `AesGcmCrypto.keyId`), y ser estable: la misma
   /// llave, recuperada en otro teléfono, da el mismo identificador.
   Future<String> keyId();
+
+  /// Firma [mensaje] con una llave derivada de la llave de la usuaria (HMAC), en
+  /// hexadecimal. Es lo que protege las anotaciones de cada archivo del
+  /// respaldo (`BackupEntry.firma`). **Nunca** la llave ni algo que la
+  /// reconstruya: la llave de la firma sale de la del cifrado con una
+  /// etiqueta propia y no se usa para nada más (ver `AesGcmCrypto.sign`).
+  Future<String> sign(String mensaje);
+
+  /// [firma] es la de [mensaje], comparada en tiempo constante. Una firma
+  /// ausente (`null`) o de otro largo es `false`: nunca lanza por eso.
+  Future<bool> verifySignature(String mensaje, String? firma);
 }
 
 /// La DB local vista como archivo: exportar para el backup, reemplazar para el
@@ -339,10 +387,18 @@ abstract interface class SnapshotPort {
 
   /// Reconstruye la DB aplicando los payloads en orden, de la base a la punta.
   ///
-  /// Se arma en un archivo temporal y recién al final reemplaza la DB en uso
-  /// (ADR-003, HU-SYNC-006): un restore que falla a la mitad no puede dejar al
-  /// colportor sin la DB que tenía.
+  /// Es todo o nada (ADR-003, HU-SYNC-006): un restore que falla a la mitad no
+  /// puede dejar al colportor sin la DB que tenía.
   Future<void> restore(List<List<int>> payloadsInOrder);
+
+  /// Reconstruye la DB fusionando varias cadenas, las de cada teléfono que la
+  /// persona tuvo (HU-SYNC-006, «Varios resp.»): cada elemento de [chains] es
+  /// una cadena, de la base a la punta.
+  ///
+  /// Una fila que está en más de una cadena se queda con la de fecha más nueva,
+  /// y no se borra nada. Es todo o nada, igual que [restore]: o entran todas o la
+  /// DB queda como estaba. Con una sola cadena es lo mismo que [restore].
+  Future<void> restoreChains(List<List<List<int>>> chains);
 }
 
 /// Supabase Realtime (§5.6). Va directo, sin BFF (§6).
@@ -358,4 +414,61 @@ abstract interface class RealtimePort {
   Stream<String> subscribe(List<String> entities);
 
   Future<void> unsubscribe();
+}
+
+/// El backup viene de una versión del esquema más nueva que la de esta app
+/// (HU-SYNC-006, «Edge — backup de una versión más nueva»).
+///
+/// Lo lanza [SnapshotPort.restore] **antes de tocar nada**: la DB en uso queda
+/// intacta y la app muestra «Actualizala para seguir usando tus datos».
+class SnapshotNewerSchemaException implements Exception {
+  const SnapshotNewerSchemaException({
+    required this.backupSchema,
+    required this.appSchema,
+  });
+
+  /// La versión del esquema que exportó el backup.
+  final int backupSchema;
+
+  /// La versión del esquema de esta app.
+  final int appSchema;
+
+  @override
+  String toString() => 'SnapshotNewerSchemaException($backupSchema > $appSchema)';
+}
+
+/// El payload de un backup no se puede leer: formato desconocido o roto.
+///
+/// Igual que [SnapshotNewerSchemaException], se lanza antes de tocar la DB.
+class SnapshotUnreadableException implements Exception {
+  const SnapshotUnreadableException(this.reason);
+
+  final String reason;
+
+  @override
+  String toString() => 'SnapshotUnreadableException($reason)';
+}
+
+/// La clave del backup, envuelta con la contraseña del usuario, que viaja con
+/// él en el `appDataFolder` (ADR-006: «la DEK envuelta por la contraseña viaja
+/// junto al backup»).
+///
+/// Es un archivo chico aparte, no un eslabón de la cadena. Va identificado por
+/// el [CryptoPort.keyId] de la llave que envuelve: en un teléfono nuevo, la
+/// restauración busca el envoltorio de la cadena que va a abrir. Como la DEK es
+/// la misma, un envoltorio abre también los respaldos hechos antes de él.
+///
+/// El motor no sabe qué hay adentro (lo arma y lo abre la app, con Argon2id): lo
+/// único que hace es guardarlo y devolverlo.
+abstract interface class KeyEnvelopePort {
+  /// Guarda [bytes] como el envoltorio de [keyId], reemplazando el anterior de
+  /// esa llave. El anterior se borra **después** de confirmar el nuevo: si se
+  /// corta en el medio sigue habiendo uno que abre.
+  Future<void> putEnvelope(String keyId, List<int> bytes);
+
+  /// El envoltorio de [keyId], o `null` si no hay.
+  Future<List<int>?> getEnvelope(String keyId);
+
+  /// Las llaves que tienen envoltorio en el archivo.
+  Future<Set<String>> envelopeKeyIds();
 }

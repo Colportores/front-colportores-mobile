@@ -5,7 +5,7 @@ import '../../domain/entities/jornada.dart';
 /// sources.
 ///
 /// [toJson] usa los nombres de columna del esquema físico de la tabla `jornada`
-/// (`backend-supabase`, migración 0001; `acompaniante_id` / `tipo_acompaniamiento`, sin `ñ`) y
+/// (`backend-supabase`, migración 0001; `acompaniante_id`, sin `ñ`) y
 /// las fechas en ISO-8601 UTC, así que sirve de payload para encolar el sync cuando entre el
 /// motor (contrato-sync-engine.md §3, `engine.stage(Tables.jornada, …)`). `jornada` no tiene
 /// columnas con PII, y el test del modelo fija la lista exacta de claves para que no se cuele
@@ -21,7 +21,6 @@ final class JornadaModel extends Jornada {
     required super.inicio,
     super.fin,
     super.acompananteId,
-    super.tipoAcompanamiento,
     super.totalVisitas,
     super.totalVentas,
     required super.auditoria,
@@ -33,7 +32,6 @@ final class JornadaModel extends Jornada {
     inicio: jornada.inicio,
     fin: jornada.fin,
     acompananteId: jornada.acompananteId,
-    tipoAcompanamiento: jornada.tipoAcompanamiento,
     totalVisitas: jornada.totalVisitas,
     totalVentas: jornada.totalVentas,
     auditoria: jornada.auditoria,
@@ -45,7 +43,6 @@ final class JornadaModel extends Jornada {
     inicio: _fecha(json['inicio'])!,
     fin: _fecha(json['fin']),
     acompananteId: json['acompaniante_id'] as String?,
-    tipoAcompanamiento: json['tipo_acompaniamiento'] as String?,
     totalVisitas: json['total_visitas']! as int,
     totalVentas: json['total_ventas']! as int,
     auditoria: Auditoria(
@@ -63,7 +60,6 @@ final class JornadaModel extends Jornada {
     inicio: inicio,
     fin: fin,
     acompananteId: acompananteId,
-    tipoAcompanamiento: tipoAcompanamiento,
     totalVisitas: totalVisitas,
     totalVentas: totalVentas,
     auditoria: auditoria,
@@ -75,7 +71,6 @@ final class JornadaModel extends Jornada {
     'inicio': inicio.toUtc().toIso8601String(),
     'fin': fin?.toUtc().toIso8601String(),
     'acompaniante_id': acompananteId,
-    'tipo_acompaniamiento': tipoAcompanamiento,
     'total_visitas': totalVisitas,
     'total_ventas': totalVentas,
     'created_at': auditoria.createdAt.toUtc().toIso8601String(),

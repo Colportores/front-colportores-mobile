@@ -30,6 +30,37 @@ final class PlataformaGpsGeolocator implements PlataformaGps {
     );
   }
 
+  /// Cada cuántos metros que se mueve el teléfono el sistema avisa una posición nueva: lo justo para
+  /// que el mapa siga a quien camina sin despertar el GPS a cada paso (batería, #670).
+  static const distanciaMinimaMetros = 3;
+
+  /// Por debajo de esta velocidad (m/s) el rumbo del sistema no vale: un teléfono quieto, o casi,
+  /// reporta un rumbo cualquiera (0 en Android, -1 en iOS) y el mapa giraría solo.
+  static const velocidadMinimaParaRumbo = 0.5;
+
+  @override
+  Stream<LecturaGps> seguir() =>
+      Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          distanceFilter: distanciaMinimaMetros,
+        ),
+      ).map(
+        (posicion) => LecturaGps(
+          coordenadas: Coordenadas(lat: posicion.latitude, lon: posicion.longitude),
+          precisionMetros: posicion.accuracy,
+          rumboGrados: rumboDe(rumbo: posicion.heading, velocidad: posicion.speed),
+        ),
+      );
+
+  /// El rumbo del sistema, en grados (0 ≤ rumbo < 360), o `null` si no vale: viene fuera de rango
+  /// o el teléfono casi no se mueve ([velocidadMinimaParaRumbo]).
+  static double? rumboDe({required double rumbo, required double velocidad}) {
+    if (!rumbo.isFinite || !velocidad.isFinite) return null;
+    if (rumbo < 0 || rumbo >= 360 || velocidad < velocidadMinimaParaRumbo) return null;
+    return rumbo;
+  }
+
   @override
   Future<void> abrirAjustesUbicacion() => Geolocator.openLocationSettings();
 

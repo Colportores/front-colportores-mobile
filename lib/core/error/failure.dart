@@ -529,10 +529,44 @@ final class FailureLugarDeTrabajoNoDisponible extends Failure {
       );
 }
 
+/// «Mapas offline» sabe que la colportora **todavía no tiene zona** y que su campaña tiene varias
+/// ciudades: sin zona ni punto del GPS no se elige entre ellas, y adivinar una bajaría el mapa
+/// equivocado (HU-SYNC-010, #619). No es una falla de lectura: reintentar no cambia nada. La pantalla
+/// no ofrece «Reintentar» (se vuelve a leer sola cuando la zona llega por el sync) y deja bajar el
+/// mapa de todo Uruguay.
+///
+/// Texto de la decisión del 04/11 en front-colportores-mobile#619 (mapa §2, estados que no se saben).
+final class FailureLugarSinZonaConVariasCiudades extends Failure {
+  const FailureLugarSinZonaConVariasCiudades()
+    : super(
+        mensaje:
+            'Todavía no tenés zona y tu campaña tiene varias ciudades, así que no sabemos cuál '
+            'bajar. Cuando la coordinación te asigne una zona, vas a poder bajar tu ciudad. '
+            'Mientras tanto podés bajar el mapa de todo Uruguay.',
+        codigo: 'TILES_LUGAR_SIN_ZONA_VARIAS_CIUDADES',
+      );
+}
+
+/// «Mapas offline» sabe que la colportora tiene zonas asignadas en **más de una ciudad** (varias
+/// campañas): sin el punto del GPS no se elige entre ellas, y decir que no tiene zona sería falso
+/// (#619). Misma conducta que [FailureLugarSinZonaConVariasCiudades]: sin «Reintentar», con Uruguay.
+///
+/// El texto no viene de la decisión del 04/11 (que cubre solo el caso sin zona): es de mapa §2
+/// (texto que guía), a confirmar.
+final class FailureLugarZonasEnVariasCiudades extends Failure {
+  const FailureLugarZonasEnVariasCiudades()
+    : super(
+        mensaje:
+            'Tenés zonas en más de una ciudad, así que no sabemos cuál bajar. Mientras tanto '
+            'podés bajar el mapa de todo Uruguay.',
+        codigo: 'TILES_LUGAR_ZONAS_EN_VARIAS_CIUDADES',
+      );
+}
+
 /// No se pudieron leer los precios guardados en el teléfono (vista 26, 26·10): la base local no se
-/// pudo leer o todavía no existe de dónde leerlos (`ConsultaDePreciosSinFuente` y
-/// `FuenteDeCiudadesParaPreciosSinFuente`, hasta la réplica local del catálogo de
-/// front-colportores-mobile#180 y la de las ciudades y campañas de #274). Es **otra cosa** que «no
+/// pudo leer o el teléfono todavía no bajó el catálogo, las campañas o las ciudades
+/// (`ConsultaDePreciosRepositoryImpl`, `FuenteDeCiudadesParaPreciosLocal`, y sus `…SinFuente` sin base
+/// abierta; front-colportores-mobile#419 y #421). Es **otra cosa** que «no
 /// hay precios»: aquí no se sabe, y decir que no hay mandaría a la colportora a cotizar de memoria.
 /// Se puede reintentar.
 ///
@@ -886,6 +920,25 @@ final class FailureVentaNoGuardada extends Failure {
   List<Object?> get props => [...super.props, causa];
 }
 
+/// La venta a la que se quería sumar un libro ya está cerrada (pagada y entregada, anulada o con todo
+/// devuelto) o ya no está en el teléfono (HU-VEN-001, decisión de Cristian del 10/11, «Venta cerrada»):
+/// no crece y no se guardó nada. El libro va en una venta nueva. Un solo texto para las tres causas,
+/// que no dice cuál fue (decisión del 11/11, P2 del QA de #701).
+final class FailureVentaCerrada extends Failure {
+  const FailureVentaCerrada({required this.numeroTalonario})
+    : super(
+        mensaje:
+            'La venta $numeroTalonario ya está cerrada: no se le pueden sumar libros. '
+            'Registrá el libro como una venta nueva.',
+        codigo: 'VENTA_CERRADA',
+      );
+
+  final String numeroTalonario;
+
+  @override
+  List<Object?> get props => [...super.props, numeroTalonario];
+}
+
 /// La entrega no se pudo guardar en el teléfono (HU-VEN-002). No se registró nada: se puede
 /// reintentar. El texto adapta el de 27A·13 a la entrega: a confirmar con la pantalla (#432).
 final class FailureEntregaNoGuardada extends Failure {
@@ -965,10 +1018,23 @@ final class FailureDevolucionFueraDePlazo extends Failure {
       );
 }
 
-/// Lo que se quiere devolver no se puede registrar tal cual (HU-VEN-004): no hay nada elegido, se
-/// eligió más de lo que queda por devolver, o el cliente pagó de más y falta decir qué hacer con la
-/// diferencia. La pantalla lo evita; esto es la última barrera. [causa] es un código estable para el
-/// log: `sin_productos`, `de_mas` o `sin_eleccion`.
+/// La venta ya está saldada: el cliente pagó todo lo que se queda comprando y no acepta devoluciones
+/// (decisión de Cristian, 03/11, «Devol. saldo»: nunca queda plata a favor del cliente; el servidor la
+/// rechaza con `23514`). La primera frase es la del servidor; la segunda dice qué hacer. Reintentar no
+/// lo arregla.
+final class FailureDevolucionVentaSaldada extends Failure {
+  const FailureDevolucionVentaSaldada()
+    : super(
+        mensaje:
+            'Esta venta ya está saldada: el cliente pagó todo lo que se queda comprando, así que '
+            'no se puede devolver nada. Si hay un error, pedile a tu coordinador que lo revise.',
+        codigo: 'VENTA_DEVOLUCION_SALDADA',
+      );
+}
+
+/// Lo que se quiere devolver no se puede registrar tal cual (HU-VEN-004): no hay nada elegido o se
+/// eligió más de lo que queda por devolver. La pantalla lo evita; esto es la última barrera. [causa] es
+/// un código estable para el log: `sin_productos` o `de_mas`.
 final class FailureDevolucionInvalida extends Failure {
   const FailureDevolucionInvalida({required this.causa})
     : super(
@@ -1153,6 +1219,138 @@ final class FailureDepositoTicketYaUsado extends Failure {
         mensaje: 'Ese ticket ya está registrado en otro depósito.',
         codigo: 'DEPOSITO_TICKET_YA_USADO',
       );
+}
+
+/// Por qué no se armó o no se modificó el plan de cuotas (HU-COB-004, vista 30 A).
+enum MotivoPlanDeCuotas {
+  /// Menos de 2 o más de 12 cuotas (o más de las que admite la venta).
+  cantidad,
+
+  /// La primera cuota es de antes de hoy (30A-03).
+  fechaPasada,
+
+  /// Un monto vacío, mayor que el saldo, o cuotas que juntas superan el saldo (30A-02C).
+  montos,
+
+  /// La venta ya tiene cuotas por cobrar: se modifican, no se arma otro plan.
+  yaArmado,
+
+  /// La venta no tiene saldo para repartir (30A-07).
+  sinSaldo,
+
+  /// La venta no está en el teléfono (o se dio de baja).
+  sinVenta,
+
+  /// La cuota ya está cubierta, cancelada o no existe: ya no se modifica.
+  cuotaCerrada,
+
+  /// La última cuota no es lo que falta del saldo: no se escribe a mano (decisión del 03/11, #608).
+  ultimaCuota,
+}
+
+/// El plan de cuotas no cumple una regla (HU-COB-004; decisiones de Cristian del 23/10, «Plan
+/// cuotas» y «Reparto»). No se guardó nada. La pantalla ya no deja armar esto, así que solo se ve si
+/// algo cambió entre abrirla y guardar; el texto dice qué pasó y qué hacer.
+final class FailurePlanDeCuotas extends Failure {
+  const FailurePlanDeCuotas(this.motivo) : super(mensaje: '', codigo: '');
+
+  final MotivoPlanDeCuotas motivo;
+
+  @override
+  String get mensaje => _texto(motivo);
+
+  @override
+  String get codigo => 'COBRO_PLAN_${_codigo(motivo)}';
+
+  static String _codigo(MotivoPlanDeCuotas m) => switch (m) {
+    MotivoPlanDeCuotas.cantidad => 'CANTIDAD',
+    MotivoPlanDeCuotas.fechaPasada => 'FECHA_PASADA',
+    MotivoPlanDeCuotas.montos => 'MONTOS',
+    MotivoPlanDeCuotas.yaArmado => 'YA_ARMADO',
+    MotivoPlanDeCuotas.sinSaldo => 'SIN_SALDO',
+    MotivoPlanDeCuotas.sinVenta => 'SIN_VENTA',
+    MotivoPlanDeCuotas.cuotaCerrada => 'CUOTA_CERRADA',
+    MotivoPlanDeCuotas.ultimaCuota => 'ULTIMA_CUOTA',
+  };
+
+  static String _texto(MotivoPlanDeCuotas m) => switch (m) {
+    MotivoPlanDeCuotas.cantidad => 'El plan es de 2 a 12 cuotas.',
+    MotivoPlanDeCuotas.fechaPasada => 'La primera cuota tiene que ser hoy o más adelante.',
+    MotivoPlanDeCuotas.montos =>
+      'Revisá los montos: cada cuota tiene que ser de más de \$ 0 y entre todas no pueden '
+          'superar el saldo.',
+    MotivoPlanDeCuotas.yaArmado =>
+      'Esta venta ya tiene cuotas por cobrar. Modificalas desde la lista de cuotas.',
+    MotivoPlanDeCuotas.sinSaldo => 'No hay saldo para repartir en cuotas.',
+    MotivoPlanDeCuotas.sinVenta =>
+      'Esta venta ya no está en tu teléfono. Volvé atrás y elegí otra.',
+    MotivoPlanDeCuotas.cuotaCerrada =>
+      'Una de las cuotas ya no se puede cambiar. Volvé a la lista y revisá el plan.',
+    MotivoPlanDeCuotas.ultimaCuota =>
+      'La última cuota es lo que falta y no se escribe a mano. Cambiá las cuotas anteriores y se '
+          'calcula sola.',
+  };
+
+  @override
+  List<Object?> get props => [...super.props, motivo];
+}
+
+/// El plan de cuotas no se pudo guardar en el teléfono (30A-08). No se agendó ninguna cobranza: se
+/// puede reintentar. El texto es el del canvas.
+final class FailurePlanNoGuardado extends Failure {
+  const FailurePlanNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos crear el plan. No se agendó ninguna cobranza.',
+        codigo: 'COBRO_PLAN_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// Las cuotas no se pudieron modificar (30A-09). No cambió nada: se puede reintentar. El texto es
+/// para confirmar (el canvas no dibuja este caso).
+final class FailureCuotasNoGuardadas extends Failure {
+  const FailureCuotasNoGuardadas({this.causa})
+    : super(
+        mensaje: 'No pudimos guardar las cuotas. No cambió nada: probá de nuevo.',
+        codigo: 'COBRO_CUOTAS_NO_GUARDADAS',
+      );
+
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudieron leer las cuotas de la venta (la base local no se pudo leer). Es **otra cosa** que
+/// «no tiene plan». Los cobros y las ventas siguen guardados. Estado de error al leer del patrón de la
+/// vista 32 (32B-07); el texto es para confirmar.
+final class FailureCuotasNoDisponibles extends Failure {
+  const FailureCuotasNoDisponibles()
+    : super(
+        mensaje: 'No pudimos leer las cuotas guardadas en tu teléfono.',
+        codigo: 'COBRO_CUOTAS_NO_DISPONIBLES',
+      );
+}
+
+/// No hay conexión para traer la deuda con la casa editora (HU-CTA-002, 33B). Lo último que llegó
+/// sigue guardado en el teléfono: la pantalla lo muestra con su hora. Sin nada guardado es el error
+/// de 33B·03.
+final class FailureDeudaSinConexion extends Failure {
+  const FailureDeudaSinConexion()
+    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'DEUDA_CASA_SIN_CONEXION');
+}
+
+/// El servidor no pudo contar la deuda con la casa editora, o contestó algo que la app no entiende
+/// (HU-CTA-002, 33B·03). Es **otra cosa** que «no debés nada»: nadie muestra «$ 0» ante esta falla.
+/// Se puede reintentar. El texto es el del canvas.
+final class FailureDeudaNoDisponible extends Failure {
+  const FailureDeudaNoDisponible()
+    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'DEUDA_CASA_NO_DISPONIBLE');
 }
 
 // --- Tickets (HU-COB-007, #426). Los textos son a confirmar con la pantalla (#427). ---

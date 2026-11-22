@@ -106,8 +106,9 @@ List<Object?> jobsToJson(PushBatch batch) => [
         {
           'client_op_id': job.clientOpId,
           'entity': job.entity,
-          'op': job.op.name,
-          'sync_version': job.syncVersion,
+          'op': job.op.wireName,
+          // La unión de duplicados no compara versiones (§6.2): no la lleva.
+          if (job.op != Op.marcarComoDuplicado) 'sync_version': job.syncVersion,
           'payload': job.payload,
         },
     ];
@@ -226,6 +227,8 @@ Map<String, Object?> pullResponseToJson(PullDelta delta) => {
       'watermark': delta.watermark,
       'has_more': delta.hasMore,
       'rows': delta.rows,
+      if (delta.outOfArea.isNotEmpty) 'out_of_area': delta.outOfArea,
+      if (delta.areaReset.isNotEmpty) 'area_reset': delta.areaReset.toList(),
     };
 
 PullDelta pullResponseFromJson(
@@ -247,6 +250,16 @@ PullDelta pullResponseFromJson(
     watermark: _watermark(json['watermark']) ?? watermarkPrevio ?? '',
     hasMore: json['has_more'] == true,
     rows: filas,
+    // Las dos claves son aditivas (backend 0016): sin avisos no vienen, y un
+    // servidor anterior no las manda.
+    outOfArea: {
+      for (final MapEntry(key: entidad, value: ids)
+          in (json['out_of_area'] as Map? ?? const {}).entries)
+        '$entidad': [for (final id in ids as List) '$id'],
+    },
+    areaReset: {
+      for (final entidad in json['area_reset'] as List? ?? const []) '$entidad',
+    },
   );
 }
 
@@ -274,12 +287,9 @@ Map<String, Object?> _mapa(Object? valor, String queEs) {
   throw FormatException('$queEs tiene que ser un objeto');
 }
 
-Op _op(Object? valor) => switch (valor) {
-      'insert' => Op.insert,
-      'update' => Op.update,
-      'delete' => Op.delete,
-      _ => throw FormatException('op inválida: $valor'),
-    };
+Op _op(Object? valor) => valor is String
+    ? Op.fromWireName(valor)
+    : throw FormatException('op inválida: $valor');
 
 /// Un `outcome` que este cliente no conoce es un contrato desalineado. Tratarlo
 /// como aceptado borraría de la cola un job que nunca subió.

@@ -129,6 +129,39 @@ void main() {
     await motor.dispose();
   });
 
+  test('editar 51 veces la misma fila sin mandar deja un solo job, con el último '
+      'valor de cada campo (#188: la compactación decidida)', () async {
+    final (:motor, :servidor, :cola, :filas) = _armar();
+    servidor.seed('jornada', [
+      {'id': 'j-1', 'total_visitas': 0, 'total_ventas': 0, 'sync_version': 1},
+    ]);
+
+    final ids = <String>{};
+    for (var i = 1; i <= 51; i++) {
+      ids.add(
+        await motor.stage('jornada', Op.update, {
+          'id': 'j-1',
+          'total_visitas': i,
+          // Un campo que se toca solo una vez: no se pierde con los demás.
+          if (i == 7) 'total_ventas': 70,
+        }, syncVersion: 1),
+      );
+    }
+
+    expect(ids, hasLength(1), reason: 'las 51 ediciones se fundieron en un job');
+    expect(cola.all, hasLength(1));
+    expect(cola.all.single.job.payload, {
+      'id': 'j-1',
+      'total_visitas': 51,
+      'total_ventas': 70,
+    });
+    final salida = await motor.syncNow();
+    expect(salida.pushed, 1, reason: 'al servidor sube una escritura, no 51');
+    expect(servidor.rowsOf('jornada').single, containsPair('total_visitas', 51));
+    expect(servidor.rowsOf('jornada').single, containsPair('total_ventas', 70));
+    await motor.dispose();
+  });
+
   test(
     'un alta sin mandar absorbe sus updates y sigue siendo un alta',
     () async {

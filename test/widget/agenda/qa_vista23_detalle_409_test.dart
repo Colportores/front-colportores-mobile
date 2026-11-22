@@ -6,7 +6,6 @@
 //  3. los casos límite de entradas (nota larga pegada, solo espacios, emoji), de navegación y de
 //     acciones que se superponen;
 //  4. lo que dice el lector de pantalla y la privacidad.
-// Los tests con `skip` documentan un hallazgo de QA (corren con `--dart-define=QA_HALLAZGOS=true`).
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -24,8 +23,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/detalle_agenda_arnes.dart';
 import '../../helpers/qa_vista23_409_arnes.dart';
-
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 String _suf(Size t, double e) => '${t.width.toInt()}x${t.height.toInt()}_x$e';
 
@@ -342,8 +339,7 @@ void main() {
   });
 
   group('Hallazgos de QA', () {
-    // skip: QA #409 — tocar el aviso de la agenda que ya está abierta apila otro detalle igual encima
-    // (hay que volver dos veces).
+    // Arreglado (QA #409): tocar el aviso de la agenda que ya está abierta no apila otro detalle.
     testWidgets(
       'tocar el recordatorio de la agenda que ya está en pantalla no abre un segundo detalle',
       (tester) async {
@@ -353,7 +349,6 @@ void main() {
         await asentarDetalle(tester);
         expect(find.byType(DetalleAgendaPage, skipOffstage: false), findsOneWidget);
       },
-      skip: !_hallazgos,
     );
 
     // Arreglado (QA #409): el aviso rojo de 23C·07 va arriba del formulario; con el formulario más alto
@@ -384,8 +379,7 @@ void main() {
       );
     }
 
-    // skip: QA #409 — el hint «Esperá a que carguemos la casa para guardar.» queda en un nodo padre sin
-    // etiqueta ni acción: el lector lee «Guardar cambios, deshabilitado» sin decir por qué.
+    // Arreglado (QA #409): el hint va en el nodo del botón, no en un padre sin etiqueta ni acción.
     testWidgets(
       '«Guardar cambios» deshabilitado porque la casa no carga: el lector dice por qué en el mismo '
       'nodo del botón',
@@ -395,11 +389,9 @@ void main() {
         expect(tester.getSemantics(guardar409).hint, contains('Esperá a que carguemos la casa'));
         h.dispose();
       },
-      skip: !_hallazgos,
     );
 
-    // skip: QA #409 — con la casa sin leer, «Registrar resultado» queda apagado sin aviso ni
-    // «Reintentar» (la persona no sabe por qué ni cómo arreglarlo desde el detalle).
+    // Arreglado (QA #409): con la casa sin leer el detalle avisa y ofrece «Reintentar».
     testWidgets(
       'si la casa no se puede leer, «Registrar resultado» no queda apagado sin decir por qué',
       (tester) async {
@@ -417,7 +409,6 @@ void main() {
         );
         h.dispose();
       },
-      skip: !_hallazgos,
     );
 
     // Arreglado (QA #409, P1): la franja guardada que no es la sugerida para su hora cuenta como

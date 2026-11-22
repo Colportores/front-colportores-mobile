@@ -638,6 +638,21 @@ void main() {
         );
       });
 
+      testWidgets('A03 con una sola pendiente el aviso va en singular (#679)', (tester) async {
+        conPendientes(1);
+        await _montar(tester);
+        await abrirHoja(tester);
+
+        expect(
+          find.text(
+            'Tenés 1 operación sin sincronizar. Si cerrás sesión ahora, se subirá cuando vuelvas a '
+            'iniciar sesión.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('operaciones'), findsNothing);
+      });
+
       testWidgets('A03 «Cerrar sesión igual» cierra la sesión', (tester) async {
         conPendientes(3);
         final container = await _montar(tester);

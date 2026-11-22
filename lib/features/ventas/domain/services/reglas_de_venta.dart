@@ -35,6 +35,15 @@ abstract final class ReglasDeVenta {
   /// El talonario sin los espacios de los bordes. Vacío = falta.
   static String talonario(String texto) => texto.trim();
 
+  /// Con qué se compara un talonario con otro (decisión de Cristian, 03/11, «Talonario =»): el número
+  /// es una combinación de letras y números y no distingue mayúsculas ni los espacios del principio y
+  /// del final. «t-100», «T-100 » y «T-100» son el mismo; «0100» y «100» siguen siendo distintos. Es
+  /// la misma comparación que hace el servidor (`lower(btrim(numero_talonario))`, backend 0155).
+  static String claveDeTalonario(String texto) => texto.trim().toLowerCase();
+
+  /// Si [a] y [b] son el mismo talonario (ver [claveDeTalonario]).
+  static bool mismoTalonario(String a, String b) => claveDeTalonario(a) == claveDeTalonario(b);
+
   /// El motivo listo para guardar: sin espacios ni saltos de línea en los bordes, `null` si queda en
   /// blanco y cortado en [largoMaximoMotivo] puntos de código. Un motivo largo no se rechaza, se corta;
   /// el que **falta** con el total cambiado sí (ver [faltaElMotivo]).
@@ -44,6 +53,39 @@ abstract final class ReglasDeVenta {
     final puntos = limpio.runes.toList();
     if (puntos.length <= largoMaximoMotivo) return limpio;
     return String.fromCharCodes(puntos.take(largoMaximoMotivo)).trim();
+  }
+
+  /// Lo que separa el motivo que la venta ya tenía del que se suma («redondeo · descuento del libro
+  /// nuevo», decisión de Cristian del 11/11, «Dos motivos»).
+  static const separadorDeMotivos = ' · ';
+
+  /// Cuántos caracteres (puntos de código, como [largoMaximoMotivo]) le quedan al motivo nuevo para
+  /// que, unido al [previo] con [separadorDeMotivos], no pase de [largoMaximoMotivo]. Sin [previo],
+  /// todo el tope. Nunca menos de 0.
+  static int lugarParaElMotivo(String? previo) {
+    final antes = (previo ?? '').trim();
+    if (antes.isEmpty) return largoMaximoMotivo;
+    final lugar = largoMaximoMotivo - antes.runes.length - separadorDeMotivos.runes.length;
+    return lugar < 0 ? 0 : lugar;
+  }
+
+  /// El motivo [nuevo] no entra junto al [previo] (ver [lugarParaElMotivo]): no se corta, se pide
+  /// acortarlo. Sin [previo] nunca: el motivo solo se corta en [largoMaximoMotivo] (ver [motivo]).
+  static bool motivoNoEntra(String? previo, String nuevo) {
+    if ((previo ?? '').trim().isEmpty) return false;
+    return nuevo.trim().runes.length > lugarParaElMotivo(previo);
+  }
+
+  /// El motivo que queda en la venta al sumarle [nuevo] (decisión de Cristian del 11/11, «Dos
+  /// motivos»): `<previo> · <nuevo>`, sin espacios en los bordes. Sin [previo], el [nuevo] como lo deja
+  /// [motivo]; sin [nuevo], el [previo]. `null` si los dos están en blanco. Quien llama ya miró que entre
+  /// ([motivoNoEntra]).
+  static String? motivoUnido(String? previo, String nuevo) {
+    final antes = (previo ?? '').trim();
+    final ahora = motivo(nuevo);
+    if (antes.isEmpty) return ahora;
+    if (ahora == null) return antes;
+    return '$antes$separadorDeMotivos$ahora';
   }
 
   /// El año de [instante] en Montevideo: el que usa «talonario único por colportor y año» (Uruguay es

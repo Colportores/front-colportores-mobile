@@ -33,6 +33,7 @@ Map<String, Object?> _producto(String id, String nombre, {String? codigo, String
       'nombre': nombre,
       'descripcion': null,
       'tipo': tipo,
+      'categoria': 'ESPIRITUALES',
       'es_bonificable': false,
       'es_misionero': false,
       'precio_base_compra': null,

@@ -361,9 +361,9 @@ class FilaVisitaAgendada extends StatelessWidget {
                   ),
                 ),
               if (vencida)
-                const Text(
-                  TextosAgenda.pasoLaHora,
-                  style: TextStyle(
+                Text(
+                  TextosAgenda.pasoLaHoraDe(item.agenda.tipo),
+                  style: const TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
@@ -382,7 +382,12 @@ class FilaVisitaAgendada extends StatelessWidget {
     return Semantics(
       container: true,
       button: alTocar != null,
-      label: [cuando, tipo, ?subtitulo, if (vencida) TextosAgenda.pasoLaHora].join('. '),
+      label: [
+        cuando,
+        tipo,
+        ?subtitulo,
+        if (vencida) TextosAgenda.pasoLaHoraDe(item.agenda.tipo),
+      ].join('. '),
       onTap: alTocar,
       excludeSemantics: true,
       child: Container(

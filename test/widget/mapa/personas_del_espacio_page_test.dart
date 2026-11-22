@@ -2,6 +2,7 @@
 // la lista de clientes del depto, «+ Agregar cliente», el aviso al volver del alta y los estados que
 // el canvas no dibuja (cargando, vacío, error al leer, espacio de baja, espacio que ya no está).
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/features/mapa/presentation/pages/personas_del_espacio_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -55,12 +56,13 @@ void main() {
     });
 
     testWidgets('dado lo que el canvas dibuja pero es de otros issues, cuando se abre, no hay '
-        '«Registrar visita», «Editar» ni «›» muertos', (tester) async {
+        '«Registrar visita» ni «›» muertos; «Editar» (#679) está y se puede tocar', (tester) async {
       await montarClientes(tester, repo: _conDosClientes());
 
       expect(find.text('Registrar visita'), findsNothing);
-      expect(find.text('Editar'), findsNothing);
       expect(find.text('›'), findsNothing);
+      final editar = tester.widget<TextButton>(find.byKey(ClavesPersonasDelEspacio.editar));
+      expect(editar.onPressed, isNotNull);
     });
 
     testWidgets(

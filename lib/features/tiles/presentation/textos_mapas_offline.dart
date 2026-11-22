@@ -18,7 +18,6 @@ abstract final class TextosMapasOffline {
   static const miCiudad = 'Mi ciudad';
   static const miDepartamento = 'Mi departamento';
   static const todoUruguay = 'Todo Uruguay';
-  static const llegaConPro = 'Llega con el paso a Pro';
   static const sinZona = 'No tenés zona asignada';
   static const zonaSinPaquete = 'Todavía no está disponible. Tu ciudad lo cubre.';
   static const sinPaquete = 'Todavía no está disponible';
@@ -68,12 +67,14 @@ abstract final class TextosMapasOffline {
       'El mapa de $nombre está disponible sin conexión.';
 
   static String mapaBorrado(int megabytes) =>
-      megabytes <= 0 ? 'Mapa borrado.' : 'Mapa borrado. Liberaste $megabytes MB.';
+      megabytes <= 0 ? 'Mapa borrado.' : 'Mapa borrado. Liberaste ${megasLiberados(megabytes)}.';
 
   static String descargadoListo(String peso) => '$peso · listo para usar sin conexión';
 
-  static String avanceDe(int recibidos, int total) =>
-      '${megabytesDe(recibidos)} de ${megabytesDe(total)} MB';
+  /// El avance de una descarga: «36 de 86 MB»; si el mapa pasa de 1 GB, «412 MB de 1,2 GB».
+  static String avanceDe(int recibidos, int total) => megabytesDe(total) < _megasPorGb
+      ? '${megabytesDe(recibidos)} de ${megabytesDe(total)} MB'
+      : '${pesoLibre(recibidos)} de ${peso(total)}';
 
   static String versionNueva(String nombre, String peso) =>
       'Hay una versión nueva del mapa de $nombre ($peso). Se baja con Wi-Fi.';
@@ -83,9 +84,25 @@ abstract final class TextosMapasOffline {
       'Se baja con Wi-Fi. En el teléfono te quedan '
       '${pesoLibre(bytes)} libres.';
 
-  static String sinLugar(String nombre, String peso, String libre, {required bool haySalida}) =>
-      'No hay lugar: $nombre ocupa $peso y te quedan $libre. '
-      '${haySalida ? 'Elegí un mapa más chico o liberá espacio.' : 'Liberá espacio en el teléfono.'}';
+  /// El aviso de «sin lugar» de la pantalla 01.
+  ///
+  /// Con [falta] (los mapas de departamento y de Uruguay, que elige ella; decisión de Cristian,
+  /// 06/10, «Tope mapa»: «si no entran, la app le dice cuánto falta») suma cuánto le falta.
+  static String sinLugar(
+    String nombre,
+    String peso,
+    String libre, {
+    required bool haySalida,
+    String? falta,
+  }) {
+    final cuanto = falta == null
+        ? ''
+        : 'Te ${falta.startsWith('1 ') ? 'falta' : 'faltan'} $falta. ';
+    final salida = haySalida
+        ? 'Elegí un mapa más chico o liberá espacio.'
+        : 'Liberá espacio en el teléfono.';
+    return 'No hay lugar: $nombre ocupa $peso y te quedan $libre. $cuanto$salida';
+  }
 
   static String achicarTitulo(NivelCobertura nivel) => switch (nivel) {
     NivelCobertura.zona => '¿Quedarte solo con tu zona?',
@@ -99,8 +116,8 @@ abstract final class TextosMapasOffline {
     required String elegido,
     required int liberanMegabytes,
   }) =>
-      'Borramos el mapa de $mayor y liberás $liberanMegabytes MB. Fuera de $elegido, el mapa sin '
-      'señal se ve en blanco.';
+      'Borramos el mapa de $mayor y liberás ${megasLiberados(liberanMegabytes)}. Fuera de '
+      '$elegido, el mapa sin señal se ve en blanco.';
 
   static String achicarAccion(NivelCobertura nivel) => switch (nivel) {
     NivelCobertura.zona => 'Quedarme con mi zona',
@@ -129,6 +146,13 @@ abstract final class TextosMapasOffline {
     if (megas < 1000) return '$megas MB';
     return '${_decimal((bytes / 1e8).ceil() / 10)} GB';
   }
+
+  /// Lo que se libera, en MB ya redondeados: «72 MB», «1,2 GB» desde los 1000 MB (para abajo, igual
+  /// que [pesoLibre]: nunca promete más lugar del que queda).
+  static String megasLiberados(int megabytes) =>
+      megabytes < _megasPorGb ? '$megabytes MB' : '${_decimal((megabytes / 100).floor() / 10)} GB';
+
+  static const _megasPorGb = 1000;
 
   /// El espacio libre, redondeado para abajo: nunca promete más lugar del que hay.
   static String pesoLibre(int bytes) {

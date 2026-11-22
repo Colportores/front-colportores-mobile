@@ -92,7 +92,8 @@ void main() {
     expect(find.byKey(ClavesDetalleAgenda.titulo), findsOneWidget);
     expect(find.text('María Fernández · Mataojo 2044 · Depto 3B'), findsOneWidget);
     expect(find.byKey(ClavesDetalleAgenda.modificar), findsOneWidget);
-    expect(repo.lecturas, 1, reason: 'una sola apertura');
+    // Una lectura para decidir a dónde lleva el aviso (#580) y otra del detalle: una sola apertura.
+    expect(repo.lecturas, 2, reason: 'una sola apertura');
   });
 
   testWidgets(

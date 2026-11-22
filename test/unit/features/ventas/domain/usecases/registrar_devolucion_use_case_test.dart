@@ -36,7 +36,6 @@ class _RepoFalso implements DevolucionRepository {
         ),
         totalCentavos: 0,
         saldoCentavos: 0,
-        deboAlClienteCentavos: 0,
         eraTotal: false,
         yaEstaba: false,
       ),
@@ -56,14 +55,12 @@ void main() {
     String ventaId = 'v-1',
     String colportorId = 'col-1',
     Map<String, int> unidades = const {'i-1': 1},
-    QueHacerConLaDiferencia? queHacer,
     String? motivo,
   }) => RegistrarDevolucionParams(
     devolucionId: devolucionId,
     ventaId: ventaId,
     colportorId: colportorId,
     unidadesPorRenglon: unidades,
-    queHacer: queHacer,
     motivo: motivo,
   );
 
@@ -71,7 +68,7 @@ void main() {
     final hora = DateTime(2026, 10, 29, 15, 30);
 
     final r = await caso(ahora: () => hora)(
-      params(queHacer: QueHacerConLaDiferencia.retener, unidades: {'i-1': 2, 'i-2': 0}),
+      params(motivo: ' no le gustó ', unidades: {'i-1': 2, 'i-2': 0}),
     );
 
     expect(r.isRight(), isTrue);
@@ -80,7 +77,7 @@ void main() {
     expect(pedido.ventaId, 'v-1');
     expect(pedido.colportorId, 'col-1');
     expect(pedido.unidadesPorRenglon, {'i-1': 2});
-    expect(pedido.queHacer, QueHacerConLaDiferencia.retener);
+    expect(pedido.motivo, 'no le gustó');
     expect(pedido.ahora, hora.toUtc());
     expect(pedido.ahora.isUtc, isTrue);
   });

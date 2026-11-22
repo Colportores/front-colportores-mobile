@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/entities/motivo_baja.dart';
@@ -80,8 +81,9 @@ final class AbrirExistenteElegida extends SalidaHojaReactivar {
 /// Abre la hoja de «Reactivar» de la baja [item] (vista 09·03). Devuelve cómo terminó, o `null` si el
 /// colportor cerró sin hacer nada.
 ///
-/// [ultimaVisita] es el renglón «Última visita» («No contestó · 02/09»); `null` no lo muestra (hasta que
-/// las visitas se guarden en el teléfono no hay de dónde sacarlo).
+/// [ultimaVisita] es el renglón «Última visita» («No contestó · 02/09»); `null` no lo muestra (la ubicación
+/// no tiene visitas o no se pudieron leer: nunca se inventa una). La Lista lo lee de las visitas del
+/// teléfono (`lectorUltimaVisitaDeLaUbicacionProvider`).
 ///
 /// Con [ofreceAbrirExistente] la hoja que dice «No se puede reactivar» (la baja choca con otra casa
 /// activa, D1, o se unió a otra que sigue activa) ofrece «Abrir la existente»; sin él, solo «Entendido»
@@ -92,10 +94,9 @@ Future<SalidaHojaReactivar?> mostrarHojaReactivar(
   required ItemListaUbicacion item,
   String? ultimaVisita,
   bool ofreceAbrirExistente = false,
-}) => showModalBottomSheet<SalidaHojaReactivar>(
+}) => mostrarHojaInferior<SalidaHojaReactivar>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // Sin arrastrar para cerrar: mientras reactiva, la hoja no se puede cerrar de costado.
   enableDrag: false,
   backgroundColor: Colors.white,

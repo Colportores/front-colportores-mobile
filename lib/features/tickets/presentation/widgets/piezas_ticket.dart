@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../textos_ticket.dart';
 
@@ -266,10 +267,9 @@ const _formaHoja = RoundedRectangleBorder(
 
 /// La hoja «¿Borrar la copia de este teléfono?» (29C-08). Devuelve `true` con «Borrar copia»; `false`
 /// o `null` (cerrada) no borra nada.
-Future<bool?> mostrarHojaBorrarCopia(BuildContext context) => showModalBottomSheet<bool>(
+Future<bool?> mostrarHojaBorrarCopia(BuildContext context) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: _formaHoja,
   builder: (_) => const HojaBorrarCopia(),

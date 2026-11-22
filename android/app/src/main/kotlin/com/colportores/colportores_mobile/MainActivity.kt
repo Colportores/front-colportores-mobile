@@ -1,6 +1,7 @@
 package com.colportores.colportores_mobile
 
 import android.Manifest
+import android.app.AlarmManager
 import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.content.Context
@@ -65,6 +66,11 @@ class MainActivity : FlutterActivity() {
      *   cuando la persona contesta, con si quedaron activadas. Si el diálogo ya no se puede mostrar
      *   (se negó dos veces) o el Android es anterior al 13, responde enseguida con el estado de ahora.
      * - `abrirAjustes` -> abre los ajustes de notificaciones de la app y devuelve si pudo.
+     * - `alarmasExactas` -> `"permitidas"` o `"apagadas"` (`AlarmManager.canScheduleExactAlarms`, el
+     *   permiso «Alarmas y recordatorios»; antes del Android 12 no se pide y siempre son `"permitidas"`).
+     *   Del lado de Dart, `PermisoAlarmasExactasCanal`.
+     * - `abrirAjustesAlarmas` -> abre «Alarmas y recordatorios» de la app (Android 12 o más) y devuelve
+     *   si pudo.
      */
     private fun registrarCanalNotificaciones(flutterEngine: FlutterEngine) {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CANAL_NOTIFICACIONES).setMethodCallHandler { call, result ->
@@ -73,6 +79,8 @@ class MainActivity : FlutterActivity() {
                     "estado" -> result.success(if (notificacionesActivadas()) "activadas" else "apagadas")
                     "pedir" -> pedirPermisoNotificaciones(result)
                     "abrirAjustes" -> result.success(abrirAjustesNotificaciones())
+                    "alarmasExactas" -> result.success(if (alarmasExactasPermitidas()) "permitidas" else "apagadas")
+                    "abrirAjustesAlarmas" -> result.success(abrirAjustesAlarmas())
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
@@ -84,6 +92,34 @@ class MainActivity : FlutterActivity() {
     private fun notificacionesActivadas(): Boolean {
         val administrador = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         return administrador.areNotificationsEnabled()
+    }
+
+    private fun alarmasExactasPermitidas(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        val alarmas = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        return alarmas.canScheduleExactAlarms()
+    }
+
+    /**
+     * Abre «Alarmas y recordatorios» de esta app (Android 12 o más) o, si el equipo no tiene esa
+     * pantalla, los detalles de la app. `false` si ninguna abre o si el Android no la pide.
+     */
+    private fun abrirAjustesAlarmas(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
+        val paquete = Uri.fromParts("package", packageName, null)
+        val intentos = listOf(
+            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, paquete),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, paquete),
+        )
+        for (intento in intentos) {
+            try {
+                startActivity(intento.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return true
+            } catch (e: Exception) {
+                // Esa pantalla no existe en este equipo: se prueba la siguiente.
+            }
+        }
+        return false
     }
 
     /** El pedido de `pedir` que espera la respuesta del diálogo del sistema, si hay uno abierto. */
@@ -190,6 +226,8 @@ class MainActivity : FlutterActivity() {
      * - `nivelAlmacen` → `"hardware"` (TEE o StrongBox) o `"software"` (Supuesto S10).
      * - `abrirAjustesSeguridad` / `abrirAjustesAlmacenamiento` / `abrirAjustesRed` → abre esa pantalla
      *   de los ajustes (vista 13, #222; «Activar datos» del mapa, #190) y devuelve si pudo.
+     * - `abrirAjustesApp` → abre la pantalla de la app en los ajustes (permisos), «Abrir ajustes»
+     *   sin permiso de cámara (vista 29 C, #427), y devuelve si pudo.
      *
      * - `abrirEnlace` → abre `{url}` con el sistema (chat de soporte por WhatsApp, vista 13) y
      *   devuelve si pudo. Solo `https://wa.me/...`: cualquier otro enlace se rechaza.
@@ -206,6 +244,7 @@ class MainActivity : FlutterActivity() {
                     "abrirAjustesAlmacenamiento" ->
                         result.success(abrirAjustes(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
                     "abrirAjustesRed" -> result.success(abrirAjustes(Settings.ACTION_WIRELESS_SETTINGS))
+                    "abrirAjustesApp" -> result.success(abrirAjustesDeLaApp())
                     "abrirEnlace" -> result.success(abrirEnlace(call.argument<String>("url")))
                     else -> result.notImplemented()
                 }
@@ -224,6 +263,25 @@ class MainActivity : FlutterActivity() {
     private fun abrirAjustes(accion: String): Boolean {
         try {
             startActivity(Intent(accion).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return true
+        } catch (e: Exception) {
+            // Sin esa pantalla: se intenta con los ajustes generales.
+        }
+        try {
+            startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            // Tampoco abren.
+        }
+        return false
+    }
+
+    /** La pantalla de esta app en los ajustes (sus permisos); si no abre, los ajustes generales. */
+    private fun abrirAjustesDeLaApp(): Boolean {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
             return true
         } catch (e: Exception) {
             // Sin esa pantalla: se intenta con los ajustes generales.

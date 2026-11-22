@@ -480,7 +480,7 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
-      const error = 'El email no es válido';
+      const error = 'El email no es válido. Revisá que esté completo, como nombre@correo.com.';
       expect(find.text(error), findsOneWidget);
       expect(
         _entraEnLaPantalla(tester, find.text(error), alto: 640 - 300),

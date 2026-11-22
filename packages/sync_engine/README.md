@@ -253,10 +253,35 @@ milisegundo— y en la calle, donde las ventas están separadas por horas, cada 
 sigue saliendo sola. `engine.flush()` la saltea cuando no se puede esperar: al
 pasar la app a segundo plano, al cerrar la jornada.
 
-También quedó medido, sin arreglar, el costo de no compactar la outbox: editar
-la misma fila 51 veces manda 51 jobs, **51× más bytes que mandar solo el
-último**. Compactar cambia lo que el servidor ve, así que es una decisión del
-contrato y no del motor.
+También quedó medido el costo de no compactar la outbox: editar la misma fila
+51 veces mandaba 51 jobs, **51× más bytes que mandar solo el último**. Hoy el
+motor **compacta las escrituras `PENDING` de una misma fila**: en `stage()`, un
+`insert` o `update` nuevo se funde en el job `PENDING` anterior de esa fila (el
+payload fundido tiene el último valor de cada campo, y el job conserva su `op`
+y la `sync_version` esperada), así que las 51 ediciones suben como una. No se
+funde un `delete`, ni nada que ya esté `IN_FLIGHT`, `DONE` o enviado (el
+servidor ya lo vio). Es la decisión de «Fusión cola» (23/10) y la prueba está en
+[`test/version_de_vuelta_test.dart`](test/version_de_vuelta_test.dart).
+
+## Un `429` frena la subida (#188)
+
+Si el backend contesta `429`, el motor **no sube nada** hasta que pasa el
+`Retry-After` del encabezado, con un tope de 60 segundos (`maxRetryAfter`); sin
+encabezado, o en cero, espera 5 segundos (`defaultRetryAfter`). Los jobs
+vuelven a `PENDING` como en cualquier falla transitoria y los triggers que
+lleguen durante la espera no llaman al transporte: no hay ráfaga de reintentos.
+El pull sigue, y `SyncOutcome.pushPausedUntil` dice hasta cuándo espera la
+subida. Un `429` del pull también frena la subida.
+
+La espera frena **toda** la subida y no solo la entidad que rebotó: retener un
+alta y dejar salir lo que la nombra termina en `23503` y en jobs `INVALID`. Vive
+solo en memoria (reabrir la app empieza sin espera). Un solo timer despierta al
+motor cuando vence la espera y corre un ciclo que sube lo que haya `PENDING`
+(también lo que entró durante la espera): hay a lo sumo un intento por
+`Retry-After`, y si vuelve otro `429` la espera se renueva. Si el reloj del
+teléfono retrocede, una espera más lejana que el tope se descarta. Decisión de Cristian
+del 04/11; la prueba está en
+[`test/espera_del_429_test.dart`](test/espera_del_429_test.dart).
 
 ## Dependencias entre entidades — un agujero abierto
 

@@ -226,7 +226,7 @@ class BotonVerMasAgenda extends StatelessWidget {
 /// Una agenda: hora, glifo del tipo, persona, dirección y etiqueta (canvas 23B·01). Cuatro formas:
 /// - **programada**: la «›» de «se abre» si hay a dónde ir ([alTocar]);
 /// - **vencida** (23B·02): borde ámbar, «Pasó la hora · registrá qué pasó» y «Registrar» en lugar de
-///   la «›» ([alRegistrar]);
+///   la «›» ([alRegistrar]); una ENTREGA dice solo «Pasó la hora»;
 /// - **cancelada** (23B·05): tachada y atenuada, con «Cancelada el 22/10»;
 /// - **cumplida / no cumplida**: igual que la cancelada, con su etiqueta.
 class FilaAgenda extends StatelessWidget {
@@ -324,9 +324,9 @@ class FilaAgenda extends StatelessWidget {
                 ),
               ),
             if (vencida)
-              const Text(
-                TextosAgenda.pasoLaHora,
-                style: TextStyle(
+              Text(
+                TextosAgenda.pasoLaHoraDe(item.agenda.tipo),
+                style: const TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
@@ -596,6 +596,8 @@ class HeroAgenda extends StatelessWidget {
                 onPressed: alAccion,
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(48, 48),
+                  // Con el relleno del tema el texto tocaba el borde (QA #148).
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   foregroundColor: ColoresAgenda.navy,
                   side: const BorderSide(color: ColoresAgenda.navy, width: 1.5),
                   textStyle: const TextStyle(

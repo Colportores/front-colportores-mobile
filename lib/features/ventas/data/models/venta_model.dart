@@ -10,7 +10,12 @@ import '../../domain/entities/venta_item.dart';
 /// **Sin dato del cliente** (ADR-004, R-VE05): `espacio_persona_id` es un id opaco. La única prosa
 /// que sube es `motivo_monto_manual`, por decisión explícita de Cristian (23/10).
 abstract final class VentaModel {
-  static Map<String, Object?> toJson(Venta venta) => {
+  /// [itemsEsperados] es cuántos renglones lleva la venta cuando se termina de armar (decisión de
+  /// Cristian, 03/11, «Total arriba»; backend 0158, `venta.items_esperados`): con todos los ítems
+  /// llegados el servidor exige el motivo del total cambiado a mano **en los dos sentidos**. Es una
+  /// columna del push y no se guarda en el teléfono: sin ella (`null`, 0 o menos) el servidor aplica
+  /// solo la regla de siempre, total por debajo de la suma.
+  static Map<String, Object?> toJson(Venta venta, {int? itemsEsperados}) => {
     'id': venta.id,
     'espacio_persona_id': venta.espacioPersonaId,
     'numero_talonario': venta.numeroTalonario,
@@ -19,6 +24,7 @@ abstract final class VentaModel {
     'colportor_id': venta.colportorId,
     'visita_id': venta.visitaId,
     'motivo_monto_manual': venta.motivoMontoManual,
+    if (itemsEsperados != null && itemsEsperados >= 1) 'items_esperados': itemsEsperados,
     ...auditoriaAJson(venta.auditoria),
   };
 }

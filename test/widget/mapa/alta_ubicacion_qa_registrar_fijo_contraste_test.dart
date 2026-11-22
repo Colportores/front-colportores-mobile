@@ -20,7 +20,11 @@ void main() {
         (tester) async {
           final handle = tester.ensureSemantics();
           await abrirEn(tester, estado, tamano: tamano, escala: escala);
-          expect(registrarHabilitado(tester), isFalse);
+          // «Casa» viene elegida (#665): con GPS preciso «Registrar» ya está habilitado al abrir; en
+          // los demás estados falta el punto o la decisión de precisión y arranca deshabilitado.
+          final habilitadoAlAbrir =
+              estado == EstadoAlta.gpsPreciso || estado == EstadoAlta.numeroEditado;
+          expect(registrarHabilitado(tester), habilitadoAlAbrir);
           await expectLater(tester, meetsGuideline(textContrastGuideline));
 
           await tocar(tester, find.text('Casa'));

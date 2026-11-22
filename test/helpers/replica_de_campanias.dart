@@ -41,6 +41,7 @@ Map<String, Object?> filaCiudad(
   String nombre, {
   required double lat,
   required double lon,
+  String? departamento = 'Montevideo',
   bool deBaja = false,
 }) => {
   'id': id,
@@ -49,7 +50,7 @@ Map<String, Object?> filaCiudad(
   'lat_centro': lat,
   'lon_centro': lon,
   'zoom_inicial': 13,
-  'departamento': 'Montevideo',
+  'departamento': departamento,
   'origen': 'OSM',
   ..._auditoria(deBaja: deBaja),
 };
@@ -104,6 +105,7 @@ Map<String, Object?> filaZona(
   required double latNorte,
   required double lonOeste,
   required double lonEste,
+  String? color = '#336699',
   bool deBaja = false,
 }) => {
   'id': id,
@@ -125,6 +127,6 @@ Map<String, Object?> filaZona(
       ],
     ],
   },
-  'color': '#336699',
+  'color': color,
   ..._auditoria(deBaja: deBaja),
 };

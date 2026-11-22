@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:colportores_mapa/colportores_mapa.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import '../providers/mapa_base_providers.dart';
 import 'modelo_mapa_base.dart';
+import 'zonas_mapa.dart';
 
 /// El recuadro que tiene que quedar a la vista al abrir el mapa: la cámara más cercana que deja a
 /// todos los [puntos] adentro, con [margen] píxeles libres en cada borde y sin pasar de
@@ -46,11 +48,12 @@ class MapaBase extends ConsumerStatefulWidget {
     this.camaraInicial,
     this.ajuste,
     this.zoomMinimo = 3,
-    this.zoomMaximo = 19,
+    this.zoomMaximo = TokensMapa.zoomMaximo,
     this.interaccion = const InteraccionMapa(),
     this.zoomSobreCentro = false,
     this.fondo = ColoresMapa.fondo,
     this.puntos = const [],
+    this.zonas = const [],
     this.agruparPuntos = false,
     this.precision,
     this.cercania,
@@ -89,6 +92,10 @@ class MapaBase extends ConsumerStatefulWidget {
   /// pantalla un nodo «Tu ubicación» sobre el punto, sin acción, ubicado con la cámara de la última
   /// vez que el mapa quedó quieto; si el punto queda fuera de la pantalla no hay nodo.
   final List<PuntoMapa> puntos;
+
+  /// Las zonas de las campañas del colportor (#511): un relleno y un borde por debajo de los
+  /// puntos, con el nombre encima. No tapan ni reciben toques: el toque sigue siendo de los puntos.
+  final List<ZonaMapa> zonas;
   final bool agruparPuntos;
   final CirculoPrecision? precision;
 
@@ -156,7 +163,12 @@ class _MapaBaseState extends ConsumerState<MapaBase>
 
   PuertoVistaMapa? _puerto;
   CamaraMapa? _pendiente;
-  CamaraMapa? _eco;
+
+  /// Los destinos que el código pidió hace poco y cuyo eco todavía puede llegar. El seguimiento de
+  /// la ubicación (#670) mueve la cámara a cada lectura: si llega la segunda antes de que vuelva el
+  /// eco de la primera, ese eco no es un gesto del colportor.
+  final _ecos = <CamaraMapa>[];
+  static const _ecosRecordados = 4;
 
   /// La cámara de la última vez que el mapa quedó quieto: con ella se ubica el nodo de «Tu ubicación».
   CamaraMapa? _camaraQuieta;
@@ -232,7 +244,8 @@ class _MapaBaseState extends ConsumerState<MapaBase>
   @override
   Future<void> moverCamara(CamaraMapa camara) async {
     _camara = camara;
-    _eco = camara;
+    _ecos.add(camara);
+    if (_ecos.length > _ecosRecordados) _ecos.removeAt(0);
     // Con un zoom sobre el centro en curso, lo que pide el código (por ejemplo, centrar en el punto
     // que se tocó) es el centro al que se vuelve al terminar, no el de antes del zoom.
     if (_zoomPendiente) _centroPrevio = camara.centro;
@@ -269,7 +282,7 @@ class _MapaBaseState extends ConsumerState<MapaBase>
     if (!mounted) return;
     _camara = camara;
     if (_esEcoDelCodigo(camara)) return;
-    _eco = null;
+    _ecos.clear();
     // Con el zoom sobre el centro este se corre (el zoom es sobre los dedos o el punto tocado): se
     // restaura al terminar.
     if (_zoomPendiente) {
@@ -284,7 +297,7 @@ class _MapaBaseState extends ConsumerState<MapaBase>
     if (!mounted) return;
     _camara = camara;
     // Lo que sigue ya no es el eco de un pedido del código.
-    _eco = null;
+    _ecos.clear();
     if (_zoomPendiente) {
       // El doble toque anima: un «quieta» de antes de que arrancara no es el final del zoom.
       if (_dedos.isEmpty && (!_esDobleToque || _huboMovimiento)) _restaurarCentro();
@@ -309,10 +322,11 @@ class _MapaBaseState extends ConsumerState<MapaBase>
   }
 
   bool _esEcoDelCodigo(CamaraMapa camara) {
-    final esperada = _eco;
-    if (esperada == null) return false;
-    return (camara.centro.lat - esperada.centro.lat).abs() < _toleranciaEcoGrados &&
-        (camara.centro.lon - esperada.centro.lon).abs() < _toleranciaEcoGrados;
+    return _ecos.any(
+      (esperada) =>
+          (camara.centro.lat - esperada.centro.lat).abs() < _toleranciaEcoGrados &&
+          (camara.centro.lon - esperada.centro.lon).abs() < _toleranciaEcoGrados,
+    );
   }
 
   void _informarQuieta(CamaraMapa camara) {
@@ -446,7 +460,7 @@ class _MapaBaseState extends ConsumerState<MapaBase>
     final centro = _centroPrevio;
     _limpiarZoom();
     if (centro == null) return;
-    final destino = CamaraMapa(centro: centro, zoom: camara.zoom);
+    final destino = CamaraMapa(centro: centro, zoom: camara.zoom, rumbo: camara.rumbo);
     unawaited(moverCamara(destino));
     _informarQuieta(destino);
   }
@@ -467,10 +481,13 @@ class _MapaBaseState extends ConsumerState<MapaBase>
     final punto = _puntoGps;
     final camara = _camaraQuieta;
     if (punto == null || camara == null || _tamano.isEmpty) return null;
-    final enMundo = ProyeccionMercator.aPixeles(punto.coordenadas, camara.zoom);
-    final centro = ProyeccionMercator.aPixeles(camara.centro, camara.zoom);
-    final x = enMundo.x - centro.x + _tamano.width / 2;
-    final y = enMundo.y - centro.y + _tamano.height / 2;
+    // Con el mapa girado (seguimiento «Seguir y girar», #670) el punto cae donde lo muestra la pantalla.
+    final (:x, :y) = ProyeccionMercator.aPantalla(
+      punto.coordenadas,
+      camara,
+      ancho: _tamano.width,
+      alto: _tamano.height,
+    );
     if (x < 0 || x > _tamano.width || y < 0 || y > _tamano.height) return null;
     return Offset(x, y);
   }
@@ -504,6 +521,7 @@ class _MapaBaseState extends ConsumerState<MapaBase>
           precision: widget.precision,
           cercania: widget.cercania,
           puntosTocables: widget.alTocarPunto != null,
+          zonas: widget.zonas,
         );
         final marcaGps = _posicionDelGps();
         Widget vista = constructor(context, config, this);
@@ -571,7 +589,8 @@ class _Dedo {
 class _AtribucionOsm extends StatelessWidget {
   const _AtribucionOsm({required this.reservaInferior, required this.reserva});
 
-  static const texto = '© OpenStreetMap';
+  /// El texto corto del token de lib-mapa (`TokensMapa.atribucionCorto`).
+  static const texto = TokensMapa.atribucionCorto;
 
   /// Lo que tapa el borde de abajo (la hoja de la vista 06).
   final double reservaInferior;

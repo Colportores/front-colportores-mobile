@@ -25,8 +25,65 @@ final class _Servicio implements ServicioRespaldo {
 
 void main() {
   group('diasSinRespaldo (aviso por más de 7 días)', () {
-    test('sin un respaldo anterior no hay desde cuándo contar: no avisa', () {
+    test('sin un respaldo anterior ni fecha de conexión no hay desde cuándo contar: no avisa', () {
       expect(diasSinRespaldo(ultimo: null, ahora: _ahora), isNull);
+      expect(diasSinRespaldo(ultimo: null, conectadaDesde: null, ahora: _ahora), isNull);
+    });
+
+    test('Escenario: Drive conectado hace 10 días y nunca hubo un respaldo — cuenta desde ahí', () {
+      final conectada = _ahora.subtract(const Duration(days: 10));
+
+      expect(diasSinRespaldo(ultimo: null, conectadaDesde: conectada, ahora: _ahora), 10);
+    });
+
+    test('la misma cuenta y el mismo umbral que con un último respaldo (más de 7 días)', () {
+      DateTime hace(Duration d) => _ahora.subtract(d);
+
+      expect(
+        diasSinRespaldo(ultimo: null, conectadaDesde: hace(const Duration(days: 7)), ahora: _ahora),
+        isNull,
+      );
+      expect(
+        diasSinRespaldo(
+          ultimo: null,
+          conectadaDesde: hace(const Duration(days: 7, hours: 3)),
+          ahora: _ahora,
+        ),
+        8,
+      );
+    });
+
+    test('con un último respaldo manda ese, no la fecha de conexión', () {
+      final conectada = _ahora.subtract(const Duration(days: 30));
+
+      expect(
+        diasSinRespaldo(
+          ultimo: _ahora.subtract(const Duration(days: 2)),
+          conectadaDesde: conectada,
+          ahora: _ahora,
+        ),
+        isNull,
+        reason: 'respaldó hace 2 días: nada que avisar aunque conectó hace 30',
+      );
+      expect(
+        diasSinRespaldo(
+          ultimo: _ahora.subtract(const Duration(days: 9)),
+          conectadaDesde: conectada,
+          ahora: _ahora,
+        ),
+        9,
+      );
+    });
+
+    test('una conexión «del futuro» (reloj atrasado) no avisa', () {
+      expect(
+        diasSinRespaldo(
+          ultimo: null,
+          conectadaDesde: _ahora.add(const Duration(days: 3)),
+          ahora: _ahora,
+        ),
+        isNull,
+      );
     });
 
     test('hasta 7 días justos no avisa; pasados, sí', () {

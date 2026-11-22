@@ -658,7 +658,15 @@ class TarjetaDeLibro extends StatelessWidget {
   }
 }
 
-/// Una fila de «EN LA VENTA»: la colección o el producto, su precio y la acción de quitarla.
+/// El fondo de lo ya vendido (42B·09C, `#F3F4F1`).
+const _fondoYaVendido = Color(0xFFF3F4F1);
+
+/// La pastilla «Nuevo» (42B·09C): verde sobre verde claro (`#1F6E3A` sobre `#DDE8D3`, más de 5:1).
+const _fondoNuevo = Color(0xFFDDE8D3);
+const _tintaNuevo = Color(0xFF1F6E3A);
+
+/// Una fila de «EN LA VENTA»: la colección o el producto, su precio y la acción de quitarla. Al sumar
+/// a una venta abierta (42B·09C), lo nuevo lleva [etiqueta] y lo ya vendido va con [yaVendido].
 class TarjetaDeRenglon extends StatelessWidget {
   const TarjetaDeRenglon({
     super.key,
@@ -669,6 +677,8 @@ class TarjetaDeRenglon extends StatelessWidget {
     this.alPresionar,
     this.alQuitar,
     this.glifo = '▣',
+    this.etiqueta,
+    this.yaVendido = false,
   });
 
   final String? rotulo;
@@ -678,6 +688,13 @@ class TarjetaDeRenglon extends StatelessWidget {
   final String glifo;
   final VoidCallback? alPresionar;
   final VoidCallback? alQuitar;
+
+  /// La pastilla junto al nombre («Nuevo» en lo que se suma a una venta abierta, 42B·09C); `null` =
+  /// ninguna.
+  final String? etiqueta;
+
+  /// Lo que la venta ya tenía (42B·09C, «YA VENDIDO»): fondo gris, sin «Quitar» y sin toque.
+  final bool yaVendido;
 
   @override
   Widget build(BuildContext context) {
@@ -692,11 +709,12 @@ class TarjetaDeRenglon extends StatelessWidget {
         fontWeight: FontWeight.w600,
       ),
     );
+    final nuevo = etiqueta != null;
     final fila = Container(
       constraints: const BoxConstraints(minHeight: 56),
-      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      padding: EdgeInsets.fromLTRB(12, 8, yaVendido ? 12 : 4, 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: yaVendido ? _fondoYaVendido : Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: _borde),
       ),
@@ -707,14 +725,18 @@ class TarjetaDeRenglon extends StatelessWidget {
             height: 34,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: ColoresAgenda.navy,
+              color: yaVendido
+                  ? ColoresAgenda.gris
+                  : nuevo
+                  ? _fondoNuevo
+                  : ColoresAgenda.navy,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               glifo,
               textScaler: TextScaler.noScaling,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: nuevo && !yaVendido ? _tintaNuevo : Colors.white,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
@@ -726,7 +748,32 @@ class TarjetaDeRenglon extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (rotulo != null) Text(rotulo!, style: _estiloRotulo()),
-                Text(titulo, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                Wrap(
+                  spacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      titulo,
+                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
+                    ),
+                    if (etiqueta != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: _fondoNuevo,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          etiqueta!,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: _tintaNuevo,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
                 if (detalle != null)
                   Text(detalle!, style: const TextStyle(fontSize: 12, color: ColoresAgenda.gris)),
                 if (apilado) precioEnFila,
@@ -734,18 +781,19 @@ class TarjetaDeRenglon extends StatelessWidget {
             ),
           ),
           if (!apilado) Padding(padding: const EdgeInsets.only(left: 8), child: precioEnFila),
-          IconButton(
-            tooltip: TextosVenta.quitar,
-            onPressed: alQuitar,
-            icon: const Icon(Icons.close, size: 20, color: ColoresAgenda.gris),
-          ),
+          if (!yaVendido)
+            IconButton(
+              tooltip: TextosVenta.quitar,
+              onPressed: alQuitar,
+              icon: const Icon(Icons.close, size: 20, color: ColoresAgenda.gris),
+            ),
         ],
       ),
     );
     return Semantics(
       container: true,
       button: alPresionar != null,
-      label: [?rotulo, titulo, ?detalle, precio].join('. '),
+      label: [?rotulo, titulo, ?etiqueta, ?detalle, precio].join('. '),
       onTap: alPresionar,
       excludeSemantics: false,
       child: alPresionar == null
@@ -760,9 +808,9 @@ class FilaDeCantidad extends StatelessWidget {
   const FilaDeCantidad({
     super.key,
     required this.titulo,
-    required this.precio,
     required this.cantidad,
     required this.alCambiar,
+    this.precio,
     this.etiqueta,
     this.tintaEtiqueta = ColoresAgenda.ambarTinta,
     this.fondoEtiqueta = ColoresAgenda.ambarFondo,
@@ -770,7 +818,9 @@ class FilaDeCantidad extends StatelessWidget {
   });
 
   final String titulo;
-  final String precio;
+
+  /// El precio (o «Sin cobrar»); `null` donde no hay montos («Lo que dejaste», #608).
+  final String? precio;
   final int cantidad;
   final ValueChanged<int> alCambiar;
   final String? etiqueta;
@@ -780,9 +830,69 @@ class FilaDeCantidad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textos = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(titulo, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+        Wrap(
+          spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (precio case final precio?)
+              Text(
+                precio,
+                style: const TextStyle(
+                  fontFamily: 'JetBrainsMono',
+                  fontSize: 12.5,
+                  color: ColoresAgenda.gris,
+                ),
+              ),
+            if (etiqueta != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: fondoEtiqueta,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  etiqueta!,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: tintaEtiqueta),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+    final botones = <Widget>[
+      IconButton(
+        tooltip: 'Uno menos de $titulo',
+        onPressed: cantidad > 0 ? () => alCambiar(cantidad - 1) : null,
+        icon: const Icon(Icons.remove_circle_outline),
+      ),
+      ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 24),
+        child: Text(
+          '$cantidad',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: 'JetBrainsMono',
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      IconButton(
+        tooltip: 'Uno más de $titulo',
+        onPressed: cantidad < maximo ? () => alCambiar(cantidad + 1) : null,
+        icon: const Icon(Icons.add_circle_outline),
+      ),
+    ];
+    // Con la letra grande el − / + baja debajo del nombre: al costado, en un teléfono angosto, una
+    // palabra larga se partía por la mitad («alimentació/n», QA #432).
+    final apilada = MediaQuery.textScalerOf(context).scale(1) > 1.5;
     return Semantics(
       container: true,
-      label: '$titulo. $precio. ${cantidad == 0 ? 'Ninguno' : '$cantidad'}',
+      label: [titulo, ?precio, if (cantidad == 0) 'Ninguno' else '$cantidad'].join('. '),
       child: Container(
         constraints: const BoxConstraints(minHeight: 64),
         padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
@@ -794,70 +904,20 @@ class FilaDeCantidad extends StatelessWidget {
             width: cantidad > 0 ? 2 : 1,
           ),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: apilada
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(titulo, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
-                  Wrap(
-                    spacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        precio,
-                        style: const TextStyle(
-                          fontFamily: 'JetBrainsMono',
-                          fontSize: 12.5,
-                          color: ColoresAgenda.gris,
-                        ),
-                      ),
-                      if (etiqueta != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: fondoEtiqueta,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            etiqueta!,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: tintaEtiqueta,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                  Padding(padding: const EdgeInsets.only(right: 8), child: textos),
+                  Row(mainAxisAlignment: MainAxisAlignment.end, children: botones),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(child: textos),
+                  ...botones,
                 ],
               ),
-            ),
-            IconButton(
-              tooltip: 'Uno menos de $titulo',
-              onPressed: cantidad > 0 ? () => alCambiar(cantidad - 1) : null,
-              icon: const Icon(Icons.remove_circle_outline),
-            ),
-            ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 24),
-              child: Text(
-                '$cantidad',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontFamily: 'JetBrainsMono',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            IconButton(
-              tooltip: 'Uno más de $titulo',
-              onPressed: cantidad < maximo ? () => alCambiar(cantidad + 1) : null,
-              icon: const Icon(Icons.add_circle_outline),
-            ),
-          ],
-        ),
       ),
     );
   }

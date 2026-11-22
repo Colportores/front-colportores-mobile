@@ -39,6 +39,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
 import '../../helpers/mapa_base_falso.dart';
+import '../../helpers/ubicacion_colportor_falsos.dart';
 
 final _t0 = DateTime.utc(2026, 10, 27, 12);
 
@@ -225,12 +226,13 @@ Future<void> _crearIgual(WidgetTester tester, String justificacion) async {
 
 void main() {
   group('Escenario: Alta exitosa con GPS preciso', () {
-    testWidgets('dado GPS de ±6 m, cuando elijo «Casa» y «Registrar», la ubicación y su espacio '
-        'quedan en el teléfono con UUID v7 y encolados sin nada de más', (tester) async {
+    testWidgets('dado GPS de ±6 m, cuando dejo «Casa» (ya viene elegida, #665) y toco «Registrar», '
+        'la ubicación y su espacio quedan en el teléfono con UUID v7 y encolados sin nada de más', (
+      tester,
+    ) async {
       final t = await _montar(tester);
-      expect(_habilitado(tester, _registrar), isFalse, reason: 'el tipo es obligatorio');
+      expect(_habilitado(tester, _registrar), isTrue, reason: '«Casa» viene elegida');
 
-      await _tocar(tester, find.text('Casa'));
       await _tocar(tester, _registrar);
 
       final salida = t.salidas.single;
@@ -672,17 +674,18 @@ void main() {
       tester,
     ) async {
       final t = await _montar(tester);
-      await _tocar(tester, find.text('Casa'));
+      await _tocar(tester, find.text('Edificio'));
       await _tocar(tester, find.byTooltip('Cerrar'));
       expect(t.salidas, [null]);
       expect(await _cuantas(tester, t, 'ubicacion'), 0);
 
       await tester.tap(find.text('abrir'));
       await _asentar(tester);
-      expect(_habilitado(tester, _registrar), isFalse, reason: 'el tipo vuelve sin elegir');
-      await _tocar(tester, find.text('Casa'));
+      expect(find.byIcon(Icons.check), findsOneWidget, reason: 'el tipo vuelve a «Casa»');
+      expect(_habilitado(tester, _registrar), isTrue);
       await _tocar(tester, _registrar);
       final primera = (t.salidas.last! as UbicacionCreada).ubicacion.id;
+      await tester.pumpAndSettle(); // termina de cerrarse la pantalla antes de volver a abrirla
 
       // La segunda, 400 m al norte y en otra calle: no es un duplicado de la primera.
       t.gps.respuesta = Right(
@@ -692,10 +695,12 @@ void main() {
         ),
       );
       t.geocodificador.respuesta = (_) => const DireccionDelPunto(calle: 'Bulevar', numero: '10');
+      // El alta no lee el GPS por su cuenta (#651): el colportor se movió y tocó «Mi ubicación» en
+      // el mapa, que es quien lo vuelve a leer.
+      await refrescarGpsDelColportor(tester);
       await tester.tap(find.text('abrir'));
       await _asentar(tester);
-      expect(_habilitado(tester, _registrar), isFalse, reason: 'el tipo vuelve sin elegir');
-      await _tocar(tester, find.text('Casa'));
+      expect(_habilitado(tester, _registrar), isTrue, reason: 'el tipo vuelve a «Casa»');
       await _tocar(tester, _registrar);
 
       final segunda = (t.salidas.last! as UbicacionCreada).ubicacion.id;

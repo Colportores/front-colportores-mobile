@@ -210,6 +210,10 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
   final _reintentosEnVuelo = <UnionPendiente>{};
   final _reintentosReemplazados = <UnionPendiente>{};
 
+  /// Las uniones que se escribieron bien mientras la pantalla seguía abierta, por par: su par queda
+  /// oculto hasta que el servidor la rechace y vuelva ([soltarRechazadas]).
+  final _hechas = <String, UnionPendiente>{};
+
   @override
   UnionesPendientesState build() {
     _unir = ref.watch(unirDuplicadosUseCaseProvider);
@@ -336,6 +340,22 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
     );
   }
 
+  /// El servidor rechazó la unión de estos pares y el teléfono la deshizo: vuelven a la lista con su
+  /// aviso (HU-UBI-006, «Unión rech.», #679). Solo se sueltan los pares de una unión que ya se escribió
+  /// con la pantalla abierta: uno que espera sus 8 s o se está uniendo sigue oculto aunque traiga el
+  /// aviso de un rechazo anterior. Con el par vuelve también su «B» para los demás pares.
+  void soltarRechazadas(Set<String> clavesPar) {
+    if (!ref.mounted) return;
+    final vuelven = [for (final clave in clavesPar) ?_hechas.remove(clave)];
+    if (vuelven.isEmpty) return;
+    state = UnionesPendientesState(
+      pendiente: state.pendiente,
+      ocultas: {...state.ocultas}..removeAll(vuelven.map((u) => u.clavePar)),
+      duplicadasEnCurso: {...state.duplicadasEnCurso}..removeAll(vuelven.map((u) => u.duplicadaId)),
+      fallas: state.fallas,
+    );
+  }
+
   /// Cierra el aviso de las fallas sin reintentar.
   void descartarFalla() {
     if (state.fallas.isEmpty) return;
@@ -385,7 +405,10 @@ final class UnionesPendientesNotifier extends Notifier<UnionesPendientesState> {
     }
     _reintentosEnVuelo.remove(union);
     final reemplazada = _reintentosReemplazados.remove(union);
-    if (falla == null) return;
+    if (falla == null) {
+      _hechas[union.clavePar] = union;
+      return;
+    }
     final fallaDeLaUnion = FallaUnion(union: union, falla: falla);
     if (!ref.mounted) {
       if (reemplazada) return;

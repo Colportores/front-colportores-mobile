@@ -44,6 +44,7 @@ final class DevolucionRepositoryImpl implements DevolucionRepository {
       final (falla, motivo) = switch (e) {
         DevolucionSinVentaException() => (const FailureDevolucionSinVenta(), 'venta'),
         DevolucionFueraDePlazoException() => (const FailureDevolucionFueraDePlazo(), 'plazo'),
+        DevolucionVentaSaldadaException() => (const FailureDevolucionVentaSaldada(), 'saldada'),
         DevolucionInvalidaException(:final causa) => (
           FailureDevolucionInvalida(causa: causa),
           causa,

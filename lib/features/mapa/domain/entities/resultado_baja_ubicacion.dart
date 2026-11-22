@@ -29,7 +29,7 @@ final class BajaSinCambios extends ResultadoBajaUbicacion {
   List<Object?> get props => [ubicacion];
 }
 
-/// Tiene visitas pendientes propias: no se escribió nada. La pantalla muestra [pendientes] (`resumen`)
+/// Tiene entrevistas agendadas que la baja cancelaría: no se escribió nada. La pantalla muestra [pendientes] (`resumen`)
 /// y, tras la segunda confirmación, repite el pedido con `confirmaPendientes: true`.
 final class BajaRequiereConfirmacion extends ResultadoBajaUbicacion {
   const BajaRequiereConfirmacion({required this.pendientes});

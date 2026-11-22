@@ -111,7 +111,7 @@ final class AgendasParaRecordarDrift
           (
             visita: _visita(
               fila.readTable(agendas),
-              _direccion(fila.readTableOrNull(_alternativa) ?? fila.readTableOrNull(propia)),
+              _direccionDe(fila.readTableOrNull(_alternativa), fila.readTableOrNull(propia)),
             ),
             oculta:
                 fila.readTableOrNull(espacios)?.deletedAt != null ||
@@ -138,7 +138,7 @@ final class AgendasParaRecordarDrift
       for (final fila in filas)
         (
           agenda: fila.readTable(agendas),
-          direccion: _direccion(fila.readTableOrNull(_alternativa) ?? fila.readTableOrNull(propia)),
+          direccion: _direccionDe(fila.readTableOrNull(_alternativa), fila.readTableOrNull(propia)),
         ),
     ];
   }
@@ -174,6 +174,16 @@ final class AgendasParaRecordarDrift
     fechaProgramada: agenda.fechaProgramada,
   );
 
-  static String _direccion(UbicacionFila? ubicacion) =>
-      ubicacion == null ? '' : TextoRecordatorio.direccionDe(ubicacion.calle, ubicacion.numero);
+  /// La dirección del aviso: la alternativa de la cobranza si la tiene, si no la de la casa. Una
+  /// alternativa dada de baja **sigue sonando** y sale marcada (decisión de Cristian, 03/11, «Alt. de
+  /// baja»).
+  static String _direccionDe(UbicacionFila? alternativa, UbicacionFila? propia) {
+    final ubicacion = alternativa ?? propia;
+    if (ubicacion == null) return '';
+    final direccion = TextoRecordatorio.direccionDe(ubicacion.calle, ubicacion.numero);
+    if (alternativa == null || alternativa.deletedAt == null) return direccion;
+    return direccion.isEmpty
+        ? TextoRecordatorio.direccionDadaDeBaja
+        : '$direccion ${TextoRecordatorio.direccionDadaDeBaja}';
+  }
 }

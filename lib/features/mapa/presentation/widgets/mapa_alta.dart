@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:colportores_mapa/colportores_mapa.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -53,12 +54,17 @@ class MapaAlta extends ConsumerStatefulWidget {
   /// Uruguay entero a la vista (en `flutter_map`, 6,5).
   static final zoomPais = ProyeccionMercator.zoomDeFlutterMap(6.5);
 
-  /// El nivel de una calle, donde se ve el radio de precisión del GPS (en `flutter_map`, 17).
-  static final zoomCalle = ProyeccionMercator.zoomDeFlutterMap(17);
+  /// El nivel de una calle, donde se ve el radio de precisión del GPS y desde donde el estilo
+  /// muestra los números de puerta de OSM: el token `zoomCalle` de lib-mapa (16 en MapLibre; el 17
+  /// de `flutter_map`).
+  static const zoomCalle = TokensMapa.zoomCalle;
 
-  /// Hasta dónde se aleja y se acerca el colportor con los dedos (en `flutter_map`, 3 y 19).
+  /// Hasta dónde se aleja el colportor con los dedos (en `flutter_map`, 3).
   static final zoomMinimo = ProyeccionMercator.zoomDeFlutterMap(3);
-  static final zoomMaximo = ProyeccionMercator.zoomDeFlutterMap(19);
+
+  /// Hasta dónde se acerca: el token `zoomMaximo` de lib-mapa (19 en MapLibre, el mismo del panel;
+  /// decisión de lib-mapa#4).
+  static const zoomMaximo = TokensMapa.zoomMaximo;
 
   /// Lo más cerca que se encuadra la vista previa de la hoja de duplicados (04), cuando la nueva y
   /// la candidata están a pocos metros (en `flutter_map`, 18).

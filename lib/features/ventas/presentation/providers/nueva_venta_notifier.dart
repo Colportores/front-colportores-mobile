@@ -9,6 +9,7 @@ import '../../domain/entities/cliente_de_la_venta.dart';
 import '../../domain/entities/componente_vendido.dart';
 import '../../domain/entities/linea_de_venta.dart';
 import '../../domain/entities/nueva_venta.dart';
+import '../../domain/entities/venta_abierta.dart';
 import '../../domain/repositories/venta_repository.dart';
 import '../../domain/services/reglas_de_venta.dart';
 import '../../domain/usecases/registrar_venta_use_case.dart';
@@ -20,7 +21,12 @@ import 'ventas_providers.dart';
 
 /// Con qué se abre una venta: quién vende, a quién y, si sale de una entrevista, su visita.
 final class ArgumentosDeVenta extends Equatable {
-  const ArgumentosDeVenta({required this.colportorId, required this.cliente, this.visitaId});
+  const ArgumentosDeVenta({
+    required this.colportorId,
+    required this.cliente,
+    this.visitaId,
+    this.creceSobre,
+  });
 
   final String colportorId;
   final ClienteDeLaVenta cliente;
@@ -28,11 +34,14 @@ final class ArgumentosDeVenta extends Equatable {
   /// La visita que la entrevista cerrada como VENTA creó (#428); `null` si la venta no sale de una.
   final String? visitaId;
 
+  /// La venta abierta a la que se le suma (42B·09C, «Venta crece»); `null` = una venta nueva.
+  final VentaAbierta? creceSobre;
+
   @override
   bool? get stringify => false;
 
   @override
-  List<Object?> get props => [colportorId, cliente, visitaId];
+  List<Object?> get props => [colportorId, cliente, visitaId, creceSobre];
 }
 
 /// Un producto suelto con la cantidad que se vende (27A·07 y 27A·08). Un misionero va siempre a
@@ -113,7 +122,16 @@ final class NuevaVentaState extends Equatable {
     this.guardando = false,
     this.falla,
     this.guardada,
+    this.sumaAVenta = false,
+    this.motivoPrevio,
   });
+
+  /// Se suma a una venta abierta (42B·09C): no hay talonario nuevo y los misioneros no van.
+  final bool sumaAVenta;
+
+  /// El motivo del monto a mano que ya tiene la venta a la que se suma (42B·09C); el nuevo se le une
+  /// (decisión de Cristian del 11/11, «Dos motivos»). `null` en una venta nueva o sin motivo.
+  final String? motivoPrevio;
 
   final String talonario;
 
@@ -156,18 +174,36 @@ final class NuevaVentaState extends Equatable {
     motivo: motivo,
   );
 
+  /// El motivo escrito no entra junto al que la venta ya tenía (tope de 500 sobre el texto unido): no se
+  /// registra y el campo dice cuántos caracteres quedan ([lugarParaElMotivo]).
+  bool get motivoNoEntra =>
+      cambiandoElMonto &&
+      montoManual != totalCalculado &&
+      ReglasDeVenta.motivoNoEntra(motivoPrevio, motivo);
+
+  /// Cuántos caracteres le quedan al motivo nuevo junto al que la venta ya tenía.
+  int get lugarParaElMotivo => ReglasDeVenta.lugarParaElMotivo(motivoPrevio);
+
   int get totalACobrar => (cambiandoElMonto ? montoManual : null) ?? totalCalculado;
 
   bool get talonarioVacio => talonario.trim().isEmpty;
 
+  /// La venta lleva solo misioneros: no es una venta (decisión de Cristian, 03/11, «Talonario mis») y
+  /// no se registra; se anotan al terminar la entrevista, en «Lo que dejaste» (04/11, «Misio. entrev»).
+  bool get soloMisioneros => renglones.isNotEmpty && !cobraAlgo;
+
+  /// Lleva algún misionero: a una venta abierta no se le suman («Misioneros», «Venta crece»).
+  bool get llevaMisioneros =>
+      renglones.any((r) => r.linea is LineaDeProducto && (r.linea as LineaDeProducto).sinCobrar);
+
   bool get puedeRegistrar =>
       !guardando &&
       guardada == null &&
-      !talonarioVacio &&
-      renglones.isNotEmpty &&
-      talonarioRepetido == null &&
+      (sumaAVenta ? !llevaMisioneros : !talonarioVacio && talonarioRepetido == null) &&
+      cobraAlgo &&
       montoValido &&
-      !motivoFalta;
+      !motivoFalta &&
+      !motivoNoEntra;
 
   /// La cantidad de [productoId] (cualquiera sea su forma de cobro) que ya está en la venta.
   int cantidadDe(String productoId) {
@@ -200,6 +236,8 @@ final class NuevaVentaState extends Equatable {
     guardando: guardando ?? this.guardando,
     falla: sinFalla ? null : (falla ?? this.falla),
     guardada: guardada ?? this.guardada,
+    sumaAVenta: sumaAVenta,
+    motivoPrevio: motivoPrevio,
   );
 
   @override
@@ -216,6 +254,8 @@ final class NuevaVentaState extends Equatable {
     guardando,
     falla,
     guardada,
+    sumaAVenta,
+    motivoPrevio,
   ];
 }
 
@@ -233,7 +273,11 @@ class NuevaVentaNotifier extends Notifier<NuevaVentaState> {
   @override
   NuevaVentaState build() {
     _ventaId = ref.read(generadorIdVentaProvider)();
-    return const NuevaVentaState();
+    final crece = args.creceSobre;
+    return NuevaVentaState(
+      sumaAVenta: crece != null,
+      motivoPrevio: crece != null && crece.tieneMotivo ? crece.motivoMontoManual : null,
+    );
   }
 
   String _clave() => 'r${_siguienteClave++}';
@@ -427,6 +471,22 @@ class NuevaVentaNotifier extends Notifier<NuevaVentaState> {
     if (!state.puedeRegistrar) return null;
     final s = state;
     state = s.copiar(guardando: true, sinFalla: true);
+    final crece = args.creceSobre;
+    if (crece != null) {
+      // «Venta crece» (42B·09C): el id fijo es el del primer renglón nuevo.
+      return _terminar(
+        await _sumar(
+          SumaALaVenta(
+            sumaId: _ventaId,
+            colportorId: args.colportorId,
+            venta: crece,
+            lineas: [for (final r in s.renglones) r.linea],
+            sumadoACobrarCentavos: s.cambiandoElMonto ? s.montoManual : null,
+            motivoMontoManual: s.cambiandoElMonto ? s.motivo : '',
+          ),
+        ),
+      );
+    }
     final venta = NuevaVenta(
       ventaId: _ventaId,
       colportorId: args.colportorId,
@@ -437,7 +497,11 @@ class NuevaVentaNotifier extends Notifier<NuevaVentaState> {
       motivoMontoManual: s.cambiandoElMonto ? s.motivo : '',
       visitaId: args.visitaId,
     );
-    final resultado = await _guardar(venta, antesDeGuardar);
+    return _terminar(await _guardar(venta, antesDeGuardar));
+  }
+
+  /// Deja en el estado cómo terminó el guardado y devuelve la venta guardada, o `null` si falló.
+  VentaGuardada? _terminar(Either<Failure, VentaGuardada> resultado) {
     if (!ref.mounted) return resultado.fold((_) => null, (g) => g);
     return resultado.fold(
       (falla) {
@@ -455,6 +519,15 @@ class NuevaVentaNotifier extends Notifier<NuevaVentaState> {
         return guardada;
       },
     );
+  }
+
+  Future<Either<Failure, VentaGuardada>> _sumar(SumaALaVenta suma) async {
+    try {
+      return await ref.read(sumarALaVentaUseCaseProvider).call(suma);
+    } on Object {
+      // Sin base abierta o cualquier falla inesperada: nada se guardó y todo lo cargado sigue.
+      return const Left(FailureVentaNoGuardada());
+    }
   }
 
   Future<Either<Failure, VentaGuardada>> _guardar(

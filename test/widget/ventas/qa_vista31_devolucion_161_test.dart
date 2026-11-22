@@ -1,5 +1,5 @@
-// QA de la vista 31 «Devolución» (HU-VEN-004, #161, PR #589): los 10 artboards del canvas y los estados
-// que no dibuja, en 360×640 y 412×915 con texto 1,0 y 2,0 (fuentes reales: sin desbordes ni textos
+// QA de la vista 31 «Devolución» (HU-VEN-004, #161, PR #589; #609): los artboards vigentes del canvas
+// (31-02 y 31-03 ya no existen: nunca queda plata a favor del cliente) y los estados que no dibuja, en 360×640 y 412×915 con texto 1,0 y 2,0 (fuentes reales: sin desbordes ni textos
 // cortados), los escenarios de la HU con su texto literal, la accesibilidad de lo que se anuncia y los
 // casos límite (falla a mitad, acciones superpuestas, lo tipeado que se conserva, atrás en cada estado,
 // reentrada, datos límite, privacidad). Las guías de toque/etiqueta/contraste van aparte
@@ -11,7 +11,6 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/devolucion.dart';
 import 'package:colportores_mobile/features/ventas/domain/services/reglas_de_devolucion.dart';
 import 'package:colportores_mobile/features/ventas/presentation/formato_venta.dart';
-import 'package:colportores_mobile/features/ventas/presentation/widgets/piezas_venta.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,9 +20,7 @@ import '../../helpers/venta_ui_falsos.dart';
 
 String _m(int centavos) => FormatoVenta.monto(centavos);
 
-Finder _opcion(String nombre) => find.byKey(Key('devolucion_opcion_$nombre'));
-
-/// Lleva el formulario a «Seguir» con «Nuestros Hijos» elegido (la venta del canvas, pagó todo).
+/// Lleva el formulario a «Seguir» con «Nuestros Hijos» elegido (la venta del canvas, pagó $ 1.000).
 Future<Montaje161> _hastaSeguir(
   WidgetTester tester,
   RepoFalso161 repo, {
@@ -67,19 +64,18 @@ void main() {
       await tocar(tester, mas161('Libro'));
       await tocar(tester, cta161);
 
-      // Se queda con 1 libro (\$ 500) y ya pagó \$ 500: saldo 0, nada que elegir.
+      // Se queda con 1 libro (\$ 500) y ya pagó \$ 500: saldo 0, nada que devolver.
       expect(find.text(_m(50000)), findsWidgets);
-      expect(find.byKey(const Key('devolucion_opciones')), findsNothing);
+      expect(find.byKey(const Key('devolucion_sin_devolver')), findsNothing);
       await confirmarEnLaHoja161(tester);
 
       expect(repo.pedidos.single.unidadesPorRenglon, {'i-l': 2});
-      expect(repo.pedidos.single.queHacer, isNull);
       expect(find.text('Devolución registrada'), findsOneWidget);
       expect(find.text('Debo al cliente'), findsNothing);
       expect(repo.venta, same(venta), reason: 'la pantalla no toca la venta original');
     });
 
-    testWidgets('Devolución total sin seña: no pagó nada, nada que elegir, saldo 0', (
+    testWidgets('Devolución total sin seña: no pagó nada, saldo 0 y nada que devolver', (
       tester,
     ) async {
       final repo = RepoFalso161(ventaCanvas161(cobrado: 0));
@@ -89,7 +85,7 @@ void main() {
       await tocar(tester, cta161);
 
       expect(find.text('Devuelve todo'), findsOneWidget);
-      expect(find.byKey(const Key('devolucion_opciones')), findsNothing);
+      expect(find.byKey(const Key('devolucion_sin_devolver')), findsNothing);
       await confirmarEnLaHoja161(tester);
 
       expect(find.text('Devolución registrada'), findsOneWidget);
@@ -98,21 +94,44 @@ void main() {
       expect(repo.pedidos.single.unidadesPorRenglon, {'i-salud': 1, 'i-hijos': 1});
     });
 
-    testWidgets('Devolución total con cliente que pagó completo y compromiso de reembolso futuro: '
-        '«Debo al cliente \$ 4.500»', (tester) async {
+    testWidgets('Devolución total de una venta con seña: el saldo queda en 0 y la plata ya pagada '
+        'no se devuelve', (tester) async {
       final repo = RepoFalso161(ventaCanvas161());
       await montar161(tester, repo);
       await tocar(tester, mas161('Salud y Hogar'));
       await tocar(tester, mas161('Nuestros Hijos'));
       await tocar(tester, cta161);
-      expect(find.text('¿QUÉ HACÉS CON ${_m(450000)}?'), findsOneWidget);
-      await tocar(tester, _opcion('devolverDespues'));
+
+      expect(find.text('Devuelve todo'), findsOneWidget);
+      expect(
+        find.text(
+          'Ya pagó ${_m(100000)} más de lo que se queda. Ese dinero no se devuelve: la venta '
+          'queda saldada y nada queda a favor del cliente.',
+        ),
+        findsOneWidget,
+      );
       await confirmarEnLaHoja161(tester);
 
-      expect(find.text('Debo al cliente'), findsOneWidget);
-      expect(find.text(_m(450000)), findsWidgets);
-      expect(repo.pedidos.single.queHacer, QueHacerConLaDiferencia.devolverDespues);
-      expect(find.byKey(const Key('devolucion_agendar')), findsOneWidget);
+      expect(find.text('Debo al cliente'), findsNothing);
+      expect(find.byKey(const Key('devolucion_agendar')), findsNothing);
+      expect(find.text('Agendar la devolución del dinero'), findsNothing);
+      expect(find.byKey(const Key('devolucion_listo')), findsOneWidget);
+    });
+
+    testWidgets('Venta saldada: no se acepta la devolución y la pantalla dice por qué', (
+      tester,
+    ) async {
+      final m = await montar161(tester, RepoFalso161(ventaCanvas161(cobrado: 450000)));
+
+      expect(find.byKey(const Key('devolucion_saldada')), findsOneWidget);
+      expect(
+        find.textContaining('Esta venta ya está saldada: el cliente pagó todo lo que se queda'),
+        findsOneWidget,
+      );
+      expect(find.text('Seguir'), findsNothing);
+      expect(find.text('Registrar devolución'), findsNothing);
+      await tocar(tester, find.byKey(const Key('devolucion_volver')));
+      expect(m.resultados, [false]);
     });
 
     testWidgets('Más allá de 72 h: bloquea con el texto del canvas, solo «Volver»', (tester) async {
@@ -129,32 +148,6 @@ void main() {
       expect(find.text('Registrar devolución'), findsNothing);
       await tocar(tester, find.byKey(const Key('devolucion_volver')));
       expect(m.resultados, [false]);
-    });
-
-    testWidgets('Las tres salidas de «pagó de más» existen con el texto del canvas', (
-      tester,
-    ) async {
-      await _hastaSeguir(tester, RepoFalso161(ventaCanvas161()));
-      for (final t in [
-        'Se lo devuelvo ahora',
-        'Se resta de tu dinero en mano',
-        'Lo retengo',
-        'Como compensación; el saldo queda en cero',
-        'Se lo devuelvo después',
-        'Queda como «Debo al cliente»',
-      ]) {
-        expect(find.textContaining(t), findsWidgets, reason: t);
-      }
-    });
-
-    testWidgets('«Se lo devuelvo ahora» guarda lo devuelto y «Lo retengo» lo retiene', (
-      tester,
-    ) async {
-      final repo = RepoFalso161(ventaCanvas161());
-      await _hastaSeguir(tester, repo);
-      await tocar(tester, _opcion('devolverAhora'));
-      await confirmarEnLaHoja161(tester);
-      expect(repo.pedidos.single.queHacer, QueHacerConLaDiferencia.devolverAhora);
     });
   });
 
@@ -227,7 +220,6 @@ void main() {
       final repo = RepoFalso161(ventaCanvas161());
       repo.respuestas.add(() async => const Left(FailureSinConexion()));
       await _hastaSeguir(tester, repo);
-      await tocar(tester, _opcion('retener'));
       await confirmarEnLaHoja161(tester);
       expect(find.byKey(const Key('devolucion_error')), findsOneWidget);
       expect(find.text('No pudimos registrar la devolución. No cambió nada.'), findsOneWidget);
@@ -239,7 +231,6 @@ void main() {
       final repo = RepoFalso161(ventaCanvas161());
       repo.respuestas.add(() async => throw StateError('boom'));
       await _hastaSeguir(tester, repo);
-      await tocar(tester, _opcion('retener'));
       await confirmarEnLaHoja161(tester);
       expect(find.byKey(const Key('devolucion_error')), findsOneWidget);
       expect(find.text('Reintentar'), findsOneWidget);
@@ -253,7 +244,6 @@ void main() {
         final repo = RepoFalso161(ventaCanvas161());
         repo.respuestas.add(() async => const Left(FailureDevolucionInvalida(causa: 'x')));
         await _hastaSeguir(tester, repo, escala: 2);
-        await tocar(tester, _opcion('retener'));
         await confirmarEnLaHoja161(tester);
 
         final aviso = find.byKey(const Key('devolucion_invalida'));
@@ -276,7 +266,6 @@ void main() {
       final repo = RepoFalso161(ventaCanvas161());
       repo.respuestas.add(() async => const Left(FailureDevolucionInvalida(causa: 'x')));
       await _hastaSeguir(tester, repo);
-      await tocar(tester, _opcion('retener'));
       await confirmarEnLaHoja161(tester);
       final avisos =
           find.textContaining('Revisá lo que elegiste').evaluate().length +
@@ -348,7 +337,6 @@ void main() {
         ..add(() async => const Left(FailureDevolucionNoGuardada(causa: 'a')))
         ..add(() async => const Left(FailureDevolucionNoGuardada(causa: 'b')));
       await _hastaSeguir(tester, repo);
-      await tocar(tester, _opcion('retener'));
       await confirmarEnLaHoja161(tester);
       expect(find.text('Registrando…'), findsNothing);
       expect(boton161(tester).onPressed, isNotNull);
@@ -375,7 +363,6 @@ void main() {
           ..add(() async => const Left(FailureDevolucionNoGuardada(causa: 'a')))
           ..add(() => compuerta.future);
         await _hastaSeguir(tester, repo);
-        await tocar(tester, _opcion('retener'));
         await confirmarEnLaHoja161(tester);
 
         await tester.tap(cta161);
@@ -392,30 +379,16 @@ void main() {
       },
     );
 
-    testWidgets('después de un error se conserva lo elegido, la opción y el motivo', (
-      tester,
-    ) async {
+    testWidgets('después de un error se conserva lo elegido y el motivo', (tester) async {
       final repo = RepoFalso161(ventaCanvas161());
       repo.respuestas.add(() async => const Left(FailureDevolucionNoGuardada(causa: 'a')));
       await _hastaSeguir(tester, repo);
-      await tocar(tester, _opcion('devolverAhora'));
       await escribir(tester, motivo161, 'Se mudó');
       await confirmarEnLaHoja161(tester);
 
       expect(tester.widget<TextField>(motivo161).controller!.text, 'Se mudó');
       await alPrincipio161(tester);
       expect(find.text('Devuelve Nuestros Hijos'), findsOneWidget);
-      final semantica = tester.ensureSemantics();
-      expect(
-        tester.getSemantics(_opcion('devolverAhora')),
-        isSemantics(
-          isButton: true,
-          isSelected: true,
-          isInMutuallyExclusiveGroup: true,
-          label: 'Se lo devuelvo ahora. Se resta de tu dinero en mano',
-        ),
-      );
-      semantica.dispose();
       // Y el reintento manda lo mismo con el mismo id.
       await tocar(tester, cta161);
       expect(repo.pedidos.map((p) => p.id).toSet(), hasLength(1));
@@ -427,7 +400,6 @@ void main() {
       final compuerta = Completer<Either<Failure, DevolucionRegistrada>>();
       repo.respuestas.add(() => compuerta.future);
       final m = await _hastaSeguir(tester, repo);
-      await tocar(tester, _opcion('retener'));
       await confirmarEnLaHoja161(tester);
 
       expect(find.text('Registrando…'), findsOneWidget);
@@ -445,7 +417,6 @@ void main() {
     testWidgets('«Volver» de la hoja no registra y conserva todo lo elegido', (tester) async {
       final repo = RepoFalso161(ventaCanvas161());
       await _hastaSeguir(tester, repo);
-      await tocar(tester, _opcion('retener'));
       await tocar(tester, cta161);
       await tocar(tester, find.byKey(const Key('devolucion_hoja_volver')));
       expect(repo.pedidos, isEmpty);
@@ -458,7 +429,6 @@ void main() {
     ) async {
       final repo = RepoFalso161(ventaCanvas161());
       final m = await _hastaSeguir(tester, repo);
-      await tocar(tester, _opcion('retener'));
       await tocar(tester, cta161);
       expect(find.byKey(const Key('devolucion_hoja')), findsOneWidget);
       await tester.binding.handlePopRoute();
@@ -478,7 +448,6 @@ void main() {
       await tester.tap(menos161('Salud y Hogar'), warnIfMissed: false);
       await asentar(tester);
       await tocar(tester, cta161);
-      await tocar(tester, _opcion('retener'));
       await confirmarEnLaHoja161(tester);
       expect(repo.pedidos.single.unidadesPorRenglon, {'i-hijos': 1});
     });
@@ -542,6 +511,7 @@ void main() {
       ('error de lectura', Estado161.errorDeLectura),
       ('fuera de plazo', Estado161.a08FueraDePlazo),
       ('ya devuelta', Estado161.yaDevuelta),
+      ('venta saldada', Estado161.ventaSaldada),
     ]) {
       testWidgets('atrás desde «$nombre» cierra sin preguntar y sin registrar', (tester) async {
         final m = await llegar161(tester, estado);
@@ -559,42 +529,46 @@ void main() {
     }
 
     testWidgets('atrás desde «registrada» cierra con true, sin preguntar', (tester) async {
-      final m = await llegar161(tester, Estado161.a05bRegistradaSinDeuda);
+      final m = await llegar161(tester, Estado161.a05Registrada);
       await tester.binding.handlePopRoute();
       await asentar(tester);
       expect(m.resultados, [true]);
     });
 
     testWidgets('«Listo» dos veces seguidas cierra una sola vez', (tester) async {
-      final m = await llegar161(tester, Estado161.a05bRegistradaSinDeuda);
+      final m = await llegar161(tester, Estado161.a05Registrada);
       await tester.tap(find.byKey(const Key('devolucion_listo')));
       await tester.tap(find.byKey(const Key('devolucion_listo')), warnIfMissed: false);
       await asentar(tester);
       expect(m.resultados, [true]);
     });
 
-    testWidgets(
-      'cambiar la cantidad después de elegir qué hacer no deja elegida la opción de otro monto: vuelve a «Lo retengo»',
-      (tester) async {
-        final repo = RepoFalso161(ventaCanvas161());
-        await _hastaSeguir(tester, repo);
-        await tocar(tester, _opcion('devolverAhora'));
-        // Suma el otro libro: ahora el monto a decidir es otro (\$ 4.500, no \$ 1.900).
-        await alPrincipio161(tester);
-        await tocar(tester, mas161('Salud y Hogar'));
-        expect(find.text('¿QUÉ HACÉS CON ${_m(450000)}?'), findsOneWidget);
-        // La elección era para $ 1.900; para $ 4.500 rige otra vez la salida que no devuelve plata.
-        expect(tester.widget<FilaElegible>(_opcion('devolverAhora')).elegida, isFalse);
-        expect(tester.widget<FilaElegible>(_opcion('retener')).elegida, isTrue);
-        expect(boton161(tester).onPressed, isNotNull);
-      },
-    );
+    testWidgets('cambiar la cantidad en la segunda etapa recalcula las cuentas y el aviso', (
+      tester,
+    ) async {
+      final repo = RepoFalso161(ventaCanvas161());
+      await _hastaSeguir(tester, repo);
+      expect(find.byKey(const Key('devolucion_sin_devolver')), findsNothing);
+      expect(find.text(_m(160000)), findsOneWidget);
+
+      // Suma el otro libro: se queda con $ 0 y la seña de $ 1.000 no se devuelve.
+      await alPrincipio161(tester);
+      await tocar(tester, mas161('Salud y Hogar'));
+      expect(find.text('Devuelve todo'), findsOneWidget);
+      expect(find.byKey(const Key('devolucion_sin_devolver')), findsOneWidget);
+      expect(boton161(tester).onPressed, isNotNull);
+
+      // Y al sacarlo vuelve a como estaba.
+      await tocar(tester, menos161('Salud y Hogar'));
+      expect(find.byKey(const Key('devolucion_sin_devolver')), findsNothing);
+      expect(find.text(_m(160000)), findsOneWidget);
+    });
 
     testWidgets('venta sin persona: el subtítulo arranca con «Pagó» y no inventa un nombre', (
       tester,
     ) async {
       await montar161(tester, RepoFalso161(ventaCanvas161()), personaId: null);
-      expect(find.text('Pagó ${_m(450000)} de ${_m(450000)}'), findsOneWidget);
+      expect(find.text('Pagó ${_m(100000)} de ${_m(450000)}'), findsOneWidget);
     });
 
     testWidgets('40 renglones y títulos de 150 caracteres a 360×640 ×2: se recorre y no desborda', (
@@ -628,7 +602,7 @@ void main() {
       tester,
     ) async {
       final venta = ventaCanvas161(
-        cobrado: 123456789,
+        cobrado: 100000,
         renglones: [renglon161('c', 'Combo grande', precio: 123456789)],
       );
       await montar161(tester, RepoFalso161(venta), escala: 2);
@@ -642,7 +616,6 @@ void main() {
       tester,
     ) async {
       await _hastaSeguir(tester, RepoFalso161(ventaCanvas161()), escala: 2);
-      await tocar(tester, _opcion('retener'));
       await verVisible(tester, motivo161);
       await tester.tap(motivo161);
       tester.view.viewInsets = const FakeViewPadding(bottom: 280);
@@ -673,6 +646,7 @@ void main() {
       ('devolucion_error_lectura', Estado161.errorDeLectura),
       ('devolucion_fuera_de_plazo', Estado161.a08FueraDePlazo),
       ('devolucion_ya_devuelta', Estado161.yaDevuelta),
+      ('devolucion_saldada', Estado161.ventaSaldada),
     ]) {
       testWidgets('el aviso «$clave» es región viva', (tester) async {
         final semantica = tester.ensureSemantics();
@@ -685,7 +659,7 @@ void main() {
 
     testWidgets('31-05: el aviso de lo registrado es región viva', (tester) async {
       final semantica = tester.ensureSemantics();
-      await llegar161(tester, Estado161.a05bRegistradaSinDeuda);
+      await llegar161(tester, Estado161.a05Registrada);
       final nodo = tester.getSemantics(find.byKey(const Key('devolucion_aviso_ok')));
       expect(nodo.flagsCollection.isLiveRegion, isTrue);
       semantica.dispose();
@@ -705,25 +679,14 @@ void main() {
     });
 
     testWidgets(
-      '31-02: «Lo retengo» viene elegida, para el lector también, y el botón está listo',
+      '31-06: el aviso de la plata que no se devuelve es región viva y el botón está listo',
       (tester) async {
         final semantica = tester.ensureSemantics();
-        await llegar161(tester, Estado161.a02PagoDeMas);
-        expect(find.text('Elegí qué hacés con la diferencia.'), findsNothing);
+        await llegar161(tester, Estado161.a06bPasaDelSaldo);
+        final aviso = find.byKey(const Key('devolucion_sin_devolver'));
+        expect(aviso, findsOneWidget);
+        expect(tester.getSemantics(aviso).flagsCollection.isLiveRegion, isTrue);
         expect(boton161(tester).onPressed, isNotNull);
-        expect(
-          tester.getSemantics(_opcion('retener')),
-          isSemantics(
-            isButton: true,
-            isSelected: true,
-            isInMutuallyExclusiveGroup: true,
-            label: 'Lo retengo. Como compensación; el saldo queda en cero',
-          ),
-        );
-        expect(
-          tester.getSemantics(_opcion('devolverDespues')),
-          isSemantics(isButton: true, isSelected: false, isInMutuallyExclusiveGroup: true),
-        );
         semantica.dispose();
       },
     );
@@ -742,43 +705,6 @@ void main() {
       expect(find.bySemanticsLabel('¿Registrar la devolución?'), findsOneWidget);
       semantica.dispose();
     });
-  });
-
-  group('31-05 «Agendar la devolución del dinero» abre la agenda de cobranza', () {
-    Future<Montaje161> hastaDebo(WidgetTester tester) async {
-      final repo = RepoFalso161(ventaCanvas161());
-      final m = await montar161(tester, repo, extra: agendarOverrides161());
-      await tocar(tester, mas161('Nuestros Hijos'));
-      await tocar(tester, cta161);
-      await tocar(tester, _opcion('devolverDespues'));
-      await confirmarEnLaHoja161(tester);
-      return m;
-    }
-
-    testWidgets(
-      'abre «Agendar visita», un doble toque la abre una sola vez y atrás vuelve a 31-05',
-      (tester) async {
-        final m = await hastaDebo(tester);
-        final agendar = find.byKey(const Key('devolucion_agendar'));
-        await tester.tap(agendar);
-        await tester.tap(agendar, warnIfMissed: false);
-        await asentar(tester);
-        await tester.pump(const Duration(seconds: 1));
-        expect(find.text('Agendar visita'), findsOneWidget);
-        expect(tester.takeException(), isNull);
-
-        await tester.binding.handlePopRoute();
-        await asentar(tester);
-        await tester.pump(const Duration(seconds: 1));
-        expect(find.text('Devolución registrada'), findsOneWidget);
-        expect(m.resultados, isEmpty, reason: 'volver de la agenda no cierra la devolución');
-        // Y el botón sigue vivo.
-        await tester.tap(agendar);
-        await asentar(tester);
-        await tester.pump(const Duration(seconds: 1));
-        expect(find.text('Agendar visita'), findsOneWidget);
-      },
-    );
   });
 
   group('Menores de la revisión visual', () {

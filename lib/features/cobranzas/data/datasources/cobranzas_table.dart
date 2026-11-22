@@ -35,9 +35,6 @@ class Cobranzas extends Table {
   /// Cuándo pagó el cliente (`fecha_pago`).
   IntColumn get fecha => integer().map(const FechaUtcConverter())();
 
-  /// Número de cuota (HU-COB-004); `null` si el cobro no es de una cuota.
-  IntColumn get numeroCuota => integer().nullable()();
-
   /// `DEBITO` o `CREDITO`; solo con TARJETA. Opcional.
   TextColumn get tarjetaTipo => text().nullable()();
 

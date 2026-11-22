@@ -14,6 +14,10 @@ abstract interface class AlmacenDeFotosDeTicket {
 
   /// Borra la copia; si ya no estaba, no falla.
   Future<void> borrar(String ruta);
+
+  /// Borra **todas** las copias de fotos de tickets del teléfono, suban o no (son imágenes sin
+  /// cifrar de comprobantes). Lo usa «Borrar datos del teléfono». Si no había ninguna, no falla.
+  Future<void> borrarTodo();
 }
 
 /// Cómo terminó el intento de subir una foto.

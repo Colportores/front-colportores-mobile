@@ -54,6 +54,10 @@ final class _AlmacenSinConfigurar implements AlmacenDeFotosDeTicket {
 
   @override
   Future<void> borrar(String ruta) => throw _error();
+
+  // Sin almacén configurado no se guardó ninguna foto: no hay nada que borrar.
+  @override
+  Future<void> borrarTodo() async {}
 }
 
 /// La subida de la foto por el enlace firmado de `foto-ticket`. Sin Supabase configurado (tests y demo)
@@ -75,10 +79,9 @@ final class _SinServidorDeFotos implements ServidorDeFotosDeTicket {
   }) async => const SubidaFallida(codigo: 'sin_servidor', reintentable: true);
 }
 
-/// El que achica la imagen. **Sin adaptador todavía**: comprimir a JPEG necesita una librería de
-/// imágenes y elegirla es una decisión de stack que espera a Cristian (pendiente del issue #426). Hasta
-/// entonces lanza `UnimplementedError`, en vez de mandar una foto sin comprimir; la política de cuánto
-/// achicar ([PoliticaDeCompresion]) ya está lista y probada con un compresor de prueba.
+/// El que achica la imagen. `main.dart` lo reemplaza con `CompresorFlutterImageCompress`; sin reemplazo
+/// (tests y demo) lanza `UnimplementedError`, en vez de mandar una foto sin comprimir. La política de
+/// cuánto achicar es [PoliticaDeCompresion].
 final compresorDeImagenProvider = Provider<CompresorDeImagen>(
   (ref) => const _CompresorSinAdaptador(),
 );
@@ -96,14 +99,13 @@ final class _CompresorSinAdaptador implements CompresorDeImagen {
   );
 }
 
-/// La cámara y la galería (vista 29 C, #427). **Sin adaptador todavía**: elegir la librería de cámara
-/// es una decisión de stack que espera a Cristian (pendiente del issue #427), junto con la del
-/// compresor. Mientras sea `null` la app no ofrece «Sacar foto del ticket» y el cobro con tarjeta
-/// muestra el aviso de guardar el ticket (29A·02). `main.dart` la reemplaza cuando haya adaptador.
+/// La cámara y la galería del teléfono. `main.dart` la reemplaza con `CapturadorImagePicker` y el
+/// compresor con `CompresorFlutterImageCompress` (decisión de Cristian del 03/11 en #169: `image_picker`
+/// + `flutter_image_compress`). Sin reemplazo (tests y demo) es `null` y la app no ofrece sacar la foto
+/// del ticket.
 final capturadorDeFotoProvider = Provider<CapturadorDeFoto?>((ref) => null);
 
-/// Se puede cargar la foto del ticket: hay cámara y galería. El compresor viene con el mismo
-/// adaptador (misma decisión de stack).
+/// Se puede cargar la foto del ticket: hay cámara y galería.
 final fotoDelTicketDisponibleProvider = Provider<bool>(
   (ref) => ref.watch(capturadorDeFotoProvider) != null,
 );

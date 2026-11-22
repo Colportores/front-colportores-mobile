@@ -58,6 +58,7 @@ abstract final class TextosDetalleAgenda {
   static String tipo(TipoAgenda t) => switch (t) {
     TipoAgenda.entrevista => 'Entrevista',
     TipoAgenda.cobranza => 'Cobranza',
+    TipoAgenda.entrega => 'Entrega',
   };
 
   /// La franja en el detalle: «Primera tarde».

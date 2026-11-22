@@ -69,6 +69,7 @@ class DriveArchive implements ArchivePort {
     required String watermark,
     DateTime? exportedAt,
     String? keyId,
+    String? firma,
   }) async {
     // El hash se calcula acá, sobre lo que se va a subir, y viaja como
     // metadato. Que lo calcule el cliente y no el servidor es lo que hace que
@@ -86,6 +87,7 @@ class DriveArchive implements ArchivePort {
         'content_hash': hash,
         if (exportedAt != null) 'exported_at': exportedAt.toUtc().toIso8601String(),
         if (keyId != null) 'key_id': keyId,
+        if (firma != null) 'firma': firma,
       })
       ..files.add(http.MultipartFile.fromBytes(
         'file',
@@ -153,6 +155,7 @@ class DriveArchive implements ArchivePort {
       bytes: (a['bytes'] as num?)?.toInt() ?? 0,
       exportedAt: DateTime.tryParse('${props['exported_at']}')?.toUtc(),
       keyId: props['key_id'] as String?,
+      firma: props['firma'] as String?,
     );
   }
 
