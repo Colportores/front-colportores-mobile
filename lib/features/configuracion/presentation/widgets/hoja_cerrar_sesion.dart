@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/presentation/hoja_segura.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 
 /// Textos de la hoja «¿Cerrar sesión?». Los literales de HU-AUTH-006 van tal cual; «¿Cerrar
@@ -33,19 +33,16 @@ Future<bool?> mostrarHojaCerrarSesion(
   BuildContext context, {
   required int pendientes,
   required Future<bool> Function() cerrar,
-}) => showModalBottomSheet<bool>(
+}) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   enableDrag: false,
   showDragHandle: false,
   backgroundColor: Colors.white,
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) => HojaSegura(
-    child: HojaCerrarSesion(pendientes: pendientes, cerrar: cerrar),
-  ),
+  builder: (_) => HojaCerrarSesion(pendientes: pendientes, cerrar: cerrar),
 );
 
 enum _Fase { confirmar, cerrando, error }

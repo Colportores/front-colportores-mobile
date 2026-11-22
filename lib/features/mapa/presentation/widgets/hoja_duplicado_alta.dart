@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../tiles/domain/entities/paquete_tiles.dart';
 import '../../domain/entities/duplicado_ubicacion.dart';
 import '../../domain/entities/ubicacion.dart';
@@ -93,10 +94,9 @@ Future<DecisionDuplicado?> mostrarHojaDuplicado(
   AmbitoTrabajo ambito = const AmbitoTrabajo(),
   required Future<ResultadoRegistroAlta> Function(String justificacion) crearIgual,
   required DateTime Function() ahora,
-}) => showModalBottomSheet<DecisionDuplicado>(
+}) => mostrarHojaInferior<DecisionDuplicado>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // Sin arrastrar para cerrar: mientras «Crear igual» guarda, la hoja no se puede cerrar de costado
   // (el arrastre no pasa por el `PopScope`). Las salidas son «Cancelar», «Reutilizar esta» y atrás.
   enableDrag: false,

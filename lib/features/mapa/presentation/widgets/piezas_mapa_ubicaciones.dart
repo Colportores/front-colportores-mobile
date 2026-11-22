@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../domain/entities/estado_casa.dart';
 import '../../domain/value_objects/modo_seguimiento.dart';
 import '../formato_fuera_del_area.dart';
@@ -571,10 +572,9 @@ class ChipReferencias extends StatelessWidget {
 /// Abre la leyenda «Referencias». Devuelve cuando se cierra. Con [colportorId], si tiene casas fuera
 /// del área, la leyenda ofrece verlas u ocultarlas (#713).
 Future<void> mostrarReferenciasMapa(BuildContext context, {String? colportorId}) =>
-    showModalBottomSheet<void>(
+    mostrarHojaInferior<void>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
       showDragHandle: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(

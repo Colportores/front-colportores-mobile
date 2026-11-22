@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/presentation/hoja_segura.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../textos_recuperacion.dart';
 
@@ -11,16 +11,15 @@ import '../textos_recuperacion.dart';
 /// Devuelve `true` si la persona toca «Empezar»; `false` o `null` si toca «Ahora no» o cierra la
 /// hoja.
 Future<bool?> mostrarHojaRecuperarRespaldo(BuildContext context, {required String cuentaDrive}) =>
-    showModalBottomSheet<bool>(
+    mostrarHojaInferior<bool>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
       showDragHandle: false,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => HojaSegura(child: HojaRecuperarRespaldo(cuentaDrive: cuentaDrive)),
+      builder: (_) => HojaRecuperarRespaldo(cuentaDrive: cuentaDrive),
     );
 
 /// La hoja de 16G·02. «Empezar» es la acción principal y «Ahora no» la secundaria, como en el

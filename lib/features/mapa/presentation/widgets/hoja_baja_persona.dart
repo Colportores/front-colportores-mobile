@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../domain/entities/persona.dart';
 import '../../domain/entities/resultado_baja_persona.dart';
 import '../../domain/services/cuenta_de_persona.dart';
@@ -32,10 +33,9 @@ final class PersonaBajaRealizada extends SalidaHojaBajaPersona {
 Future<SalidaHojaBajaPersona?> mostrarHojaBajaPersona(
   BuildContext context, {
   required Persona persona,
-}) => showModalBottomSheet<SalidaHojaBajaPersona>(
+}) => mostrarHojaInferior<SalidaHojaBajaPersona>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // Sin arrastrar para cerrar: mientras la baja se escribe la hoja no se puede cerrar de costado (el
   // arrastre no pasa por el `PopScope`). Las salidas son «Cancelar», el atrás y el toque afuera.
   enableDrag: false,

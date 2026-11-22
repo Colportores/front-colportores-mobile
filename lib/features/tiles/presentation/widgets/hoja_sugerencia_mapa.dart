@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/presentation/hoja_segura.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/paquete_tiles.dart';
 import '../providers/sugerencia_mapa_providers.dart';
@@ -29,12 +29,11 @@ class _SugerenciaMapaZonaState extends ConsumerState<SugerenciaMapaZona> {
     final proveedor = sugerenciaMapaProvider(widget.colportorId);
     try {
       if (ref.read(proveedor) == null) return;
-      final acepto = await showModalBottomSheet<bool>(
+      final acepto = await mostrarHojaInferior<bool>(
         context: context,
         isScrollControlled: true,
-        useSafeArea: true,
         showDragHandle: true,
-        builder: (_) => HojaSegura(child: HojaSugerenciaMapa(colportorId: widget.colportorId)),
+        builder: (_) => HojaSugerenciaMapa(colportorId: widget.colportorId),
       );
       if (!mounted) return;
       if (acepto != true) ref.read(proveedor.notifier).ahoraNo();

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../formato_mapa_ubicaciones.dart';
 import '../providers/fuera_del_area_providers.dart' show idsFueraDelAreaProvider;
@@ -30,10 +31,9 @@ Future<void> mostrarHojaCasa(
   required ItemListaUbicacion item,
   FutureOr<void> Function(ItemListaUbicacion item)? alReactivar,
   ValueChanged<String>? alAbrirOtra,
-}) => showModalBottomSheet<void>(
+}) => mostrarHojaInferior<void>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // El asa es propia (sube y baja entre las dos alturas): el arrastre del modal no compite con ella.
   enableDrag: false,
   showDragHandle: false,
@@ -172,9 +172,7 @@ class _AlturasDeLaListaState extends State<_AlturasDeLaLista> {
             alSoltar: _alSoltar,
             alCancelar: () => _arrastre = 0,
           ),
-          // La hoja se queda dentro del borde seguro de abajo (barra de gestos / de 3 botones, #722); el fondo
-          // blanco llega hasta el borde de la pantalla.
-          Expanded(child: SafeArea(top: false, child: widget.hoja(_arriba))),
+          Expanded(child: widget.hoja(_arriba)),
         ],
       ),
     );
