@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/domain/entities/sesion.dart';
+import '../../../auth/presentation/providers/campanias_inscriptas_providers.dart';
+import '../../../auth/presentation/widgets/aviso_campania_por_empezar.dart';
 import '../../../notificaciones/presentation/widgets/ancla_aviso_push.dart';
 import '../../domain/entities/jornada.dart';
 import '../../domain/usecases/iniciar_jornada_use_case.dart';
@@ -13,6 +15,7 @@ import '../formato_jornada.dart';
 import '../providers/jornada_actual_notifier.dart';
 import '../providers/jornada_providers.dart';
 import '../widgets/aviso_jornada.dart';
+import '../widgets/avisos_de_campania_en_hoy.dart';
 import '../widgets/con_espera.dart';
 import '../widgets/fila_hora_jornada.dart';
 import '../widgets/fin_de_jornada.dart';
@@ -91,6 +94,16 @@ class _JornadaPageState extends ConsumerState<JornadaPage> with FinDeJornada<Jor
       _error = null;
     });
 
+    // Con la campaña por empezar no se inicia jornada (HU-AUTH-008, «Cuenta antes»): el aviso dice
+    // cuándo empieza. Se mira con el botón ya tomado, así un doble toque no inicia dos veces.
+    final porEmpezar = await campaniaQueFrena(ref.read, widget.sesion.usuarioId);
+    if (!mounted) return;
+    if (porEmpezar != null) {
+      setState(() => _iniciando = false);
+      avisarCampaniaPorEmpezar(ScaffoldMessenger.maybeOf(context), porEmpezar);
+      return;
+    }
+
     final failure = await ref
         .read(jornadaActualProvider(widget.sesion.usuarioId).notifier)
         .iniciar(hora: _horaElegida(ahora));
@@ -133,11 +146,18 @@ class _JornadaPageState extends ConsumerState<JornadaPage> with FinDeJornada<Jor
             ),
             data: (jornada) => _Cuerpo(
               // La cabecera va arriba y las acciones al pie; en el medio queda el aire.
-              cabecera: jornada == null
-                  ? _cabeceraSinJornada(ahora)
-                  : _bloqueadaPorEnCurso
-                  ? _Cabecera(ahora: ahora)
-                  : _cabeceraActiva(jornada, ahora),
+              cabecera: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AvisosDeCampaniaEnHoy(usuarioId: widget.sesion.usuarioId),
+                  if (jornada == null)
+                    _cabeceraSinJornada(ahora)
+                  else if (_bloqueadaPorEnCurso)
+                    _Cabecera(ahora: ahora)
+                  else
+                    _cabeceraActiva(jornada, ahora),
+                ],
+              ),
               acciones: jornada == null
                   ? _accionesSinJornada(context, ahora)
                   : _bloqueadaPorEnCurso
