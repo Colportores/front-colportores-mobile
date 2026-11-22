@@ -22,7 +22,11 @@ import '../textos_tickets.dart';
     fondo: ColoresCuenta.verdeFondo,
     tinta: ColoresCuenta.verde,
   ),
-  EstadoDelItem.rechazado => (glifo: '!', fondo: Color(0xFFFBEDEC), tinta: ColoresCuenta.rojo),
+  EstadoDelItem.rechazado => (
+    glifo: '!',
+    fondo: const Color(0xFFFBEDEC),
+    tinta: ColoresCuenta.rojo,
+  ),
   EstadoDelItem.enCola => (glifo: '⇡', fondo: ColoresCuenta.grisFondo, tinta: ColoresCuenta.gris),
 };
 

@@ -5,8 +5,8 @@ import '../domain/entities/item_del_historial.dart';
 import '../domain/entities/ticket.dart';
 
 /// Los textos de «Mis tickets» (vista 38B, HU-COB-009) y del detalle de un ticket. Los del canvas van
-/// tal cual; los que el canvas no dibuja salen de la misma voz y quedan marcados «para confirmar»
-/// (mapa §2: texto), en `pendientes/front-colportores-mobile-388-impl-*.md`.
+/// tal cual; los que el canvas no dibuja salen de la misma voz (aceptados por el mapa §2: texto/aviso,
+/// #727).
 abstract final class TextosTickets {
   // --- 38B·01 -------------------------------------------------------------------------------
   static const eyebrow = 'MI CUENTA';
@@ -116,7 +116,7 @@ abstract final class TextosTickets {
   static const vacioTexto =
       'Cuando deposites o tu coordinador retire el dinero, cargá el ticket acá.';
 
-  /// Para confirmar: el canvas no dibuja un filtro sin resultados.
+  /// El canvas no dibuja un filtro sin resultados.
   static String sinResultadosDelFiltro(FiltroDeTickets filtro) => switch (filtro) {
     FiltroDeTickets.todos => vacioTitulo,
     FiltroDeTickets.porValidar => 'No tenés tickets por validar.',
@@ -128,8 +128,8 @@ abstract final class TextosTickets {
   static const errorAlTraer = 'No pudimos traer tus tickets.';
   static const reintentar = 'Reintentar';
 
-  /// 38B·06: «Sin conexión. Los estados son de ayer a las 21:00.» Sin ninguna bajada todavía (para
-  /// confirmar) no hay hora que decir: se dice que los estados son los del teléfono.
+  /// 38B·06: «Sin conexión. Los estados son de ayer a las 21:00.» Sin ninguna bajada todavía no hay
+  /// hora que decir: se dice que los estados son los del teléfono.
   static String sinConexion(DateTime? bajadoEn, DateTime ahora) {
     if (bajadoEn == null) {
       return 'Sin conexión. Los estados son los que guardó el teléfono.';
@@ -153,14 +153,14 @@ abstract final class TextosTickets {
   static const filaTarjeta = 'Tarjeta';
   static const cargarDeNuevo = 'Cargar de nuevo';
 
-  /// 38B·02: «Tu coordinador lo rechazó: «La foto no se lee». No se acreditó.» Sin motivo (para
-  /// confirmar) se dice solo lo que pasó.
+  /// 38B·02: «Tu coordinador lo rechazó: «La foto no se lee». No se acreditó.» Sin motivo se dice solo lo que
+  /// pasó.
   static String rechazado(String? motivo) => motivo == null
       ? 'Tu coordinador lo rechazó. No se acreditó.'
       : 'Tu coordinador lo rechazó: «$motivo». No se acreditó.';
 
   /// 38B·03: «Validado por Marta Pérez el 16/10. Se acreditó al alquiler.» El teléfono no tiene el
-  /// nombre del coordinador (no baja con el sync): dice la fecha (para confirmar, pendiente de datos).
+  /// nombre del coordinador (no baja con el sync): dice la fecha (el nombre va en el seguimiento #728).
   static String validado(ItemDelHistorial item) {
     final cuando = item.validadoEn == null ? '' : ' el ${FormatoCuenta.fecha(item.validadoEn!)}';
     final destino = switch (item.concepto) {
@@ -171,7 +171,7 @@ abstract final class TextosTickets {
     return 'Validado$cuando.$destino';
   }
 
-  /// Para confirmar: el canvas no dibuja el detalle de un ticket que espera.
+  /// El canvas no dibuja el detalle de un ticket que espera.
   static const porValidarConTicket =
       'Queda por validar: se acredita cuando tu coordinador valide el ticket.';
   static const porValidarSinTicket =

@@ -222,15 +222,18 @@ void main() {
     expect(item.hayCopiaLocal, isTrue, reason: 'la copia de la foto sigue en el teléfono');
   });
 
-  test('la fila más nueva va primero; con la misma fecha, la de id más alto (UUID v7: la que se cargó después)', () async {
-    await depositar('1', fecha: DateTime.utc(2026, 11, 1, 15));
-    await depositar('3', fecha: DateTime.utc(2026, 11, 8, 15));
-    await depositar('2', fecha: DateTime.utc(2026, 11, 8, 15));
+  test(
+    'la fila más nueva va primero; con la misma fecha, la de id más alto (UUID v7: la que se cargó después)',
+    () async {
+      await depositar('1', fecha: DateTime.utc(2026, 11, 1, 15));
+      await depositar('3', fecha: DateTime.utc(2026, 11, 8, 15));
+      await depositar('2', fecha: DateTime.utc(2026, 11, 8, 15));
 
-    final items = (await historial.leer()).items;
+      final items = (await historial.leer()).items;
 
-    expect(items.map((i) => i.id), ['d-3', 'd-2', 'd-1']);
-  });
+      expect(items.map((i) => i.id), ['d-3', 'd-2', 'd-1']);
+    },
+  );
 
   test('sin nada registrado: lista vacía', () async {
     expect((await historial.leer()).items, isEmpty);

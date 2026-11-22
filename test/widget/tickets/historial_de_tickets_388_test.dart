@@ -174,7 +174,7 @@ void main() {
       expect(fila('d1'), findsNothing);
 
       repo.emitir(historialCon([filasDelCanvas()[0], filasDelCanvas()[1]]));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(fila('d1'), findsOneWidget);
       expect(
@@ -200,7 +200,7 @@ void main() {
           ),
         ]),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(_enFila('d1', 'Validado'), findsOneWidget);
       expect(_enFila('d1', 'Por validar'), findsNothing);
@@ -275,7 +275,7 @@ void main() {
       expect(find.byKey(const Key('tickets_vacio')), findsNothing, reason: 'cargando no es vacío');
 
       repo.emitir(historialCon(filasDelCanvas()));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('tickets_cargando')), findsNothing);
       expect(fila('d1'), findsOneWidget);
@@ -447,12 +447,24 @@ void main() {
         escala: 2,
       );
 
+      await tester.ensureVisible(find.byKey(const Key('tickets_filtro_alquiler')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('tickets_filtro_alquiler')));
       await tester.pump();
 
       expect(tester.takeException(), isNull);
-      expect(fila('d3'), findsOneWidget);
       expect(fila('d1'), findsNothing);
+      await tester.scrollUntilVisible(
+        fila('d3'),
+        100,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('tickets_lista')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(fila('d3'), findsOneWidget);
     });
 
     testWidgets('el vacío de «Rechazados» y de «Alquiler» dice lo suyo', (tester) async {

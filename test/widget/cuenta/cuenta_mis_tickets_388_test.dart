@@ -106,7 +106,7 @@ void main() {
       repo.emitir(
         historialCon([itemDePrueba('d1', estado: EstadoDelItem.validado), itemDePrueba('d2')]),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.text('1 por validar'), findsOneWidget);
     });

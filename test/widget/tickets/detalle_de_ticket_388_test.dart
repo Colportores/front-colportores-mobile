@@ -37,7 +37,18 @@ Future<ArnesDeDeposito> _abrirDetalle(
     tamano: tamano,
     escala: escala,
   );
-  await tester.tap(fila(id));
+  // Con letra grande y pantalla chica la fila puede estar bajo el pliegue de la lista.
+  await tester.scrollUntilVisible(
+    fila(id),
+    100,
+    scrollable: find
+        .descendant(of: find.byKey(const Key('tickets_lista')), matching: find.byType(Scrollable))
+        .first,
+  );
+  await tester.ensureVisible(fila(id));
+  await tester.pump();
+  // Arriba a la izquierda de la tarjeta: con un motivo larguísimo el centro queda fuera de la pantalla.
+  await tester.tapAt(tester.getTopLeft(fila(id)) + const Offset(30, 30));
   await tester.pumpAndSettle();
   return a;
 }
@@ -342,7 +353,7 @@ void main() {
           ),
         ]),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ticket_aviso_porValidar')), findsNothing);
       expect(
@@ -358,7 +369,7 @@ void main() {
       await _abrirDetalle(tester, 'd1', repo: repo);
 
       repo.emitir(historialCon(const []));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(_texto(r'$ 4.800'), findsOneWidget);
       expect(tester.takeException(), isNull);
