@@ -259,9 +259,17 @@ class JobResult {
 
 /// Respuesta de un push. Aceptación por job: un `INVALID` no tumba el lote.
 class PushResult {
-  const PushResult({required this.serverTime, required this.results});
+  const PushResult({
+    required this.serverTime,
+    required this.results,
+    this.serverTimeEsDelServidor = true,
+  });
 
   final DateTime serverTime;
+
+  /// `false` si el servidor no mandó `server_time` o mandó uno ilegible, y [serverTime] es el
+  /// reloj del equipo puesto de relleno: no sirve como hora del servidor.
+  final bool serverTimeEsDelServidor;
   final List<JobResult> results;
 
   Iterable<JobResult> byOutcome(JobOutcome o) =>
@@ -283,9 +291,14 @@ class PullDelta {
     required this.rows,
     this.outOfArea = const {},
     this.areaReset = const {},
+    this.serverTimeEsDelServidor = true,
   });
 
   final DateTime serverTime;
+
+  /// `false` si el servidor no mandó `server_time` o mandó uno ilegible, y [serverTime] es el
+  /// reloj del equipo puesto de relleno: no sirve como hora del servidor.
+  final bool serverTimeEsDelServidor;
 
   /// Opaco para el motor: se guarda tal cual y se devuelve tal cual.
   ///

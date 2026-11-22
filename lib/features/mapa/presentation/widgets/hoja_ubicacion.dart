@@ -380,7 +380,12 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
     if (bajas == null) return const [];
     final lista = bajas.value;
     if (lista == null) return bajas.hasError ? const [_ErrorBajas()] : const [];
-    if (lista.isEmpty) return const [];
+    if (lista.isEmpty) {
+      // Sin bajas no hay sección: la próxima baja vuelve a aparecer plegada, no como la dejó quien
+      // reactivó la última desplegada (QA #473). No es un cambio que redibuje: la sección no se ve.
+      _bajasAbiertas = false;
+      return const [];
+    }
     return [
       _CabeceraBajas(cantidad: lista.length, abierta: _bajasAbiertas),
       if (_bajasAbiertas)
@@ -602,7 +607,7 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
     _refrescarListas();
     final texto = deshecho ? TextosReactivar.deshecha : TextosEspacios.noPudimosDeshacer;
     if (_reactivado?.serie == aviso.serie) {
-      _mostrarReactivado(_AvisoReactivado(serie: ++_serieAviso, texto: texto));
+      _mostrarReactivado(_AvisoReactivado(serie: ++_serieAviso, texto: texto, esFalla: !deshecho));
     } else if (!deshecho) {
       // Mientras tanto salió otro aviso: el que falló no se pierde, sale arriba.
       _avisar(texto);
@@ -617,6 +622,7 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
       alDeshacer: aviso.ocupado ? null : () => unawaited(_deshacer(aviso)),
       alCerrar: sinPlazo && !aviso.ocupado ? () => setState(() => _reactivado = null) : null,
       etiquetaCerrar: TextosEspacios.cerrarAviso,
+      esFalla: aviso.esFalla,
     );
   }
 
@@ -657,6 +663,7 @@ final class _AvisoReactivado {
     required this.texto,
     this.espacio,
     this.ocupado = false,
+    this.esFalla = false,
   });
 
   /// Distingue un aviso de otro: el plazo de uno no cierra al siguiente.
@@ -668,6 +675,9 @@ final class _AvisoReactivado {
 
   /// «Deshacer» está en curso: el botón queda apagado y el plazo no cierra el aviso.
   final bool ocupado;
+
+  /// El aviso dice que no se pudo deshacer: lleva el «!» de falla y no el «✓» (QA #473).
+  final bool esFalla;
 
   _AvisoReactivado deshaciendo() =>
       _AvisoReactivado(serie: serie, texto: texto, espacio: espacio, ocupado: true);

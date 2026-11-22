@@ -19,6 +19,7 @@ import '../../domain/entities/entrega_diferida.dart';
 import '../../domain/entities/entrega_pendiente.dart';
 import '../../domain/repositories/entrega_repository.dart';
 import '../../domain/services/reglas_de_entrega.dart';
+import '../../domain/usecases/entregar_ahora_use_case.dart';
 import '../models/entrega_model.dart';
 import 'estado_de_entrega.dart';
 
@@ -29,6 +30,16 @@ final class EntregaSinVentaException implements Exception {
 
   @override
   String toString() => 'EntregaSinVentaException';
+}
+
+/// Lo que falta entregar de un producto no entra en la cantidad que admite el servidor
+/// ([EntregarAhoraUseCase.maximoPorProducto]): una venta anterior a esa regla (combo × componente). No
+/// se escribe nada: la fila que se encolara se rechazaría para siempre.
+final class EntregaCantidadInvalidaException implements Exception {
+  const EntregaCantidadInvalidaException();
+
+  @override
+  String toString() => 'EntregaCantidadInvalidaException';
 }
 
 /// La casa de la venta no está en el teléfono (su vínculo persona ↔ espacio falta o está dado de
@@ -81,7 +92,8 @@ final class EntregaLocalDataSourceDrift {
   final EncoladorSync _encolador;
   final HouseStatusUpdater _estadoDeLasCasas;
 
-  /// Ver [EntregaRepository.entregarAhora]. Lanza [EntregaSinVentaException] si la venta no está.
+  /// Ver [EntregaRepository.entregarAhora]. Lanza [EntregaSinVentaException] si la venta no está y
+  /// [EntregaCantidadInvalidaException] si algo de lo que falta pasa del máximo por producto.
   ///
   /// Lo que la venta ya dejó **pendiente** (HU-VEN-003) se cumple: esas filas pasan a entregadas con
   /// la fecha real (un `update`, no una fila nueva) y su cita `ENTREGA` se cumple como al marcarla
@@ -107,6 +119,9 @@ final class EntregaLocalDataSourceDrift {
         colorDeLaCasa: await _colorActual(venta.espacioPersonaId),
         yaEstaba: true,
       );
+    }
+    if (faltante.values.any((c) => c > EntregarAhoraUseCase.maximoPorProducto)) {
+      throw const EntregaCantidadInvalidaException();
     }
 
     final instante = instanteMs(ahora);

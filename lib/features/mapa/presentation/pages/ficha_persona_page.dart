@@ -543,7 +543,12 @@ class _Mensaje extends StatelessWidget {
         children: [
           if (_tituloSinLeer(titulo) case final t?) _TituloDeLaPersona(t),
           if (alReintentar == null)
-            Text(texto, style: Theme.of(context).textTheme.bodyLarge)
+            // Región viva: «La persona ya no está…» se anuncia al lector cuando la pantalla la muestra
+            // (QA #141).
+            Semantics(
+              liveRegion: true,
+              child: Text(texto, style: Theme.of(context).textTheme.bodyLarge),
+            )
           else
             AvisoAlta(
               color: ColoresAlta.rojo,
@@ -823,7 +828,11 @@ class _CuerpoDeLaFicha extends StatelessWidget {
                 style: TextButton.styleFrom(
                   minimumSize: const Size(48, 48),
                   foregroundColor: ColoresAlta.azul,
-                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  textStyle: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 child: Text(TextosFicha.verMas(faltan)),
               ),
@@ -943,7 +952,11 @@ class _AvisoSoloLectura extends StatelessWidget {
                   style: TextButton.styleFrom(
                     minimumSize: const Size(48, 48),
                     foregroundColor: ColoresAlta.azul,
-                    textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    textStyle: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   child: Text(ocupado ? TextosFicha.reactivando : etiqueta),
                 ),

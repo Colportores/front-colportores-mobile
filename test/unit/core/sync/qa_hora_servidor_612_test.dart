@@ -3,8 +3,6 @@
 // (`SupabaseRpcTransport` con un cliente HTTP falso → `TransporteQueAnotaLaHora` → `HoraDelServidorEnDb`
 // sobre Drift en memoria → `LimpiarNotasBorradasUseCase` → borrado real), que los del PR prueban por
 // separado y con un transporte falso.
-//
-// Los hallazgos van con `skip`; `--dart-define=QA_HALLAZGOS=true` los corre para verlos fallar.
 import 'dart:convert';
 
 import 'package:colportores_mobile/core/database/app_database.dart';
@@ -26,8 +24,6 @@ import 'package:sync_engine/adapters.dart';
 import 'package:sync_engine/sync_engine.dart';
 
 import '../../../helpers/logger_mudo.dart';
-
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 const _sobre = ClientEnvelope(
   deviceId: '018f2c4e-6b7d-7a11-9f3c-000000000001',
@@ -285,8 +281,6 @@ void main() {
               '`pullResponseFromJson` rellena `serverTime` con `DateTime.now()` si falta o es ilegible',
         );
       },
-      // skip: QA #612 — `_fecha` (wire.dart) inventa DateTime.now() y el decorador lo anota como del servidor.
-      skip: !_verHallazgos,
     );
 
     test(
@@ -299,8 +293,6 @@ void main() {
         await t.push(loteDe(1));
         expect(await hora.ultima(), isNull);
       },
-      // skip: QA #612 — mismo hueco que el pull: `_fecha` rellena con el reloj del equipo.
-      skip: !_verHallazgos,
     );
   });
 

@@ -2,8 +2,7 @@
 // Las cuatro guías de accesibilidad de Flutter en cada estado de la vista (incluidos el aviso de sin
 // conexión, la cuenta nueva con «Depositado» en cero y los montos largos), a 360x640 y 412x915 con el
 // texto al 100 % y al 200 %; el aviso entero a la vista (no cortado); y los casos límite de la
-// conexión y del reloj. Los que documentan un hallazgo van con `skip` y se corren con
-// `--dart-define=QA_HALLAZGOS=true`.
+// conexión y del reloj.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
@@ -19,8 +18,6 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/cuenta_arnes.dart';
-
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 final class _Conexion implements MonitorConectividad {
   _Conexion(this.tipo);
@@ -332,10 +329,10 @@ void main() {
         FormatoCuenta.sinConexion(DateTime(2026, 9, 6, 20), DateTime(2026, 9, 7, 12)),
         contains('de ayer'),
       );
-    }, skip: !_verHallazgos);
+    });
   });
 
-  group('hallazgos (con QA_HALLAZGOS=true)', () {
+  group('hallazgos arreglados (#626)', () {
     testWidgets('el aviso de sin conexión se anuncia al lector de pantalla cuando aparece '
         '(región viva, como el error de 33A·05)', (tester) async {
       final semantica = tester.ensureSemantics();
@@ -350,7 +347,7 @@ void main() {
       final nodo = tester.getSemantics(find.byKey(const Key('cuenta_aviso_sin_conexion')));
       expect(nodo.flagsCollection.isLiveRegion, isTrue);
       semantica.dispose();
-    }, skip: !_verHallazgos);
+    });
 
     test('un depósito rechazado no escribe el motivo del coordinador (texto libre) en su '
         '`toString` ni siquiera con `stringify` encendido', () {
