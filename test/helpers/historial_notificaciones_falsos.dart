@@ -52,6 +52,7 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
   final marcadas = <String>[];
   int llamadasMarcarTodas = 0;
   final borrados = <Set<String>?>[];
+  final marcadasTodas = <Set<String>?>[];
 
   /// Una falla para la próxima llamada de cada operación (y las siguientes, mientras valga).
   bool fallaAlMarcar = false;
@@ -148,14 +149,18 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
   }
 
   @override
-  Future<Either<Failure, Unit>> marcarTodasLeidas({required DateTime ahora}) async {
+  Future<Either<Failure, Unit>> marcarTodasLeidas({
+    required DateTime ahora,
+    Set<String>? ids,
+  }) async {
     llamadasMarcarTodas++;
+    marcadasTodas.add(ids);
     final puerta = puertaAlMarcarTodas;
     if (puerta != null) await puerta.future;
     if (fallaAlMarcarTodas) return const Left(FailureInesperado());
     for (var i = 0; i < _filas.length; i++) {
       final f = _filas[i];
-      if (f.leida) continue;
+      if (f.leida || (ids != null && !ids.contains(f.id))) continue;
       _filas[i] = Notificacion(
         id: f.id,
         tipo: f.tipo,

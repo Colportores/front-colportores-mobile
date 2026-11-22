@@ -620,8 +620,51 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(arnes.historial.llamadasMarcarTodas, 1);
+      expect(arnes.historial.marcadasTodas, [
+        {'t1', 't2'},
+      ]);
       expect(find.text('Nueva'), findsNothing);
       expect(find.byType(FilaNotificacion), findsNWidgets(2));
+    });
+
+    testWidgets(
+      '«Marcar todas» con filtro solo marca lo que se ve: los sin leer de otros tipos siguen '
+      '«Nueva» al volver a «Todos»',
+      (tester) async {
+        final arnes = _arnes();
+        await _abrir(tester, arnes);
+        final nuevasAntes = find.text('Nueva').evaluate().length;
+        expect(nuevasAntes, greaterThan(1));
+        await _filtrarPor(tester, TipoNotificacion.ticketValidado);
+
+        await tester.tap(centroMenu);
+        await tester.pumpAndSettle();
+        await tester.tap(menuMarcarTodas);
+        await tester.pumpAndSettle();
+        expect(find.text('Nueva'), findsNothing);
+
+        await tester.tap(_quitar);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(FilaNotificacion), findsNWidgets(7));
+        // Se marcó el aviso no leído de «Ticket validado»; el de cuota (y los demás) siguen «Nueva».
+        expect(find.text('Nueva'), findsNWidgets(nuevasAntes - 1));
+        expect(find.descendant(of: filaDe('c1'), matching: find.text('Nueva')), findsOneWidget);
+        expect(find.descendant(of: filaDe('t1'), matching: find.text('Nueva')), findsNothing);
+      },
+    );
+
+    testWidgets('«Marcar todas» sin filtro marca todos los avisos', (tester) async {
+      final arnes = _arnes();
+      await _abrir(tester, arnes);
+
+      await tester.tap(centroMenu);
+      await tester.pumpAndSettle();
+      await tester.tap(menuMarcarTodas);
+      await tester.pumpAndSettle();
+
+      expect(arnes.historial.marcadasTodas, [null]);
+      expect(find.text('Nueva'), findsNothing);
     });
 
     testWidgets('60 avisos de un tipo y 60 de otro: el filtro los separa y se llega al último', (

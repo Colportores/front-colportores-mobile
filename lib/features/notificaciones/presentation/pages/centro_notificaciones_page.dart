@@ -222,6 +222,9 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
   Future<void> _abrirMenu(List<Notificacion> avisos) async {
     if (_conMenu || _conHojaFiltro) return;
     _conMenu = true;
+    // Con un filtro puesto «Marcar todas» alcanza lo que se veía al abrir el menú (decisión P2): lo
+    // que el filtro oculta, o llegó con el menú abierto, queda «Nueva». Sin filtro, todos (`null`).
+    final idsMarcar = _filtro == null ? null : {for (final a in avisos) a.id};
     try {
       final accion = await mostrarMenuCentroNotificaciones(
         context,
@@ -230,7 +233,7 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
       if (!mounted || accion == null) return;
       switch (accion) {
         case AccionMenuCentro.marcarTodas:
-          await _marcarTodas();
+          await _marcarTodas(idsMarcar);
         case AccionMenuCentro.borrarTodas:
           await _confirmarBorrado(avisos);
       }
@@ -239,8 +242,8 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
     }
   }
 
-  Future<void> _marcarTodas() async {
-    final resultado = await ref.read(marcarTodasLeidasUseCaseProvider)();
+  Future<void> _marcarTodas(Set<String>? ids) async {
+    final resultado = await ref.read(marcarTodasLeidasUseCaseProvider)(ids: ids);
     if (!mounted) return;
     resultado.fold(
       (_) => _avisar(TextosCentroNotificaciones.errorAlMarcar),
