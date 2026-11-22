@@ -15,8 +15,15 @@ import 'servidor_de_fotos_supabase.dart' show RespuestaDeLaFuncion;
 /// loguea. `410 foto_vencida` es [FotoVencida] (a los 4 meses la foto ya no está); `404 sin_foto` es
 /// [SinFotoParaVer]; sin red o con la función caída, [FotoNoDisponible].
 final class VisorDeFotosSupabase implements VisorDeFotosDeTicket {
-  VisorDeFotosSupabase(this._pedirEnlace, {AppLogger? logger})
-    : _log = logger ?? AppLogger.instance;
+  VisorDeFotosSupabase(
+    this._pedirEnlace, {
+    AppLogger? logger,
+    this.tope = const Duration(seconds: 10),
+  }) : _log = logger ?? AppLogger.instance;
+
+  /// Cuánto se espera el enlace: con una señal que no corta ni responde, el detalle no se queda en
+  /// «Cargando la foto» para siempre; pasado el tope dice que no hay red y ofrece «Reintentar».
+  final Duration tope;
 
   /// Sobre el cliente de Supabase de la app.
   factory VisorDeFotosSupabase.conCliente(SupabaseClient cliente) =>
@@ -35,7 +42,7 @@ final class VisorDeFotosSupabase implements VisorDeFotosDeTicket {
   @override
   Future<FotoParaVer> ver(String ticketId) async {
     try {
-      final r = await _pedirEnlace({'accion': 'ver', 'ticketId': ticketId});
+      final r = await _pedirEnlace({'accion': 'ver', 'ticketId': ticketId}).timeout(tope);
       switch (r.status) {
         case 200:
           final url = r.cuerpo['url'];

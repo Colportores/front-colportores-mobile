@@ -7,6 +7,7 @@ import 'package:colportores_mobile/features/tickets/data/services/servidor_de_fo
     show RespuestaDeLaFuncion;
 import 'package:colportores_mobile/features/tickets/data/services/visor_de_fotos_supabase.dart';
 import 'package:colportores_mobile/features/tickets/domain/services/visor_de_fotos.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:http/http.dart' as http;
 import 'package:test/test.dart';
 
@@ -126,4 +127,20 @@ void main() {
       expect((otra as FotoNoDisponible).sinRed, isFalse);
     },
   );
+
+  test('un pedido que no responde corta a los 10 segundos y dice que no hay red', () {
+    fakeAsync((reloj) {
+      final colgado = Completer<RespuestaDeLaFuncion>();
+      final v = VisorDeFotosSupabase((_) => colgado.future, logger: loggerMudo());
+      FotoParaVer? resultado;
+      unawaited(v.ver('t-1').then((r) => resultado = r));
+
+      reloj.elapse(const Duration(seconds: 9));
+      expect(resultado, isNull, reason: 'todavía espera');
+      reloj.elapse(const Duration(seconds: 2));
+
+      expect(resultado, isA<FotoNoDisponible>());
+      expect((resultado! as FotoNoDisponible).sinRed, isTrue);
+    });
+  });
 }
