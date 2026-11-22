@@ -494,6 +494,10 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                           ListTile(
                             key: const Key('configuracion_sincronizacion'),
                             minVerticalPadding: 12,
+                            // Con el texto al 200 % en 360 dp «Sincronización» no entra entre el ícono
+                            // y la flecha con el hueco de siempre: se achica el hueco en vez de
+                            // partir la palabra (mismo hallazgo que QA #153, menor 1).
+                            horizontalTitleGap: 8,
                             leading: const Icon(Icons.sync),
                             title: const Text(TextosSincronizacion.filaConfiguracion),
                             subtitle: const Text(TextosSincronizacion.filaConfiguracionDetalle),
