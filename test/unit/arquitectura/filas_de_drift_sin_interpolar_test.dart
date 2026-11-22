@@ -65,24 +65,59 @@ Set<String> variablesDeFila(String linea, Set<String> filas) {
   return {for (final m in declaracion.allMatches(linea)) m.group(1)!};
 }
 
-/// Los usos prohibidos de [variables] en [linea]: interpolación (`$v`, `${v}`), `v.toString()` y la
-/// variable como argumento de un log o de un `print`.
-List<String> usosProhibidos(String linea, Set<String> variables) {
+final _aperturaDeLog = RegExp(r'\b(?:print|debugPrint|\w*[lL]og\w*(?:\.\w+)?|logger(?:\.\w+)?)\(');
+
+/// Los índices de las líneas que caen dentro de la llamada a un log o a un `print`, incluida una
+/// llamada partida en varias líneas (el formato del repo pone un argumento por línea cuando no entran).
+Set<int> lineasDeLlamadasDeLog(List<String> lineas) {
+  final dentro = <int>{};
+  var profundidad = 0;
+  for (var i = 0; i < lineas.length; i++) {
+    final linea = lineas[i];
+    if (_esComentario(linea)) continue;
+    var desde = 0;
+    if (profundidad == 0) {
+      final apertura = _aperturaDeLog.firstMatch(linea);
+      if (apertura == null) continue;
+      desde = apertura.end - 1;
+    }
+    dentro.add(i);
+    for (var k = desde; k < linea.length; k++) {
+      final c = linea[k];
+      if (c == '(') profundidad++;
+      if (c == ')' && profundidad > 0) profundidad--;
+    }
+  }
+  return dentro;
+}
+
+/// Los usos prohibidos de [variables] en [lineas]: interpolación (`$v`, `${v}`), `v.toString()`, la
+/// variable en cualquier posición de un log o de un `print` (argumento posicional, `causa: v` o valor
+/// del mapa de contexto `{'x': v}`, también con la llamada partida en varias líneas) y `causa: v`
+/// fuera de un log. Devuelve «línea: motivo de `variable` — código».
+List<String> usosProhibidos(List<String> lineas, Set<String> variables) {
+  final enLog = lineasDeLlamadasDeLog(lineas);
   final usos = <String>[];
-  for (final v in variables) {
-    final nombre = RegExp.escape(v);
-    final patrones = <String, RegExp>{
-      // `'$fila'` y también `'$fila.id'` (el clásico: interpola la fila entera y deja ".id" como texto).
-      r'interpolación $variable': RegExp('\\\$$nombre(?![\\w])'),
-      r'interpolación ${variable}': RegExp('\\\$\\{\\s*$nombre\\s*[!?]?\\s*\\}'),
-      'toString()': RegExp('\\b$nombre[!?]?\\.toString\\(\\)'),
-      'argumento de un log o print': RegExp(
-        '\\b(?:print|debugPrint|\\w*[lL]og\\w*(?:\\.\\w+)?|logger(?:\\.\\w+)?)\\(\\s*$nombre\\s*[,)]',
-      ),
-    };
-    patrones.forEach((motivo, patron) {
-      if (patron.hasMatch(linea)) usos.add('$motivo de `$v`');
-    });
+  for (var i = 0; i < lineas.length; i++) {
+    final linea = lineas[i];
+    if (_esComentario(linea)) continue;
+    for (final v in variables) {
+      final nombre = RegExp.escape(v);
+      final patrones = <String, RegExp>{
+        // `'$fila'` y también `'$fila.id'` (el clásico: interpola la fila entera y deja ".id" como texto).
+        r'interpolación $variable': RegExp('\\\$$nombre(?![\\w])'),
+        r'interpolación ${variable}': RegExp('\\\$\\{\\s*$nombre\\s*[!?]?\\s*\\}'),
+        'toString()': RegExp('\\b$nombre[!?]?\\.toString\\(\\)'),
+        '`causa:`': RegExp('\\bcausa:\\s*$nombre[!?]?\\s*(?:[,)]|\$)'),
+        if (enLog.contains(i))
+          'argumento o valor de contexto de un log': RegExp(
+            '(?:^|[(,:\\[])\\s*$nombre[!?]?\\s*(?:[,)\\]}]|\$)',
+          ),
+      };
+      patrones.forEach((motivo, patron) {
+        if (patron.hasMatch(linea)) usos.add('${i + 1}: $motivo de `$v` — ${linea.trim()}');
+      });
+    }
   }
   return usos;
 }
@@ -147,12 +182,8 @@ void main() {
             if (!_esComentario(linea)) ...variablesDeFila(linea, filas),
         };
         if (variables.isEmpty) continue;
-        for (var i = 0; i < archivo.lineas.length; i++) {
-          final linea = archivo.lineas[i];
-          if (_esComentario(linea)) continue;
-          for (final uso in usosProhibidos(linea, variables)) {
-            fuera.add('${_normal(archivo.path)}:${i + 1}: $uso — ${linea.trim()}');
-          }
+        for (final uso in usosProhibidos(archivo.lineas, variables)) {
+          fuera.add('${_normal(archivo.path)}:$uso');
         }
       }
 
@@ -207,23 +238,84 @@ void main() {
 
       test('marca la interpolación, el `toString()` y el log con la fila', () {
         const v = {'fila'};
-        expect(usosProhibidos("print('fila: \$fila');", v), isNotEmpty);
-        expect(usosProhibidos("throw StateError('no existe \${fila}');", v), isNotEmpty);
-        expect(usosProhibidos("final t = 'x \$fila.id';", v), isNotEmpty);
-        expect(usosProhibidos('final t = fila.toString();', v), isNotEmpty);
-        expect(usosProhibidos('final t = fila!.toString();', v), isNotEmpty);
-        expect(usosProhibidos('_log.info(fila);', v), isNotEmpty);
-        expect(usosProhibidos('debugPrint(fila);', v), isNotEmpty);
+        expect(usosProhibidos(["print('fila: \$fila');"], v), isNotEmpty);
+        expect(usosProhibidos(["throw StateError('no existe \${fila}');"], v), isNotEmpty);
+        expect(usosProhibidos(["final t = 'x \$fila.id';"], v), isNotEmpty);
+        expect(usosProhibidos(['final t = fila.toString();'], v), isNotEmpty);
+        expect(usosProhibidos(['final t = fila!.toString();'], v), isNotEmpty);
+        expect(usosProhibidos(['_log.info(fila);'], v), isNotEmpty);
+        expect(usosProhibidos(['debugPrint(fila);'], v), isNotEmpty);
       });
+
+      test(
+        'marca la fila en cualquier posición de la firma de `AppLogger` (módulo, op, msg, ctx, causa)',
+        () {
+          const v = {'fila'};
+          // En el ctx, en el mapa de contexto y en `causa:`, en una sola línea.
+          expect(
+            usosProhibidos(["_log.warn(LogModulo.sync, 'OP', 'msg', {'x': fila});"], v),
+            isNotEmpty,
+          );
+          expect(
+            usosProhibidos(["_log.error(LogModulo.sync, 'OP', 'msg', causa: fila);"], v),
+            isNotEmpty,
+          );
+          expect(
+            usosProhibidos(["_log.error(LogModulo.sync, 'OP', 'msg', const {}, causa: fila!);"], v),
+            isNotEmpty,
+          );
+          // Con la llamada partida en varias líneas (un argumento por línea).
+          expect(
+            usosProhibidos([
+              '_log.error(',
+              '  LogModulo.sync,',
+              "  'OP',",
+              "  'msg',",
+              '  causa: fila,',
+              ');',
+            ], v),
+            isNotEmpty,
+          );
+          expect(
+            usosProhibidos([
+              '_log.info(',
+              '  LogModulo.sync,',
+              "  'OP',",
+              "  'msg',",
+              '  {',
+              "    'x': fila,",
+              '  },',
+              ');',
+            ], v),
+            hasLength(1),
+          );
+          expect(
+            usosProhibidos(["_log.info(LogModulo.sync, 'OP',", '  fila,', ');'], v),
+            hasLength(1),
+          );
+          // `causa:` fuera de un log (una excepción) también se marca.
+          expect(usosProhibidos(['throw AlgoException(causa: fila);'], v), isNotEmpty);
+        },
+      );
 
       test('no marca el uso correcto: el id, un campo suelto o el nombre parecido', () {
         const v = {'fila'};
-        expect(usosProhibidos("log('fila \${fila.id}');", v), isEmpty);
-        expect(usosProhibidos("log('fila \${fila.id}', {'id': fila.id});", v), isEmpty);
-        expect(usosProhibidos("final t = 'x \$filaVieja';", v), isEmpty);
-        expect(usosProhibidos('final p = Persona(id: fila.id);', v), isEmpty);
-        expect(usosProhibidos('mapear(fila);', v), isEmpty);
-        expect(usosProhibidos('// print(fila)', {'otra'}), isEmpty);
+        expect(usosProhibidos(["log('fila \${fila.id}');"], v), isEmpty);
+        expect(usosProhibidos(["log('fila \${fila.id}', {'id': fila.id});"], v), isEmpty);
+        expect(
+          usosProhibidos(["_log.warn(LogModulo.sync, 'OP', 'msg', {'id': fila.id}, causa: e);"], v),
+          isEmpty,
+        );
+        expect(usosProhibidos(["final t = 'x \$filaVieja';"], v), isEmpty);
+        expect(usosProhibidos(['final p = Persona(id: fila.id);'], v), isEmpty);
+        expect(usosProhibidos(['mapear(fila);'], v), isEmpty);
+        expect(usosProhibidos(['final p = Persona(fila: fila);'], v), isEmpty);
+        // La fila fuera de la llamada al log (tras cerrarse) no se marca.
+        expect(
+          usosProhibidos(["_log.info(LogModulo.sync, 'OP', 'msg');", 'mapear(fila);'], v),
+          isEmpty,
+        );
+        expect(usosProhibidos(['// print(fila)'], const {'fila'}), isEmpty);
       });
 
       test(
