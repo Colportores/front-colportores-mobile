@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../../../ventas/presentation/widgets/piezas_venta.dart';
 import '../../domain/usecases/registrar_cobro_use_case.dart';
@@ -391,10 +392,9 @@ class CampoDeBancoDeOrigen extends StatelessWidget {
 /// `null` si se la cierra sin confirmar (no cambia nada). [actual] es el banco que ya había: si no es
 /// de la lista, la hoja abre en «Otro» con ese texto.
 Future<String?> mostrarHojaBancoDeOrigen(BuildContext context, {String? actual}) =>
-    showModalBottomSheet<String>(
+    mostrarHojaInferior<String>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
       backgroundColor: Colors.white,
       shape: _formaHoja,
       builder: (_) => HojaBancoDeOrigen(actual: actual),

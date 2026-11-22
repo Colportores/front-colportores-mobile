@@ -1564,35 +1564,25 @@ class SyncEngine {
   /// [LocalStorePort.applyDelta], que es una transacción: si aplicar falla, el
   /// próximo pull vuelve a traer lo mismo.
   Future<int> _pull(String scope, List<String> entities) async {
-    if (entities.isEmpty) return 0;
-    var traidas = 0;
-    var watermark = await _store.watermarkOf(scope);
-
-    while (true) {
-      final delta = await _transport.pull(
-        entities: entities,
-        watermark: watermark,
-      );
-      final filas = delta.rows.values.fold(0, (n, l) => n + l.length);
-      if (filas > 0) {
-        await _store.applyDelta(
-          delta.rows,
-          scope: scope,
-          watermark: delta.watermark,
-        );
-        traidas += filas;
-      }
-      // Si el watermark no avanzó, la próxima request es idéntica a esta: un
-      // `has_more` que nunca baja es un bug del servidor, y un cliente que le
-      // cree se queda pidiendo la misma página hasta quemarle los datos al
-      // colportor.
-      if (delta.watermark == watermark) return traidas;
-      watermark = delta.watermark;
-      if (!delta.hasMore) return traidas;
-    }
+    final contador = <String, int>{};
+    await _pullInto(scope, entities, contador);
+    return contador.values.fold<int>(0, (n, c) => n + c);
   }
 
-  /// Como [_pull], pero acumulando el conteo por entidad para el reporte de §7.
+  /// Baja el delta hasta agotarlo, acumulando cuántas filas trajo cada entidad
+  /// (el reporte de §7 lo usa).
+  ///
+  /// **Una página sin filas también se aplica** si trae avisos de área (§2.1)
+  /// o un watermark nuevo: puede ser la última de una descarga que arrancó de
+  /// cero, que es cuando se sabe qué quedó afuera. Solo se saltea la página que
+  /// no cambia nada.
+  ///
+  /// Las filas con escrituras locales todavía sin aplicar no se pisan (ver
+  /// [JobStorePort.withUnapplied]): sube la escritura, y si choca, el LWW de
+  /// §5.4 aplica la fila del servidor. El store lo pregunta **dentro** de la
+  /// transacción que aplica el delta ([LocalStorePort.applyDelta]): si el
+  /// motor filtrara antes, una escritura que entrara entre el filtro y la
+  /// transacción quedaría pisada por el eco que ya venía en camino (#714).
   Future<void> _pullInto(
     String scope,
     List<String> entities,
@@ -1602,26 +1592,57 @@ class SyncEngine {
     var watermark = await _store.watermarkOf(scope);
 
     while (true) {
-      final delta = await _transport.pull(
-        entities: entities,
-        watermark: watermark,
+      final delta =
+          await _transport.pull(entities: entities, watermark: watermark);
+      final avisos = PullNotices(
+        outOfArea: delta.outOfArea,
+        areaReset: delta.areaReset,
+        complete: !delta.hasMore,
       );
-      final filas = delta.rows.values.fold(0, (n, l) => n + l.length);
-      if (filas > 0) {
+      // Lo que el store dejó sin escribir, para no contarlo como bajado.
+      final salteadas = <String, Set<String>>{};
+      if (delta.rows.values.any((l) => l.isNotEmpty) ||
+          !avisos.isEmpty ||
+          delta.watermark != watermark) {
         await _store.applyDelta(
           delta.rows,
           scope: scope,
           watermark: delta.watermark,
+          notices: avisos,
+          unapplied: (entidad, pks) async {
+            final ocupadas = await _sinAplicar(entidad, pks);
+            (salteadas[entidad] ??= {}).addAll(ocupadas);
+            return ocupadas;
+          },
         );
-        for (final MapEntry(key: entidad, value: lista) in delta.rows.entries) {
-          contador[entidad] = (contador[entidad] ?? 0) + lista.length;
-        }
       }
-      // Ver [_pull]: sin watermark nuevo no hay página nueva que pedir.
+      for (final MapEntry(key: entidad, value: lista) in delta.rows.entries) {
+        final fuera = salteadas[entidad] ?? const <String>{};
+        final bajadas = fuera.isEmpty
+            ? lista.length
+            : lista
+                .where((f) => !fuera.contains('${f[_specs.of(entidad).pk]}'))
+                .length;
+        contador[entidad] = (contador[entidad] ?? 0) + bajadas;
+      }
+      // Si el watermark no avanzó, la próxima request es idéntica a esta: un
+      // `has_more` que nunca baja es un bug del servidor, y un cliente que le
+      // cree se queda pidiendo la misma página hasta quemarle los datos al
+      // colportor.
       if (delta.watermark == watermark) return;
       watermark = delta.watermark;
       if (!delta.hasMore) return;
     }
+  }
+
+  /// De [pks], las filas de [entidad] con escrituras locales todavía sin
+  /// aplicar en el servidor. Solo una entidad `push` las tiene: un catálogo
+  /// (`pull`) no se escribe en el teléfono.
+  Future<Set<String>> _sinAplicar(String entidad, List<String> pks) async {
+    if (pks.isEmpty || _specs.of(entidad).policy != SyncPolicy.push) {
+      return const {};
+    }
+    return _jobs.withUnapplied(entidad, pks);
   }
 
   /// Lleva la cuenta de si la sesión sirve, para que un refresh roto no sea

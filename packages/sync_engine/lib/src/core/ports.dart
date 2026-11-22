@@ -134,6 +134,15 @@ abstract interface class JobStorePort {
   /// llama cuando hay algo en espera que se reescribe.
   Future<List<QueuedJob>> listPending();
 
+  /// De [rowPks], las filas de [entity] con alguna escritura todavía no
+  /// aplicada en el servidor (`PENDING`, `IN_FLIGHT`, `BLOCKED` o `WAITING`).
+  ///
+  /// El pull no las pisa: la fila local tiene lo que el colportor escribió y
+  /// el servidor todavía no vio. Si el pull la aplicara, la pantalla volvería
+  /// atrás hasta el próximo push, y la versión nueva haría chocar a la
+  /// escritura que espera (§5.4).
+  Future<Set<String>> withUnapplied(String entity, Iterable<String> rowPks);
+
   /// `BLOCKED`/`WAITING` → `PENDING`, **detrás de todo lo que ya está en la
   /// cola y en el orden de [jobIds]**. Limpia el error y `dependsOn`.
   ///
@@ -235,6 +244,12 @@ abstract interface class SyncMetaPort {
   });
 }
 
+/// De [rowPks], las filas de [entity] que el pull no tiene que pisar porque
+/// tienen escrituras locales sin aplicar en el servidor. Ver
+/// [LocalStorePort.applyDelta].
+typedef UnappliedRows = Future<Set<String>> Function(
+    String entity, List<String> rowPks);
+
 /// La DB local, del lado de las tablas de negocio.
 abstract interface class LocalStorePort {
   /// Aplica el delta y guarda el watermark **en una sola transacción** (§10).
@@ -246,10 +261,30 @@ abstract interface class LocalStorePort {
   /// Un [watermark] `null` deja el del [scope] como está: es para aplicar una
   /// fila suelta que no viene de una página de pull (la `server_row` de un
   /// LWW, §5.4), que no puede inventar un watermark ni borrar el que hay.
+  ///
+  /// [notices] son los avisos de área de esa página del pull (§2.1), en la
+  /// misma transacción. **Nada se borra por un aviso**: las filas fuera del
+  /// área se marcan, y una que vuelve a bajar deja de estarlo. Con un
+  /// `areaReset`, lo que el teléfono tenía de esa entidad queda a la espera de
+  /// volver a bajar; lo que no bajó cuando llega la página `complete`, quedó
+  /// fuera del área. Lo que tiene escrituras locales sin aplicar no cuenta: el
+  /// servidor no lo tiene todavía, no salió de ningún lado.
+  ///
+  /// [unapplied] dice cuáles de esas filas tienen escrituras locales sin
+  /// aplicar en el servidor ([JobStorePort.withUnapplied]): las que nombra no
+  /// se escriben, no salen de la marca ni de la espera, y no se ponen a la
+  /// espera por un `areaReset`. **Se pregunta dentro de la transacción**, no
+  /// antes: una escritura de la app (la fila y su job, en su propia
+  /// transacción) que llega mientras se aplica el delta queda entera antes o
+  /// entera después, y nunca la pisa una fila que ya venía en camino. `null`
+  /// es que ninguna fila está protegida (un catálogo, o la `server_row` de un
+  /// LWW, que se aplica a propósito).
   Future<void> applyDelta(
     Map<String, List<Map<String, Object?>>> rows, {
     required String scope,
     required String? watermark,
+    PullNotices notices = PullNotices.none,
+    UnappliedRows? unapplied,
   });
 
   /// El watermark guardado para [scope], o `null` si nunca se pulleó.

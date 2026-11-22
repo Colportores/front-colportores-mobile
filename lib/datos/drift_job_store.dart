@@ -4,6 +4,8 @@ import 'package:drift/drift.dart';
 import 'package:sync_engine/sync_engine.dart';
 
 import '../core/database/app_database.dart';
+import '../features/mapa/data/datasources/uniones_locales_table.dart' show EstadoUnionLocal;
+import '../features/mapa/data/models/movimientos_de_union.dart';
 import 'sync_queue_table.dart';
 
 part 'drift_job_store.g.dart';
@@ -175,6 +177,57 @@ final class DriftJobStore extends DatabaseAccessor<AppDatabase>
             ))
             .get();
     return filas.map(_aJob).toList();
+  }
+
+  /// Además de los jobs de cada fila, un **espacio que movió una unión de duplicados** cuyo trabajo
+  /// «marcar como duplicado» todavía no se aplicó (`ubicacion_union_local`, HU-UBI-006). La unión
+  /// cambia `espacio.ubicacion_id` de B a A (o da de baja el único fundido) en el teléfono sin encolar
+  /// un job de `espacio`: el único job es el de la unión, con `rowPk` = B, y esos cambios los aplica
+  /// el servidor al correrlo. Sin esto, un pull que trae esos espacios antes de que la unión suba los
+  /// devolvía a B, que en el teléfono ya está de baja, y reactivaba los fundidos (#714).
+  @override
+  Future<Set<String>> withUnapplied(String entity, Iterable<String> rowPks) async {
+    final pks = rowPks.toList();
+    final ocupadas = <String>{};
+    if (entity == _entidadEspacio && pks.isNotEmpty) {
+      ocupadas.addAll((await _espaciosDeUnionesSinAplicar()).intersection(pks.toSet()));
+    }
+    // De a 500: SQLite limita la cantidad de variables por sentencia.
+    for (var i = 0; i < pks.length; i += 500) {
+      final tramo = pks.sublist(i, i + 500 > pks.length ? pks.length : i + 500);
+      final consulta = selectOnly(syncQueue, distinct: true)
+        ..addColumns([syncQueue.rowPk])
+        ..where(
+          syncQueue.entity.equals(entity) &
+              syncQueue.rowPk.isIn(tramo) &
+              syncQueue.state.isIn(EstadoJob.sinAplicar),
+        );
+      ocupadas.addAll([for (final f in await consulta.get()) f.read(syncQueue.rowPk)!]);
+    }
+    return ocupadas;
+  }
+
+  static const _entidadEspacio = 'espacio';
+
+  /// Los espacios que pasaron de B a A, o que se fundieron, en las uniones del teléfono cuyo trabajo
+  /// sigue sin aplicar en el servidor. Las uniones sin subir son pocas (una por par unido mientras
+  /// no hubo señal), así que se leen enteras.
+  Future<Set<String>> _espaciosDeUnionesSinAplicar() async {
+    final uniones = attachedDatabase.unionesLocales;
+    final consulta =
+        select(uniones).join([innerJoin(syncQueue, syncQueue.id.equalsExp(uniones.trabajoId))])
+          ..where(
+            uniones.estado.equals(EstadoUnionLocal.aplicada) &
+                syncQueue.state.isIn(EstadoJob.sinAplicar),
+          );
+    final espacios = <String>{};
+    for (final fila in await consulta.get()) {
+      final m = MovimientosDeUnion.decodificar(fila.readTable(uniones).movimientos);
+      espacios
+        ..addAll(m.espaciosPasados)
+        ..addAll([for (final f in m.espaciosFundidos) f.espacioId]);
+    }
+    return espacios;
   }
 
   @override

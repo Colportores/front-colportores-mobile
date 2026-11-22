@@ -137,6 +137,12 @@ class EntregasEnMemoria implements EntregaRepository {
   final fallasAlDiferir = <Failure>[];
   final fallasAlCumplir = <Failure>[];
 
+  /// Las filas pedidas en cada [diferir] («Poner fecha» de una entrega, #706); `null` = toda la venta.
+  final entregaIdsAlDiferir = <Set<String>?>[];
+
+  /// La cita pedida en cada [cumplir] («Entregado hoy» de una cita, #706); `null` = sin cita.
+  final agendasAlCumplir = <String?>[];
+
   /// Si no es `null`, [diferir] y [cumplir] se quedan esperando.
   Completer<void>? compuertaDeDiferida;
 
@@ -148,7 +154,9 @@ class EntregasEnMemoria implements EntregaRepository {
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
     DateTime? soloDesde,
+    Set<String>? entregaIds,
   }) async {
+    entregaIdsAlDiferir.add(entregaIds);
     diferidas.add((
       ventaId: ventaId,
       fechaPrevista: fechaPrevista,
@@ -169,7 +177,9 @@ class EntregasEnMemoria implements EntregaRepository {
     required String idDeLaCita,
     Set<String>? entregaIds,
     DateTime? nuevaFecha,
+    String? agendaId,
   }) async {
+    agendasAlCumplir.add(agendaId);
     cumplidas.add((
       ventaId: ventaId,
       entregaIds: entregaIds,

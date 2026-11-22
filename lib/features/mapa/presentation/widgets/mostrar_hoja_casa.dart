@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../formato_mapa_ubicaciones.dart';
+import '../providers/fuera_del_area_providers.dart' show idsFueraDelAreaProvider;
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import 'hoja_casa.dart';
@@ -29,10 +31,9 @@ Future<void> mostrarHojaCasa(
   required ItemListaUbicacion item,
   FutureOr<void> Function(ItemListaUbicacion item)? alReactivar,
   ValueChanged<String>? alAbrirOtra,
-}) => showModalBottomSheet<void>(
+}) => mostrarHojaInferior<void>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // El asa es propia (sube y baja entre las dos alturas): el arrastre del modal no compite con ella.
   enableDrag: false,
   showDragHandle: false,
@@ -74,6 +75,7 @@ class _HojaCasaDeLaLista extends ConsumerWidget {
     );
     final item = vivo ?? inicial;
     final ahora = ref.watch(relojListaUbicacionesProvider)();
+    final fuera = ref.watch(idsFueraDelAreaProvider).value ?? const <String>{};
     return _AlturasDeLaLista(
       alBajarDelResumen: () => Navigator.of(context).maybePop(),
       hoja: (arriba) => HojaCasa(
@@ -85,6 +87,9 @@ class _HojaCasaDeLaLista extends ConsumerWidget {
             : () => alReactivar!(item),
         arriba: arriba,
         colportorId: colportorId,
+        // #713 (decisión del 17/11, P1 §2 del QA de #718): la misma casa lleva la misma marca que en la
+        // fila de la Lista y en el mapa. No oculta nada.
+        fueraDelArea: fuera.contains(item.ubicacion.id),
         // Cierra esta hoja y recién después abre la otra: un `maybePop` pendiente cerraría la nueva.
         alAbrirOtra: alAbrirOtra == null
             ? null

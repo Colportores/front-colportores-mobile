@@ -5,6 +5,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/eleccion_de_cita.dart';
 import '../../domain/entities/eleccion_de_entrevista.dart';
@@ -104,10 +105,9 @@ Future<Object?> _abrir(
     _leyendoPrevias.remove(lectura);
   }
   if (!context.mounted) return null;
-  return showModalBottomSheet<Object>(
+  return mostrarHojaInferior<Object>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
     // Sin arrastrar para cerrar: el arrastre no pasa por el `PopScope` y mientras se guarda a la
     // persona la hoja no se cierra. Las salidas son «Volver», el atrás y el toque afuera.
     enableDrag: false,
@@ -136,10 +136,9 @@ Future<EleccionDeVenta?> mostrarHojaConQuienVende(
   required String colportorId,
   required List<String> entrevistadas,
 }) async {
-  final r = await showModalBottomSheet<Object>(
+  final r = await mostrarHojaInferior<Object>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
     enableDrag: false,
     backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(

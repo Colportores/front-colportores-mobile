@@ -1,12 +1,14 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../mapa/domain/entities/ubicacion.dart';
+import '../../../mapa/domain/value_objects/coordenadas.dart';
 import 'agenda.dart';
 import 'estado_agenda.dart';
 
 /// La dirección de una ubicación tal como la muestra la agenda: calle y número, sin coordenadas ni
 /// nada más. [deBaja] es que la ubicación está dada de baja (solo se mira en la alternativa de una
-/// cobranza: la casa de la cita dada de baja oculta la agenda entera).
+/// cobranza: la casa de la cita dada de baja oculta la agenda entera). [coordenadas] es el punto de
+/// la ubicación (la distancia de la hoja «Agendados» del mapa, 06C·03); `null` si no se leyó.
 class DireccionDeAgenda extends Equatable {
   const DireccionDeAgenda({
     required this.ubicacionId,
@@ -14,6 +16,7 @@ class DireccionDeAgenda extends Equatable {
     this.calle,
     this.numero,
     this.deBaja = false,
+    this.coordenadas,
   });
 
   final String ubicacionId;
@@ -21,9 +24,10 @@ class DireccionDeAgenda extends Equatable {
   final String? calle;
   final String? numero;
   final bool deBaja;
+  final Coordenadas? coordenadas;
 
   @override
-  List<Object?> get props => [ubicacionId, tipo, calle, numero, deBaja];
+  List<Object?> get props => [ubicacionId, tipo, calle, numero, deBaja, coordenadas];
 }
 
 /// Una fila de la agenda del colportor (HU-VIS-002): la [agenda] y lo que hace falta para

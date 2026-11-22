@@ -4,6 +4,8 @@ import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
+import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local_data_source_drift.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/entrega_local_data_source_drift.dart';
@@ -90,6 +92,57 @@ void main() {
     subtotalCentavos: cantidad * precio,
     auditoria: Auditoria(createdAt: t1, updatedAt: t1, createdBy: 'col-1'),
   );
+
+  Future<AgendaFila> citaPorId(String id) =>
+      (db.select(db.agendas)..where((a) => a.id.equals(id))).getSingle();
+
+  Future<EntregaFila> filaEntrega(String id) =>
+      (db.select(db.entregas)..where((e) => e.id.equals(id))).getSingle();
+
+  /// La venta 0039 con lo de antes (e-1, 3 de prod-1) para [antes] con su cita a-1, y el libro sumado
+  /// (e-2, 1 de prod-2) para [despues] con su cita a-2 (#706, «Entrega cita»).
+  Future<({DateTime antes, DateTime despues})> dosCitas({DateTime? despues}) async {
+    await venta39();
+    final antes = t0.add(const Duration(days: 1));
+    await entregas.diferir(
+      'v-39',
+      fechaPrevista: antes,
+      ahora: t0,
+      filasNuevas: [
+        Entrega(
+          id: 'e-1',
+          ventaId: 'v-39',
+          productoId: 'prod-1',
+          cantidad: 3,
+          pendiente: true,
+          fechaPrevista: antes,
+          auditoria: auditoriaDe(),
+        ),
+      ],
+      idDeLaCita: 'a-1',
+    );
+    final r = await local.sumar('v-39', [nuevo('n-1', 'v-39')], sumadoCentavos: 40000, ahora: t1);
+    final cuando = despues ?? t1.add(const Duration(days: 5));
+    await entregas.diferir(
+      'v-39',
+      fechaPrevista: cuando,
+      ahora: t1,
+      filasNuevas: [
+        Entrega(
+          id: 'e-2',
+          ventaId: 'v-39',
+          productoId: 'prod-2',
+          cantidad: 1,
+          pendiente: true,
+          fechaPrevista: cuando,
+          auditoria: Auditoria(createdAt: t1, updatedAt: t1, createdBy: 'col-1'),
+        ),
+      ],
+      idDeLaCita: 'a-2',
+      soloDesde: r.sumadoEl,
+    );
+    return (antes: antes, despues: cuando);
+  }
 
   List<String> cola() => [for (final c in encolador.encolados) '${c.entidad}:${c.operacion.name}'];
 
@@ -279,11 +332,11 @@ void main() {
 
     test('la cita de cobranza de la persona cuenta como agendada; sin citas, nada', () async {
       await venta39();
-      expect(await local.citasDe('v-39'), (cobranzaAgendada: false, entregaAgendada: false));
+      expect(await local.citasDe('v-39'), (cobranzaAgendada: false));
 
       await insertarAgenda(db, agendaDe('a-1', tipo: TipoAgenda.cobranza, fecha: t1));
 
-      expect(await local.citasDe('v-39'), (cobranzaAgendada: true, entregaAgendada: false));
+      expect(await local.citasDe('v-39'), (cobranzaAgendada: true));
     });
   });
 
@@ -369,42 +422,209 @@ void main() {
       expect([diferida.cita.id, diferida.citaNueva], ['a-9', isTrue]);
     });
 
-    test('si lo de antes ya tiene su cita de entrega, no se agenda otra ni se mueve', () async {
-      await venta39();
-      final antes = t0.add(const Duration(days: 1));
-      await entregas.diferir(
+    // Decisión de Cristian del 11/11, «Entrega cita» (#706): una cita viva por cada grupo de libros.
+    test(
+      'si lo de antes ya tiene su cita, el libro nuevo tiene la suya y la de antes no se mueve',
+      () async {
+        final (:antes, :despues) = await dosCitas();
+
+        final a1 = await citaPorId('a-1');
+        final a2 = await citaPorId('a-2');
+        expect([a1.fechaProgramada, a1.entregaId, a1.estado], [antes, 'e-1', 'PROGRAMADA']);
+        expect(
+          [a2.fechaProgramada, a2.entregaId, a2.estado, a2.ventaId],
+          [despues, 'e-2', 'PROGRAMADA', 'v-39'],
+        );
+        expect((await filaEntrega('e-1')).fechaPrevista, antes);
+        expect((await filaEntrega('e-2')).fechaPrevista, despues);
+        expect(await local.citasDe('v-39'), (cobranzaAgendada: false));
+      },
+    );
+  });
+
+  group('«Entrega cita» (#706): cada cita con sus libros', () {
+    test('repetir la misma fecha del libro nuevo no escribe nada ni agenda otra', () async {
+      final (:antes, :despues) = await dosCitas();
+      encolador.encolados.clear();
+
+      final otra = await entregas.diferir(
         'v-39',
-        fechaPrevista: antes,
-        ahora: t0,
-        filasNuevas: [
-          Entrega(
-            id: 'e-1',
-            ventaId: 'v-39',
-            productoId: 'prod-1',
-            cantidad: 3,
-            pendiente: true,
-            fechaPrevista: antes,
-            auditoria: auditoriaDe(),
-          ),
-        ],
-        idDeLaCita: 'a-1',
+        fechaPrevista: despues,
+        ahora: t1,
+        filasNuevas: const [],
+        idDeLaCita: 'a-3',
+        soloDesde: t1,
       );
-      final r = await local.sumar('v-39', [nuevo('n-1', 'v-39')], sumadoCentavos: 40000, ahora: t1);
+
+      expect([otra.yaEstaba, otra.cita.id, otra.citaNueva], [true, 'a-2', false]);
+      expect((await db.select(db.agendas).get()).map((a) => a.id), unorderedEquals(['a-1', 'a-2']));
+      expect(encolador.encolados, isEmpty);
+      expect((await citaPorId('a-1')).fechaProgramada, antes);
+    });
+
+    test('«Entregas pendientes» trae una entrada por cita, cada una con sus libros', () async {
+      final (:antes, :despues) = await dosCitas();
+
+      final lista = await entregas.observarPendientes().first;
+
+      expect(
+        [
+          for (final e in lista)
+            (
+              e.ventaId,
+              e.fechaPrevista,
+              e.agendaId,
+              [for (final l in e.lineas) l.entregaId].join(','),
+            ),
+        ],
+        [('v-39', antes, 'a-1', 'e-1'), ('v-39', despues, 'a-2', 'e-2')],
+      );
+    });
+
+    test('«Entregado hoy» de la cita nueva entrega solo el libro sumado', () async {
+      final (:antes, despues: _) = await dosCitas();
+
+      final hecho = await entregas.cumplir('v-39', ahora: t1, idDeLaCita: 'x', agendaId: 'a-2');
+
+      expect([for (final e in hecho.entregadas) e.id], ['e-2']);
+      expect([hecho.cita?.id, hecho.citaCumplida, hecho.quedaPendiente], ['a-2', true, false]);
+      expect(hecho.otrasCitasCumplidas, isEmpty);
+      expect((await filaEntrega('e-1')).pendiente, isTrue);
+      expect((await filaEntrega('e-1')).fechaPrevista, antes);
+      expect((await citaPorId('a-1')).estado, 'PROGRAMADA');
+      expect((await citaPorId('a-2')).estado, 'CUMPLIDA');
+    });
+
+    test('«Entregado hoy» de la cita de antes no toca el libro sumado', () async {
+      final (antes: _, :despues) = await dosCitas();
+
+      final hecho = await entregas.cumplir('v-39', ahora: t1, idDeLaCita: 'x', agendaId: 'a-1');
+
+      expect([for (final e in hecho.entregadas) e.id], ['e-1']);
+      expect((await filaEntrega('e-2')).pendiente, isTrue);
+      expect((await filaEntrega('e-2')).fechaPrevista, despues);
+      expect((await citaPorId('a-1')).estado, 'CUMPLIDA');
+      expect((await citaPorId('a-2')).estado, 'PROGRAMADA');
+    });
+
+    test('«Marcar entregado» con las filas de una cita cumple solo esa', () async {
+      await dosCitas();
+
+      final hecho = await entregas.cumplir(
+        'v-39',
+        ahora: t1,
+        idDeLaCita: 'x',
+        entregaIds: const {'e-1'},
+      );
+
+      expect([hecho.cita?.id, hecho.citaCumplida, hecho.quedaPendiente], ['a-1', true, false]);
+      expect((await citaPorId('a-2')).estado, 'PROGRAMADA');
+      // Dos toques: el segundo no escribe nada ni cierra la otra cita.
+      final otra = await entregas.cumplir(
+        'v-39',
+        ahora: t1,
+        idDeLaCita: 'x',
+        entregaIds: const {'e-1'},
+      );
+      expect(otra.yaEstaba, isTrue);
+      expect((await citaPorId('a-2')).estado, 'PROGRAMADA');
+    });
+
+    test('«Entregar ahora» todo cumple las dos citas', () async {
+      await dosCitas();
+
+      final hecho = await entregas.entregarAhora(
+        'v-39',
+        colportorId: 'col-1',
+        ahora: t1,
+        generarId: () => 'nueva',
+      );
+
+      expect([hecho.citaCumplidaId, ...hecho.otrasCitasCumplidas], ['a-1', 'a-2']);
+      expect((await citaPorId('a-1')).estado, 'CUMPLIDA');
+      expect((await citaPorId('a-2')).estado, 'CUMPLIDA');
+    });
+
+    test('mover la cita nueva en la Agenda mueve solo la fecha del libro sumado', () async {
+      final (:antes, despues: _) = await dosCitas();
+      final agenda = AgendaLocalDataSourceDrift(
+        db,
+        encolador: encolador,
+        estadoDeLasCasas: HouseStatusUpdaterDrift(db, encolador: encolador),
+      );
+      final otraFecha = t1.add(const Duration(days: 9));
+
+      await agenda.modificar(
+        CambiosDeAgenda(
+          agendaId: 'a-2',
+          tipo: TipoAgenda.entrega,
+          fechaProgramada: otraFecha,
+          idNota: 'nota-1',
+        ),
+        ahora: t1,
+      );
+
+      expect((await filaEntrega('e-2')).fechaPrevista, otraFecha);
+      expect((await filaEntrega('e-1')).fechaPrevista, antes);
+      expect((await citaPorId('a-1')).fechaProgramada, antes);
+    });
+
+    test(
+      'el libro nuevo para la misma hora que lo de antes va a esa cita (la misma visita)',
+      () async {
+        final mismaHora = t0.add(const Duration(days: 1));
+        await dosCitas(despues: mismaHora);
+
+        expect((await db.select(db.agendas).get()).map((a) => a.id), ['a-1']);
+        final lista = await entregas.observarPendientes().first;
+        expect([for (final l in lista.single.lineas) l.entregaId], ['e-1', 'e-2']);
+
+        // Y «Entregado hoy» de esa cita entrega los dos.
+        final hecho = await entregas.cumplir('v-39', ahora: t1, idDeLaCita: 'x', agendaId: 'a-1');
+        expect([for (final e in hecho.entregadas) e.id], ['e-1', 'e-2']);
+      },
+    );
+
+    test('«Poner fecha» de lo que quedó sin fecha no mueve la cita del libro sumado', () async {
+      final (antes: _, :despues) = await dosCitas();
+      // Lo de antes quedó sin fecha y sin cita (por ejemplo, la cita se canceló a mano).
+      await (db.update(db.entregas)..where((e) => e.id.equals('e-1'))).write(
+        const EntregasCompanion(fechaPrevista: Value(null)),
+      );
+      await (db.update(db.agendas)..where((a) => a.id.equals('a-1'))).write(
+        const AgendasCompanion(estado: Value('CANCELADA')),
+      );
+      final nueva = t1.add(const Duration(days: 2));
+
+      final diferida = await entregas.diferir(
+        'v-39',
+        fechaPrevista: nueva,
+        ahora: t1,
+        filasNuevas: const [],
+        idDeLaCita: 'a-3',
+        entregaIds: const {'e-1'},
+      );
+
+      expect([diferida.cita.id, diferida.citaNueva], ['a-3', true]);
+      expect((await filaEntrega('e-1')).fechaPrevista, nueva);
+      expect((await filaEntrega('e-2')).fechaPrevista, despues);
+      expect((await citaPorId('a-2')).fechaProgramada, despues);
+    });
+
+    test('«Poner fecha» con una fila que no es de la venta no guarda nada', () async {
+      await dosCitas();
 
       await expectLater(
         entregas.diferir(
           'v-39',
-          fechaPrevista: t1.add(const Duration(days: 5)),
+          fechaPrevista: t1,
           ahora: t1,
           filasNuevas: const [],
-          idDeLaCita: 'a-2',
-          soloDesde: r.sumadoEl,
+          idDeLaCita: 'a-3',
+          entregaIds: const {'no-es'},
         ),
-        throwsA(isA<EntregaYaAgendadaException>()),
+        throwsA(isA<EntregaAjenaException>()),
       );
-      final cita = await (db.select(db.agendas)..where((a) => a.id.equals('a-1'))).getSingle();
-      expect(cita.fechaProgramada, antes);
-      expect(await local.citasDe('v-39'), (cobranzaAgendada: false, entregaAgendada: true));
     });
   });
 }

@@ -37,7 +37,7 @@ import 'modificar_agenda_page.dart';
 /// - **Programada** (23C·01): «Registrar resultado» lleva a «¿Qué pasó?» de la vista 39 con la casa y
 ///   la agenda ya puestas; «Modificar» abre 23C·02; «Cancelar agenda» va como enlace al pie.
 ///   En una cita de **entrega** (HU-VEN-003) «Registrar resultado» no va: su lugar lo toma «Entregado
-///   hoy», que marca como entregado lo pendiente de la venta (una sola llamada mientras guarda). Si no
+///   hoy», que marca como entregado lo pendiente de esa cita (una sola llamada mientras guarda). Si no
 ///   se puede guardar, un aviso fijo arriba lo dice y «Entregado hoy» queda a mano para reintentar
 ///   (decisión del 28/10, P3 del QA de #435).
 /// - **Modificada** (23C·03): al volver de «Modificar», el detalle ya muestra lo nuevo y el aviso de éxito
@@ -141,8 +141,9 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
   /// o se sale de la pantalla.
   var _fallaAlEntregar = false;
 
-  /// «Entregado hoy» (HU-VEN-003, «Cumplir entrega pendiente»): lo pendiente de la venta pasa a
-  /// entregado con la fecha de hoy y la cita se cumple.
+  /// «Entregado hoy» (HU-VEN-003, «Cumplir entrega pendiente»): los libros de **esta** cita pasan a
+  /// entregados con la fecha de hoy y la cita se cumple. Otra cita de la misma venta (lo que se le sumó
+  /// después, decisión de Cristian del 11/11, «Entrega cita») no se toca.
   Future<void> _entregadoHoy(DetalleDeAgenda detalle) async {
     final ventaId = detalle.agenda.ventaId;
     if (_entregando || ventaId == null) return;
@@ -152,7 +153,7 @@ class _DetalleAgendaPageState extends ConsumerState<DetalleAgendaPage> {
     try {
       final hecho = await ref
           .read(cumplirEntregaUseCaseProvider)
-          .call(CumplirEntregaParams(ventaId: ventaId));
+          .call(CumplirEntregaParams(ventaId: ventaId, agendaId: detalle.agenda.id));
       aviso = hecho.fold(
         (_) => null,
         (r) => r.entrega.todoDevuelto

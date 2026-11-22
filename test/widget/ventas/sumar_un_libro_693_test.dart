@@ -425,8 +425,8 @@ void main() {
       final e = EntornoDeVenta(
         crece: VentaQueCreceEnMemoria(
           abiertas: [_v39],
-          // Lo de antes ya tiene su entrega y su cobranza agendadas: no se agenda otra ni se pregunta.
-          citas: (cobranzaAgendada: true, entregaAgendada: true),
+          // Lo de antes ya tiene su cobranza agendada: no se pregunta de nuevo.
+          citas: (cobranzaAgendada: true),
         ),
       );
       final salidas = await abrirDesdeLaCasa(tester, e);
@@ -438,11 +438,15 @@ void main() {
       await tocar(tester, find.byKey(const Key('venta_cta')));
 
       expect(find.text('Libro sumado a la venta 0039'), findsOneWidget);
-      // La entrega de lo de antes ya está agendada: el libro nuevo se entrega ahora o queda pendiente.
-      expect(find.text(TextosVenta.entregarOtroDia), findsNothing);
+      // El libro nuevo tiene su propia cita aunque lo de antes ya tenga la suya (decisión de Cristian
+      // del 11/11, «Entrega cita», #706): «Entregar otro día» se ofrece siempre.
+      expect(find.text(TextosVenta.entregarOtroDia), findsOneWidget);
       expect(find.text(TextosVenta.entregarAhora), findsOneWidget);
 
       await tocar(tester, find.byKey(const Key('venta_terminar')));
+      // Sin entregar el libro nuevo, se pide su fecha (27C·01); se vuelve sin elegirla.
+      expect(find.byKey(const Key('otro_dia_pagina')), findsOneWidget);
+      await tocar(tester, find.byKey(const Key('venta_atras')));
 
       expect(find.text(r'Libro sumado a la venta 0039. Saldo $ 2.800.'), findsOneWidget);
       expect(salidas.single, isA<VentaRegistradaEnLaCasa>());

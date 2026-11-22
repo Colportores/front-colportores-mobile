@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../textos_mapas_offline.dart';
 
@@ -7,10 +8,9 @@ import '../textos_mapas_offline.dart';
 /// tenerlo hace falta Wi-Fi. `true` si el colportor confirma; `false` o `null` si cancela o la
 /// cierra. Mismo patrón que la hoja de «Achicar la cobertura» (35-09).
 Future<bool?> mostrarHojaBorrarMapa(BuildContext context, {required String nombre}) =>
-    showModalBottomSheet<bool>(
+    mostrarHojaInferior<bool>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
       showDragHandle: true,
       builder: (_) => HojaBorrarMapa(nombre: nombre),
     );

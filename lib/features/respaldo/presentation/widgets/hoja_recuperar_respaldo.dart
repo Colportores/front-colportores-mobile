@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../textos_recuperacion.dart';
 
@@ -10,10 +11,9 @@ import '../textos_recuperacion.dart';
 /// Devuelve `true` si la persona toca «Empezar»; `false` o `null` si toca «Ahora no» o cierra la
 /// hoja.
 Future<bool?> mostrarHojaRecuperarRespaldo(BuildContext context, {required String cuentaDrive}) =>
-    showModalBottomSheet<bool>(
+    mostrarHojaInferior<bool>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
       showDragHandle: false,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(

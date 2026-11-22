@@ -44,6 +44,7 @@ class _RepoQueExplota extends EntregasEnMemoria {
     required List<Entrega> filasNuevas,
     required String idDeLaCita,
     DateTime? soloDesde,
+    Set<String>? entregaIds,
   }) => throw StateError('sin base abierta');
 }
 

@@ -53,7 +53,7 @@ class _EntregasPendientesPageState extends ConsumerState<EntregasPendientesPage>
   }
 
   Future<void> _marcar(EntregaPendiente entrega) => _abrir(() async {
-    await Navigator.of(context).push(MarcarEntregadoPage.ruta(ventaId: entrega.ventaId));
+    await Navigator.of(context).push(MarcarEntregadoPage.rutaDe(CualEntrega.de(entrega)));
   });
 
   Future<void> _ponerFecha(EntregaPendiente entrega) => _abrir(() async {
@@ -130,35 +130,46 @@ class _Grupos extends ConsumerWidget {
         if (e.sinFecha) e,
     ];
 
-    Widget grupo(String rotulo, TonoDeEntrega tono, List<EntregaPendiente> items) => Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        RotuloDeSeccion(rotulo),
-        const SizedBox(height: 7),
-        for (final entrega in items) ...[
-          _Tarjeta(
-            entrega: entrega,
-            tono: tono,
-            nombres: nombres,
-            alAbrir: () => alMarcar(entrega),
-            alPonerFecha: tono == TonoDeEntrega.sinFecha ? () => alPonerFecha(entrega) : null,
-          ),
-          const SizedBox(height: 8),
-        ],
-      ],
-    );
+    // Cuántas tarjetas tiene cada venta (una por cita): se cuenta una vez, no por tarjeta.
+    final porVenta = <String, int>{};
+    for (final e in entregas) {
+      porVenta.update(e.ventaId, (n) => n + 1, ifAbsent: () => 1);
+    }
 
-    return ListView(
+    // Rótulos y tarjetas, en una sola lista para que se construya perezosa: con cientos de
+    // entregas solo se arman (y piden su rótulo a la base) las que se ven.
+    final filas = <Widget Function()>[];
+    void grupo(String rotulo, TonoDeEntrega tono, List<EntregaPendiente> items) {
+      if (items.isEmpty) return;
+      filas.add(
+        () => Padding(padding: const EdgeInsets.only(bottom: 7), child: RotuloDeSeccion(rotulo)),
+      );
+      for (final entrega in items) {
+        filas.add(
+          () => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _Tarjeta(
+              entrega: entrega,
+              tono: tono,
+              nombres: nombres,
+              conVenta: (porVenta[entrega.ventaId] ?? 0) > 1,
+              alAbrir: () => alMarcar(entrega),
+              alPonerFecha: tono == TonoDeEntrega.sinFecha ? () => alPonerFecha(entrega) : null,
+            ),
+          ),
+        );
+      }
+    }
+
+    grupo(TextosEntregaDiferida.atrasadas, TonoDeEntrega.atrasada, atrasadas);
+    grupo(TextosEntregaDiferida.proximas, TonoDeEntrega.proxima, proximas);
+    grupo(TextosEntregaDiferida.sinFecha, TonoDeEntrega.sinFecha, sinFecha);
+
+    return ListView.builder(
       key: const Key('entregas_lista'),
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      children: [
-        if (atrasadas.isNotEmpty)
-          grupo(TextosEntregaDiferida.atrasadas, TonoDeEntrega.atrasada, atrasadas),
-        if (proximas.isNotEmpty)
-          grupo(TextosEntregaDiferida.proximas, TonoDeEntrega.proxima, proximas),
-        if (sinFecha.isNotEmpty)
-          grupo(TextosEntregaDiferida.sinFecha, TonoDeEntrega.sinFecha, sinFecha),
-      ],
+      itemCount: filas.length,
+      itemBuilder: (context, i) => filas[i](),
     );
   }
 }
@@ -169,12 +180,16 @@ class _Tarjeta extends ConsumerWidget {
     required this.tono,
     required this.nombres,
     required this.alAbrir,
+    this.conVenta = false,
     this.alPonerFecha,
   });
 
   final EntregaPendiente entrega;
   final TonoDeEntrega tono;
   final Map<String, String>? nombres;
+
+  /// La venta tiene más de una tarjeta (una por cita): el detalle dice su número.
+  final bool conVenta;
   final VoidCallback alAbrir;
   final VoidCallback? alPonerFecha;
 
@@ -198,6 +213,7 @@ class _Tarjeta extends ConsumerWidget {
         entrega,
         direccion: rotulo?.direccion ?? '',
         nombres: nombres,
+        conVenta: conVenta,
       ),
       alAbrir: alAbrir,
       alPonerFecha: alPonerFecha,

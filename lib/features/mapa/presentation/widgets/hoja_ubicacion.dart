@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../auth/presentation/providers/estado_cuenta_providers.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/espacio.dart';
@@ -70,10 +71,11 @@ Future<SalidaModificarUbicacion?> mostrarHojaUbicacion(
   required String colportorId,
   required String ubicacionId,
   double? distanciaMetros,
-}) => showModalBottomSheet<SalidaModificarUbicacion>(
+}) => mostrarHojaInferior<SalidaModificarUbicacion>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
+  // Pinta su propio fondo y se arrastra: el `SafeArea` va adentro de su `Material` (ver abajo).
+  conBarraInferior: false,
   backgroundColor: Colors.transparent,
   barrierColor: Colors.black26,
   builder: (_) => HojaUbicacion(
@@ -189,39 +191,44 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
           elevation: 8,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           clipBehavior: Clip.antiAlias,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              ubicacion.when(
-                loading: () => _Cuerpo(
-                  controlador: controlador,
-                  alCerrar: _cerrar,
-                  hijos: const [
-                    _Mensaje(clave: ClavesHojaUbicacion.cargando, texto: TextosEspacios.cargando),
-                  ],
+          // El fondo llega hasta el borde de la pantalla; la lista y la tarjeta de «reactivado» quedan
+          // encima de la barra de navegación del sistema (#717).
+          child: SafeArea(
+            top: false,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ubicacion.when(
+                  loading: () => _Cuerpo(
+                    controlador: controlador,
+                    alCerrar: _cerrar,
+                    hijos: const [
+                      _Mensaje(clave: ClavesHojaUbicacion.cargando, texto: TextosEspacios.cargando),
+                    ],
+                  ),
+                  error: (_, _) => _Cuerpo(
+                    controlador: controlador,
+                    alCerrar: _cerrar,
+                    hijos: [
+                      _ErrorLectura(
+                        texto: TextosEspacios.errorUbicacion,
+                        alReintentar: () =>
+                            ref.invalidate(ubicacionDeLaHojaProvider(widget.ubicacionId)),
+                      ),
+                    ],
+                  ),
+                  data: (u) => u == null
+                      ? _Cuerpo(
+                          controlador: controlador,
+                          alCerrar: _cerrar,
+                          hijos: const [_Mensaje(texto: TextosEspacios.errorUbicacion)],
+                        )
+                      : _contenido(context, u, controlador),
                 ),
-                error: (_, _) => _Cuerpo(
-                  controlador: controlador,
-                  alCerrar: _cerrar,
-                  hijos: [
-                    _ErrorLectura(
-                      texto: TextosEspacios.errorUbicacion,
-                      alReintentar: () =>
-                          ref.invalidate(ubicacionDeLaHojaProvider(widget.ubicacionId)),
-                    ),
-                  ],
-                ),
-                data: (u) => u == null
-                    ? _Cuerpo(
-                        controlador: controlador,
-                        alCerrar: _cerrar,
-                        hijos: const [_Mensaje(texto: TextosEspacios.errorUbicacion)],
-                      )
-                    : _contenido(context, u, controlador),
-              ),
-              if (_reactivado case final aviso?)
-                Positioned(left: 12, right: 12, bottom: 12, child: _tarjetaReactivado(aviso)),
-            ],
+                if (_reactivado case final aviso?)
+                  Positioned(left: 12, right: 12, bottom: 12, child: _tarjetaReactivado(aviso)),
+              ],
+            ),
           ),
         );
       },

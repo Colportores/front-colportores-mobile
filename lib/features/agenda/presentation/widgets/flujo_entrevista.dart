@@ -1026,8 +1026,9 @@ abstract final class FlujoEntrevista {
                 guardada: guardada,
                 nombre: cliente.nombre,
                 conEntregarAhora: pendienteDeEntregar,
-                // Lo pendiente de antes ya tiene su cita: no se agenda otra para el libro nuevo.
-                conEntregarOtroDia: pendienteDeEntregar && !citas.entregaAgendada,
+                // Siempre: el libro nuevo tiene su propia cita aunque lo de antes ya tenga la suya
+                // (decisión de Cristian del 11/11, «Entrega cita»).
+                conEntregarOtroDia: pendienteDeEntregar,
                 conCobro: cobrar != null,
                 crece: TextosDelCierreQueCrece(
                   eyebrow: TextosVentaQueCrece.eyebrowCierre(numero),
@@ -1089,11 +1090,8 @@ abstract final class FlujoEntrevista {
         break;
       }
       // Sin entregar el libro nuevo y sin fecha, se pide antes de la cobranza, como en una venta
-      // (42B·01F y 01G). Si lo de antes ya tiene su cita, no se agenda otra.
-      if (entrega != EntregaDelCierre.completa &&
-          diferida == null &&
-          !citas.entregaAgendada &&
-          contextoFirme.mounted) {
+      // (42B·01F y 01G). Lo de antes conserva su cita; el libro nuevo tiene la suya («Entrega cita»).
+      if (entrega != EntregaDelCierre.completa && diferida == null && contextoFirme.mounted) {
         diferida = await _entregarOtroDia(
           contextoFirme,
           guardada: guardada,
@@ -1129,10 +1127,10 @@ abstract final class FlujoEntrevista {
     return true;
   }
 
-  /// Las citas que ya tiene la venta. Si no se pueden leer, como si lo de antes tuviera su entrega
-  /// agendada (no se agenda otra) y sin cobranza (se pregunta: mejor de más que una deuda sin cita).
+  /// Las citas que ya tiene la venta. Si no se pueden leer, sin cobranza (se pregunta: mejor de más que
+  /// una deuda sin cita).
   static Future<CitasDeLaVenta> _citasDe(ProviderContainer ref, String ventaId) async {
-    const sinSaber = (cobranzaAgendada: false, entregaAgendada: true);
+    const sinSaber = (cobranzaAgendada: false);
     try {
       return (await ref.read(ventaQueCreceRepositoryProvider).citasDe(ventaId)).fold(
         (_) => sinSaber,

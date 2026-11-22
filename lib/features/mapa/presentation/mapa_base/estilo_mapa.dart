@@ -58,6 +58,14 @@ abstract final class ConstructorEstiloMapa {
   static const capaCuadradoRespaldo = 'colportores:cuadrado-respaldo';
   static const capaCuadradoNumero = 'colportores:cuadrado-numero';
   static const capaNuevo = 'colportores:nuevo';
+
+  /// El aro de las casas fuera del área (#713): una capa por fuente, por debajo de los marcadores.
+  /// No responden al toque (la casa se toca por su marcador).
+  static const capaFueraDelArea = 'colportores:fuera-del-area';
+  static const capaFueraDelAreaLibres = 'colportores:fuera-del-area-libres';
+
+  /// La propiedad de un punto fuera del área ([PuntoMapa.fueraDelArea]).
+  static const propiedadFueraDelArea = 'fuera';
   static const capaGps = 'colportores:gps';
 
   /// El radio del círculo de una candidata (en px): con una letra y con dos («AA», «AB»…).
@@ -190,7 +198,18 @@ abstract final class ConstructorEstiloMapa {
     fuentes[fuentePuntos] = {
       'type': 'geojson',
       'data': coleccionPuntos(config.puntos),
-      if (config.agruparPuntos) ...{'cluster': true, 'clusterRadius': 44, 'clusterMaxZoom': 17},
+      if (config.agruparPuntos) ...{
+        'cluster': true,
+        'clusterRadius': 44,
+        'clusterMaxZoom': 17,
+        // Cuántas casas del grupo no están atenuadas: un grupo es tenue si todas lo son (06C·03).
+        'clusterProperties': {
+          propiedadVivos: [
+            '+',
+            ['case', _estaAtenuado, 0, 1],
+          ],
+        },
+      },
     };
     fuentes[fuentePuntosLibres] = {'type': 'geojson', 'data': coleccionPuntosLibres(config.puntos)};
     fuentes[fuentePrecision] = {'type': 'geojson', 'data': poligonoPrecision(config.precision)};
@@ -202,7 +221,10 @@ abstract final class ConstructorEstiloMapa {
     };
 
     estilo['sources'] = fuentes;
-    estilo['layers'] = [...capas, ..._capasPropias(config, conRecursos: conRecursos)];
+    estilo['layers'] = [
+      ...capas,
+      ..._capasPropias(config, conRecursos: conRecursos).map(_conAtenuado),
+    ];
     return jsonEncode(estilo);
   }
 
@@ -270,6 +292,8 @@ abstract final class ConstructorEstiloMapa {
                 imagenes.contains(MarcadorCercano.nombre(p.etiqueta!, p.variante)))
               'imagen': MarcadorCercano.nombre(p.etiqueta!, p.variante),
             ..._propiedadesDeEstado(p, imagenes),
+            if (p.atenuado) propiedadAtenuado: true,
+            if (p.fueraDelArea) propiedadFueraDelArea: true,
           },
         },
     ],
@@ -374,6 +398,58 @@ abstract final class ConstructorEstiloMapa {
     };
   }
 
+  /// La propiedad de un punto atenuado ([PuntoMapa.atenuado]) y la que suma un grupo con las casas
+  /// suyas que no lo están.
+  static const propiedadAtenuado = 'atenuado';
+  static const propiedadVivos = 'vivos';
+
+  /// La opacidad de lo atenuado (canvas 06C·03: `opacity: .3`).
+  static const opacidadAtenuado = .3;
+
+  static const List<Object?> _estaAtenuado = [
+    '==',
+    ['get', propiedadAtenuado],
+    true,
+  ];
+
+  /// Las propiedades de opacidad de cada tipo de capa de puntos.
+  static const _opacidades = {
+    'circle': ['circle-opacity', 'circle-stroke-opacity'],
+    'symbol': ['icon-opacity', 'text-opacity'],
+  };
+
+  /// [capa] con su opacidad multiplicada por la del atenuado, si dibuja puntos: el punto atenuado (o
+  /// el grupo sin ninguna casa viva) se ve a [opacidadAtenuado] de lo que se veía. Las demás capas
+  /// (zonas, precisión, cercanía) no cambian.
+  static Map<String, dynamic> _conAtenuado(Map<String, dynamic> capa) {
+    final fuente = capa['source'];
+    final propiedades = _opacidades[capa['type']];
+    if ((fuente != fuentePuntos && fuente != fuentePuntosLibres) || propiedades == null) {
+      return capa;
+    }
+    final filtro = capa['filter'];
+    final esGrupo =
+        filtro is List && filtro.length == 2 && filtro[0] == 'has' && filtro[1] == 'point_count';
+    final List<Object?> factor = esGrupo
+        ? [
+            'case',
+            [
+              '==',
+              ['get', propiedadVivos],
+              0,
+            ],
+            opacidadAtenuado,
+            1,
+          ]
+        : ['case', _estaAtenuado, opacidadAtenuado, 1];
+    final paint = {...?(capa['paint'] as Map<String, dynamic>?)};
+    for (final propiedad in propiedades) {
+      final actual = paint[propiedad];
+      paint[propiedad] = actual == null ? factor : ['*', actual, factor];
+    }
+    return {...capa, 'paint': paint};
+  }
+
   static const List<Object?> _noEsGrupo = [
     '!',
     ['has', 'point_count'],
@@ -442,6 +518,48 @@ abstract final class ConstructorEstiloMapa {
     'text-size': 12,
     'text-allow-overlap': true,
     'text-ignore-placement': true,
+  };
+
+  static const List<Object?> _estaFueraDelArea = [
+    '==',
+    ['get', propiedadFueraDelArea],
+    true,
+  ];
+
+  /// El radio del aro de una casa fuera del área: un poco más grande que su marcador, según cómo se
+  /// dibuja (el cuadrado de M·02 mide 40 dp; el seleccionado lleva su aro doble).
+  static const List<Object?> _radioFueraDelArea = [
+    'match',
+    ['get', 'estilo'],
+    'cuadradoSeleccionado',
+    radioFueraDelAreaCuadradoSeleccionado,
+    'cuadrado',
+    radioFueraDelAreaCuadrado,
+    'seleccionado',
+    ['+', _radioPorEtiqueta, 10],
+    radioFueraDelArea,
+  ];
+
+  /// Los radios del aro «fuera del área» (en px): alrededor de un punto, de un cuadrado de M·02 y del
+  /// cuadrado elegido (con su aro doble).
+  static const radioFueraDelArea = 17.0;
+  static const radioFueraDelAreaCuadrado = 26.0;
+  static const radioFueraDelAreaCuadradoSeleccionado = 30.0;
+
+  /// El aro de las casas fuera del área de [fuente]: un disco blanco translúcido (contraste sobre
+  /// cualquier fondo) con el borde ámbar. Va por debajo del marcador.
+  static Map<String, dynamic> _aroFueraDelArea(String id, String fuente, String blanco) => {
+    'id': id,
+    'type': 'circle',
+    'source': fuente,
+    'filter': ['all', _noEsGrupo, _estaFueraDelArea],
+    'paint': {
+      'circle-color': blanco,
+      'circle-opacity': .6,
+      'circle-radius': _radioFueraDelArea,
+      'circle-stroke-width': 3,
+      'circle-stroke-color': _hex(ColoresMapa.fueraDelArea),
+    },
   };
 
   static List<Map<String, dynamic>> _capasPropias(
@@ -536,6 +654,9 @@ abstract final class ConstructorEstiloMapa {
           'line-dasharray': [4, 3],
         },
       },
+      // #713: el aro de las casas fuera del área, debajo de todos los marcadores.
+      _aroFueraDelArea(capaFueraDelArea, fuentePuntos, blanco),
+      _aroFueraDelArea(capaFueraDelAreaLibres, fuentePuntosLibres, blanco),
       {
         'id': 'colportores:contexto-sombra',
         'type': 'circle',

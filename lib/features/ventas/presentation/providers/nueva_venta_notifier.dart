@@ -123,10 +123,15 @@ final class NuevaVentaState extends Equatable {
     this.falla,
     this.guardada,
     this.sumaAVenta = false,
+    this.motivoPrevio,
   });
 
   /// Se suma a una venta abierta (42B·09C): no hay talonario nuevo y los misioneros no van.
   final bool sumaAVenta;
+
+  /// El motivo del monto a mano que ya tiene la venta a la que se suma (42B·09C); el nuevo se le une
+  /// (decisión de Cristian del 11/11, «Dos motivos»). `null` en una venta nueva o sin motivo.
+  final String? motivoPrevio;
 
   final String talonario;
 
@@ -169,6 +174,16 @@ final class NuevaVentaState extends Equatable {
     motivo: motivo,
   );
 
+  /// El motivo escrito no entra junto al que la venta ya tenía (tope de 500 sobre el texto unido): no se
+  /// registra y el campo dice cuántos caracteres quedan ([lugarParaElMotivo]).
+  bool get motivoNoEntra =>
+      cambiandoElMonto &&
+      montoManual != totalCalculado &&
+      ReglasDeVenta.motivoNoEntra(motivoPrevio, motivo);
+
+  /// Cuántos caracteres le quedan al motivo nuevo junto al que la venta ya tenía.
+  int get lugarParaElMotivo => ReglasDeVenta.lugarParaElMotivo(motivoPrevio);
+
   int get totalACobrar => (cambiandoElMonto ? montoManual : null) ?? totalCalculado;
 
   bool get talonarioVacio => talonario.trim().isEmpty;
@@ -187,7 +202,8 @@ final class NuevaVentaState extends Equatable {
       (sumaAVenta ? !llevaMisioneros : !talonarioVacio && talonarioRepetido == null) &&
       cobraAlgo &&
       montoValido &&
-      !motivoFalta;
+      !motivoFalta &&
+      !motivoNoEntra;
 
   /// La cantidad de [productoId] (cualquiera sea su forma de cobro) que ya está en la venta.
   int cantidadDe(String productoId) {
@@ -221,6 +237,7 @@ final class NuevaVentaState extends Equatable {
     falla: sinFalla ? null : (falla ?? this.falla),
     guardada: guardada ?? this.guardada,
     sumaAVenta: sumaAVenta,
+    motivoPrevio: motivoPrevio,
   );
 
   @override
@@ -238,6 +255,7 @@ final class NuevaVentaState extends Equatable {
     falla,
     guardada,
     sumaAVenta,
+    motivoPrevio,
   ];
 }
 
@@ -255,7 +273,11 @@ class NuevaVentaNotifier extends Notifier<NuevaVentaState> {
   @override
   NuevaVentaState build() {
     _ventaId = ref.read(generadorIdVentaProvider)();
-    return NuevaVentaState(sumaAVenta: args.creceSobre != null);
+    final crece = args.creceSobre;
+    return NuevaVentaState(
+      sumaAVenta: crece != null,
+      motivoPrevio: crece != null && crece.tieneMotivo ? crece.motivoMontoManual : null,
+    );
   }
 
   String _clave() => 'r${_siguienteClave++}';

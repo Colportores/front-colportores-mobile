@@ -20,6 +20,7 @@ final class DiferirEntregaParams extends Equatable {
     required this.fechaPrevista,
     this.productos = const [],
     this.soloDesde,
+    this.entregaIds,
   });
 
   final String ventaId;
@@ -40,8 +41,19 @@ final class DiferirEntregaParams extends Equatable {
   /// pendiente de antes conserva su fecha. `null` = toda la venta.
   final DateTime? soloDesde;
 
+  /// Solo estas filas pendientes («Poner fecha» de un grupo de la venta, 27C·02): lo de otra cita de la
+  /// venta no se toca. `null` = todas (o las de [soloDesde]).
+  final Set<String>? entregaIds;
+
   @override
-  List<Object?> get props => [ventaId, colportorId, fechaPrevista, productos, soloDesde];
+  List<Object?> get props => [
+    ventaId,
+    colportorId,
+    fechaPrevista,
+    productos,
+    soloDesde,
+    entregaIds,
+  ];
 }
 
 /// Lo que devuelve [DiferirEntregaUseCase]: la entrega guardada y qué pasó con el aviso de la cita.
@@ -72,7 +84,9 @@ final class ResultadoDiferirEntrega extends Equatable {
 ///    [ResultadoDiferirEntrega.recordatorio].
 ///
 /// Es idempotente: repetir la misma fecha no escribe nada, y una fecha distinta **mueve** la cita que
-/// ya había (nunca hay dos citas vivas de la misma venta). Todo es local: sin red se completa.
+/// ya tenían esos libros. Una venta tiene **una cita viva por cada grupo de libros diferido** (decisión
+/// de Cristian del 11/11, «Entrega cita»): lo que se suma a una venta abierta ([soloDesde]) tiene su
+/// propia cita y no mueve la de lo de antes. Todo es local: sin red se completa.
 final class DiferirEntregaUseCase
     implements UseCase<ResultadoDiferirEntrega, DiferirEntregaParams> {
   DiferirEntregaUseCase(
@@ -129,6 +143,7 @@ final class DiferirEntregaUseCase
       filasNuevas: filasNuevas,
       idDeLaCita: _generarId(),
       soloDesde: params.soloDesde,
+      entregaIds: params.entregaIds,
     );
     return guardada.fold(
       (falla) async => Left<Failure, ResultadoDiferirEntrega>(falla),
@@ -147,6 +162,14 @@ final class DiferirEntregaUseCase
 
   Future<ResultadoRecordatorio?> _programar(EntregaDiferida entrega, DateTime ahora) async {
     final cita = entrega.cita;
+    // Una cita que se quedó sin libros (pasaron a otra a la misma hora) se canceló: su aviso no suena.
+    for (final id in entrega.citasCanceladas) {
+      try {
+        await _recordatorios.cancelar(id);
+      } on Object {
+        // La entrega ya está guardada: un aviso de más no la deshace.
+      }
+    }
     try {
       if (cita.fechaProgramada.isBefore(_alMinuto(ahora))) {
         // Hoy, pero la hora ya pasó: sin aviso, y el que hubiera de antes no tiene que sonar.

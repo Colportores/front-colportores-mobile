@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/agenda/domain/repositories/consulta_agenda_repository.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/contexto_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/situacion_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
@@ -103,6 +104,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
   List<ClaveDeLaCasa>? lecturasContexto,
   FutureOr<void> Function(ContextoDeVisita)? registrarVisita,
   FutureOr<void> Function(ContextoDeCobro)? cobrar,
+  ConsultaAgendaRepository? agendas,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -125,6 +127,7 @@ Future<MontajeMapaUbicaciones> montarMapaUbicaciones(
           lecturas: lecturasContexto,
           registrarVisita: registrarVisita,
           cobrar: cobrar,
+          agendas: agendas,
         ),
         ...otrosOverrides,
         if (arnes != null)

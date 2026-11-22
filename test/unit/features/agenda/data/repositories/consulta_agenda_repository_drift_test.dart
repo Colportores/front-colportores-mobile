@@ -7,6 +7,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda
 import 'package:colportores_mobile/features/agenda/domain/entities/item_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -266,5 +267,38 @@ void main() {
     )..where((p) => p.id.equals('per-1'))).write(const PersonasCompanion(nombre: Value('Beatriz')));
     await pumpEventQueue();
     expect(emisiones.last.first.nombrePersona, 'Beatriz Martínez');
+  });
+
+  test('trae el punto del lugar y la venta, el monto y la entrega de la cita (hoja «Agendados» del '
+      'mapa, #407)', () async {
+    await sembrarUbicacion(db, id: 'ub-alt', lat: -34.91, lon: -56.17);
+    await insertarAgenda(
+      db,
+      Agenda(
+        id: 'cuota',
+        espacioId: 'esp-1',
+        espacioPersonaId: 'ep-1',
+        tipo: TipoAgenda.cobranza,
+        fechaProgramada: DateTime.utc(2026, 10, 29, 15),
+        ubicacionAltId: 'ub-alt',
+        colportorId: 'col-1',
+        ventaId: 'v-1',
+        montoPrevistoCentavos: 145000,
+        auditoria: auditoriaDe(),
+      ),
+    );
+    // `insertarAgenda` no escribe la venta: se completa acá.
+    await (db.update(db.agendas)..where((a) => a.id.equals('cuota'))).write(
+      const AgendasCompanion(ventaId: Value('v-1'), montoPrevisto: Value(145000)),
+    );
+
+    final item = (await leer()).single;
+
+    expect(item.casa?.coordenadas, const Coordenadas(lat: -34.9, lon: -56.16));
+    expect(item.alternativa?.coordenadas, const Coordenadas(lat: -34.91, lon: -56.17));
+    expect(item.lugar?.ubicacionId, 'ub-alt');
+    expect(item.agenda.ventaId, 'v-1');
+    expect(item.agenda.montoPrevistoCentavos, 145000);
+    expect(item.agenda.esCuota, isTrue);
   });
 }

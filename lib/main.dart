@@ -398,6 +398,7 @@ Future<void> main() async {
               personaId: datos.personaId,
               espacioId: datos.espacioId,
               ventaId: datos.ventaId,
+              fechaPrevista: datos.fechaPrevista,
             );
           },
         ),

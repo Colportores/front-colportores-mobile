@@ -128,7 +128,7 @@ class VentaQueCreceEnMemoria implements VentaQueCreceRepository {
 
   @override
   Future<Either<Failure, CitasDeLaVenta>> citasDe(String ventaId) async =>
-      Right(citas ?? (cobranzaAgendada: false, entregaAgendada: false));
+      Right(citas ?? (cobranzaAgendada: false));
 
   @override
   Future<Either<Failure, VentaQueCrecio>> sumar(

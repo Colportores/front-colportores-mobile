@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../textos_recuperacion.dart';
 
@@ -7,10 +8,9 @@ import '../textos_recuperacion.dart';
 /// se puede traer después desde Configuración, pero solo mientras el teléfono no tenga nada cargado.
 /// Devuelve `true` si la persona confirma «Empezar sin recuperar»; `false` o `null` si toca «Volver»
 /// o cierra la hoja.
-Future<bool?> mostrarHojaEmpezarSinRecuperar(BuildContext context) => showModalBottomSheet<bool>(
+Future<bool?> mostrarHojaEmpezarSinRecuperar(BuildContext context) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: false,
   backgroundColor: Colors.white,
   shape: const RoundedRectangleBorder(

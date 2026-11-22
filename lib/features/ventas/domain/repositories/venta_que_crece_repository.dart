@@ -12,9 +12,9 @@ import '../entities/venta_item.dart';
 /// (42B·09), y así los dobles de la venta de siempre no cambian.
 /// Las citas `PROGRAMADA` que ya tiene una venta: deciden qué ofrece 42B·09D después de sumar. Una
 /// cobranza agendada de esa persona (con la venta o sin venta) hace que no se vuelva a preguntar
-/// «¿Cuándo volvés a cobrar?»; una entrega agendada de la venta es lo pendiente de antes, que no se
-/// toca.
-typedef CitasDeLaVenta = ({bool cobranzaAgendada, bool entregaAgendada});
+/// «¿Cuándo volvés a cobrar?». Una entrega agendada de la venta no cuenta: el libro nuevo tiene su
+/// propia cita (decisión de Cristian del 11/11, «Entrega cita»).
+typedef CitasDeLaVenta = ({bool cobranzaAgendada});
 
 abstract interface class VentaQueCreceRepository {
   /// Las citas que ya tiene la venta [ventaId] (ver [CitasDeLaVenta]). Solo lee.

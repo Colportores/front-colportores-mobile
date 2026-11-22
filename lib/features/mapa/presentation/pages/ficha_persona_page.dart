@@ -26,6 +26,7 @@ import '../widgets/hoja_baja_persona.dart';
 import '../widgets/piezas_alta.dart';
 import '../widgets/piezas_ficha_persona.dart';
 import '../widgets/piezas_notas.dart';
+import '../widgets/proxima_visita_de_la_ficha.dart';
 import 'nota_persona_form_page.dart';
 import 'notas_de_persona_page.dart';
 
@@ -43,6 +44,8 @@ import 'notas_de_persona_page.dart';
 /// - Más de 100 movimientos: se muestran de a 100 con «Ver más».
 /// - «MOSTRAR» (32B·03) filtra el historial por estado: «Todo», «Con saldo» o «Entrega pendiente». No
 ///   se guarda: al reentrar vuelve a «Todo».
+/// - «PRÓXIMA VISITA» (23A·05) muestra la visita agendada que viene y ofrece «+ Agendar»: abre «Agendar
+///   visita» con la casa y la persona puestas y, al guardar, vuelve acá con la tarjeta.
 /// - Bajo la cuenta, las acciones rápidas de HU-VEN-005 (32B·01): «+ Agendar cobranza» abre «Agendar
 ///   visita» de cobranza con la casa y la persona puestas, y «Registrar entrega» abre la pantalla de
 ///   entregas pendientes (`registrarEntregaDesdeLaFichaProvider`; sin destino no se dibuja). No están
@@ -196,9 +199,9 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     await editar(widget.personaId);
   });
 
-  /// «+ Agendar cobranza» (32B·01, HU-VEN-005): «Agendar visita» de cobranza con la casa y la persona ya
-  /// puestas. Al guardar vuelve acá con el aviso «Agendada…».
-  Future<void> _agendarCobranza() => _unaAlaVez(() async {
+  /// «Agendar visita» con la casa y la persona ya puestas, del [tipo] que se pida. Al guardar vuelve acá
+  /// con el aviso «Agendada…».
+  Future<void> _abrirAgenda({TipoAgenda? tipo}) => _unaAlaVez(() async {
     if (frenaPorCuentaRestringida(context, ref)) return;
     // El vínculo de la persona con este depto: la agenda cuelga de él.
     final personas = await ref
@@ -216,9 +219,16 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
       espacioId: widget.espacioId,
       espacioPersonaId: vinculo.id,
       colportorId: widget.colportorId,
-      tipo: TipoAgenda.cobranza,
+      tipo: tipo ?? TipoAgenda.entrevista,
     );
   });
+
+  /// «+ Agendar» de «PRÓXIMA VISITA» (23A·05): «Agendar visita» con la casa y la persona ya puestas.
+  Future<void> _agendar() => _abrirAgenda();
+
+  /// «+ Agendar cobranza» (32B·01, HU-VEN-005): «Agendar visita» de cobranza con la casa y la persona ya
+  /// puestas.
+  Future<void> _agendarCobranza() => _abrirAgenda(tipo: TipoAgenda.cobranza);
 
   /// «Registrar entrega» (32B·01, HU-VEN-005): la pantalla de entregas pendientes de esta persona. Al
   /// volver, la ficha, que lee en vivo, ya muestra lo entregado.
@@ -226,7 +236,12 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     final destino = ref.read(registrarEntregaDesdeLaFichaProvider);
     if (destino == null) return;
     if (frenaPorCuentaRestringida(context, ref)) return;
-    await destino((personaId: widget.personaId, espacioId: widget.espacioId, ventaId: null));
+    await destino((
+      personaId: widget.personaId,
+      espacioId: widget.espacioId,
+      ventaId: null,
+      fechaPrevista: null,
+    ));
   });
 
   /// «Entregar» en la tarjeta de una entrega pendiente (32B·01, HU-VEN-005): el mismo destino que
@@ -240,9 +255,10 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
       personaId: widget.personaId,
       espacioId: widget.espacioId,
       ventaId: entrega.ventaId,
+      // La fecha de la tarjeta: si la venta tiene dos entregas (una por cita), se abre esta.
+      fechaPrevista: entrega.pendiente ? entrega.fecha : null,
     ));
   });
-
   Future<void> _darDeBaja(FichaDePersona ficha) => _unaAlaVez(() async {
     if (frenaPorCuentaRestringida(context, ref)) return;
     await mostrarHojaBajaPersona(context, persona: ficha.persona);
@@ -369,6 +385,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     } else {
       cuerpo = _CuerpoDeLaFicha(
         ficha: ficha,
+        colportorId: widget.colportorId,
         ahora: ahora,
         telefonoVisible: _telefonoVisible,
         mostrar: _mostrar,
@@ -390,6 +407,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
             ? null
             : _devolver,
         alRegistrarVisita: () => _registrarVisita(ficha),
+        alAgendar: _abriendo ? null : _agendar,
         alSumarUnLibro: ref.watch(sumarUnLibroDesdeLaCasaProvider) == null
             ? null
             : () => _sumarUnLibro(ficha),
@@ -574,6 +592,7 @@ class _TituloDeLaPersona extends StatelessWidget {
 class _CuerpoDeLaFicha extends StatelessWidget {
   const _CuerpoDeLaFicha({
     required this.ficha,
+    required this.colportorId,
     required this.ahora,
     required this.telefonoVisible,
     required this.mostrar,
@@ -590,6 +609,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     required this.alElegirFiltro,
     required this.alDevolver,
     required this.alRegistrarVisita,
+    required this.alAgendar,
     required this.alSumarUnLibro,
     required this.conEntrega,
     required this.ocupado,
@@ -601,6 +621,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
   });
 
   final FichaDePersona ficha;
+  final String colportorId;
   final DateTime ahora;
   final bool telefonoVisible;
   final int mostrar;
@@ -619,6 +640,9 @@ class _CuerpoDeLaFicha extends StatelessWidget {
   /// `null`: las ventas no se tocan (ficha de solo lectura, sin destino o ya abriéndose algo).
   final ValueChanged<String>? alDevolver;
   final VoidCallback alRegistrarVisita;
+
+  /// «+ Agendar» de «PRÓXIMA VISITA» (23A·05); `null` = apagado (ya se está abriendo algo).
+  final VoidCallback? alAgendar;
 
   /// «Sumar un libro» (42B·09A); `null` = no se ofrece (sin destino).
   final VoidCallback? alSumarUnLibro;
@@ -733,6 +757,16 @@ class _CuerpoDeLaFicha extends StatelessWidget {
           ] else
             const SinMovimientosDeCuenta(),
         ],
+        // 23A·05: la visita que viene. La ficha vacía (32B·05) no ofrece agendar: solo muestra una visita
+        // que ya exista.
+        ProximaVisitaDeLaFicha(
+          personaId: persona.id,
+          colportorId: colportorId,
+          ahora: ahora,
+          soloLectura: soloLectura,
+          alAgendar: lugar == null ? null : alAgendar,
+          mostrarSinVisita: !vacia,
+        ),
         if (mostrarNotas) ...[
           const SizedBox(height: 14),
           _SeccionDeNotas(

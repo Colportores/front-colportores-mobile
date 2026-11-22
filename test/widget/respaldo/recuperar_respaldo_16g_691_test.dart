@@ -12,6 +12,7 @@ import 'package:colportores_mobile/core/arranque/reinicio_de_raiz.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
+import 'package:colportores_mobile/features/respaldo/domain/entities/estado_respaldo_drive.dart';
 import 'package:colportores_mobile/features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -302,6 +303,61 @@ void main() {
       expect(_asistente, findsOneWidget);
       expect(_configuracion, findsNothing);
       expect(arnes.resuelta.desmarcas, 1);
+    });
+
+    testWidgets('dado que conecta para recuperar (#707, «Resp. vacío»), cuando queda conectado, '
+        'no sube el teléfono vacío ni avisa «respaldo hecho» (16D·04)', (tester) async {
+      // Si se pidiera, saldría bien: así se vería el aviso de «primer respaldo hecho».
+      arnes.primerRespaldo.resultado = true;
+      await _abrirApp(tester, arnes);
+      await _irAConfiguracion(tester);
+      await _tocar(tester, filaRecuperarRespaldo);
+
+      await _tocar(tester, _conectarConGoogle);
+      await _asentar(tester);
+
+      expect(arnes.primerRespaldo.llamadas, 0, reason: 'el asistente cuenta solo los viejos');
+      expect(_asistente, findsOneWidget);
+      expect(find.byKey(const Key('configuracion_drive_conectado')), findsNothing);
+      expect(find.text('Listo. Hicimos el primer respaldo en tu Drive.'), findsNothing);
+      expect(_raiz(tester).read(estadoRespaldoDriveProvider).value, isA<DriveConectada>());
+    });
+
+    testWidgets('dado que reintenta tras cancelar en Google, cuando conecta para recuperar, '
+        'tampoco hace el primer respaldo (#707)', (tester) async {
+      arnes.primerRespaldo.resultado = true;
+      arnes.drive.google.errorAlConectar = falloDeGoogle(GoogleSignInExceptionCode.canceled);
+      await _abrirApp(tester, arnes);
+      await _irAConfiguracion(tester);
+      await _tocar(tester, filaRecuperarRespaldo);
+      await _tocar(tester, _conectarConGoogle);
+      expect(_avisoCancelado, findsOneWidget);
+
+      arnes.drive.google.errorAlConectar = null;
+      await _tocar(tester, filaRecuperarRespaldo);
+      await _tocar(tester, _conectarConGoogle);
+      await _asentar(tester);
+
+      expect(_asistente, findsOneWidget);
+      expect(arnes.primerRespaldo.llamadas, 0);
+    });
+
+    testWidgets('dado que conecta desde la fila «Cuenta Drive», cuando queda conectado, '
+        'sí hace el primer respaldo y lo avisa (HU-SYNC-004, #707)', (tester) async {
+      arnes.primerRespaldo.resultado = true;
+      await _abrirApp(tester, arnes);
+      await _irAConfiguracion(tester);
+      final filaDrive = find.byKey(const Key('configuracion_drive_fila'));
+      await tester.ensureVisible(filaDrive);
+      await _tocar(tester, filaDrive);
+
+      await _tocar(tester, _conectarConGoogle);
+      await _asentar(tester);
+
+      expect(arnes.primerRespaldo.llamadas, 1);
+      expect(find.text('Listo. Hicimos el primer respaldo en tu Drive.'), findsOneWidget);
+      expect(_asistente, findsNothing, reason: 'conectar no abre el asistente');
+      expect(arnes.resuelta.desmarcas, 0);
     });
 
     testWidgets('si cancela en Google: el aviso de 16D·07, no reinicia y puede volver a probar', (
