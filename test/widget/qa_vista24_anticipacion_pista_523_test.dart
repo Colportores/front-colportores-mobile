@@ -264,12 +264,16 @@ void main() {
       var fila = await _fila(tester);
       expect(fila.where((c) => c == _gris), isEmpty);
 
+      await tester.ensureVisible(_interruptor);
+      await tester.pumpAndSettle();
       await tester.tap(_interruptor);
       await tester.pumpAndSettle();
       fila = await _fila(tester);
       expect(fila.where((c) => c == _gris), isNotEmpty);
       expect(fila.where((c) => c == primario), isNotEmpty);
 
+      await tester.ensureVisible(_interruptor);
+      await tester.pumpAndSettle();
       await tester.tap(_interruptor);
       await tester.pumpAndSettle();
       fila = await _fila(tester);

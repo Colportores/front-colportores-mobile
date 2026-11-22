@@ -5,8 +5,8 @@ import '../../../agenda/domain/entities/anticipacion_recordatorio.dart';
 import 'aviso_notificaciones.dart';
 
 /// Tarjeta blanca con borde de las preferencias (el `toggle` y el `slider` del canvas, vista 24 B).
-class _Tarjeta extends StatelessWidget {
-  const _Tarjeta({required this.hijo});
+class TarjetaPreferencia extends StatelessWidget {
+  const TarjetaPreferencia({super.key, required this.hijo});
 
   final Widget hijo;
 
@@ -26,11 +26,24 @@ class _Tarjeta extends StatelessWidget {
   }
 }
 
-/// «Recordatorios de agenda» (24B·01): título, detalle y el interruptor. Todo el renglón se toca; el
-/// lector de pantalla lo anuncia como un interruptor con su estado.
-class InterruptorRecordatorios extends StatelessWidget {
-  const InterruptorRecordatorios({super.key, required this.activado, required this.onCambio});
+/// Un interruptor de las preferencias (24B·01): título, detalle opcional y el interruptor. Todo el
+/// renglón se toca; el lector de pantalla lo anuncia como un interruptor con su estado. Va dentro de
+/// una [TarjetaPreferencia].
+class InterruptorPreferencia extends StatelessWidget {
+  const InterruptorPreferencia({
+    super.key,
+    required this.titulo,
+    this.detalle,
+    required this.activado,
+    required this.onCambio,
+    this.interruptorKey,
+  });
 
+  /// La clave del `SwitchListTile` (los tests lo buscan por ella).
+  final Key? interruptorKey;
+
+  final String titulo;
+  final String? detalle;
   final bool activado;
   final ValueChanged<bool> onCambio;
 
@@ -38,32 +51,45 @@ class InterruptorRecordatorios extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>() ?? ColoresColportaje.unica;
-    return _Tarjeta(
-      hijo: SwitchListTile(
-        key: const Key('pref_recordatorios_interruptor'),
-        value: activado,
-        onChanged: onCambio,
-        contentPadding: const EdgeInsetsDirectional.symmetric(horizontal: 16, vertical: 4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text(
-          TextosNotificaciones.recordatoriosTitulo,
-          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          TextosNotificaciones.recordatoriosDetalle,
-          style: theme.textTheme.bodySmall?.copyWith(color: colores.gris),
-        ),
-        activeThumbColor: Colors.white,
-        activeTrackColor: theme.colorScheme.primary,
-        inactiveThumbColor: Colors.white,
-        inactiveTrackColor: const Color(0xFF90A0B7),
-        trackOutlineColor: WidgetStateProperty.resolveWith(
-          (estados) =>
-              estados.contains(WidgetState.selected) ? Colors.transparent : const Color(0xFF5B6B82),
-        ),
+    return SwitchListTile(
+      key: interruptorKey,
+      value: activado,
+      onChanged: onCambio,
+      contentPadding: const EdgeInsetsDirectional.symmetric(horizontal: 16, vertical: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: Text(titulo, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+      subtitle: detalle == null
+          ? null
+          : Text(detalle!, style: theme.textTheme.bodySmall?.copyWith(color: colores.gris)),
+      activeThumbColor: Colors.white,
+      activeTrackColor: theme.colorScheme.primary,
+      inactiveThumbColor: Colors.white,
+      inactiveTrackColor: const Color(0xFF90A0B7),
+      trackOutlineColor: WidgetStateProperty.resolveWith(
+        (estados) =>
+            estados.contains(WidgetState.selected) ? Colors.transparent : const Color(0xFF5B6B82),
       ),
     );
   }
+}
+
+/// «Recordatorios de agenda» (24B·01): título, detalle y el interruptor.
+class InterruptorRecordatorios extends StatelessWidget {
+  const InterruptorRecordatorios({super.key, required this.activado, required this.onCambio});
+
+  final bool activado;
+  final ValueChanged<bool> onCambio;
+
+  @override
+  Widget build(BuildContext context) => TarjetaPreferencia(
+    hijo: InterruptorPreferencia(
+      interruptorKey: const Key('pref_recordatorios_interruptor'),
+      titulo: TextosNotificaciones.recordatoriosTitulo,
+      detalle: TextosNotificaciones.recordatoriosDetalle,
+      activado: activado,
+      onCambio: onCambio,
+    ),
+  );
 }
 
 /// «Anticipación» (24B·01): minutos antes de la visita, de 5 a 120.
@@ -109,7 +135,7 @@ class _TarjetaAnticipacionState extends State<TarjetaAnticipacion> {
     final valor = TextosNotificaciones.anticipacionValor(_visible);
     final mas = AnticipacionRecordatorio.acotar(_visible + TarjetaAnticipacion.pasoAccesible);
     final menos = AnticipacionRecordatorio.acotar(_visible - TarjetaAnticipacion.pasoAccesible);
-    return _Tarjeta(
+    return TarjetaPreferencia(
       hijo: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
         child: Column(
