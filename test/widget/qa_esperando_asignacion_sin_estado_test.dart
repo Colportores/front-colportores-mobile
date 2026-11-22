@@ -275,7 +275,7 @@ void main() {
       await _entrarSinConexion(tester);
 
       expect(tester.widget<FilledButton>(_actualizar).onPressed, isNotNull);
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
       expect(find.byKey(const Key('espera_configuracion')), findsOneWidget);
     });
   });

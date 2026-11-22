@@ -14,7 +14,7 @@ class EntrevistaEnCurso extends Equatable {
   EntrevistaEnCurso({
     required this.colportorId,
     required this.espacioId,
-    required this.espacioPersonaId,
+    this.espacioPersonaId,
     required this.ids,
     required DateTime inicio,
     this.agendaId,
@@ -26,8 +26,10 @@ class EntrevistaEnCurso extends Equatable {
   /// El espacio (casa, depto o negocio) donde es la entrevista.
   final String espacioId;
 
-  /// Con quién (`espacio_persona.id`): lo pide la visita (`NOT NULL` en el servidor).
-  final String espacioPersonaId;
+  /// Con quién (`espacio_persona.id`), o `null` si la entrevista empezó **sin persona** («Todavía no sé
+  /// con quién», decisión de Cristian, 05/11, «Entrev. s/n»): la visita cuelga de la casa y el nombre se
+  /// pide recién si hay venta.
+  final String? espacioPersonaId;
 
   /// Los ids de la visita y su nota, generados **una vez** al empezar: un reintento al guardar
   /// repite los mismos y no duplica la visita.

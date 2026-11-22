@@ -2,8 +2,7 @@
 // del PR no cruzan: la matriz de tamaños (360x640 y 412x915) x texto 1,0 y 2,0 en cada estado con las
 // fuentes reales; si el lector de pantalla puede tocar cada control; los casos límite de las hojas; la
 // privacidad de la nota; y el flujo contra la DB real en memoria (la casa pasa a «Entrevista agendada»).
-// Cada hallazgo va con `skip` (se corre con `--dart-define=QA_HALLAZGOS=true`). Capturas solo con
-// `--dart-define=QA_CAPTURAS=true`, en `.dart_tool/qa_capturas/408_*.png`.
+// Capturas solo con `--dart-define=QA_CAPTURAS=true`, en `.dart_tool/qa_capturas/408_*.png`.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/database/app_database.dart';
@@ -27,9 +26,6 @@ import '../../helpers/campo_falsos.dart';
 import '../../helpers/logger_mudo.dart';
 import '../../helpers/persona_falsos.dart';
 import '../../helpers/qa_vista23_408_arnes.dart';
-
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-const _verHallazgos = _hallazgos ? false : true;
 
 String _sufijo(Size t, double e) => '${t.width.toInt()}x${t.height.toInt()}_x$e';
 
@@ -282,8 +278,8 @@ void main() {
       await tocar408(tester, boton408);
       // «Mañana 23:55» + 5 min tiene que ser «pasado mañana 00:00», no «mañana 00:00» (23 h antes).
       final fecha = a.fake!.recibidas.single.agenda.fechaProgramada.toLocal();
-      expect(fecha.isAfter(DateTime(2026, 10, 25)), isTrue);
-    }, skip: _verHallazgos); // skip: QA #408 — la hoja pasa de 23:55 a 00:00 sin avanzar el día.
+      expect(fecha, DateTime(2026, 10, 25));
+    });
   });
 
   group('doble toque y acciones superpuestas', () {
@@ -461,8 +457,7 @@ void main() {
               'el aviso rojo quedó fuera de la vista (arriba, $aviso): solo cambió la etiqueta del botón',
         );
       },
-      skip: _verHallazgos,
-    ); // skip: QA #408 — con el formulario desplazado el aviso de error queda fuera de vista.
+    );
   });
 
   group('teclado abierto', () {

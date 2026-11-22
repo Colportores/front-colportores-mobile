@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../jornada/presentation/formato_jornada.dart';
 import 'textos_entrevista.dart';
@@ -16,10 +17,9 @@ Future<bool?> mostrarHojaEntrevistaEnCurso(
   required String notaInicial,
   required ValueChanged<String> alEscribirNota,
   DateTime Function()? reloj,
-}) => showModalBottomSheet<bool>(
+}) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: false,
   barrierColor: Colors.transparent,
   backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -175,7 +175,9 @@ class _HojaEntrevistaEnCursoState extends State<HojaEntrevistaEnCurso> {
                 minLines: 2,
                 maxLines: 5,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(labelText: TextosEntrevista.campoNota),
+                // `label` y no `labelText`: el rótulo flotante de `labelText` se corta con «…» en una línea
+                // y a 200 % de letra pierde «OPCIONAL» (QA #450); como `Text` común se parte en dos.
+                decoration: const InputDecoration(label: Text(TextosEntrevista.campoNota)),
                 onChanged: widget.alEscribirNota,
               ),
             ],

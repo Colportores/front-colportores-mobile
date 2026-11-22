@@ -104,6 +104,7 @@ Future<_Escenario> _montar(
   TipoConexion? conexion,
   PendientesFalso? pendientes,
   bool ofreceIrALaCobranza = false,
+  FutureOr<Object?> Function(CobranzaPendiente)? irALaCobranza,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -130,6 +131,8 @@ Future<_Escenario> _montar(
         ),
         if (conexion != null) conexionProvider.overrideWith((ref) => Stream.value(conexion)),
         consultorPendientesUbicacionProvider.overrideWithValue(pendientes ?? PendientesFalso()),
+        if (irALaCobranza != null)
+          irALaCobranzaDesdeLaBajaProvider.overrideWithValue(irALaCobranza),
       ],
       child: MaterialApp(
         theme: temaClaro(),
@@ -2903,6 +2906,77 @@ void main() {
       expect(e.repo.bajas, isEmpty);
     });
 
+    const conDestino = CobranzaPendiente(
+      montoCentavos: 145000,
+      ventaId: 'v-1',
+      espacioId: 'esp-1',
+      espacioPersonaId: 'ep-1',
+    );
+
+    testWidgets(
+      'dado una cobranza con destino en la app, cuando elige «Ir a la cobranza», entonces '
+      'abre el cobro de esa venta y la edición sigue donde estaba',
+      (tester) async {
+        final abiertas = <CobranzaPendiente>[];
+        final e = await _montar(
+          tester,
+          irALaCobranza: (c) {
+            abiertas.add(c);
+            return true;
+          },
+          pendientes: PendientesFalso(const PendientesUbicacion(cobranzaPendiente: conDestino)),
+        );
+
+        await _tocar(tester, find.text('Dar de baja'));
+        expect(
+          find.text(
+            r'Tiene una cobranza pendiente de $U 1.450. Una casa con ventas no se puede dar de '
+            'baja. Si ya no existe, cobrá lo pendiente y avisale a tu coordinador.',
+          ),
+          findsOneWidget,
+          reason: 'sin plan de cuotas no se inventa un «N.ª cuota»',
+        );
+        await _tocar(tester, find.text('Ir a la cobranza'));
+
+        expect(abiertas, [conDestino]);
+        expect(e.salidas, isEmpty, reason: 'la edición no se cierra');
+        expect(find.text(TextosModificar.guardarCambios), findsOneWidget);
+        expect(e.repo.bajas, isEmpty);
+      },
+    );
+
+    testWidgets('dado que el cobro no se puede abrir, cuando elige «Ir a la cobranza», entonces lo '
+        'dice y la edición sigue abierta', (tester) async {
+      final e = await _montar(
+        tester,
+        irALaCobranza: (_) => throw StateError('sin sesión'),
+        pendientes: PendientesFalso(const PendientesUbicacion(cobranzaPendiente: conDestino)),
+      );
+
+      await _tocar(tester, find.text('Dar de baja'));
+      await _tocar(tester, find.text('Ir a la cobranza'));
+
+      expect(find.text('No pudimos abrir el cobro. Probá de nuevo.'), findsOneWidget);
+      expect(e.salidas, isEmpty);
+      expect(find.text(TextosModificar.guardarCambios), findsOneWidget);
+    });
+
+    testWidgets('dado una cobranza sin destino conocido (sin venta), entonces la app no ofrece '
+        '«Ir a la cobranza» aunque exista el destino', (tester) async {
+      await _montar(
+        tester,
+        irALaCobranza: (_) => true,
+        pendientes: PendientesFalso(
+          const PendientesUbicacion(cobranzaPendiente: CobranzaPendiente(montoCentavos: 145000)),
+        ),
+      );
+
+      await _tocar(tester, find.text('Dar de baja'));
+
+      expect(find.text('Ir a la cobranza'), findsNothing);
+      expect(find.text('Entendido'), findsOneWidget);
+    });
+
     testWidgets('dado una cobranza pendiente en una pantalla sin cobranzas, entonces solo ofrece '
         '«Entendido» y la edición sigue abierta', (tester) async {
       final e = await _montar(
@@ -2933,7 +3007,7 @@ void main() {
 
       expect(
         find.text(
-          'No podés dar de baja esta casa porque tiene ventas o visitas de otro colportor. '
+          'No podés dar de baja esta casa porque tiene ventas. '
           'Si ya no existe, avisale a tu coordinador.',
         ),
         findsOneWidget,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta;
 import '../../domain/entities/tipo_agenda.dart';
 import '../../domain/usecases/cancelar_agenda_use_case.dart';
@@ -20,10 +21,9 @@ Future<ResultadoCancelarAgenda?> mostrarHojaCancelarAgenda(
   BuildContext context, {
   required String agendaId,
   required TipoAgenda tipo,
-}) => showModalBottomSheet<ResultadoCancelarAgenda>(
+}) => mostrarHojaInferior<ResultadoCancelarAgenda>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // Sin arrastrar para cerrar: mientras la cancelación se escribe la hoja no se puede cerrar de
   // costado (el arrastre no pasa por el `PopScope`). Las salidas son «Volver», el atrás y el toque
   // afuera.
@@ -194,18 +194,24 @@ class _HojaCancelarAgendaState extends ConsumerState<HojaCancelarAgenda> {
         minimumSize: const Size.fromHeight(52),
       ),
       child: _enviando
-          ? const Row(
-              mainAxisSize: MainAxisSize.min,
-              spacing: 10,
-              children: [
-                ExcludeSemantics(
-                  child: SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          // Región viva: el lector anuncia «Cancelando…» cuando el botón cambia (QA #455).
+          ? Semantics(
+              liveRegion: true,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: 10,
+                children: [
+                  ExcludeSemantics(
+                    child: SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    ),
                   ),
-                ),
-                Flexible(child: Text(TextosCancelarAgenda.cancelando, textAlign: TextAlign.center)),
-              ],
+                  Flexible(
+                    child: Text(TextosCancelarAgenda.cancelando, textAlign: TextAlign.center),
+                  ),
+                ],
+              ),
             )
           : Text(etiqueta, textAlign: TextAlign.center),
     );

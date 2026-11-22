@@ -155,8 +155,14 @@ void main() {
 
       expect(e.repo.bajasRecibidas, isEmpty, reason: 'la primera confirmación no escribe');
       expect(find.text('¿Seguro?'), findsOneWidget);
+      // María debe y además espera 1 entrega: van las dos frases, la deuda primero (#509 P2).
       expect(
-        find.text(_m('La deuda de \$ 1.200 sigue en tu cuenta aunque María esté de baja.')),
+        find.text(
+          _m(
+            'La deuda de \$ 1.200 sigue en tu cuenta aunque María esté de baja. '
+            'La entrega pendiente no se cancela: queda registrada aunque María esté de baja.',
+          ),
+        ),
         findsOneWidget,
       );
       expect(find.text('Sí, dar de baja'), findsOneWidget);

@@ -117,7 +117,13 @@ void main() {
 
         expect(
           resultado,
-          const Left<Failure, Unit>(FailureValidacion(campos: {'email': 'El email no es válido'})),
+          const Left<Failure, Unit>(
+            FailureValidacion(
+              campos: {
+                'email': 'El email no es válido. Revisá que esté completo, como nombre@correo.com.',
+              },
+            ),
+          ),
         );
         verifyNever(() => repository.reenviarVerificacion(email: any(named: 'email')));
       });
@@ -133,7 +139,10 @@ void main() {
         test(
           'cuando el email «$email» está incompleto, marca el campo email con el texto de la '
           'pantalla',
-          () => afirmarEmailInvalido(email, 'El email no es válido'),
+          () => afirmarEmailInvalido(
+            email,
+            'El email no es válido. Revisá que esté completo, como nombre@correo.com.',
+          ),
         );
       }
 

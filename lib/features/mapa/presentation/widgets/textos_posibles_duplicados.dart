@@ -130,6 +130,21 @@ abstract final class TextosPosiblesDuplicados {
   static String noSePudieronUnir(int cantidad) =>
       'No se pudieron marcar $cantidad pares como duplicados. Probá de nuevo.';
 
+  // ------------------------------------------------- cuando el servidor rechaza la unión (#679)
+  /// El aviso de la tarjeta del par cuya unión rechazó el servidor con `UB003` (la que se iba a
+  /// conservar ya está dada de baja): el texto de la HU (HU-UBI-006).
+  static const unionRechazadaConservadaDeBaja =
+      'La ubicación que ibas a conservar ya está dada de baja. Revisá el par de nuevo.';
+
+  /// El aviso con cualquier otro código (decisión de Cristian, 10/11, «Unión rech.»).
+  static const unionRechazada =
+      'No pudimos unir estas dos ubicaciones. Quedaron separadas, como estaban. '
+      'Revisá el par de nuevo.';
+
+  /// El aviso de la tarjeta según el [codigo] con que el servidor rechazó la unión.
+  static String avisoUnionRechazada(String codigo) =>
+      codigo == 'UB003' ? unionRechazadaConservadaDeBaja : unionRechazada;
+
   /// La forma de una línea del aviso rojo, mientras está a la vista el «quedaron unidas en una»:
   /// «1 no se pudo unir» / «2 no se pudieron unir» (#362). Provisorio: el plural es el ejemplo del
   /// issue y el singular, su derivado.

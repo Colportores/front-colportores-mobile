@@ -23,7 +23,8 @@ final class DarDeBajaPersonaParams extends Equatable {
   /// Por qué se da de baja, opcional (`reason` del evento `persona_baja`). El canvas no lo pide.
   final String? motivo;
 
-  /// La colportora ya vio que la persona debe algo y confirmó las dos veces (32D·02 y 32D·03).
+  /// La colportora ya vio que la persona debe algo o espera una entrega y confirmó las dos veces
+  /// (32D·02 y 32D·03).
   final bool confirmaSaldo;
 
   /// El motivo es texto de la colportora: ver `Persona.stringify`.
@@ -37,9 +38,10 @@ final class DarDeBajaPersonaParams extends Equatable {
 /// HU-UBI-011 — Baja de persona (soft delete, local-only).
 ///
 /// 1. Valida el id y el largo del motivo (`FailureValidacion`, sin tocar la DB).
-/// 2. Si la persona debe algo y no vino [DarDeBajaPersonaParams.confirmaSaldo], **no escribe** y
-///    devuelve [BajaPersonaRequiereConfirmacion] con la cuenta: la doble confirmación no se puede
-///    saltear aunque la pantalla se haya abierto antes de que llegara una venta. Si no se puede leer la
+/// 2. Si la persona debe algo o tiene entregas pendientes y no vino
+///    [DarDeBajaPersonaParams.confirmaSaldo], **no escribe** y devuelve
+///    [BajaPersonaRequiereConfirmacion] con la cuenta: la doble confirmación no se puede saltear
+///    aunque la pantalla se haya abierto antes de que llegara una venta. Si no se puede leer la
 ///    cuenta, tampoco se da de baja (`FailureInesperado`): ante la duda se frena.
 /// 3. Da de baja a la persona en el repositorio (`deleted_at` y evento `persona_baja`, una
 ///    transacción).
@@ -67,7 +69,7 @@ final class DarDeBajaPersonaUseCase
     if (!params.confirmaSaldo) {
       try {
         final cuenta = await _cuentas.resumenDe(id);
-        if (cuenta != null && cuenta.tieneSaldo) {
+        if (cuenta != null && cuenta.pideConfirmarBaja) {
           return Right(BajaPersonaRequiereConfirmacion(cuenta));
         }
       } on Object catch (e) {

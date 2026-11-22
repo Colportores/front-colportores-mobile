@@ -19,8 +19,10 @@ abstract interface class DevolucionRepository {
   /// Dentro de la misma transacción comprueba, con lo que hay en el teléfono en ese momento:
   /// 1. la venta existe ([FailureDevolucionSinVenta]);
   /// 2. no pasaron 72 h desde la venta ([FailureDevolucionFueraDePlazo]);
-  /// 3. hay algo elegido y nada pasa de lo que queda por devolver, y si el cliente pagó de más hay una
-  ///    elección ([FailureDevolucionInvalida]).
+  /// 3. la venta no está saldada, es decir, el cliente todavía debe algo
+  ///    ([FailureDevolucionVentaSaldada]); una venta de $ 0 acepta la devolución igual (solo vuelve el
+  ///    libro, sin montos);
+  /// 4. hay algo elegido y nada pasa de lo que queda por devolver ([FailureDevolucionInvalida]).
   ///
   /// Es idempotente por `pedido.id`: un doble toque o un reintento con el mismo id no escribe nada y
   /// devuelve lo mismo ([DevolucionRegistrada.yaEstaba]). Cualquier otra falla es

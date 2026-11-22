@@ -88,6 +88,7 @@ final class ParaRevisar extends Equatable {
     required this.espaciosB,
     this.estadoA,
     this.estadoB,
+    this.rechazoDeUnion,
   });
 
   final ParDuplicado par;
@@ -100,13 +101,21 @@ final class ParaRevisar extends Equatable {
   final EstadoCasa? estadoA;
   final EstadoCasa? estadoB;
 
+  /// Si la última unión de este par la rechazó el servidor y se deshizo en el teléfono, el código del
+  /// rechazo (`UB003`…; vacío si no vino ninguno): la tarjeta lo avisa (#679). `null` si no.
+  final String? rechazoDeUnion;
+
   @override
-  List<Object?> get props => [par, espaciosA, espaciosB, estadoA, estadoB];
+  List<Object?> get props => [par, espaciosA, espaciosB, estadoA, estadoB, rechazoDeUnion];
 }
 
 /// HU-UBI-006 — los pares de la vista 10, **reactivos**: se vuelven a emitir con cada alta, baja,
 /// edición o decisión, así que un par unido, decidido o corregido sale de la lista solo. Es la misma
 /// regla que [ConsultarParesDuplicadosUseCase].
+///
+/// Un par cuya unión rechazó el servidor vuelve solo (las dos quedaron vivas) y sale con
+/// [ParaRevisar.rechazoDeUnion] (#679). Esas uniones no frenan la lista: hasta que se leen, y si su
+/// lectura falla, los pares salen sin aviso.
 ///
 /// Un error de lectura (de la lista o de las decisiones) sale como error del stream; el stream no
 /// se corta: si había una lectura buena, sigue emitiendo con la última.
@@ -131,8 +140,10 @@ final class ObservarParesDuplicadosUseCase implements StreamUseCase<List<ParaRev
     late final StreamController<List<ParaRevisar>> salida;
     StreamSubscription<List<UbicacionConResumen>>? lista;
     StreamSubscription<Map<String, ParDecidido>>? decisiones;
+    StreamSubscription<Map<String, String>>? rechazos;
     List<UbicacionConResumen>? ultimaLista;
     Map<String, ParDecidido>? ultimasDecisiones;
+    var ultimosRechazos = const <String, String>{};
 
     void emitir() {
       final propias = ultimaLista;
@@ -153,6 +164,7 @@ final class ObservarParesDuplicadosUseCase implements StreamUseCase<List<ParaRev
             espaciosB: porId[par.b.id]?.cantidadEspacios ?? 0,
             estadoA: porId[par.a.id]?.estado,
             estadoB: porId[par.b.id]?.estado,
+            rechazoDeUnion: ultimosRechazos[par.clave],
           ),
       ]);
     }
@@ -167,10 +179,19 @@ final class ObservarParesDuplicadosUseCase implements StreamUseCase<List<ParaRev
           ultimasDecisiones = decididos;
           emitir();
         }, onError: salida.addError);
+        rechazos = _pares.observarUnionesRechazadas().listen(
+          (porPar) {
+            ultimosRechazos = porPar;
+            emitir();
+          },
+          // Sin poder leerlos, los pares siguen saliendo, sin el aviso.
+          onError: (Object _) {},
+        );
       },
       onCancel: () async {
         await lista?.cancel();
         await decisiones?.cancel();
+        await rechazos?.cancel();
       },
     );
     return salida.stream;

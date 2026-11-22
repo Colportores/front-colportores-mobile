@@ -425,7 +425,7 @@ void main() {
 
       expect(find.text('Esperando asignación'), findsOneWidget);
       expect(_principal, findsNothing);
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(5));
       expect(_rpc.llamadas, 1);
     });
 

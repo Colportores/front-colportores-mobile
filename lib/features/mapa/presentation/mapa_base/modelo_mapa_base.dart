@@ -5,6 +5,7 @@ import '../../domain/services/fuente_mapa.dart';
 import '../../domain/value_objects/camara_mapa.dart';
 import '../../domain/value_objects/coordenadas.dart';
 import 'marcador_estado.dart' show VarianteMarcador;
+import 'zonas_mapa.dart';
 
 /// Colores del mapa que no salen del tema: los del canvas de Claude Design (los mismos del estilo
 /// de backend, `tiles/paleta.json`) y los de los puntos.
@@ -21,6 +22,10 @@ abstract final class ColoresMapa {
 
   /// El aro exterior del marcador seleccionado (vista 06).
   static const aroSeleccion = Color(0xFF002856);
+
+  /// El aro de una casa fuera del área del colportor (#713, R-UB12): el ámbar oscuro de los avisos
+  /// del alta (`ColoresAlta.ambar`), 6:1 sobre la tierra del mapa.
+  static const fueraDelArea = Color(0xFF7A5A12);
 }
 
 /// Cómo se dibuja un [PuntoMapa].
@@ -78,6 +83,8 @@ final class PuntoMapa extends Equatable {
     this.letra,
     this.etiqueta,
     this.variante,
+    this.atenuado = false,
+    this.fueraDelArea = false,
   });
 
   /// Identifica al punto cuando el colportor lo toca (`MapaBase.alTocarPunto`).
@@ -97,8 +104,26 @@ final class PuntoMapa extends Equatable {
   /// visita».
   final VarianteMarcador? variante;
 
+  /// Se dibuja tenue (canvas 06C·03, opacidad .3): con la hoja «Agendados» del mapa, las casas que no
+  /// tienen una visita agendada. Un grupo se ve tenue si todas las casas que junta lo están.
+  final bool atenuado;
+
+  /// La casa quedó fuera del área del colportor (#713, R-UB12): se dibuja con un aro ámbar
+  /// alrededor, que la distingue sin depender solo del color (es una forma de más). Agrupada no se
+  /// distingue: la marca aparece al acercar.
+  final bool fueraDelArea;
+
   @override
-  List<Object?> get props => [id, coordenadas, estilo, letra, etiqueta, variante];
+  List<Object?> get props => [
+    id,
+    coordenadas,
+    estilo,
+    letra,
+    etiqueta,
+    variante,
+    atenuado,
+    fueraDelArea,
+  ];
 }
 
 /// El radio de precisión del GPS: un círculo en metros alrededor de [centro].
@@ -156,6 +181,7 @@ final class ConfigVistaMapa extends Equatable {
     required this.precision,
     required this.cercania,
     required this.puntosTocables,
+    this.zonas = const [],
   });
 
   final FuenteMapa fuente;
@@ -182,6 +208,9 @@ final class ConfigVistaMapa extends Equatable {
   /// Quien usa el mapa quiere saber qué punto se tocó.
   final bool puntosTocables;
 
+  /// Las zonas que se dibujan por debajo de los puntos (#511). No responden al toque.
+  final List<ZonaMapa> zonas;
+
   /// Hay casas dibujadas como cuadrados de 40 dp (vista 39, M·02): el toque elige la más cercana
   /// dentro de 44 dp, en vez del área de 48 dp de los puntos.
   bool get hayCuadrados => puntos.any((p) => p.estilo.esCuadrado);
@@ -201,6 +230,7 @@ final class ConfigVistaMapa extends Equatable {
     precision,
     cercania,
     puntosTocables,
+    zonas,
   ];
 }
 

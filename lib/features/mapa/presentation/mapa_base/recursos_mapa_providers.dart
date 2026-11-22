@@ -6,8 +6,9 @@ import 'package:path_provider/path_provider.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../data/services/preparador_recursos_mapa.dart';
 
-/// Dónde está el estilo de backend dentro de los assets de la app.
-const rutaEstiloBaseMapa = 'assets/mapa/estilo/colportores.json';
+/// Dónde está el estilo del mapa dentro de los assets de la app: el de lib-mapa (#673), que viaja en
+/// el paquete `colportores_mapa`.
+const rutaEstiloBaseMapa = '${PreparadorRecursosMapa.raizAssets}estilo/colportores.json';
 
 /// Lo que necesita la vista nativa de MapLibre para armar el estilo: el JSON de backend y el
 /// directorio con los glyphs y sprites ya copiados al almacenamiento interno.

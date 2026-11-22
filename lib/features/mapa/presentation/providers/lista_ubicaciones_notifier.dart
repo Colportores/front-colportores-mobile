@@ -3,16 +3,14 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/database_providers.dart';
-import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
-import '../../../../core/usecases/use_case.dart';
 import '../../domain/entities/consulta_lista_ubicaciones.dart';
 import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../../domain/entities/ubicacion.dart';
-import 'alta_ubicacion_providers.dart';
 import 'lista_ubicaciones_providers.dart';
 import 'lista_ubicaciones_state.dart';
+import 'ubicacion_colportor_provider.dart';
 
 export 'lista_ubicaciones_state.dart';
 
@@ -23,28 +21,27 @@ export 'lista_ubicaciones_state.dart';
 ///   baja o edición la vuelve a emitir. Cada cambio de filtro, orden, búsqueda, posición o página
 ///   cancela la suscripción anterior y abre otra: nunca quedan dos vivas.
 /// - Al cambiar la consulta se **conserva la lista anterior** hasta que llega la nueva.
-/// - El GPS se pide la primera vez que la pestaña se abre (no al arrancar la app, que lo
-///   pediría detrás del login) y se refresca cada vez que se vuelve a abrir. Si no hay GPS la lista
-///   funciona igual: sin cercanía ni proximidad.
+/// - El GPS **no es de la lista**: lo lee de [ubicacionColportorProvider] (#651), el único GPS del
+///   colportor, que pide el permiso solo desde el mapa. Si no hay GPS la lista funciona igual: sin
+///   cercanía ni proximidad.
 final class ListaUbicacionesNotifier extends Notifier<ListaUbicacionesState> {
-  ListaUbicacionesNotifier(this.colportorId);
+  /// [clave] es el UUID del colportor, o ese UUID con [sufijoDeSeleccion] cuando la lista es un selector
+  /// (la pestaña Lista y el selector de casa de «+ Agendar» no comparten búsqueda ni filtros).
+  ListaUbicacionesNotifier(String clave) : colportorId = clave.split(sufijoDeSeleccion).first;
+
+  /// Lo que se le agrega al UUID para tener un estado propio, aparte del de la pestaña Lista.
+  static const sufijoDeSeleccion = '#seleccion';
+
+  /// La clave del estado de la lista usada como selector del colportor [colportorId].
+  static String claveDeSeleccion(String colportorId) => '$colportorId$sufijoDeSeleccion';
 
   /// UUID del colportor con la sesión iniciada (`created_by`).
   final String colportorId;
 
   StreamSubscription<ListaUbicaciones>? _suscripcion;
 
-  /// Cuál es la última lectura del GPS que se pidió: una que llega cuando ya se pidió otra se
-  /// ignora, así la posición con la que se ordena es siempre la última.
-  int _secuenciaGps = 0;
-
   /// Ya se pidió la página siguiente y todavía no llegó: un segundo pedido no hace nada.
   bool _cargandoMas = false;
-
-  /// El colportor tocó «Activar GPS» y se lo mandó al permiso o a los ajustes del sistema: solo
-  /// entonces tiene sentido volver a leer el GPS cuando regrese a la app. Cualquier otro regreso
-  /// (volver de WhatsApp) no puede volver a mostrarle el diálogo del permiso.
-  bool _enAjustes = false;
 
   final _log = AppLogger.instance;
 
@@ -53,13 +50,20 @@ final class ListaUbicacionesNotifier extends Notifier<ListaUbicacionesState> {
     // Si la base se abre (o se cierra) después de montar la pestaña, el estado se rearma desde cero.
     ref.watch(dbLocalProvider);
     _cargandoMas = false;
-    _enAjustes = false;
     ref.onDispose(() => unawaited(_suscripcion?.cancel()));
+    // El GPS es el del colportor, uno solo: acá se refleja lo que él sabe y se vuelve a ordenar si
+    // la posición cambia.
+    final ubicacion = ref.read(ubicacionColportorProvider);
+    ref.listen(ubicacionColportorProvider, (_, nueva) => _seguirAlGps(nueva));
     // Todavía no hay `state` dentro de `build`: la primera lectura sale en el microtask que sigue.
     scheduleMicrotask(() {
       if (ref.mounted) _suscribir();
     });
-    return const ListaUbicacionesState();
+    return ListaUbicacionesState(
+      gps: ubicacion.gps,
+      lectura: ubicacion.lectura,
+      motivoSinGps: ubicacion.motivoSinGps,
+    );
   }
 
   // ---------------------------------------------------------------- lectura
@@ -189,65 +193,16 @@ final class ListaUbicacionesNotifier extends Notifier<ListaUbicacionesState> {
 
   // ---------------------------------------------------------------- GPS
 
-  /// La pestaña se abrió: se pide el GPS la primera vez y se refresca las siguientes. Si la última
-  /// vez falló por el permiso o por la ubicación apagada, **no** se vuelve a pedir sola (cada
-  /// apertura mostraría el diálogo del permiso): se reintenta al volver de los ajustes
-  /// ([reintentarGpsSiHaceFalta]).
-  Future<void> alAbrirPestana() async {
-    final sinPermisoOApagado =
-        state.gps == EstadoGpsLista.sinGps && state.motivoSinGps != MotivoSinGps.sinSenal;
-    if (sinPermisoOApagado || state.gps == EstadoGpsLista.buscando) return;
-    await _leerGps();
-  }
-
-  /// Al volver a la app después de los ajustes (o del diálogo del permiso): si seguía sin GPS, se
-  /// vuelve a intentar. Solo si el colportor había tocado «Activar GPS»; el regreso de cualquier
-  /// otra app no hace nada.
-  Future<void> reintentarGpsSiHaceFalta() async {
-    if (!_enAjustes || state.gps != EstadoGpsLista.sinGps) return;
-    _enAjustes = false;
-    await _leerGps();
-  }
-
-  /// «Activar GPS» (el chip de arriba cuando no hay): pide el permiso o abre el ajuste que
-  /// corresponda y vuelve a leer.
-  Future<void> activarGps() async {
-    final motivo = state.motivoSinGps;
-    if (motivo != null) {
-      _enAjustes = true;
-      await ref.read(activadorGpsProvider).activar(motivo);
-    }
-    await _leerGps();
-  }
-
-  Future<void> _leerGps() async {
-    if (!ref.mounted) return;
-    final numero = ++_secuenciaGps;
-    if (state.gps != EstadoGpsLista.conLectura) {
-      state = state.copyWith(gps: EstadoGpsLista.buscando, borrarMotivo: true);
-    }
-    final resultado = await ref.read(capturarPosicionGpsUseCaseProvider)(const NoParams());
-    if (!ref.mounted || numero != _secuenciaGps) return;
+  /// Lo que dice el GPS del colportor ([ubicacionColportorProvider]). Solo si cambió la posición la
+  /// lista se vuelve a pedir: ordena y mide con ella.
+  void _seguirAlGps(UbicacionColportorState ubicacion) {
     final antes = state.posicion;
-    resultado.fold<void>(
-      (falla) {
-        // Un refresco que falla no tira la última posición buena: las distancias siguen sirviendo.
-        if (state.lectura != null) {
-          state = state.copyWith(gps: EstadoGpsLista.conLectura);
-          return;
-        }
-        final motivo = falla is FailureGpsNoDisponible ? falla.motivo : MotivoSinGps.sinSenal;
-        state = state.copyWith(gps: EstadoGpsLista.sinGps, motivoSinGps: motivo);
-      },
-      (lectura) {
-        state = state.copyWith(
-          gps: EstadoGpsLista.conLectura,
-          lectura: lectura,
-          borrarMotivo: true,
-        );
-      },
+    state = state.copyWith(
+      gps: ubicacion.gps,
+      lectura: ubicacion.lectura,
+      motivoSinGps: ubicacion.motivoSinGps,
+      borrarMotivo: ubicacion.motivoSinGps == null,
     );
-    // Solo si cambió la posición la lista se vuelve a pedir: ordena y mide con ella.
     if (state.posicion != antes) _suscribir();
   }
 }

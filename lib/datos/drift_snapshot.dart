@@ -37,8 +37,17 @@ import '../core/database/app_database.dart';
 /// decididos, el historial de avisos) van enteras con `modo: replace`: son chicas y se compactan
 /// o se borran, así que el restore las reemplaza en vez de sumarles.
 ///
-/// El restore es de HU-SYNC-006 (#186): hasta entonces [restore] falla a propósito, porque
-/// aplicar medio backup sin el reemplazo atómico de la DB sería peor que no aplicarlo.
+/// **Restore** (HU-SYNC-006, #186). [restore] aplica una cadena (la base y sus incrementales, en
+/// orden) y [restoreChains] fusiona varias, las de cada teléfono que la persona tuvo (decisión de
+/// Cristian, 03/11, «Varios resp.»). Todo en **una sola transacción**: o entra todo o la DB queda como
+/// estaba. Antes de tocar nada se lee y valida cada payload (formato y esquema), así que un respaldo
+/// ilegible o de una versión más nueva ni empieza.
+///
+/// La fusión es por fecha de fila: en las tablas con fecha de escritura (`updated_at`, o `creado_en` en
+/// `audit_log`) una fila que ya está solo se pisa por otra **igual o más nueva**; en las que van
+/// enteras (`modo: replace`: la cola, los pares decididos…) se junta la última foto de cada cadena,
+/// sin perder los trabajos de ninguna. Las columnas que el payload trae y esta versión de la app ya no
+/// tiene se ignoran.
 final class DriftSnapshot implements SnapshotPort {
   DriftSnapshot(this._db, {required this._tablas, DateTime Function()? clock})
     : _clock = clock ?? (() => DateTime.now().toUtc());
@@ -115,6 +124,173 @@ final class DriftSnapshot implements SnapshotPort {
   };
 
   @override
-  Future<void> restore(List<List<int>> payloadsInOrder) =>
-      throw UnsupportedError('el restore de la DB es de HU-SYNC-006 (#186)');
+  Future<void> restore(List<List<int>> payloadsInOrder) => restoreChains([payloadsInOrder]);
+
+  /// Fusiona varias cadenas de respaldo en la DB (ver la doc de la clase). Cada cadena va de la base a
+  /// la punta; el orden entre cadenas desempata las filas con la misma fecha (gana la posterior), así
+  /// que conviene pasarlas de la más vieja a la más nueva.
+  ///
+  /// Lanza [SnapshotNewerSchemaException] si algún payload viene de una versión más nueva de la
+  /// DB, y [SnapshotUnreadableException] si no se puede leer o no se puede aplicar. En los dos casos la
+  /// DB queda como estaba.
+  @override
+  Future<void> restoreChains(List<List<List<int>>> cadenas) async {
+    final leidas = [
+      for (final cadena in cadenas) [for (final payload in cadena) _leerPayload(payload)],
+    ];
+
+    try {
+      await _db.transaction(() async {
+        // Las filas llegan por tabla y no en orden de dependencia: las claves foráneas se miran al
+        // confirmar, no fila por fila.
+        await _db.customStatement('PRAGMA defer_foreign_keys = ON');
+        final porTabla = {for (final t in _db.allTables) t.actualTableName: t};
+
+        // Las tablas «replace» se juntan antes de escribir: la última foto de cada cadena, todas
+        // sumadas.
+        final enteras = <String, List<Map<String, Object?>>>{};
+        for (final cadena in leidas) {
+          final ultimaFoto = <String, List<Map<String, Object?>>>{};
+          for (final payload in cadena) {
+            for (final MapEntry(key: nombre, value: tabla) in payload.tablas.entries) {
+              if (tabla.modo == 'replace') ultimaFoto[nombre] = tabla.filas;
+            }
+          }
+          for (final MapEntry(key: nombre, value: filas) in ultimaFoto.entries) {
+            (enteras[nombre] ??= []).addAll(filas);
+          }
+        }
+
+        for (final cadena in leidas) {
+          for (final payload in cadena) {
+            for (final MapEntry(key: nombre, value: tabla) in payload.tablas.entries) {
+              final info = porTabla[nombre];
+              if (info == null || !_tablas.contains(nombre) || tabla.modo == 'replace') continue;
+              for (final fila in tabla.filas) {
+                await _escribir(info, nombre, fila, soloSiEsIgualOMasNueva: true);
+              }
+            }
+          }
+        }
+
+        for (final MapEntry(key: nombre, value: filas) in enteras.entries) {
+          final info = porTabla[nombre];
+          if (info == null || !_tablas.contains(nombre)) continue;
+          await _db.customStatement('DELETE FROM "$nombre"');
+          for (final fila in filas) {
+            await _escribir(info, nombre, fila, soloSiEsIgualOMasNueva: false);
+          }
+        }
+      });
+    } on Object catch (e) {
+      // Solo el tipo: el mensaje de SQLite puede citar un valor de la fila.
+      throw SnapshotUnreadableException('no se pudo aplicar (${e.runtimeType})');
+    }
+  }
+
+  _PayloadLeido _leerPayload(List<int> bytes) {
+    final Object? json;
+    try {
+      json = jsonDecode(utf8.decode(bytes));
+    } on Object {
+      throw const SnapshotUnreadableException('no es JSON');
+    }
+    if (json is! Map<String, Object?>) throw const SnapshotUnreadableException('no es un objeto');
+    final formatoDelPayload = json['formato'];
+    final esquema = json['esquema'];
+    final tablas = json['tablas'];
+    if (formatoDelPayload is! int || esquema is! int || tablas is! Map<String, Object?>) {
+      throw const SnapshotUnreadableException('faltan campos');
+    }
+    if (formatoDelPayload > formato) throw const SnapshotUnreadableException('formato más nuevo');
+    if (esquema > _db.schemaVersion) {
+      throw SnapshotNewerSchemaException(backupSchema: esquema, appSchema: _db.schemaVersion);
+    }
+    final resultado = <String, _TablaLeida>{};
+    for (final MapEntry(key: nombre, value: tabla) in tablas.entries) {
+      if (tabla is! Map<String, Object?>) throw const SnapshotUnreadableException('tabla rota');
+      final filas = tabla['filas'];
+      if (filas is! List) throw const SnapshotUnreadableException('tabla sin filas');
+      resultado[nombre] = _TablaLeida(
+        modo: tabla['modo'] == 'replace' ? 'replace' : 'upsert',
+        filas: [
+          for (final f in filas)
+            if (f is Map<String, Object?>)
+              f
+            else
+              throw const SnapshotUnreadableException('fila rota'),
+        ],
+      );
+    }
+    return _PayloadLeido(resultado);
+  }
+
+  Future<void> _escribir(
+    TableInfo<Table, Object?> tabla,
+    String nombre,
+    Map<String, Object?> fila, {
+    required bool soloSiEsIgualOMasNueva,
+  }) async {
+    final columnas = {for (final c in tabla.$columns) c.name};
+    final presentes = [
+      for (final k in fila.keys)
+        if (columnas.contains(k)) k,
+    ];
+    if (presentes.isEmpty) return;
+    final valores = <Object?>[
+      for (final k in presentes)
+        switch (fila[k]) {
+          final Map<String, Object?> m when m.containsKey(r'$b64') => base64Decode(
+            m[r'$b64']! as String,
+          ),
+          final bool b => b ? 1 : 0,
+          final v => v,
+        },
+    ];
+    final lista = presentes.map((c) => '"$c"').join(', ');
+    final marcas = List.filled(presentes.length, '?').join(', ');
+    final claves = [for (final c in tabla.$primaryKey) c.name];
+    final fecha =
+        _columnaDeFecha[nombre] ?? (columnas.contains('updated_at') ? 'updated_at' : null);
+
+    final sinFecha = fecha == null || !presentes.contains(fecha);
+    if (!soloSiEsIgualOMasNueva || claves.isEmpty || sinFecha) {
+      await _db.customStatement(
+        'INSERT OR REPLACE INTO "$nombre" ($lista) VALUES ($marcas)',
+        valores,
+      );
+      return;
+    }
+    final conflicto = claves.map((c) => '"$c"').join(', ');
+    final cambios = presentes
+        .where((c) => !claves.contains(c))
+        .map((c) => '"$c" = excluded."$c"')
+        .join(', ');
+    if (cambios.isEmpty) {
+      await _db.customStatement(
+        'INSERT OR IGNORE INTO "$nombre" ($lista) VALUES ($marcas)',
+        valores,
+      );
+      return;
+    }
+    await _db.customStatement(
+      'INSERT INTO "$nombre" ($lista) VALUES ($marcas) '
+      'ON CONFLICT ($conflicto) DO UPDATE SET $cambios '
+      'WHERE excluded."$fecha" >= "$nombre"."$fecha"',
+      valores,
+    );
+  }
+}
+
+final class _PayloadLeido {
+  const _PayloadLeido(this.tablas);
+
+  final Map<String, _TablaLeida> tablas;
+}
+
+final class _TablaLeida {
+  const _TablaLeida({required this.modo, required this.filas});
+
+  final String modo;
+  final List<Map<String, Object?>> filas;
 }

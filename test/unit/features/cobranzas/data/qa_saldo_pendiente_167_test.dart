@@ -315,25 +315,51 @@ void main() {
   });
 
   group('coherencia con el color de la casa (R-UB08)', () {
-    // `house_status` mira solo los espacios ACTIVOS de la ubicación; el saldo de la ubicación cuenta
-    // los de cualquier espacio (la decisión «Deuda baja» del 27/10: dar de baja no esconde lo que se
-    // debe). Cuando difieren, la casa dice una cosa y la hoja otra.
+    // El saldo de la ubicación cuenta los espacios de cualquier estado (la decisión «Deuda baja» del
+    // 27/10: dar de baja no esconde lo que se debe) y `house_status` también cuenta las ventas con
+    // saldo de los deptos de baja (decisión de Cristian, 03/11, «Color y baja», #608): la casa y la
+    // hoja dicen lo mismo.
+    test('QA #167: un depto dado de baja con deuda: la casa la pinta y el saldo de la ubicación la '
+        'cuenta', () async {
+      await vender('v-1', 150000);
+      await marcar('espacio', 'esp-1', db.espacios);
+      await marcar('espacio', 'esp-2', db.espacios);
+
+      final casa = await casas.recalcular('ub-1', ahora: t0, colportorId: 'col-1');
+      final saldo = await local.observarSaldoDeUbicacion('ub-1').first;
+
+      expect(casa != null, saldo > 0, reason: 'casa=$casa, saldo de la ubicación=$saldo');
+      expect(casa?.color.codigo, 'ENTREGA_Y_COBRANZA_PENDIENTE');
+    });
+
     test(
-      'QA #167: un depto dado de baja con deuda: la casa no la pinta y el saldo de la ubicación '
-      'la cuenta',
+      '#608 «Color y baja»: un depto de baja con la venta saldada no pinta la casa y el saldo es '
+      'cero',
       () async {
         await vender('v-1', 150000);
+        await local.registrar(_cobro('c-1', 150000));
         await marcar('espacio', 'esp-1', db.espacios);
         await marcar('espacio', 'esp-2', db.espacios);
 
         final casa = await casas.recalcular('ub-1', ahora: t0, colportorId: 'col-1');
         final saldo = await local.observarSaldoDeUbicacion('ub-1').first;
 
-        expect(casa != null, saldo > 0, reason: 'casa=$casa, saldo de la ubicación=$saldo');
+        expect(saldo, 0);
+        expect(casa, isNull);
       },
-      skip:
-          'QA #167: «ubicación» cuenta espacios dados de baja y house_status no (ver PENDIENTES P1, mapa §2)',
     );
+
+    test('#608 «Color y baja»: al cobrar lo que se debía en el depto de baja, la casa deja de '
+        'pintarse sola', () async {
+      await vender('v-1', 150000);
+      await marcar('espacio', 'esp-1', db.espacios);
+      await marcar('espacio', 'esp-2', db.espacios);
+      expect(await casas.recalcular('ub-1', ahora: t0, colportorId: 'col-1'), isNotNull);
+
+      await local.registrar(_cobro('c-1', 150000));
+
+      expect(await casas.recalcular('ub-1', ahora: t0, colportorId: 'col-1'), isNull);
+    });
   });
 
   group('los providers y el ciclo de la sesión', () {

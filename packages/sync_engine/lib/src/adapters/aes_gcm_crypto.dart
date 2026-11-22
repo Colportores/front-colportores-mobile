@@ -67,6 +67,24 @@ class AesGcmCrypto extends CompressingCrypto {
         .join();
   }
 
+  /// La etiqueta de la llave de la firma de las anotaciones del respaldo. Distinta
+  /// de [etiquetaKeyId] y de la llave del cifrado: la firma no reutiliza la llave
+  /// que cifra.
+  static const etiquetaFirma = 'colportores/backup/firma/v1';
+
+  /// HMAC-SHA256 de [mensaje] con una llave derivada de la clave del usuario
+  /// (HMAC-SHA256 de [etiquetaFirma] con la clave), en hexadecimal (64
+  /// caracteres: entra en un par de `appProperties` de Drive, que limita a 124
+  /// bytes la clave y el valor juntos). De un solo sentido: de la firma no se
+  /// vuelve a la clave.
+  @override
+  Future<String> sign(String mensaje) async {
+    final llaveDeFirma =
+        hash.Hmac(hash.sha256, _bytes).convert(utf8.encode(etiquetaFirma)).bytes;
+    final mac = hash.Hmac(hash.sha256, llaveDeFirma).convert(utf8.encode(mensaje));
+    return mac.bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
   static final _aes = AesGcm.with256bits();
 
   /// 96 bits, que es el tamaño para el que GCM está definido y optimizado.

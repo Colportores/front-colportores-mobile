@@ -46,7 +46,7 @@ void main() {
     });
 
     test('un código que no existe es un error de programación', () {
-      expect(() => TipoNotificacion.desdeCodigo('PEDIDO_AUTORIZADO'), throwsArgumentError);
+      expect(() => TipoNotificacion.desdeCodigo('NO_EXISTE'), throwsArgumentError);
     });
   });
 
@@ -157,9 +157,11 @@ void main() {
 
         await PurgarHistorialNotificacionesUseCase(historial, ahora: () => ahoraDelCentro)();
 
-        final borrado = await BorrarTodasLasNotificacionesUseCase(historial)(hasta: ahoraDelCentro);
+        final borrado = await BorrarTodasLasNotificacionesUseCase(historial)(ids: {'a', 'b'});
         expect(borrado, const Right<Failure, int>(2));
-        expect(historial.borrados, [ahoraDelCentro]);
+        expect(historial.borrados, [
+          {'a', 'b'},
+        ]);
       },
     );
   });

@@ -194,12 +194,13 @@ void main() {
       },
     );
 
-    test('dado que el reloj fue hacia atrás de la marca, no revisa ni mueve la marca', () async {
-      marca.marca = DateTime.utc(2026, 10, 27, 16);
+    test('dado que el reloj fue hacia atrás de la marca (hasta 5 minutos), no revisa ni mueve la '
+        'marca', () async {
+      marca.marca = DateTime.utc(2026, 10, 27, 15, 14);
 
       expect(await conciliar('col-1'), const Right<Failure, int>(0));
       expect(agendas.pedidos, isEmpty);
-      expect(marca.marca, DateTime.utc(2026, 10, 27, 16));
+      expect(marca.marca, DateTime.utc(2026, 10, 27, 15, 14));
     });
   });
 

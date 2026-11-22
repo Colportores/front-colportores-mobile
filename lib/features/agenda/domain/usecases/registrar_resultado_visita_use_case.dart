@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../entities/misionero_dejado.dart';
 import '../entities/nota_de_campo.dart';
 import '../entities/visita.dart';
 import '../entities/visita_guardada.dart';
@@ -35,6 +36,9 @@ final class RegistrarResultadoVisitaParams extends Equatable {
     this.agendaId,
     this.jornadaId,
     this.nota = '',
+    this.entrevistaEntrada,
+    this.entrevistaSalida,
+    this.misioneros = const {},
   });
 
   final IdsResultadoVisita ids;
@@ -63,6 +67,15 @@ final class RegistrarResultadoVisitaParams extends Equatable {
   /// La nota opcional, local-only: en blanco no crea ninguna.
   final String nota;
 
+  /// Las horas de la entrevista que confirmó la colportora (R·06 / R·07, #466): las dos o ninguna.
+  /// Ya validadas por quien llama ([HorasDeEntrevista]).
+  final DateTime? entrevistaEntrada;
+  final DateTime? entrevistaSalida;
+
+  /// Los misioneros que dejó sin venta («Lo que dejaste», #608): producto → cuántos. Los de cantidad
+  /// 0 no cuentan.
+  final Map<String, int> misioneros;
+
   /// Lleva la nota (dato personal): nunca debe salir en un log ni en un `toString`.
   @override
   bool? get stringify => false;
@@ -77,6 +90,9 @@ final class RegistrarResultadoVisitaParams extends Equatable {
     agendaId,
     jornadaId,
     nota,
+    entrevistaEntrada,
+    entrevistaSalida,
+    misioneros,
   ];
 }
 
@@ -162,6 +178,10 @@ final class RegistrarResultadoVisitaUseCase
         'ids': 'Falta el identificador de la visita',
       if (espacioId.isEmpty) 'espacio': 'Falta la casa de la visita',
       if (colportorId.isEmpty) 'colportorId': 'No hay un colportor para registrar la visita',
+      if ((params.entrevistaEntrada == null) != (params.entrevistaSalida == null))
+        'horas': 'Faltan la hora de entrada o la de salida de la entrevista',
+      if (params.misioneros.values.any((n) => n < 0))
+        'misioneros': 'Revisá las cantidades de lo que dejaste',
     };
     if (campos.isNotEmpty) return Left(FailureValidacion(campos: campos));
 
@@ -170,10 +190,22 @@ final class RegistrarResultadoVisitaUseCase
     final textoNota = params.nota.trim();
     final agendaId = params.agendaId?.trim();
     final jornadaId = params.jornadaId?.trim();
+    final visitaId = ids.visita.trim();
+    final misioneros = [
+      for (final e in params.misioneros.entries)
+        if (e.value > 0 && e.key.trim().isNotEmpty)
+          MisioneroDejado(
+            id: _generarId(),
+            visitaId: visitaId,
+            productoId: e.key.trim(),
+            cantidad: e.value,
+            auditoria: auditoria(),
+          ),
+    ];
 
     final guardada = await _repository.registrarVisita(
       Visita(
-        id: ids.visita.trim(),
+        id: visitaId,
         espacioId: espacioId,
         espacioPersonaId: espacioPersonaId == null || espacioPersonaId.isEmpty
             ? null
@@ -182,9 +214,12 @@ final class RegistrarResultadoVisitaUseCase
         tipoResultado: params.resultado,
         colportorId: colportorId,
         jornadaId: jornadaId == null || jornadaId.isEmpty ? null : jornadaId,
+        entrevistaEntrada: params.entrevistaEntrada,
+        entrevistaSalida: params.entrevistaSalida,
         auditoria: auditoria(),
       ),
       agendaId: agendaId == null || agendaId.isEmpty ? null : agendaId,
+      misioneros: misioneros,
       nota: textoNota.isEmpty
           ? null
           : NotaDeCampo(id: ids.nota.trim(), texto: textoNota, auditoria: auditoria()),

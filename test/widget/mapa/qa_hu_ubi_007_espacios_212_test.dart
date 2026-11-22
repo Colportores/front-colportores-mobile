@@ -279,6 +279,18 @@ Future<void> _tocar(WidgetTester tester, Finder f) async {
   await _drenar(tester);
 }
 
+/// Abre la edición del depto [id] como el colportor: la fila abre su ficha (11·04) y «Editar» la
+/// edición (#679).
+Future<void> _editarDepto(WidgetTester tester, String id) async {
+  await _tocar(tester, filaDepto(id));
+  await _tocar(tester, find.byKey(ClavesPersonasDelEspacio.editar));
+}
+
+/// De la ficha del depto (11·04) a la hoja del edificio, con «‹».
+Future<void> _volver(WidgetTester tester) async {
+  await _tocar(tester, find.byTooltip(TextosPersonas.volver));
+}
+
 /// Un test con el teléfono armado por [sembrar] y cerrado al terminar.
 void _prueba(
   String nombre,
@@ -517,7 +529,7 @@ void main() {
       (tester) async {
         await _montar(tester);
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
         expect(hojaDepto, findsOneWidget);
 
         await _tocar(tester, botonDarDeBaja);
@@ -558,7 +570,7 @@ void main() {
       (tester) async {
         await _montar(tester);
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
         await _tocar(tester, botonDarDeBaja);
         await _tocar(tester, find.byKey(ClavesHojaDepto.confirmarBaja));
         await _cerrarHoja(tester);
@@ -581,7 +593,7 @@ void main() {
       (tester) async {
         await _montar(tester);
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
         await _tocar(tester, botonDarDeBaja);
         expect(find.text(_avisoDosPersonas), findsOneWidget);
 
@@ -602,7 +614,7 @@ void main() {
       (tester) async {
         await _montar(tester);
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
 
         await _tocar(tester, botonDarDeBaja);
 
@@ -621,7 +633,7 @@ void main() {
       (tester) async {
         await _montar(tester);
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
 
         await tester.tap(botonDarDeBaja);
         await tester.tap(botonDarDeBaja);
@@ -644,7 +656,7 @@ void main() {
       (tester) async {
         await _montar(tester);
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
         await _tocar(tester, botonDarDeBaja);
 
         _tel.encolador.fallarCon = StateError('el motor no responde');
@@ -679,7 +691,7 @@ void main() {
           find.byType(Scrollable).last,
           const Offset(0, -80),
         );
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
         expect(hojaDepto, findsOneWidget);
         await _tocar(tester, botonDarDeBaja);
 
@@ -819,7 +831,7 @@ void main() {
       (tester) async {
         await _montar(tester);
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
 
         await _tocar(tester, botonDarDeBaja);
 
@@ -846,19 +858,20 @@ void main() {
         'personas)', (tester) async {
       await _montar(tester);
       await _abrirHoja(tester);
-      await _tocar(tester, filaDepto('esp-1'));
+      await _editarDepto(tester, 'esp-1');
       await _tocar(tester, botonDarDeBaja);
       await _tocar(tester, find.text('Entendido'));
       await tester.binding.handlePopRoute();
       await _drenar(tester);
       expect(hojaDepto, findsNothing);
+      await _volver(tester);
 
       await _tocar(tester, botonAgregarDepto);
       await escribir(tester, campoNumero, '102');
       await _tocar(tester, botonAgregar);
       expect(find.text('2 deptos'), findsOneWidget);
 
-      await _tocar(tester, filaDepto('esp-1'));
+      await _editarDepto(tester, 'esp-1');
       await _tocar(tester, botonDarDeBaja);
       expect(find.byKey(ClavesHojaDepto.bajaBloqueada), findsNothing);
       expect(find.text(_avisoUnaPersona), findsOneWidget);
@@ -876,7 +889,7 @@ void main() {
       (tester) async {
         await _montar(tester);
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
 
         await _tocar(tester, botonDarDeBaja);
         expect(find.text('¿Dar de baja el depto 101?'), findsOneWidget);
@@ -896,7 +909,7 @@ void main() {
       (tester) async {
         await _montar(tester, ubicacionId: 'ub-neg');
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
 
         await _tocar(tester, botonDarDeBaja);
 
@@ -919,12 +932,13 @@ void main() {
       (tester) async {
         await _montar(tester);
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
         expect(textoDelCampo(tester), '101');
 
         await escribir(tester, campoNumero, '301');
         await escribir(tester, campoPiso, '3');
         await _tocar(tester, botonGuardarDepto);
+        await _volver(tester);
 
         expect(hojaDepto, findsNothing);
         expect(find.text('Depto 301'), findsOneWidget);
@@ -954,7 +968,7 @@ void main() {
       (tester) async {
         await _montar(tester);
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
 
         await escribir(tester, campoNumero, '102');
         await _tocar(tester, botonGuardarDepto);
@@ -1003,10 +1017,11 @@ void main() {
         // Se edita y se da de baja el depto con la nota puesta: nunca aparece en la cola.
         await _montar(tester);
         await _abrirHoja(tester);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _editarDepto(tester, 'esp-1');
         await escribir(tester, campoNumero, '301');
         await _tocar(tester, botonGuardarDepto);
-        await _tocar(tester, filaDepto('esp-1'));
+        await _volver(tester);
+        await _editarDepto(tester, 'esp-1');
         await _tocar(tester, botonDarDeBaja);
         await _tocar(tester, find.byKey(ClavesHojaDepto.confirmarBaja));
 
@@ -1046,9 +1061,10 @@ void main() {
         expect((await _espacio(tester, 'esp-casa')).numeroDepto, isNull);
         expect((await _personasEnDb(tester)).single.nombre, 'Ana');
 
-        await _tocar(tester, filaDepto('esp-casa'));
+        await _editarDepto(tester, 'esp-casa');
         await escribir(tester, campoNumero, '3A');
         await _tocar(tester, botonGuardarDepto);
+        await _volver(tester);
 
         expect(find.text('Depto 3A'), findsOneWidget);
         expect(find.text('Sin número'), findsNothing);
@@ -1083,9 +1099,10 @@ void main() {
           expect(e.numeroDepto, isNull, reason: '${e.id}: «Sin número» es solo para mostrar');
         }
 
-        await _tocar(tester, filaDepto('esp-casa-2'));
+        await _editarDepto(tester, 'esp-casa-2');
         await escribir(tester, campoNumero, '4C');
         await _tocar(tester, botonGuardarDepto);
+        await _volver(tester);
 
         expect(find.text('Depto 4C'), findsOneWidget);
         expect(find.text('Sin número'), findsOneWidget);
@@ -1120,7 +1137,7 @@ void main() {
         );
         await _drenar(tester, 2);
         expect(filaDepto('esp-119'), findsOneWidget);
-        await _tocar(tester, filaDepto('esp-119'));
+        await _editarDepto(tester, 'esp-119');
         expect(hojaDepto, findsOneWidget);
         expect(textoDelCampo(tester), '620');
         expect(tester.takeException(), isNull);

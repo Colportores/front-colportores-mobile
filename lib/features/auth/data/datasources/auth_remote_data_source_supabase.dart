@@ -195,12 +195,15 @@ final class AuthRemoteDataSourceSupabase
   Future<void> revocarSesion(String accessToken) =>
       _traduciendo(() => _auth.admin.signOut(accessToken, scope: SignOutScope.local));
 
+  // El mismo destino que el correo del registro (`/verificado`): con la base sola, el enlace del
+  // correo reenviado verificaba la cuenta en el servidor pero la app no lo reconocía como una
+  // verificación y quedaba en «El enlace expiró» (#679).
   @override
   Future<void> reenviarVerificacion(String email) => _traduciendo(
     () => _auth.resend(
       email: email,
       type: OtpType.signup,
-      emailRedirectTo: ConfigSupabase.redirectBase,
+      emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
     ),
   );
 

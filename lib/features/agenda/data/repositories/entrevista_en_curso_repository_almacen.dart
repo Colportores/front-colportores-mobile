@@ -89,11 +89,8 @@ final class EntrevistaEnCursoRepositoryAlmacen implements EntrevistaEnCursoRepos
     final visitaId = texto('visitaId');
     final notaId = texto('notaId');
     final inicio = DateTime.tryParse(texto('inicio') ?? '');
-    if (espacioId == null ||
-        espacioPersonaId == null ||
-        visitaId == null ||
-        notaId == null ||
-        inicio == null) {
+    // La persona es opcional: una entrevista sin persona no la guarda.
+    if (espacioId == null || visitaId == null || notaId == null || inicio == null) {
       return null;
     }
     return EntrevistaEnCurso(

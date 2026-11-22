@@ -2,14 +2,13 @@
 //
 // El PR arregla dos menores de la QA de #415: (1) el aviso «Reprogramamos N recordatorios: te
 // avisamos X min antes.» ya no sale si al terminar el guardado los recordatorios quedaron apagados;
-// (2) el tramo sin recorrer del control de anticipación pasa a #E3E7EE. Acá se prueba el borde de
-// cada arreglo: los demás caminos del aviso (reintentar, encender de nuevo, aviso viejo en
+// (2) el tramo sin recorrer del control de anticipación pasaba a #E3E7EE (hoy #5B6B82, ver #523).
+// Acá se prueba el borde de cada arreglo: los demás caminos del aviso (reintentar, encender de nuevo, aviso viejo en
 // pantalla), el control con los recordatorios apagados y en los extremos, y que el color del tramo
 // recorrido y del botón no cambió.
 //
 // Las capturas solo se sacan con `--dart-define=QA_CAPTURAS=true` y van a `.dart_tool/qa_capturas/`
-// (ignorado por git). Los tests con `skip` documentan un hallazgo: `--dart-define=QA_HALLAZGOS=true`
-// los corre.
+// (ignorado por git).
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -29,8 +28,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/notificaciones_arnes.dart';
 import '../helpers/qa_vista24_153_arnes.dart' show cargarFuentes, conCapturas;
-
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 class _SesionFija extends SesionNotifier {
   @override
@@ -54,7 +51,8 @@ final _subir = find.semantics.byAction(SemanticsAction.increase);
 const _tamanos = [('360×640', Size(360, 640)), ('412×915', Size(412, 915))];
 const _escalas = [1.0, 2.0];
 
-const _canvasPista = Color(0xFFE3E7EE);
+// #523: el tramo sin recorrer pasó del `borde` (#E3E7EE, 1,16:1) al `gris` de la paleta (#5B6B82).
+const _canvasPista = Color(0xFF5B6B82);
 
 void _visitas(Telefono t, [int cuantas = 4]) {
   for (var n = 1; n <= cuantas; n++) {
@@ -132,7 +130,7 @@ double _razon(Color a, Color b) {
 
 String _textoDe(Finder f) => (f.evaluate().single.widget as Text).data!;
 
-void _prueba(String descripcion, Future<void> Function(WidgetTester) cuerpo, {bool? skip}) {
+void _prueba(String descripcion, Future<void> Function(WidgetTester) cuerpo) {
   testWidgets(descripcion, (tester) async {
     try {
       await cuerpo(tester);
@@ -140,7 +138,7 @@ void _prueba(String descripcion, Future<void> Function(WidgetTester) cuerpo, {bo
       _handle?.dispose();
       _handle = null;
     }
-  }, skip: skip);
+  });
 }
 
 void main() {
@@ -333,7 +331,7 @@ void main() {
 
       expect(_apagadosAviso, findsOneWidget);
       expect(_toast, findsNothing, reason: 'sigue «te avisamos 35 min antes» con todo apagado');
-    }, skip: !_conHallazgos);
+    });
   });
 
   group('El tramo sin recorrer del control', () {
@@ -348,7 +346,9 @@ void main() {
     for (final (nombreTam, tam) in _tamanos) {
       for (final escala in _escalas) {
         _prueba('con los recordatorios encendidos · $nombreTam · texto $escala×: el tramo sin '
-            'recorrer es #E3E7EE y el recorrido sigue en el color primario', (tester) async {
+            'recorrer es #5B6B82 (≥ 3:1) y el recorrido sigue en el color primario', (
+          tester,
+        ) async {
           final t = Telefono(estado: EstadoSistemaNotificaciones.activadas);
           await _montar(tester, t, tam: tam, escala: escala);
 
@@ -356,7 +356,7 @@ void main() {
           // recorrido.
           final (_, sinRecorrer, tarjeta) = await medir(tester, 0.7);
           expect(sinRecorrer, _canvasPista);
-          expect(_razon(sinRecorrer, tarjeta), greaterThan(1.1));
+          expect(_razon(sinRecorrer, tarjeta), greaterThanOrEqualTo(3.0));
 
           final caja = tester.getRect(_slider);
           final recorrido = (await _pixeles(tester, [

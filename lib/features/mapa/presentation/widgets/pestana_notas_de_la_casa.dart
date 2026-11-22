@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/nota_ubicacion.dart';
+import '../../domain/services/retencion_notas_borradas.dart';
 import '../pages/nota_ubicacion_form_page.dart';
 import '../pages/notas_borradas_del_lugar_page.dart';
 import '../providers/notas_ubicacion_providers.dart';
@@ -53,7 +54,8 @@ class _AvisoDeNotas {
 ///   (decisión de Cristian, 23/10, «Aviso privado»); se vuelve a encender desde Configuración.
 /// - Tocar una nota abre sus opciones («Editar» y «Borrar»). Borrar es un soft delete: la nota sale de
 ///   la lista, el aviso de la pestaña dice «Nota borrada.» con «Deshacer», y las borradas se ven y se
-///   restauran desde «Ver borradas (n)». Nada se pierde del teléfono.
+///   restauran desde «Ver borradas (n)» durante 90 días, como las de una persona (decisión de Cristian,
+///   03/11); pasado ese plazo la limpieza las borra para siempre.
 /// - Cargando, vacío, error al leer y lugar dado de baja (solo lectura: se leen, no se tocan) son
 ///   estados propios. Sin conexión funciona igual: las notas nunca suben.
 /// - Los avisos van **en la pestaña** y no en un `SnackBar`: la hoja puede ser una ruta modal que
@@ -270,7 +272,8 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
         for (final n in todas)
           if (!n.estaBorrada) n,
       ];
-      final borradas = todas.length - activas.length;
+      // Las que ya pasaron de los 90 días no cuentan: ya no están en «Ver borradas».
+      final borradas = todas.where((n) => RetencionNotasBorradas.estaEnBorradas(n, ahora)).length;
       cuerpo = [
         if (activas.isEmpty)
           const VacioNotas(

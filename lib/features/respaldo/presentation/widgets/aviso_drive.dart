@@ -13,6 +13,9 @@ enum ClaseAvisoDrive {
 
   /// Falta conexión. Borde de trazos gris, con «✕».
   sinConexion,
+
+  /// Salió a medias: se hizo lo que se pudo y se dice qué quedó afuera. Ámbar, con «!».
+  advertencia,
 }
 
 /// Aviso con marca y borde del color de su clase, y una acción opcional («Reconectar»). Es una
@@ -48,6 +51,7 @@ class AvisoDrive extends StatelessWidget {
       ClaseAvisoDrive.error => (theme.colorScheme.error, '!'),
       ClaseAvisoDrive.info => (const Color(0xFF2A3A52), 'i'),
       ClaseAvisoDrive.sinConexion => (colores.gris, '✕'),
+      ClaseAvisoDrive.advertencia => (const Color(0xFF8A6A12), '!'),
     };
     final contenido = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

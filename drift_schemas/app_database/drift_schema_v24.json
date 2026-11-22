@@ -1842,6 +1842,26 @@
             "dsl_features": []
           },
           {
+            "name": "venta_id",
+            "getter_name": "ventaId",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "monto_previsto",
+            "getter_name": "montoPrevisto",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
             "name": "created_at",
             "getter_name": "createdAt",
             "moor_type": "int",
@@ -1908,7 +1928,8 @@
         "without_rowid": false,
         "constraints": [
           "CHECK (tipo IN ('ENTREVISTA', 'COBRANZA'))",
-          "CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA'))"
+          "CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA'))",
+          "CHECK (monto_previsto IS NULL OR (monto_previsto > 0 AND tipo = 'COBRANZA' AND venta_id IS NOT NULL))"
         ],
         "explicit_pk": [
           "id"
@@ -4102,30 +4123,6 @@
             "dsl_features": []
           },
           {
-            "name": "anulado_at",
-            "getter_name": "anuladoAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "motivo_anulacion",
-            "getter_name": "motivoAnulacion",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
             "name": "created_at",
             "getter_name": "createdAt",
             "moor_type": "int",
@@ -5016,6 +5013,25 @@
     {
       "id": 51,
       "references": [
+        15
+      ],
+      "type": "index",
+      "data": {
+        "on": 15,
+        "name": "agenda_venta_idx",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "venta_id",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 52,
+      "references": [
         16
       ],
       "type": "index",
@@ -5037,7 +5053,7 @@
       }
     },
     {
-      "id": 52,
+      "id": 53,
       "references": [
         16
       ],
@@ -5056,7 +5072,7 @@
       }
     },
     {
-      "id": 53,
+      "id": 54,
       "references": [
         16
       ],
@@ -5075,7 +5091,7 @@
       }
     },
     {
-      "id": 54,
+      "id": 55,
       "references": [
         18
       ],
@@ -5094,7 +5110,7 @@
       }
     },
     {
-      "id": 55,
+      "id": 56,
       "references": [
         21
       ],
@@ -5113,7 +5129,7 @@
       }
     },
     {
-      "id": 56,
+      "id": 57,
       "references": [
         22
       ],
@@ -5132,7 +5148,7 @@
       }
     },
     {
-      "id": 57,
+      "id": 58,
       "references": [
         22
       ],
@@ -5151,7 +5167,7 @@
       }
     },
     {
-      "id": 58,
+      "id": 59,
       "references": [
         22
       ],
@@ -5170,7 +5186,7 @@
       }
     },
     {
-      "id": 59,
+      "id": 60,
       "references": [
         23
       ],
@@ -5189,7 +5205,7 @@
       }
     },
     {
-      "id": 60,
+      "id": 61,
       "references": [
         23
       ],
@@ -5208,7 +5224,7 @@
       }
     },
     {
-      "id": 61,
+      "id": 62,
       "references": [
         25
       ],
@@ -5227,7 +5243,7 @@
       }
     },
     {
-      "id": 62,
+      "id": 63,
       "references": [
         28
       ],
@@ -5246,7 +5262,7 @@
       }
     },
     {
-      "id": 63,
+      "id": 64,
       "references": [
         29
       ],
@@ -5269,7 +5285,7 @@
       }
     },
     {
-      "id": 64,
+      "id": 65,
       "references": [
         29
       ],
@@ -5288,7 +5304,7 @@
       }
     },
     {
-      "id": 65,
+      "id": 66,
       "references": [
         30
       ],
@@ -5307,7 +5323,7 @@
       }
     },
     {
-      "id": 66,
+      "id": 67,
       "references": [
         31
       ],
@@ -5326,7 +5342,7 @@
       }
     },
     {
-      "id": 67,
+      "id": 68,
       "references": [
         32
       ],
@@ -5345,7 +5361,7 @@
       }
     },
     {
-      "id": 68,
+      "id": 69,
       "references": [
         33
       ],
@@ -5364,7 +5380,7 @@
       }
     },
     {
-      "id": 69,
+      "id": 70,
       "references": [
         34
       ],
@@ -5524,7 +5540,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"agenda\" (\"id\" TEXT NOT NULL, \"espacio_id\" TEXT NOT NULL, \"espacio_persona_id\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"fecha_programada\" INTEGER NOT NULL, \"slot_codigo\" TEXT NULL, \"es_estricta\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_estricta\" IN (0, 1)), \"ubicacion_alt_id\" TEXT NULL, \"estado\" TEXT NOT NULL DEFAULT 'PROGRAMADA', \"colportor_id\" TEXT NOT NULL, \"visita_id\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (tipo IN ('ENTREVISTA', 'COBRANZA')), CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA')));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"agenda\" (\"id\" TEXT NOT NULL, \"espacio_id\" TEXT NOT NULL, \"espacio_persona_id\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"fecha_programada\" INTEGER NOT NULL, \"slot_codigo\" TEXT NULL, \"es_estricta\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_estricta\" IN (0, 1)), \"ubicacion_alt_id\" TEXT NULL, \"estado\" TEXT NOT NULL DEFAULT 'PROGRAMADA', \"colportor_id\" TEXT NOT NULL, \"visita_id\" TEXT NULL, \"venta_id\" TEXT NULL, \"monto_previsto\" INTEGER NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (tipo IN ('ENTREVISTA', 'COBRANZA')), CHECK (estado IN ('PROGRAMADA', 'CUMPLIDA', 'NO_CUMPLIDA', 'CANCELADA')), CHECK (monto_previsto IS NULL OR (monto_previsto > 0 AND tipo = 'COBRANZA' AND venta_id IS NOT NULL)));"
         }
       ]
     },
@@ -5668,7 +5684,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"cobranza\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"medio\" TEXT NOT NULL, \"fecha\" INTEGER NOT NULL, \"numero_cuota\" INTEGER NULL, \"tarjeta_tipo\" TEXT NULL, \"tarjeta_marca\" TEXT NULL, \"numero_aprobacion\" TEXT NULL, \"referencia_transferencia\" TEXT NULL, \"banco_origen\" TEXT NULL, \"anulado_at\" INTEGER NULL, \"motivo_anulacion\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (medio IN ('EFECTIVO','TARJETA','TRANSFERENCIA')));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"cobranza\" (\"id\" TEXT NOT NULL, \"venta_id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"medio\" TEXT NOT NULL, \"fecha\" INTEGER NOT NULL, \"numero_cuota\" INTEGER NULL, \"tarjeta_tipo\" TEXT NULL, \"tarjeta_marca\" TEXT NULL, \"numero_aprobacion\" TEXT NULL, \"referencia_transferencia\" TEXT NULL, \"banco_origen\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (medio IN ('EFECTIVO','TARJETA','TRANSFERENCIA')));"
         }
       ]
     },
@@ -5840,6 +5856,15 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE INDEX agenda_espacio_idx ON agenda (espacio_id)"
+        }
+      ]
+    },
+    {
+      "name": "agenda_venta_idx",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX agenda_venta_idx ON agenda (venta_id)"
         }
       ]
     },

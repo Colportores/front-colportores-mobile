@@ -18,6 +18,7 @@ const _producto = {
   'nombre': 'El Conflicto de los Siglos',
   'descripcion': 'Edición de bolsillo',
   'tipo': 'LIBRO',
+  'categoria': 'BONIFICABLES',
   'es_bonificable': true,
   'es_misionero': false,
   'precio_base_compra': 18000,
@@ -145,6 +146,7 @@ void main() {
       expect(p.nombre, 'El Conflicto de los Siglos');
       expect(p.descripcion, 'Edición de bolsillo');
       expect(p.tipo, 'LIBRO');
+      expect(p.categoria, 'BONIFICABLES');
       expect(p.esBonificable, isTrue);
       expect(p.esMisionero, isFalse);
       expect(p.precioBaseCompra, 18000);

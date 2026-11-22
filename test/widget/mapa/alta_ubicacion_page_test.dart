@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/marcador_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
@@ -13,6 +14,7 @@ import 'package:colportores_mobile/features/mapa/domain/services/geocodificador_
 import 'package:colportores_mobile/features/mapa/domain/services/proyeccion_mercator.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/resolutores_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/coordenadas.dart';
+import 'package:colportores_mobile/features/mapa/presentation/formato_lista_ubicaciones.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_mapa_base.dart';
 import 'package:colportores_mobile/features/mapa/presentation/pages/alta_ubicacion_page.dart';
@@ -21,6 +23,7 @@ import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_alta.
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_duplicado_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/mapa_alta.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_alta.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_lista_ubicaciones.dart';
 import 'package:dartz/dartz.dart' show Left, Right;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,6 +34,12 @@ import '../../helpers/mapa_base_falso.dart';
 
 /// Atajo: el GPS que no da ubicación por [motivo].
 GpsFalso _gpsSin(MotivoSinGps motivo) => GpsFalso(Left(FailureGpsNoDisponible(motivo: motivo)));
+
+/// El botón de tipo [etiqueta] cuando es el elegido (el que lleva el tilde).
+Finder _marcado(String etiqueta) => find.descendant(
+  of: find.ancestor(of: find.text(etiqueta), matching: find.byType(InkWell)).first,
+  matching: find.byIcon(Icons.check),
+);
 
 /// La pantalla que abre el alta y guarda cómo se cerró.
 class _Anfitrion extends StatelessWidget {
@@ -225,14 +234,12 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('con GPS preciso se registra con un toque en «Casa» y otro en «Registrar»', (
+    testWidgets('con GPS preciso se registra con un solo toque en «Registrar»: «Casa» ya viene', (
       tester,
     ) async {
       final e = await _montar(tester);
-      expect(_habilitado(tester, _registrar), isFalse, reason: 'el tipo es obligatorio');
+      expect(_habilitado(tester, _registrar), isTrue, reason: '«Casa» viene elegida (#665)');
 
-      await _tocar(tester, find.text('Casa'));
-      expect(_habilitado(tester, _registrar), isTrue);
       await _tocar(tester, _registrar);
 
       final salida = e.salidas.single;
@@ -246,14 +253,38 @@ void main() {
       expect(find.text('abrir'), findsOneWidget, reason: 'vuelve al mapa');
     });
 
-    testWidgets('el tipo no viene elegido y el elegido se marca', (tester) async {
+    testWidgets('«Casa» viene elegida y el elegido se marca; cambiar y volver a «Casa» funciona', (
+      tester,
+    ) async {
       await _montar(tester);
 
-      expect(find.byIcon(Icons.check), findsNothing);
-      await _tocar(tester, find.text('Negocio'));
-
       expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(_marcado('Casa'), findsOneWidget, reason: '«Casa» al abrir');
+      expect(_marcado('Negocio'), findsNothing);
+      expect(_marcado('Edificio'), findsNothing);
+
+      await _tocar(tester, find.text('Negocio'));
+      expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(_marcado('Negocio'), findsOneWidget);
+      expect(_marcado('Casa'), findsNothing);
+
+      await _tocar(tester, find.text('Casa'));
+      expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(_marcado('Casa'), findsOneWidget);
+      expect(_habilitado(tester, _registrar), isTrue);
     });
+
+    testWidgets(
+      'con el texto al 200 % la fila de tipos no desborda y «Casa» se sigue viendo elegida',
+      (tester) async {
+        await _montar(tester, escala: 2, tamano: const Size(360, 640));
+
+        expect(tester.takeException(), isNull, reason: 'sin overflow');
+        expect(_marcado('Casa'), findsOneWidget);
+        await _traer(tester, find.text('Casa'));
+        expect(find.text('Casa').hitTestable(), findsOneWidget);
+      },
+    );
 
     testWidgets('mientras guarda: «Registrando…», deshabilitado, y no se puede cerrar', (
       tester,
@@ -389,6 +420,11 @@ void main() {
       await _montar(tester, gps: gps);
       expect(find.text('Sin GPS'), findsOneWidget);
 
+      // «Activar GPS» lo manda a los ajustes (el fake no cambia nada); solo al volver de ahí se
+      // vuelve a leer (#651: volver de otra app no puede mostrarle el diálogo del permiso).
+      await tester.tap(find.text('Activar GPS'));
+      await _asentar(tester);
+      expect(gps.activaciones, [MotivoSinGps.servicioApagado]);
       gps.respuesta = Right(lecturaGps(5));
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -522,6 +558,65 @@ void main() {
       expect(find.text('Editado'), findsNothing);
       expect(find.text('Del mapa'), findsNWidgets(2));
     });
+
+    testWidgets(
+      'regresión #652: el mapa solo trae la calle, el número se escribe a mano y es el que se guarda',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          geocodificador: GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia')),
+        );
+        await _tocar(tester, find.text('Casa'));
+        await tester.enterText(find.widgetWithText(TextField, 'Nº'), '45');
+        await tester.pump();
+        expect(find.text('Editado'), findsOneWidget);
+
+        await _tocar(tester, _registrar);
+
+        expect(e.repo.llamadas.single.ubicacion.numero, '45');
+        expect(e.salidas.single, isA<UbicacionCreada>());
+        expect((e.salidas.single! as UbicacionCreada).ubicacion.numero, '45');
+      },
+    );
+
+    testWidgets(
+      'regresión #652: el número escrito a mano gana aunque la dirección del mapa llegue después y '
+      'distinta, y es el que se guarda',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          geocodificador: GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia')),
+        );
+        await _tocar(tester, find.text('Casa'));
+        await tester.enterText(find.widgetWithText(TextField, 'Nº'), '45');
+        await tester.pump();
+
+        e.geocodificador.respuesta = (_) =>
+            const DireccionDelPunto(calle: 'Av. Italia', numero: '1250');
+        await tester.drag(_mapa, const Offset(0, 80));
+        await _asentar(tester);
+        expect(find.widgetWithText(TextField, '45'), findsOneWidget);
+
+        await _tocar(tester, _registrar);
+
+        expect(e.repo.llamadas.single.ubicacion.numero, '45');
+      },
+    );
+
+    testWidgets(
+      'regresión #652: sin número en el mapa y sin escribir uno, se guarda sin número (no se inventa)',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          geocodificador: GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia')),
+        );
+        await _tocar(tester, find.text('Casa'));
+
+        await _tocar(tester, _registrar);
+
+        expect(e.repo.llamadas.single.ubicacion.numero, isNull);
+      },
+    );
 
     testWidgets('al moverse la calle que vino del mapa aparece «Calle actualizada» un rato', (
       tester,
@@ -1089,19 +1184,31 @@ void main() {
       expect(e.salidas, [null]);
     });
 
-    testWidgets('al reentrar arranca de cero: sin tipo y leyendo el GPS otra vez', (tester) async {
-      final e = await _montar(tester);
-      await _tocar(tester, find.text('Casa'));
-      await _tocar(tester, find.byTooltip('Cerrar'));
-      expect(e.gps.lecturas, 1);
+    testWidgets(
+      'al reentrar arranca de cero: «Casa» elegida aunque la anterior fuera otro tipo, y con '
+      'una lectura nueva del GPS único (#670: desde «Mapa libre» nunca parte de una vieja)',
+      (tester) async {
+        final e = await _montar(tester);
+        await _tocar(tester, find.text('Edificio'));
+        expect(_marcado('Edificio'), findsOneWidget);
+        await _tocar(tester, find.byTooltip('Cerrar'));
+        final antes = e.gps.lecturas;
 
-      await tester.tap(find.text('abrir'));
-      await _asentar(tester);
+        await tester.tap(find.text('abrir'));
+        await _asentar(tester);
 
-      expect(e.gps.lecturas, 2);
-      expect(find.byIcon(Icons.check), findsNothing);
-      expect(_habilitado(tester, _registrar), isFalse);
-    });
+        expect(
+          e.gps.lecturas,
+          antes + 1,
+          reason: 'una lectura nueva al abrir; el permiso ya estaba (#651)',
+        );
+        expect(find.text('GPS ±6 m'), findsOneWidget, reason: 'parte de la lectura nueva');
+        expect(find.byIcon(Icons.check), findsOneWidget);
+        expect(_marcado('Casa'), findsOneWidget, reason: 'no recuerda el tipo del alta anterior');
+        expect(_marcado('Edificio'), findsNothing);
+        expect(_habilitado(tester, _registrar), isTrue);
+      },
+    );
 
     testWidgets('un alta por tap largo arranca en ese punto con «Marcado a mano»', (tester) async {
       await _montar(
@@ -2017,5 +2124,121 @@ void main() {
         handle.dispose();
       },
     );
+  });
+  group('tarjeta de la candidata: estado de visita y espacios (vista 04, #273)', () {
+    Future<void> abrirHoja(
+      WidgetTester tester,
+      List<CandidataDuplicado> candidatas, {
+      double escala = 1,
+      Size tamano = const Size(390, 844),
+    }) async {
+      final repo = RepoAltaFalso()
+        ..comportamiento = (_) async => Right(AltaConDuplicados(candidatas: candidatas));
+      await _montar(tester, repo: repo, escala: escala, tamano: tamano);
+      await _tocar(tester, find.text('Casa'));
+      await _tocar(tester, _registrar);
+    }
+
+    testWidgets('B·01, una candidata: «Entrevista agendada» y «Casa · 2 espacios · Montevideo»', (
+      tester,
+    ) async {
+      await abrirHoja(tester, [
+        candidata('c1', estado: EstadoCasa.entrevistaAgendada, espacios: 2),
+      ]);
+
+      expect(find.text('Av. Italia 1234'), findsOneWidget);
+      expect(find.text('Entrevista agendada'), findsOneWidget);
+      expect(find.text('Casa · 2 espacios · Montevideo'), findsOneWidget);
+      expect(find.text('Actualizada hace 3 días'), findsOneWidget);
+    });
+
+    testWidgets('B·02, varias candidatas: cada tarjeta con su estado y sus espacios', (
+      tester,
+    ) async {
+      await abrirHoja(tester, [
+        candidata('lejos', estado: EstadoCasa.entrevistaAgendada, espacios: 2),
+        candidata('cerca', metros: 4, numero: '1236', estado: EstadoCasa.sinVisita, espacios: 1),
+      ]);
+
+      expect(find.text('Hay 2 ubicaciones cerca'), findsOneWidget);
+      expect(find.text('Sin visita'), findsOneWidget);
+      expect(find.text('Casa · 1 espacio · Montevideo'), findsOneWidget);
+      expect(find.text('Entrevista agendada'), findsOneWidget);
+      expect(find.text('Casa · 2 espacios · Montevideo'), findsOneWidget);
+    });
+
+    testWidgets('cada estado de la casa se dice con su rótulo', (tester) async {
+      for (final estado in EstadoCasa.values) {
+        await abrirHoja(tester, [candidata('c1', estado: estado, espacios: 1)]);
+
+        expect(
+          find.text(FormatoListaUbicaciones.estado(estado)),
+          findsOneWidget,
+          reason: '$estado',
+        );
+        expect(find.byType(InsigniaEstadoCasa), findsOneWidget, reason: '$estado');
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+
+    testWidgets('un edificio dice «deptos» y una casa sin espacios dice «sin espacios»', (
+      tester,
+    ) async {
+      await abrirHoja(tester, [
+        candidata('edif', tipo: TipoUbicacion.edificio, estado: EstadoCasa.noContesto, espacios: 6),
+        candidata('vacia', metros: 4, numero: '1236', estado: EstadoCasa.rechazo, espacios: 0),
+      ]);
+
+      expect(find.text('Edificio · 6 deptos · Montevideo'), findsOneWidget);
+      expect(find.text('Casa · sin espacios · Montevideo'), findsOneWidget);
+    });
+
+    testWidgets(
+      'sin saber el estado ni los espacios no se inventa nada: queda «Casa · Montevideo»',
+      (tester) async {
+        await abrirHoja(tester, [candidata('c1')]);
+
+        expect(find.byType(InsigniaEstadoCasa), findsNothing);
+        expect(find.text('Sin visita'), findsNothing);
+        expect(find.text('Casa · Montevideo'), findsOneWidget);
+      },
+    );
+
+    testWidgets('lector de pantalla: el estado se dice una sola vez', (tester) async {
+      final handle = tester.ensureSemantics();
+      await abrirHoja(tester, [
+        candidata('c1', estado: EstadoCasa.entrevistaAgendada, espacios: 2),
+      ]);
+
+      expect(find.bySemanticsLabel('Entrevista agendada'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('textScaler 2.0 en un teléfono chico, con varias candidatas: no desborda', (
+      tester,
+    ) async {
+      await abrirHoja(
+        tester,
+        [
+          for (var i = 0; i < 4; i++)
+            candidata('c$i', metros: 4.0 + i, estado: EstadoCasa.entregaYPago, espacios: 12 + i),
+        ],
+        escala: 2,
+        tamano: const Size(320, 640),
+      );
+
+      expect(find.text('Entrega y pago'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('«Reutilizar esta» y «Crear igual» siguen andando con la tarjeta ampliada', (
+      tester,
+    ) async {
+      await abrirHoja(tester, [candidata('c1', estado: EstadoCasa.ventaCompleta, espacios: 3)]);
+
+      expect(find.text('Reutilizar esta'), findsOneWidget);
+      expect(find.text('Crear igual'), findsOneWidget);
+      expect(find.text('Cancelar'), findsOneWidget);
+    });
   });
 }

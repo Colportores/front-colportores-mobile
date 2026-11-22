@@ -52,6 +52,7 @@ void main() {
           'nombre': 'Conflicto de los Siglos',
           'descripcion': null,
           'tipo': 'LIBRO',
+          'categoria': 'ESPIRITUALES',
           'es_bonificable': false,
           'es_misionero': false,
           'precio_base_compra': null,

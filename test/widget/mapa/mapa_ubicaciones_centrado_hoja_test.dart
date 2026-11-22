@@ -110,7 +110,7 @@ void main() {
       final m = await montarMapaUbicaciones(tester, repo: repo, asentar: false);
       await asentarLista(tester);
       const aparte = Coordenadas(lat: -34.7, lon: -56.0);
-      m.mapa.moverPorGesto(CamaraMapa(centro: aparte, zoom: MapaAlta.zoomCalle));
+      m.mapa.moverPorGesto(const CamaraMapa(centro: aparte, zoom: MapaAlta.zoomCalle));
       await tester.pump();
 
       repo.bloqueo!.complete();
@@ -127,7 +127,7 @@ void main() {
         final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
         if (subidas > 0) await tocarAsa(tester, subidas);
         m.mapa.moverPorGesto(
-          CamaraMapa(centro: const Coordenadas(lat: -34.7, lon: -56.0), zoom: MapaAlta.zoomCalle),
+          const CamaraMapa(centro: Coordenadas(lat: -34.7, lon: -56.0), zoom: MapaAlta.zoomCalle),
         );
         await tester.pump();
 

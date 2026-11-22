@@ -80,7 +80,7 @@ final class EncoladorMarcarDuplicadoSinMotor implements EncoladorMarcarDuplicado
   const EncoladorMarcarDuplicadoSinMotor();
 
   @override
-  Future<void> encolarMarcarDuplicado({
+  Future<String> encolarMarcarDuplicado({
     required String duplicadaId,
     required String conservadaId,
   }) async {

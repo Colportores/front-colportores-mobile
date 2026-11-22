@@ -13,6 +13,7 @@ import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dar
 import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_repository_impl.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/color_house_status.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/duplicado_ubicacion.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resultado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/services/criterio_duplicado_ubicacion.dart';
@@ -189,6 +190,106 @@ void main() {
         );
       },
     );
+
+    group('el resumen de cada candidata para la vista 04 (#273)', () {
+      Future<void> colorDe(String ubicacionId, ColorHouseStatus color, {DateTime? baja}) => db
+          .into(db.houseStatuses)
+          .insert(
+            HouseStatusesCompanion.insert(
+              ubicacionId: ubicacionId,
+              lat: -34.891,
+              lon: -56.125,
+              tipoUbicacion: 'CASA',
+              color: color.codigo,
+              prioridad: color.prioridad,
+              createdAt: t0,
+              updatedAt: t0,
+              deletedAt: Value(baja),
+            ),
+          );
+
+      /// Las candidatas que frenan un alta en la dirección de siempre.
+      Future<Map<String, CandidataDuplicado>> candidatas() async {
+        try {
+          await local.insertar(ubicacion(id: 'nueva'), duplicados: criterio);
+        } on UbicacionDuplicadaException catch (e) {
+          return {for (final c in e.candidatas) c.ubicacion.id: c};
+        }
+        fail('el alta debía frenarse por duplicada');
+      }
+
+      test('dada una casa con entrevista agendada y 2 espacios, cuando frena un alta, la candidata '
+          'trae su estado y la cuenta de espacios', () async {
+        await local.insertar(
+          ubicacion(id: 'c1', metrosAlNorte: 300),
+          espacio: espacio(ubicacionId: 'c1'),
+        );
+        await db
+            .into(db.espacios)
+            .insert(
+              EspaciosCompanion.insert(
+                id: 'esp-2',
+                ubicacionId: 'c1',
+                createdAt: t0,
+                updatedAt: t0,
+              ),
+            );
+        await colorDe('c1', ColorHouseStatus.entrevistaProgramada);
+
+        final c = (await candidatas())['c1']!;
+
+        expect(c.estado, EstadoCasa.entrevistaAgendada);
+        expect(c.cantidadEspacios, 2);
+      });
+
+      test('dada una casa sin fila en house_status ni espacios, la candidata es «Sin visita» con 0 '
+          'espacios', () async {
+        await local.insertar(ubicacion(id: 'c1', metrosAlNorte: 300));
+
+        final c = (await candidatas())['c1']!;
+
+        expect(c.estado, EstadoCasa.sinVisita);
+        expect(c.cantidadEspacios, 0);
+      });
+
+      test('una fila de house_status dada de baja y un espacio dado de baja no cuentan', () async {
+        await local.insertar(ubicacion(id: 'c1', metrosAlNorte: 300));
+        await colorDe('c1', ColorHouseStatus.rechazo, baja: t0);
+        await db
+            .into(db.espacios)
+            .insert(
+              EspaciosCompanion.insert(
+                id: 'esp-baja',
+                ubicacionId: 'c1',
+                createdAt: t0,
+                updatedAt: t0,
+                deletedAt: Value(t0),
+              ),
+            );
+
+        final c = (await candidatas())['c1']!;
+
+        expect(c.estado, EstadoCasa.sinVisita);
+        expect(c.cantidadEspacios, 0);
+      });
+
+      test('con varias candidatas, cada una trae lo suyo y no lo de la otra', () async {
+        await local.insertar(
+          ubicacion(id: 'lejana', metrosAlNorte: 300),
+          espacio: espacio(ubicacionId: 'lejana'),
+        );
+        await local.insertar(ubicacion(id: 'cerca', calle: 'Comercio', metrosAlNorte: 3));
+        await colorDe('lejana', ColorHouseStatus.ventaCompleta);
+        await colorDe('cerca', ColorHouseStatus.sinContestar);
+
+        final porId = await candidatas();
+
+        expect(porId['lejana']!.estado, EstadoCasa.ventaCompleta);
+        expect(porId['lejana']!.cantidadEspacios, 1);
+        expect(porId['cerca']!.estado, EstadoCasa.noContesto);
+        expect(porId['cerca']!.cantidadEspacios, 0);
+      });
+    });
 
     test('dado otra dirección a 6 m, otro número, la misma dirección en otra ciudad o una baja, '
         'cuando inserta, no las toma como duplicadas', () async {

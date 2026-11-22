@@ -26,7 +26,6 @@ Map<String, Object?> _jornada(String id, String actualizada) => {
   'inicio': '2026-10-16T08:00:00.000Z',
   'fin': null,
   'acompaniante_id': null,
-  'tipo_acompaniamiento': null,
   'total_visitas': 7,
   'total_ventas': 2,
   'created_at': '2026-10-16T08:00:00.000Z',
@@ -41,6 +40,7 @@ Map<String, Object?> _producto(String id) => {
   'nombre': 'Libro $id',
   'descripcion': null,
   'tipo': 'LIBRO',
+  'categoria': 'ESPIRITUALES',
   'es_bonificable': true,
   'es_misionero': false,
   'precio_base_compra': 18000,
@@ -132,6 +132,7 @@ void main() {
       expect(tablas, containsAll(['jornada', 'persona', 'audit_log', 'sync_queue']));
       expect(tablas, isNot(contains('producto')), reason: 'el pull la reconstruye');
       expect(tablas, isNot(contains('sesion_usuario')), reason: 'es de la sesión del teléfono');
+      expect(tablas, isNot(contains('deuda_casa_cache')), reason: 'se vuelve a bajar del servidor');
       expect(tablas, isNot(contains('sync_watermark')));
       expect(tablas, isNot(contains('sync_meta')));
       expect(
@@ -155,6 +156,8 @@ void main() {
 
       final sinDecidir = todas.difference(entidadesDelBackup).difference(replicas).difference({
         'sesion_usuario',
+        // La deuda con la casa editora que dijo el servidor: se vuelve a bajar (#441).
+        'deuda_casa_cache',
         ...tablasDelMotor.difference({'sync_queue'}),
       });
 
@@ -248,8 +251,170 @@ void main() {
     expect(jornada['updated_at'], DateTime.utc(2026, 11, 2, 20).millisecondsSinceEpoch);
   });
 
-  test('restore todavía no existe (HU-SYNC-006): falla a propósito, no aplica a medias', () {
-    expect(() => snapshot.restore([utf8.encode('{}')]), throwsUnsupportedError);
+  group('restore (HU-SYNC-006, #186)', () {
+    /// Un teléfono con sus personas: devuelve su DB para exportarla.
+    Future<AppDatabase> telefono(Map<String, DateTime> personas, {String? cola}) async {
+      final origen = AppDatabase(NativeDatabase.memory(), logger: loggerMudo());
+      addTearDown(origen.close);
+      for (final MapEntry(key: nombre, value: actualizada) in personas.entries) {
+        await origen
+            .into(origen.personas)
+            .insert(
+              PersonasCompanion.insert(
+                id: 'per-$nombre',
+                nombre: nombre,
+                createdAt: DateTime.utc(2026, 10, 1),
+                updatedAt: actualizada,
+              ),
+            );
+      }
+      if (cola != null) {
+        await DriftJobStore(origen).append(
+          SyncJob(
+            clientOpId: cola,
+            entity: 'jornada',
+            op: Op.insert,
+            payload: {'id': cola},
+            createdAt: DateTime.utc(2026, 11, 2, 20),
+            rowPk: cola,
+          ),
+        );
+      }
+      return origen;
+    }
+
+    Future<List<int>> exportarDe(AppDatabase origen, {DateTime? since}) =>
+        DriftSnapshot(origen, tablas: entidadesDelBackup).export(since: since);
+
+    Future<Map<String, DateTime>> nombresYFechas() async => {
+      for (final p in await db.select(db.personas).get()) p.nombre: p.updatedAt.toUtc(),
+    };
+
+    Future<List<String>> operaciones() async => [
+      for (final f in await db.customSelect('SELECT client_op_id FROM sync_queue').get())
+        f.read<String>('client_op_id'),
+    ];
+
+    test('una base y un incremental dejan la DB vacía como el teléfono que respaldó', () async {
+      final origen = await telefono({'Ana': DateTime.utc(2026, 10, 1)}, cola: 'op-1');
+      final base = await exportarDe(origen);
+      await (origen.update(origen.personas)..where((p) => p.id.equals('per-Ana'))).write(
+        PersonasCompanion(
+          nombre: const Value('Ana María'),
+          updatedAt: Value(DateTime.utc(2026, 11, 1)),
+        ),
+      );
+      final incremental = await exportarDe(origen, since: DateTime.utc(2026, 10, 20));
+
+      await snapshot.restore([base, incremental]);
+
+      expect(await nombresYFechas(), {'Ana María': DateTime.utc(2026, 11, 1)});
+      expect(await operaciones(), ['op-1'], reason: 'los jobs de la cola vuelven a existir');
+    });
+
+    test(
+      'dos cadenas se fusionan por fecha de fila: gana la más nueva y no se pierde ninguna',
+      () async {
+        final viejo = await telefono({
+          'Ana': DateTime.utc(2026, 10, 1),
+          'Beto': DateTime.utc(2026, 10, 5),
+        }, cola: 'op-viejo');
+        final nuevo = await telefono({
+          'Ana': DateTime.utc(2026, 11, 1),
+          'Carla': DateTime.utc(2026, 11, 2),
+        }, cola: 'op-nuevo');
+        await (nuevo.update(nuevo.personas)..where((p) => p.id.equals('per-Ana'))).write(
+          const PersonasCompanion(nombre: Value('Ana Pérez')),
+        );
+
+        await snapshot.restoreChains([
+          [await exportarDe(viejo)],
+          [await exportarDe(nuevo)],
+        ]);
+
+        expect(await nombresYFechas(), {
+          'Ana Pérez': DateTime.utc(2026, 11, 1),
+          'Beto': DateTime.utc(2026, 10, 5),
+          'Carla': DateTime.utc(2026, 11, 2),
+        });
+        expect(
+          await operaciones(),
+          unorderedEquals(['op-viejo', 'op-nuevo']),
+          reason: 'se restauran las colas de todas las cadenas',
+        );
+      },
+    );
+
+    test(
+      'el orden de las cadenas no cambia quién gana: la fila más nueva, venga de donde venga',
+      () async {
+        final viejo = await telefono({'Ana': DateTime.utc(2026, 10, 1)});
+        final nuevo = await telefono({'Ana': DateTime.utc(2026, 11, 1)});
+        await (viejo.update(viejo.personas)).write(const PersonasCompanion(nombre: Value('Vieja')));
+        await (nuevo.update(nuevo.personas)).write(const PersonasCompanion(nombre: Value('Nueva')));
+
+        await snapshot.restoreChains([
+          [await exportarDe(nuevo)],
+          [await exportarDe(viejo)],
+        ]);
+
+        expect((await db.select(db.personas).getSingle()).nombre, 'Nueva');
+      },
+    );
+
+    test('un respaldo de una esquema más nuevo no se aplica y la DB queda como estaba', () async {
+      final origen = await telefono({'Ana': DateTime.utc(2026, 10, 1)});
+      final json = jsonDecode(utf8.decode(await exportarDe(origen))) as Map<String, Object?>;
+      json['esquema'] = db.schemaVersion + 1;
+
+      await expectLater(
+        snapshot.restore([utf8.encode(jsonEncode(json))]),
+        throwsA(
+          isA<SnapshotNewerSchemaException>()
+              .having((e) => e.backupSchema, 'respaldo', db.schemaVersion + 1)
+              .having((e) => e.appSchema, 'app', db.schemaVersion),
+        ),
+      );
+      expect(await nombresYFechas(), isEmpty);
+    });
+
+    test(
+      'un payload ilegible en el medio de la cadena frena todo: no queda nada a medias',
+      () async {
+        final origen = await telefono({'Ana': DateTime.utc(2026, 10, 1)});
+
+        await expectLater(
+          snapshot.restore([await exportarDe(origen), utf8.encode('esto no es un respaldo')]),
+          throwsA(isA<SnapshotUnreadableException>()),
+        );
+        expect(await nombresYFechas(), isEmpty);
+      },
+    );
+
+    test('una fila que no se puede escribir deshace las anteriores', () async {
+      final origen = await telefono({'Ana': DateTime.utc(2026, 10, 1)});
+      final json = jsonDecode(utf8.decode(await exportarDe(origen))) as Map<String, Object?>;
+      final personas = ((json['tablas']! as Map)['persona']! as Map)['filas']! as List;
+      // Una segunda persona sin nombre (NOT NULL): el INSERT falla después de haber entrado Ana.
+      personas.add({'id': 'per-rota', 'nombre': null, 'created_at': 1, 'updated_at': 1});
+
+      await expectLater(
+        snapshot.restore([utf8.encode(jsonEncode(json))]),
+        throwsA(isA<SnapshotUnreadableException>()),
+      );
+      expect(await nombresYFechas(), isEmpty, reason: 'ni siquiera Ana, que entró antes');
+    });
+
+    test('lo que la app ya no tiene (una columna de un esquema viejo) se ignora', () async {
+      final origen = await telefono({'Ana': DateTime.utc(2026, 10, 1)});
+      final json = jsonDecode(utf8.decode(await exportarDe(origen))) as Map<String, Object?>;
+      final fila = (((json['tablas']! as Map)['persona']! as Map)['filas']! as List).single as Map;
+      fila['columna_que_ya_no_existe'] = 'x';
+
+      await snapshot.restore([utf8.encode(jsonEncode(json))]);
+
+      expect(await nombresYFechas(), {'Ana': DateTime.utc(2026, 10, 1)});
+    });
   });
 
   group('de punta a punta con el motor de backup', () {
@@ -259,12 +424,20 @@ void main() {
 
     setUp(() {
       ahora = DateTime.utc(2026, 11, 2, 22);
-      drive = FakeArchive(authorized: true, clock: () => ahora, informaHashRemoto: true);
+      final cripto = CryptoConDek(
+        () async => ClaveDb(Uint8List.fromList(List<int>.generate(32, (i) => i))),
+      );
+      // El archivo hashea con el mismo digest que el cifrado en juego (como en la app): la firma de las
+      // anotaciones firma el hash del cifrado y la verificación lo compara con el que quedó anotado.
+      drive = FakeArchive(
+        authorized: true,
+        clock: () => ahora,
+        informaHashRemoto: true,
+        digest: cripto.digest,
+      );
       servicio = BackupService(
         archive: drive,
-        crypto: CryptoConDek(
-          () async => ClaveDb(Uint8List.fromList(List<int>.generate(32, (i) => i))),
-        ),
+        crypto: cripto,
         snapshot: DriftSnapshot(db, tablas: entidadesDelBackup, clock: () => ahora),
         clock: () => ahora,
       );

@@ -7,25 +7,35 @@ import 'package:equatable/equatable.dart';
 /// Son valores del dominio y no filas de Drift: la lectura de la réplica los arma y el
 /// `ResolvedorDePrecios` los combina sin saber de dónde vienen.
 
-/// Qué es un producto del catálogo, según su columna `tipo`.
-enum TipoDeProducto {
-  libro('LIBRO'),
-  revista('REVISTA'),
+/// La categoría de un producto del catálogo (`producto.categoria`, backend-supabase 0149): una por
+/// producto, en lugar del `tipo` de antes (decisión de Cristian, 28/10, «Categorías»). Es la etiqueta
+/// que ve la colportora en Precios; que el producto cuente para la beca lo dice aparte
+/// [ProductoDelCatalogo.esBonificable] (sí/no).
+enum CategoriaDeProducto {
+  bonificables('BONIFICABLES'),
+  misioneros('MISIONEROS'),
+  revistas('REVISTAS'),
 
-  /// Material de trabajo: no se vende, así que no aparece en los precios.
+  /// El libro común, ni bonificable ni misionero (la etiqueta «✝ Espiritual»).
+  espirituales('ESPIRITUALES'),
+
+  /// Material de trabajo, de uso interno: no se vende, así que no aparece en los precios.
   material('MATERIAL'),
-  misionero('MISIONERO'),
 
-  /// Un tipo que esta versión de la app todavía no conoce (el servidor sumó uno): no frena nada,
-  /// pero tampoco se ofrece, porque no se sabe qué es.
-  otro('');
+  /// Una categoría que esta versión de la app todavía no conoce (el servidor sumó una) o un producto
+  /// cuya categoría aún no bajó del servidor: no frena nada, pero tampoco se ofrece, porque no se
+  /// sabe qué es. No se deriva de `tipo`: la categoría es la fuente (decisión de Cristian, 28/10).
+  otra('');
 
-  const TipoDeProducto(this.codigo);
+  const CategoriaDeProducto(this.codigo);
 
   final String codigo;
 
-  static TipoDeProducto desdeCodigo(String codigo) =>
-      values.firstWhere((t) => t.codigo.isNotEmpty && t.codigo == codigo, orElse: () => otro);
+  /// Lo que se ofrece y tiene precio: todo menos el material y lo que no se conoce.
+  bool get seVende => this != material && this != otra;
+
+  static CategoriaDeProducto desdeCodigo(String? codigo) =>
+      values.firstWhere((c) => c.codigo.isNotEmpty && c.codigo == codigo, orElse: () => otra);
 }
 
 /// Un producto del catálogo (`producto`).
@@ -33,7 +43,7 @@ final class ProductoDelCatalogo extends Equatable {
   const ProductoDelCatalogo({
     required this.id,
     required this.nombre,
-    required this.tipo,
+    required this.categoria,
     this.esBonificable = false,
     this.esMisionero = false,
     this.codigoEditor,
@@ -42,7 +52,7 @@ final class ProductoDelCatalogo extends Equatable {
 
   final String id;
   final String nombre;
-  final TipoDeProducto tipo;
+  final CategoriaDeProducto categoria;
 
   /// Cuenta para la beca del colportor (el ícono ◆ de la vista 26).
   final bool esBonificable;
@@ -61,7 +71,7 @@ final class ProductoDelCatalogo extends Equatable {
   List<Object?> get props => [
     id,
     nombre,
-    tipo,
+    categoria,
     esBonificable,
     esMisionero,
     codigoEditor,

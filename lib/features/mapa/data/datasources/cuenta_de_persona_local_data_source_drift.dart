@@ -88,33 +88,42 @@ final class CuentaDePersonaLocalDataSourceDrift {
     ];
   }
 
-  /// Las entregas **hechas**, una tarjeta por venta y por momento: al entregar un combo hay una fila
-  /// por producto, todas con la misma fecha, y la colportora lo ve como una sola entrega.
+  /// Las entregas, una tarjeta por venta y por momento: al entregar un combo hay una fila por
+  /// producto, todas con la misma fecha, y la colportora lo ve como una sola entrega.
   ///
-  /// Las **pendientes** no se arman todavía: su fecha prevista (`entrega.fecha_prevista`) la trae la
-  /// entrega diferida (HU-VEN-003, #433), y sin ella se mostraría como prevista una fecha inventada.
+  /// Las **hechas** llevan la fecha en que se entregaron. Las **pendientes** llevan su fecha prevista
+  /// (`entrega.fecha_prevista`, HU-VEN-003); una pendiente **sin fecha prevista** no se muestra: sin
+  /// ella se mostraría como prevista una fecha inventada (decisión del 30/10, #403).
   Future<List<MovimientoDeFicha>> _entregas(String personaId) async {
     final filas = await _db
         .customSelect(
-          'SELECT e.id AS id, e.venta_id AS venta_id, e.cantidad AS cantidad, '
-          'COALESCE(e.fecha_entrega, e.created_at) AS fecha, p.nombre AS nombre '
+          'SELECT e.id AS id, e.venta_id AS venta_id, e.cantidad AS cantidad, e.pendiente AS pendiente, '
+          'CASE WHEN e.pendiente = 0 THEN COALESCE(e.fecha_entrega, e.created_at) '
+          'ELSE e.fecha_prevista END AS fecha, p.nombre AS nombre '
           'FROM entrega e LEFT JOIN producto p ON p.id = e.producto_id '
-          'WHERE e.deleted_at IS NULL AND e.pendiente = 0 AND e.venta_id IN ($_ventasDeLaPersona) '
+          'WHERE e.deleted_at IS NULL AND (e.pendiente = 0 OR e.fecha_prevista IS NOT NULL) '
+          'AND e.venta_id IN ($_ventasDeLaPersona) '
           'ORDER BY e.created_at, e.id',
           variables: [Variable<String>(personaId)],
           readsFrom: {_db.entregas, _db.ventas, _db.espacioPersonas, _db.productos},
         )
         .get();
-    final grupos = <(String, int), List<QueryRow>>{};
+    final grupos = <(String, bool, int), List<QueryRow>>{};
     for (final fila in filas) {
-      (grupos[(fila.read<String>('venta_id'), fila.read<int>('fecha'))] ??= []).add(fila);
+      final clave = (
+        fila.read<String>('venta_id'),
+        fila.read<int>('pendiente') != 0,
+        fila.read<int>('fecha'),
+      );
+      (grupos[clave] ??= []).add(fila);
     }
     return [
-      for (final MapEntry(key: (_, fecha), value: grupo) in grupos.entries)
+      for (final MapEntry(key: (ventaId, pendiente, fecha), value: grupo) in grupos.entries)
         EntregaEnFicha(
           id: grupo.first.read<String>('id'),
           fecha: _fecha(fecha),
-          pendiente: false,
+          pendiente: pendiente,
+          ventaId: ventaId,
           lineas: [
             for (final fila in grupo)
               // Un producto que el catálogo ya no trae (la réplica es de solo lectura) queda como

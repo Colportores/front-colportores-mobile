@@ -2,11 +2,11 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:colportores_mapa/colportores_mapa.dart';
 import 'package:flutter/painting.dart';
 
 import '../../domain/entities/estado_casa.dart';
 import '../formato_lista_ubicaciones.dart';
-import '../widgets/piezas_lista_ubicaciones.dart' show ColoresLista;
 
 /// Cómo se ve una casa en el mapa (vista 39, M·01 y M·02): uno de los ocho estados de la lista
 /// (vista 05) o el símbolo del edificio, que es lo que dibuja el canvas para un edificio al que
@@ -14,21 +14,27 @@ import '../widgets/piezas_lista_ubicaciones.dart' show ColoresLista;
 ///
 /// Un edificio **con** estado toma el de su depto más urgente (decisión de Cristian del 23/10,
 /// «Color edificio»): ahí la variante es la del estado, igual que la de una casa.
+///
+/// Los colores y la forma salen de los tokens de lib-mapa (#673, [MarcadorDeCasa]): los mismos que
+/// usa el panel.
 enum VarianteMarcador {
-  sinVisita(EstadoCasa.sinVisita),
-  noContesto(EstadoCasa.noContesto),
-  entrevistaAgendada(EstadoCasa.entrevistaAgendada),
-  entrevistaHecha(EstadoCasa.entrevistaHecha),
-  ventaCompleta(EstadoCasa.ventaCompleta),
-  cobranzaPendiente(EstadoCasa.cobranzaPendiente),
-  entregaYPago(EstadoCasa.entregaYPago),
-  rechazo(EstadoCasa.rechazo),
-  edificio(null);
+  sinVisita(EstadoCasa.sinVisita, EstadosDeCasa.sinVisita),
+  noContesto(EstadoCasa.noContesto, EstadosDeCasa.noContesto),
+  entrevistaAgendada(EstadoCasa.entrevistaAgendada, EstadosDeCasa.entrevistaAgendada),
+  entrevistaHecha(EstadoCasa.entrevistaHecha, EstadosDeCasa.entrevistaHecha),
+  ventaCompleta(EstadoCasa.ventaCompleta, EstadosDeCasa.ventaCompleta),
+  cobranzaPendiente(EstadoCasa.cobranzaPendiente, EstadosDeCasa.cobranzaPendiente),
+  entregaYPago(EstadoCasa.entregaYPago, EstadosDeCasa.entregaYPago),
+  rechazo(EstadoCasa.rechazo, EstadosDeCasa.rechazo),
+  edificio(null, TokensMapa.edificioSinEstado);
 
-  const VarianteMarcador(this.estado);
+  const VarianteMarcador(this.estado, this.token);
 
   /// El estado de la lista que representa; `null` en el edificio sin estado.
   final EstadoCasa? estado;
+
+  /// Cómo se ve, según los tokens de lib-mapa.
+  final MarcadorDeCasa token;
 
   /// La variante de una casa con [estado] (`null` = no se sabe, se dibuja como «Sin visita»). Un
   /// [edificio] sin visita se dibuja con su símbolo; con estado, con el del estado.
@@ -43,36 +49,20 @@ enum VarianteMarcador {
 
   /// Va en cuadrado redondeado (los estados de la venta y el edificio) y no en círculo (los de la
   /// visita): canvas, «Círculo: estados de la visita. Cuadrado: estados de la venta».
-  bool get esCuadrada => this == edificio || (estado?.esDeVenta ?? false);
+  bool get esCuadrada => token.forma == FormaDeMarcador.cuadrado;
 
-  Color get fondo => switch (this) {
-    sinVisita || edificio => const Color(0xFFFFFFFF),
-    noContesto => ColoresLista.grisEstado,
-    entrevistaAgendada => ColoresLista.ambar,
-    entrevistaHecha || ventaCompleta => ColoresLista.verde,
-    cobranzaPendiente || entregaYPago => ColoresLista.azul,
-    rechazo => ColoresLista.rojo,
-  };
+  Color get fondo => Color(token.relleno);
 
   /// El color del símbolo y del número sobre [fondo].
-  Color get tinta => switch (this) {
-    sinVisita => ColoresLista.grisEstado,
-    edificio => ColoresLista.grisTexto,
-    entrevistaAgendada => ColoresLista.tinta,
-    _ => const Color(0xFFFFFFFF),
-  };
+  Color get tinta => Color(token.tinta);
 
   /// El color del número de puerta sobre [fondo]: [tinta], salvo en «Sin visita», donde el gris del
   /// símbolo no llega a leerse bien como texto sobre el blanco y el número va en el azul oscuro.
-  Color get tintaNumero => this == sinVisita ? ColoresLista.grisTexto : tinta;
+  Color get tintaNumero => Color(token.tintaNumero);
 
   /// El color del contorno: el del fondo en los estados con relleno; en «Sin visita» y en el
   /// edificio, el gris que los distingue del fondo blanco.
-  Color get borde => switch (this) {
-    sinVisita => ColoresLista.grisEstado,
-    edificio => ColoresLista.grisTexto,
-    _ => fondo,
-  };
+  Color get borde => Color(token.borde ?? token.relleno);
 
   /// El grosor del contorno de los neutros; los demás no tienen.
   double get grosorBorde => switch (this) {
@@ -290,7 +280,7 @@ abstract final class MarcadorEstado {
   );
 
   /// El relleno y el contorno de [forma]. «Entrega y pago» lleva las franjas a 135° del canvas (4 dp
-  /// de azul y 3 de azul claro).
+  /// de azul y 3 de azul claro: [FranjasDeMarcador] del token).
   static void _pintarForma(ui.Canvas lienzo, ui.RRect forma, VarianteMarcador variante) {
     final grosor = variante.grosorBorde;
     if (grosor > 0) {
@@ -300,17 +290,19 @@ abstract final class MarcadorEstado {
       return;
     }
     lienzo.drawRRect(forma, ui.Paint()..color = variante.fondo);
-    if (variante != VarianteMarcador.entregaYPago) return;
+    final franjas = variante.token.franjas;
+    if (franjas == null) return;
     lienzo
       ..save()
       ..clipRRect(forma);
     final franja = ui.Paint()
-      ..color = ColoresLista.azulClaro
-      ..strokeWidth = 3
+      ..color = Color(franjas.clara)
+      ..strokeWidth = franjas.anchoClara
       ..style = ui.PaintingStyle.stroke;
     // Franjas perpendiculares al degradado de 135° (de abajo a la izquierda hacia arriba a la
-    // derecha), con 7 dp de período medidos en perpendicular: 7 √2 a lo largo de x.
-    const paso = 7 * math.sqrt2;
+    // derecha), con 7 dp de período medidos en perpendicular (4 de oscura y 3 de clara): 7 √2 a lo
+    // largo de x.
+    final paso = (franjas.anchoOscura + franjas.anchoClara) * math.sqrt2;
     for (var x = forma.left - forma.height; x < forma.right; x += paso) {
       lienzo.drawLine(ui.Offset(x, forma.bottom), ui.Offset(x + forma.height, forma.top), franja);
     }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/nota_de_texto.dart';
 import '../textos_notas.dart';
@@ -17,6 +18,7 @@ abstract final class ClavesNotas {
   static const botonEditar = Key('notas_opcion_editar');
   static const botonBorrar = Key('notas_opcion_borrar');
   static const campo = Key('notas_campo');
+  static const seBorraEl = Key('notas_se_borra_el');
 }
 
 /// La fila de arriba: el botón de atrás o de cerrar y el rótulo «NOTAS».
@@ -128,6 +130,7 @@ class TarjetaNota extends StatelessWidget {
     this.conLapiz = false,
     this.margen = margenDeLaPantalla,
   }) : alRestaurar = null,
+       conPlazo = false,
        atenuada = false;
 
   const TarjetaNota.borrada({
@@ -136,6 +139,7 @@ class TarjetaNota extends StatelessWidget {
     required this.ahora,
     required this.alRestaurar,
     this.conLapiz = false,
+    this.conPlazo = false,
     this.margen = margenDeLaPantalla,
   }) : alAbrirOpciones = null,
        atenuada = true;
@@ -148,6 +152,7 @@ class TarjetaNota extends StatelessWidget {
     this.margen = margenDeLaPantalla,
   }) : alAbrirOpciones = null,
        alRestaurar = null,
+       conPlazo = false,
        atenuada = false;
 
   final NotaDeTexto nota;
@@ -156,6 +161,10 @@ class TarjetaNota extends StatelessWidget {
 
   /// Con el lápiz «✎» a la izquierda, como las notas del lugar de la hoja (vista 39, C·05).
   final bool conLapiz;
+
+  /// En una nota borrada: dice cuándo se va para siempre («Se borra el 25/01»). Lo tienen las notas de
+  /// una persona y las de un lugar (90 días).
+  final bool conPlazo;
 
   /// El aire alrededor de la tarjeta: el de una pantalla entera, o el de la hoja (que ya trae el suyo).
   final EdgeInsets margen;
@@ -175,7 +184,10 @@ class TarjetaNota extends StatelessWidget {
     final colores = theme.extension<ColoresColportaje>();
     final gris = colores?.gris ?? ColoresAlta.gris;
     final fecha = FormatoNotas.fecha(nota, ahora);
-    final lector = '${FormatoNotas.fechaParaLector(nota, ahora)}. ${nota.texto}';
+    final dia = conPlazo ? FormatoNotas.diaDeBorrado(nota) : null;
+    final plazo = dia == null ? null : TextosNotas.seBorraEl(dia);
+    final lector =
+        '${FormatoNotas.fechaParaLector(nota, ahora)}. ${nota.texto}${plazo == null ? '' : '. $plazo.'}';
     // Una nota borrada con «Restaurar» lleva el botón dentro de la tarjeta, a la derecha (canvas 32E·05):
     // el lector dice la nota por un lado y el botón por el otro.
     final conRestaurar = alAbrirOpciones == null && alRestaurar != null;
@@ -225,6 +237,14 @@ class TarjetaNota extends StatelessWidget {
             nota.texto,
             style: TextStyle(fontSize: 15, height: 1.4, color: atenuada ? gris : ColoresAlta.tinta),
           ),
+          if (plazo != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              plazo,
+              key: ClavesNotas.seBorraEl,
+              style: TextStyle(fontSize: 12.5, height: 1.3, color: gris),
+            ),
+          ],
         ],
       ),
     );
@@ -332,10 +352,9 @@ class HojaOpcionesNota extends StatefulWidget {
   final String titulo;
 
   static Future<AccionNota?> mostrar(BuildContext context, {required String titulo}) =>
-      showModalBottomSheet<AccionNota>(
+      mostrarHojaInferior<AccionNota>(
         context: context,
         isScrollControlled: true,
-        useSafeArea: true,
         showDragHandle: true,
         builder: (_) => HojaOpcionesNota(titulo: titulo),
       );

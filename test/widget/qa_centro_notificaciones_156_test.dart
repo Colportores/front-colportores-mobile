@@ -2,7 +2,7 @@
 // implementador no recorren. Los siete estados del canvas a 360x640 y 412x915 con texto 1.0 y 2.0
 // (sin desborde, con lo importante a la vista), los escenarios literales de la HU con sus números
 // (5 en la semana, 30 viejas), textos largos/emoji, 300 avisos, acciones superpuestas y fallas a
-// mitad. Los hallazgos van como `skip` (se corren con `--dart-define=QA_HALLAZGOS=true`).
+// mitad.
 import 'dart:async';
 
 import 'package:colportores_mobile/features/notificaciones/presentation/widgets/textos_centro_notificaciones.dart';
@@ -13,8 +13,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/historial_notificaciones_falsos.dart';
 import '../helpers/qa_centro_notificaciones_156_arnes.dart';
 import '../helpers/qa_hojas_teclado_324_arnes.dart' show escucharAnuncios;
-
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 Rect _pantalla(WidgetTester tester) =>
     Offset.zero & tester.view.physicalSize / tester.view.devicePixelRatio;
@@ -251,7 +249,11 @@ void main() {
         await tester.tap(menuMarcarTodas);
         await tester.pumpAndSettle();
         expect(find.text(TextosCentroNotificaciones.errorAlMarcar), findsOneWidget);
-        expect(find.text('Nueva'), findsNWidgets(3), reason: 'nada cambió');
+        expect(
+          arnes.historial.filas.where((f) => f.leidaEn == null),
+          hasLength(3),
+          reason: 'nada cambió',
+        );
 
         arnes.historial.fallaAlMarcarTodas = false;
         await tester.tap(centroMenu);
@@ -399,6 +401,8 @@ void main() {
         await tester.tap(filaDe('e'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 600));
+        // Un cuadro más: la lista se achica a lo que deja libre el aviso y acomoda el final.
+        await tester.pump();
         final aviso = find.byType(SnackBar);
         expect(aviso, findsOneWidget);
         final cuerpo = tester.getRect(filaDe('e'));
@@ -406,7 +410,6 @@ void main() {
         final dp = tapado.width > 0 && tapado.height > 0 ? tapado.height : 0;
         expect(dp, 0, reason: 'el aviso tapa $dp dp de la fila de ${cuerpo.height}');
       },
-      skip: !_hallazgos,
     );
 
     testWidgets(
@@ -431,7 +434,6 @@ void main() {
           reason: 'la confirmación dijo «las 5»; el aviso 6 no estaba en la cuenta',
         );
       },
-      skip: !_hallazgos,
     );
   });
 }

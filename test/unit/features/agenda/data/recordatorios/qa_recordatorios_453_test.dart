@@ -35,10 +35,12 @@ void main() {
           ),
         ).thenAnswer((_) async {});
 
+        const cuerpo =
+            'Entrevista en Av. Libertador General San Martín 1234, Barrio Norte a las 14:00';
         await MotorDeAvisosPlugin(plugin).programar(
           id: 1,
           titulo: 'Recordatorio de visita',
-          cuerpo: 'Entrevista en Av. Libertador General San Martín 1234, Barrio Norte a las 14:00',
+          cuerpo: cuerpo,
           instante: DateTime.utc(2030),
           payload: 'agenda:ag-1',
         );
@@ -57,10 +59,8 @@ void main() {
                 ).captured.single
                 as NotificationDetails;
         expect(detalles.android!.styleInformation, isA<BigTextStyleInformation>());
+        expect((detalles.android!.styleInformation as BigTextStyleInformation).bigText, cuerpo);
       },
-      // skip: QA #453 — sin BigTextStyle el cuerpo queda en una línea y una dirección larga corta la hora.
-      skip:
-          'QA #453: sin BigTextStyleInformation Android corta el cuerpo en una línea y se pierde la hora',
     );
   });
 

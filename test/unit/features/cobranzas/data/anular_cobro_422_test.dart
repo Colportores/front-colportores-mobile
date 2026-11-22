@@ -257,6 +257,24 @@ void main() {
       expect(d.cobranza.anuladoAt, t0.add(const Duration(hours: 1)));
     });
 
+    test('el ticket validado del cobro se lee de la tabla ticket (30B-07)', () async {
+      expect(await local.ticketValidado('c-1'), isFalse, reason: 'sin ticket');
+
+      await db.customStatement(
+        'INSERT INTO ticket (id, tipo, estado, created_at, updated_at) '
+        "VALUES ('t-1', 'COBRO_TARJETA', 'PENDIENTE', 1, 1)",
+      );
+      await db.customStatement("UPDATE cobranza SET ticket_id = 't-1' WHERE id = 'c-1'");
+      expect(await local.ticketValidado('c-1'), isFalse, reason: 'por validar');
+
+      await db.customStatement("UPDATE ticket SET estado = 'VALIDADO' WHERE id = 't-1'");
+      expect(await local.ticketValidado('c-1'), isTrue);
+      expect(await local.ticketValidado('nada'), isFalse);
+
+      await db.customStatement("UPDATE ticket SET deleted_at = 1 WHERE id = 't-1'");
+      expect(await local.ticketValidado('c-1'), isFalse, reason: 'ticket dado de baja');
+    });
+
     test('un cobro que no está o está dado de baja es null', () async {
       expect(await local.detalle('nada'), isNull);
       await db.customStatement('UPDATE cobranza SET deleted_at = 1 WHERE id = ?', ['c-1']);

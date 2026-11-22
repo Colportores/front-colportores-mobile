@@ -7,9 +7,10 @@ import '../../domain/value_objects/coordenadas.dart';
 import 'marcador_cercano.dart';
 import 'marcador_estado.dart';
 import 'modelo_mapa_base.dart';
+import 'zonas_mapa.dart';
 
-/// Arma el estilo MapLibre que dibuja `MapaBase`: el de backend (`estilo/colportores.json`, con la
-/// paleta del canvas) apuntando al PMTiles que corresponda y a los glyphs y sprites de la app, más
+/// Arma el estilo MapLibre que dibuja `MapaBase`: el de lib-mapa (`estilo/colportores.json` del
+/// paquete `colportores_mapa`, con la paleta del canvas y los números de puerta de OSM) apuntando al PMTiles que corresponda y a los glyphs y sprites de la app, más
 /// las capas propias de la app (puntos, grupos, radio de precisión y área de «cerca tuyo»).
 ///
 /// Es todo JSON puro: se prueba sin la vista nativa.
@@ -24,6 +25,15 @@ abstract final class ConstructorEstiloMapa {
   static const fuentePuntosLibres = 'colportores-puntos-libres';
   static const fuentePrecision = 'colportores-precision';
   static const fuenteCercania = 'colportores-cercania';
+
+  /// Las zonas de las campañas del colportor (#511): sus polígonos y, aparte, el punto de su nombre.
+  /// Van por debajo de todos los puntos y no están en [capasTocables]: no reciben toques.
+  static const fuenteZonas = 'colportores-zonas';
+  static const fuenteZonasRotulos = 'colportores-zonas-rotulos';
+  static const capaZonaPropiaHalo = 'colportores:zonas-propia-halo';
+  static const capaZonaPropiaRelleno = 'colportores:zonas-propia-relleno';
+  static const capaZonaPropiaBorde = 'colportores:zonas-propia-borde';
+  static const capaZonasRotulo = 'colportores:zonas-rotulo';
 
   static const capaGrupos = 'colportores:grupos';
   static const capaContexto = 'colportores:contexto';
@@ -48,6 +58,14 @@ abstract final class ConstructorEstiloMapa {
   static const capaCuadradoRespaldo = 'colportores:cuadrado-respaldo';
   static const capaCuadradoNumero = 'colportores:cuadrado-numero';
   static const capaNuevo = 'colportores:nuevo';
+
+  /// El aro de las casas fuera del área (#713): una capa por fuente, por debajo de los marcadores.
+  /// No responden al toque (la casa se toca por su marcador).
+  static const capaFueraDelArea = 'colportores:fuera-del-area';
+  static const capaFueraDelAreaLibres = 'colportores:fuera-del-area-libres';
+
+  /// La propiedad de un punto fuera del área ([PuntoMapa.fueraDelArea]).
+  static const propiedadFueraDelArea = 'fuera';
   static const capaGps = 'colportores:gps';
 
   /// El radio del círculo de una candidata (en px): con una letra y con dos («AA», «AB»…).
@@ -63,6 +81,14 @@ abstract final class ConstructorEstiloMapa {
   static const radioEtiqueta = 16.0;
   static const radioEtiquetaLarga = 19.0;
   static const radioEtiquetaMuyLarga = 22.0;
+
+  /// Las capas de íconos propias que **ocupan su lugar** en el mapa (`icon-ignore-placement: false`):
+  /// la insignia M·01, la etiqueta de «cerca tuyo», el cuadrado M·02 y su aro. Se dibujan siempre
+  /// (`icon-allow-overlap`), y como MapLibre ubica primero los símbolos de las capas de arriba, el
+  /// número de puerta de OSM del estilo (`address_label`, desde `TokensMapa.zoomNumerosDePuerta`) y
+  /// los nombres de calles se esconden donde las pisan (decisión P4 de lib-mapa, opción A: gana el
+  /// cuadrado M·02, #673).
+  static const capasQueOcupanLugar = [capaEstado, capaCercano, capaCuadradoAro, capaCuadrado];
 
   /// Las capas que responden al toque de un punto o un grupo.
   static const capasTocables = [
@@ -100,7 +126,7 @@ abstract final class ConstructorEstiloMapa {
   /// El estilo final como texto, para `MapLibreMap.styleString`.
   ///
   /// [directorioRecursos] es donde `PreparadorRecursosMapa` dejó los glyphs y sprites; [estiloBase]
-  /// es el JSON de backend tal como se empaqueta.
+  /// es el JSON de lib-mapa tal como viaja en el paquete `colportores_mapa` (#673).
   static String construir({
     required String estiloBase,
     required String directorioRecursos,
@@ -172,14 +198,33 @@ abstract final class ConstructorEstiloMapa {
     fuentes[fuentePuntos] = {
       'type': 'geojson',
       'data': coleccionPuntos(config.puntos),
-      if (config.agruparPuntos) ...{'cluster': true, 'clusterRadius': 44, 'clusterMaxZoom': 17},
+      if (config.agruparPuntos) ...{
+        'cluster': true,
+        'clusterRadius': 44,
+        'clusterMaxZoom': 17,
+        // Cuántas casas del grupo no están atenuadas: un grupo es tenue si todas lo son (06C·03).
+        'clusterProperties': {
+          propiedadVivos: [
+            '+',
+            ['case', _estaAtenuado, 0, 1],
+          ],
+        },
+      },
     };
     fuentes[fuentePuntosLibres] = {'type': 'geojson', 'data': coleccionPuntosLibres(config.puntos)};
     fuentes[fuentePrecision] = {'type': 'geojson', 'data': poligonoPrecision(config.precision)};
     fuentes[fuenteCercania] = {'type': 'geojson', 'data': poligonoCercania(config.cercania)};
+    fuentes[fuenteZonas] = {'type': 'geojson', 'data': coleccionZonas(config.zonas)};
+    fuentes[fuenteZonasRotulos] = {
+      'type': 'geojson',
+      'data': coleccionRotulosDeZonas(config.zonas),
+    };
 
     estilo['sources'] = fuentes;
-    estilo['layers'] = [...capas, ..._capasPropias(config, conRecursos: conRecursos)];
+    estilo['layers'] = [
+      ...capas,
+      ..._capasPropias(config, conRecursos: conRecursos).map(_conAtenuado),
+    ];
     return jsonEncode(estilo);
   }
 
@@ -247,6 +292,8 @@ abstract final class ConstructorEstiloMapa {
                 imagenes.contains(MarcadorCercano.nombre(p.etiqueta!, p.variante)))
               'imagen': MarcadorCercano.nombre(p.etiqueta!, p.variante),
             ..._propiedadesDeEstado(p, imagenes),
+            if (p.atenuado) propiedadAtenuado: true,
+            if (p.fueraDelArea) propiedadFueraDelArea: true,
           },
         },
     ],
@@ -276,6 +323,48 @@ abstract final class ConstructorEstiloMapa {
         'numero': MarcadorEstado.numeroEnDosRenglones(etiqueta),
     };
   }
+
+  /// Las zonas como `FeatureCollection` de polígonos (uno por polígono de cada zona; una zona con
+  /// varios es un `MultiPolygon`), con `id`, `propia` y `color` (el del borde, en hex) como
+  /// propiedades. Vacía si no hay zonas.
+  static Map<String, dynamic> coleccionZonas(List<ZonaMapa> zonas) => {
+    'type': 'FeatureCollection',
+    'features': [
+      for (final zona in zonas)
+        for (final poligono in zona.poligonos)
+          {
+            'type': 'Feature',
+            'geometry': {
+              'type': 'Polygon',
+              'coordinates': [
+                for (final anillo in poligono)
+                  [
+                    for (final v in anillo) [v.lon, v.lat],
+                  ],
+              ],
+            },
+            'properties': {'id': zona.id, 'propia': zona.propia, 'color': _hex(zona.color)},
+          },
+    ],
+  };
+
+  /// El nombre de cada zona como `FeatureCollection` de puntos (adentro de la zona), con `id`,
+  /// `propia` y `rotulo`. La zona sin punto de nombre no lleva ninguno.
+  static Map<String, dynamic> coleccionRotulosDeZonas(List<ZonaMapa> zonas) => {
+    'type': 'FeatureCollection',
+    'features': [
+      for (final zona in zonas)
+        if (zona.puntoRotulo case final punto?)
+          {
+            'type': 'Feature',
+            'geometry': {
+              'type': 'Point',
+              'coordinates': [punto.lon, punto.lat],
+            },
+            'properties': {'id': zona.id, 'propia': zona.propia, 'rotulo': zona.rotulo},
+          },
+    ],
+  };
 
   /// El radio de precisión como `FeatureCollection` con un polígono, o vacía si no hay.
   static Map<String, dynamic> poligonoPrecision(CirculoPrecision? precision) =>
@@ -309,6 +398,58 @@ abstract final class ConstructorEstiloMapa {
     };
   }
 
+  /// La propiedad de un punto atenuado ([PuntoMapa.atenuado]) y la que suma un grupo con las casas
+  /// suyas que no lo están.
+  static const propiedadAtenuado = 'atenuado';
+  static const propiedadVivos = 'vivos';
+
+  /// La opacidad de lo atenuado (canvas 06C·03: `opacity: .3`).
+  static const opacidadAtenuado = .3;
+
+  static const List<Object?> _estaAtenuado = [
+    '==',
+    ['get', propiedadAtenuado],
+    true,
+  ];
+
+  /// Las propiedades de opacidad de cada tipo de capa de puntos.
+  static const _opacidades = {
+    'circle': ['circle-opacity', 'circle-stroke-opacity'],
+    'symbol': ['icon-opacity', 'text-opacity'],
+  };
+
+  /// [capa] con su opacidad multiplicada por la del atenuado, si dibuja puntos: el punto atenuado (o
+  /// el grupo sin ninguna casa viva) se ve a [opacidadAtenuado] de lo que se veía. Las demás capas
+  /// (zonas, precisión, cercanía) no cambian.
+  static Map<String, dynamic> _conAtenuado(Map<String, dynamic> capa) {
+    final fuente = capa['source'];
+    final propiedades = _opacidades[capa['type']];
+    if ((fuente != fuentePuntos && fuente != fuentePuntosLibres) || propiedades == null) {
+      return capa;
+    }
+    final filtro = capa['filter'];
+    final esGrupo =
+        filtro is List && filtro.length == 2 && filtro[0] == 'has' && filtro[1] == 'point_count';
+    final List<Object?> factor = esGrupo
+        ? [
+            'case',
+            [
+              '==',
+              ['get', propiedadVivos],
+              0,
+            ],
+            opacidadAtenuado,
+            1,
+          ]
+        : ['case', _estaAtenuado, opacidadAtenuado, 1];
+    final paint = {...?(capa['paint'] as Map<String, dynamic>?)};
+    for (final propiedad in propiedades) {
+      final actual = paint[propiedad];
+      paint[propiedad] = actual == null ? factor : ['*', actual, factor];
+    }
+    return {...capa, 'paint': paint};
+  }
+
   static const List<Object?> _noEsGrupo = [
     '!',
     ['has', 'point_count'],
@@ -336,6 +477,13 @@ abstract final class ConstructorEstiloMapa {
     'coalesce',
     ['get', propiedad],
     respaldo,
+  ];
+
+  /// Solo las zonas propias del colportor (#654).
+  static const List<Object?> _esZonaPropia = [
+    '==',
+    ['get', 'propia'],
+    true,
   ];
 
   static List<Object?> _filtroEstilo(EstiloPunto estilo) => ['all', _noEsGrupo, _esEstilo(estilo)];
@@ -372,12 +520,111 @@ abstract final class ConstructorEstiloMapa {
     'text-ignore-placement': true,
   };
 
+  static const List<Object?> _estaFueraDelArea = [
+    '==',
+    ['get', propiedadFueraDelArea],
+    true,
+  ];
+
+  /// El radio del aro de una casa fuera del área: un poco más grande que su marcador, según cómo se
+  /// dibuja (el cuadrado de M·02 mide 40 dp; el seleccionado lleva su aro doble).
+  static const List<Object?> _radioFueraDelArea = [
+    'match',
+    ['get', 'estilo'],
+    'cuadradoSeleccionado',
+    radioFueraDelAreaCuadradoSeleccionado,
+    'cuadrado',
+    radioFueraDelAreaCuadrado,
+    'seleccionado',
+    ['+', _radioPorEtiqueta, 10],
+    radioFueraDelArea,
+  ];
+
+  /// Los radios del aro «fuera del área» (en px): alrededor de un punto, de un cuadrado de M·02 y del
+  /// cuadrado elegido (con su aro doble).
+  static const radioFueraDelArea = 17.0;
+  static const radioFueraDelAreaCuadrado = 26.0;
+  static const radioFueraDelAreaCuadradoSeleccionado = 30.0;
+
+  /// El aro de las casas fuera del área de [fuente]: un disco blanco translúcido (contraste sobre
+  /// cualquier fondo) con el borde ámbar. Va por debajo del marcador.
+  static Map<String, dynamic> _aroFueraDelArea(String id, String fuente, String blanco) => {
+    'id': id,
+    'type': 'circle',
+    'source': fuente,
+    'filter': ['all', _noEsGrupo, _estaFueraDelArea],
+    'paint': {
+      'circle-color': blanco,
+      'circle-opacity': .6,
+      'circle-radius': _radioFueraDelArea,
+      'circle-stroke-width': 3,
+      'circle-stroke-color': _hex(ColoresMapa.fueraDelArea),
+    },
+  };
+
   static List<Map<String, dynamic>> _capasPropias(
     ConfigVistaMapa config, {
     required bool conRecursos,
   }) {
     final blanco = _hex(const Color(0xFFFFFFFF));
     return [
+      // Las zonas (#511) van primero: por debajo de todo lo que el colportor toca. Estilo de zona del
+      // panel (vista 24: relleno translúcido y borde del color de la zona) y el retoque del teléfono:
+      // borde grueso, relleno más firme y un filete blanco que le asegura contraste sobre cualquier
+      // fondo. Solo se dibujan las zonas propias (#654): las de otros colportores no aparecen ni
+      // como contorno; el filtro `propia` lo asegura aunque una ajena llegara hasta acá.
+      {
+        'id': capaZonaPropiaHalo,
+        'type': 'line',
+        'source': fuenteZonas,
+        'filter': _esZonaPropia,
+        'layout': {'line-join': 'round'},
+        'paint': {'line-color': blanco, 'line-opacity': .9, 'line-width': 7},
+      },
+      {
+        'id': capaZonaPropiaRelleno,
+        'type': 'fill',
+        'source': fuenteZonas,
+        'filter': _esZonaPropia,
+        'paint': {
+          'fill-color': ['get', 'color'],
+          'fill-opacity': .2,
+        },
+      },
+      {
+        'id': capaZonaPropiaBorde,
+        'type': 'line',
+        'source': fuenteZonas,
+        'filter': _esZonaPropia,
+        'layout': {'line-join': 'round'},
+        'paint': {
+          'line-color': ['get', 'color'],
+          'line-width': 4,
+        },
+      },
+      // El nombre de la zona: lo que dice cuál es la propia sin depender del color ni del grosor
+      // (WCAG 1.4.1). Siempre se dibuja (`text-allow-overlap`): está debajo de las
+      // [capasQueOcupanLugar] y, si no, una insignia lo escondería. No esconde a nadie.
+      if (conRecursos)
+        {
+          'id': capaZonasRotulo,
+          'type': 'symbol',
+          'source': fuenteZonasRotulos,
+          'filter': _esZonaPropia,
+          'layout': {
+            'text-field': ['get', 'rotulo'],
+            'text-font': ['NotoSans-Medium'],
+            'text-size': 13,
+            'text-max-width': 9,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          'paint': {
+            'text-color': _hex(ColoresMapa.tinta),
+            'text-halo-color': blanco,
+            'text-halo-width': 1.5,
+          },
+        },
       {
         'id': 'colportores:precision-relleno',
         'type': 'fill',
@@ -407,6 +654,9 @@ abstract final class ConstructorEstiloMapa {
           'line-dasharray': [4, 3],
         },
       },
+      // #713: el aro de las casas fuera del área, debajo de todos los marcadores.
+      _aroFueraDelArea(capaFueraDelArea, fuentePuntos, blanco),
+      _aroFueraDelArea(capaFueraDelAreaLibres, fuentePuntosLibres, blanco),
       {
         'id': 'colportores:contexto-sombra',
         'type': 'circle',
@@ -442,7 +692,7 @@ abstract final class ConstructorEstiloMapa {
         'layout': {
           'icon-image': ['get', 'imagen'],
           'icon-allow-overlap': true,
-          'icon-ignore-placement': true,
+          'icon-ignore-placement': false,
         },
       },
       // El respaldo: mientras la insignia no está registrada (o si no se pudo), la casa no queda sin
@@ -569,7 +819,7 @@ abstract final class ConstructorEstiloMapa {
           'icon-image': ['get', 'imagen'],
           'icon-anchor': 'bottom',
           'icon-allow-overlap': true,
-          'icon-ignore-placement': true,
+          'icon-ignore-placement': false,
         },
       },
       // El respaldo: mientras la imagen de un número no está registrada (o si no se pudo), el punto
@@ -658,7 +908,7 @@ abstract final class ConstructorEstiloMapa {
         'layout': {
           'icon-image': MarcadorEstado.nombreAro,
           'icon-allow-overlap': true,
-          'icon-ignore-placement': true,
+          'icon-ignore-placement': false,
         },
       },
       {
@@ -669,7 +919,7 @@ abstract final class ConstructorEstiloMapa {
         'layout': {
           'icon-image': ['get', 'imagen'],
           'icon-allow-overlap': true,
-          'icon-ignore-placement': true,
+          'icon-ignore-placement': false,
         },
       },
       {

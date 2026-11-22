@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../domain/entities/lista_ubicaciones.dart';
 import '../formato_mapa_ubicaciones.dart';
+import '../providers/fuera_del_area_providers.dart' show idsFueraDelAreaProvider;
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import 'hoja_casa.dart';
@@ -28,10 +30,10 @@ Future<void> mostrarHojaCasa(
   required String colportorId,
   required ItemListaUbicacion item,
   FutureOr<void> Function(ItemListaUbicacion item)? alReactivar,
-}) => showModalBottomSheet<void>(
+  ValueChanged<String>? alAbrirOtra,
+}) => mostrarHojaInferior<void>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // El asa es propia (sube y baja entre las dos alturas): el arrastre del modal no compite con ella.
   enableDrag: false,
   showDragHandle: false,
@@ -39,8 +41,12 @@ Future<void> mostrarHojaCasa(
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) =>
-      _HojaCasaDeLaLista(colportorId: colportorId, inicial: item, alReactivar: alReactivar),
+  builder: (_) => _HojaCasaDeLaLista(
+    colportorId: colportorId,
+    inicial: item,
+    alReactivar: alReactivar,
+    alAbrirOtra: alAbrirOtra,
+  ),
 );
 
 class _HojaCasaDeLaLista extends ConsumerWidget {
@@ -48,11 +54,13 @@ class _HojaCasaDeLaLista extends ConsumerWidget {
     required this.colportorId,
     required this.inicial,
     required this.alReactivar,
+    required this.alAbrirOtra,
   });
 
   final String colportorId;
   final ItemListaUbicacion inicial;
   final FutureOr<void> Function(ItemListaUbicacion item)? alReactivar;
+  final ValueChanged<String>? alAbrirOtra;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -67,6 +75,7 @@ class _HojaCasaDeLaLista extends ConsumerWidget {
     );
     final item = vivo ?? inicial;
     final ahora = ref.watch(relojListaUbicacionesProvider)();
+    final fuera = ref.watch(idsFueraDelAreaProvider).value ?? const <String>{};
     return _AlturasDeLaLista(
       alBajarDelResumen: () => Navigator.of(context).maybePop(),
       hoja: (arriba) => HojaCasa(
@@ -78,6 +87,16 @@ class _HojaCasaDeLaLista extends ConsumerWidget {
             : () => alReactivar!(item),
         arriba: arriba,
         colportorId: colportorId,
+        // #713 (decisión del 17/11, P1 §2 del QA de #718): la misma casa lleva la misma marca que en la
+        // fila de la Lista y en el mapa. No oculta nada.
+        fueraDelArea: fuera.contains(item.ubicacion.id),
+        // Cierra esta hoja y recién después abre la otra: un `maybePop` pendiente cerraría la nueva.
+        alAbrirOtra: alAbrirOtra == null
+            ? null
+            : (id) {
+                Navigator.of(context).pop();
+                alAbrirOtra!(id);
+              },
       ),
     );
   }

@@ -39,4 +39,14 @@ abstract interface class ConsultaAgendaRepository {
     required String colportorId,
     required String ubicacionId,
   });
+
+  /// Las agendas `PROGRAMADA` de [colportorId] con la persona [personaId] (por cualquiera de sus
+  /// vínculos con un espacio), de la más temprana a la más tardía: la tarjeta «PRÓXIMA VISITA» de la
+  /// ficha de la persona (vista 32, 23A·05, #405). Igual que las demás lecturas, no trae la agenda de
+  /// un depto o una casa dados de baja. Emite de nuevo cada vez que cambia una agenda, la persona o una
+  /// ubicación involucrada. Un error al leer sale por el `Stream`.
+  Stream<List<ItemAgenda>> observarDeLaPersona({
+    required String colportorId,
+    required String personaId,
+  });
 }

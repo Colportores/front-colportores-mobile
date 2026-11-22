@@ -508,7 +508,8 @@ void main() {
           home: VentaRegistradaPage(
             guardada: _guardada(),
             nombreDelCliente: 'María Fernández',
-            conEntrega: true,
+            conEntregarAhora: true,
+            conEntregarOtroDia: true,
             conCobro: true,
             alContinuar: (_) => seguimientos++,
             alTerminar: () => terminos++,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../agenda/presentation/formato_agendar_visita.dart';
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../../../ventas/presentation/formato_venta.dart' show FormatoVenta;
@@ -319,10 +320,9 @@ Future<DateTime?> mostrarHojaFechaDelCobro(
   required DateTime hoy,
   required DateTime diaDeLaVenta,
   required DateTime elegido,
-}) => showModalBottomSheet<DateTime>(
+}) => mostrarHojaInferior<DateTime>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: _formaHoja,
   builder: (_) => HojaFechaDelCobro(hoy: hoy, diaDeLaVenta: diaDeLaVenta, elegido: elegido),

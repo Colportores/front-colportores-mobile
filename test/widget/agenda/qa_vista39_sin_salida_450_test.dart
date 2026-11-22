@@ -39,8 +39,6 @@ import '../../helpers/mapa_base_falso.dart' show overridesPestanaMapa;
 import '../../helpers/qa_hu_ubi_007_212_arnes.dart' show DbFija;
 import '../../helpers/qa_vista39_450_arnes.dart';
 
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   late AppDatabase db;
@@ -305,30 +303,26 @@ void main() {
       expect(await notas(tester), isEmpty);
     });
 
-    testWidgets(
-      'cerrar R·06 mientras se suelta la entrevista: igual se avisa que no se guardó',
-      (tester) async {
-        // Hoy la hoja devuelve `null` al cerrarse y el aviso nunca sale: la entrevista desaparece
-        // del mapa sin que la colportora sepa que su visita no quedó.
-        final lento = _DestinoLento();
-        m.destinoPropio = lento;
-        await enCurso(tester, nota: 'no se pierde sin avisar');
-        await tocar(tester, find.byKey(ClavesEntrevista.finalizar));
-        await tester.ensureVisible(find.byKey(ClavesEntrevista.guardarYVolver));
-        await tester.tap(find.byKey(ClavesEntrevista.guardarYVolver));
-        await tester.pump();
+    testWidgets('cerrar R·06 mientras se suelta la entrevista: igual se avisa que no se guardó', (
+      tester,
+    ) async {
+      // La hoja no se cierra con el guardado en vuelo: el aviso sale al terminar.
+      final lento = _DestinoLento();
+      m.destinoPropio = lento;
+      await enCurso(tester, nota: 'no se pierde sin avisar');
+      await tocar(tester, find.byKey(ClavesEntrevista.finalizar));
+      await tester.ensureVisible(find.byKey(ClavesEntrevista.guardarYVolver));
+      await tester.tap(find.byKey(ClavesEntrevista.guardarYVolver));
+      await tester.pump();
 
-        await tester.binding.handlePopRoute();
-        await tester.pumpAndSettle();
-        lento.compuerta.complete();
-        await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      lento.compuerta.complete();
+      await tester.pumpAndSettle();
 
-        expect(m.almacen.guardadas, isEmpty, reason: 'la entrevista se soltó');
-        expect(find.text(TextosEntrevista.sinLugar), findsOneWidget);
-      },
-      // skip: QA #450 — cerrar la hoja con el guardado en vuelo y la casa ya fuera suelta la entrevista sin avisar.
-      skip: !_hallazgos,
-    );
+      expect(m.almacen.guardadas, isEmpty, reason: 'la entrevista se soltó');
+      expect(find.text(TextosEntrevista.sinLugar), findsOneWidget);
+    });
 
     testWidgets('R·06 de una persona que ya no está: el título y el resumen no quedan con huecos', (
       tester,
@@ -357,7 +351,6 @@ void main() {
         expect(find.text('Terminó la entrevista'), findsOneWidget, reason: 'la hoja sigue abierta');
         expect(find.textContaining('se cerró sin guardar'), findsNothing);
       },
-      skip: !_hallazgos,
     );
   });
 
@@ -616,7 +609,7 @@ final class _DestinoLento implements ResolverDestinoDeEntrevista {
   @override
   Future<DestinoDeEntrevista?> resolver({
     required String espacioId,
-    required String espacioPersonaId,
+    String? espacioPersonaId,
   }) async {
     await compuerta.future;
     return null;

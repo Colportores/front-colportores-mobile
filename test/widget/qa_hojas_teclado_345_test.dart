@@ -206,10 +206,8 @@ void main() {
   // ---------------------------------------------------------------------------------------------------
   group('QA #345 · M3 · el motivo de «Registrar» apagado se lee una sola vez', () {
     final casos = <(a.EstadoAlta, String)>[
-      (a.EstadoAlta.gpsPreciso, TextosAlta.elegiElTipo),
       (a.EstadoAlta.sinGps, TextosAlta.marcaElPunto),
       (a.EstadoAlta.gpsImpreciso, TextosAlta.elegiPrecision),
-      (a.EstadoAlta.numeroEditado, TextosAlta.elegiElTipo),
       (a.EstadoAlta.sinGpsSinConexion, TextosAlta.marcaElPunto),
       (a.EstadoAlta.sinCiudades, TextosAlta.marcaElPunto),
     ];
@@ -253,11 +251,8 @@ void main() {
       (tester) async {
         final handle = tester.ensureSemantics();
         await a.abrirEn(tester, a.EstadoAlta.gpsPreciso);
-        await tester.tap(find.text('Casa'));
-        await a.asentar(tester);
         expect(a.registrarHabilitado(tester), isTrue);
         for (final motivo in [
-          TextosAlta.elegiElTipo,
           TextosAlta.marcaElPunto,
           TextosAlta.elegiPrecision,
           TextosAlta.elegiLaCiudad,
@@ -272,30 +267,23 @@ void main() {
       },
     );
 
-    testWidgets(
-      'el motivo cambia al resolver lo que falta y sigue habiendo una sola lectura en cada paso',
-      (tester) async {
-        final handle = tester.ensureSemantics();
-        await a.abrirEn(tester, a.EstadoAlta.gpsImpreciso, teclado: a.tecladoAbierto);
-        expect(_lecturas(tester, TextosAlta.elegiPrecision), 1);
-        await tester.ensureVisible(find.text(TextosAlta.continuar));
-        await tester.pump();
-        await tester.tap(find.text(TextosAlta.continuar));
-        await a.asentar(tester);
-        expect(_lecturas(tester, TextosAlta.elegiPrecision), 0, reason: 'el motivo viejo se fue');
-        expect(_lecturas(tester, TextosAlta.elegiElTipo), 1, reason: 'ahora falta el tipo');
-        await tester.ensureVisible(find.text('Casa'));
-        await tester.pump();
-        await tester.tap(find.text('Casa'));
-        await a.asentar(tester);
-        expect(a.registrarHabilitado(tester), isTrue);
-        expect(_lecturas(tester, TextosAlta.elegiElTipo), 0, reason: 'sin motivo, sin lectura');
-        final listo = tester.getSemantics(a.botonRegistrarFijo).getSemanticsData();
-        expect(listo.hint, isEmpty);
-        expect(listo.label, TextosAlta.registrar);
-        handle.dispose();
-      },
-    );
+    testWidgets('el motivo se va al resolver lo que falta y no queda ninguna lectura', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await a.abrirEn(tester, a.EstadoAlta.gpsImpreciso, teclado: a.tecladoAbierto);
+      expect(_lecturas(tester, TextosAlta.elegiPrecision), 1);
+      await tester.ensureVisible(find.text(TextosAlta.continuar));
+      await tester.pump();
+      await tester.tap(find.text(TextosAlta.continuar));
+      await a.asentar(tester);
+      expect(_lecturas(tester, TextosAlta.elegiPrecision), 0, reason: 'el motivo viejo se fue');
+      expect(a.registrarHabilitado(tester), isTrue, reason: 'el tipo ya viene en «Casa» (#665)');
+      final listo = tester.getSemantics(a.botonRegistrarFijo).getSemanticsData();
+      expect(listo.hint, isEmpty);
+      expect(listo.label, TextosAlta.registrar);
+      handle.dispose();
+    });
 
     testWidgets(
       'mientras guarda ("Registrando…") no hay motivo, ni pista ni texto; si falla, el botón vuelve '
@@ -303,8 +291,6 @@ void main() {
       (tester) async {
         final handle = tester.ensureSemantics();
         final montada = await a.abrirEn(tester, a.EstadoAlta.gpsPreciso);
-        await tester.tap(find.text('Casa'));
-        await a.asentar(tester);
         await _tocarCampo(tester, a.campoNumero, a.asentar);
         await tester.enterText(a.campoNumero, '1240');
         await a.asentar(tester);
@@ -313,11 +299,7 @@ void main() {
         await a.asentar(tester);
 
         expect(find.text(TextosAlta.registrando), findsOneWidget, reason: 'cargando, con contexto');
-        for (final motivo in [
-          TextosAlta.elegiElTipo,
-          TextosAlta.marcaElPunto,
-          TextosAlta.elegiPrecision,
-        ]) {
+        for (final motivo in [TextosAlta.marcaElPunto, TextosAlta.elegiPrecision]) {
           expect(find.text(motivo), findsNothing);
           expect(_lecturas(tester, motivo), 0);
         }

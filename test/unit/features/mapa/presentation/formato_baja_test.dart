@@ -37,6 +37,12 @@ void main() {
     });
   });
 
+  group('FormatoBaja.cobranza sin plan de cuotas', () {
+    test('dado una venta sin cuotas, entonces dice solo el monto: no inventa «N.ª cuota»', () {
+      expect(FormatoBaja.cobranza(const CobranzaPendiente(montoCentavos: 145000)), r'$U 1.450');
+    });
+  });
+
   group('FormatoBaja.fecha', () {
     test('dado un momento, entonces escribe día, mes y año con dos cifras', () {
       expect(FormatoBaja.fecha(DateTime(2026, 9, 12, 15)), '12/09/2026');

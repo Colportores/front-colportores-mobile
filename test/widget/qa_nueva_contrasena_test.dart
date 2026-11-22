@@ -460,10 +460,12 @@ void main() {
       const bandera = '\u{1F1E6}\u{1F1F7}';
       const familia = '\u{1F468}‍\u{1F469}‍\u{1F467}';
       const eDescompuesta = 'é';
-      for (final (nombre, unidad) in [
-        ('bandera', bandera),
-        ('familia', familia),
-        ('e con tilde descompuesta', eDescompuesta),
+      // La familia ocupa 18 bytes: con 8 caracteres visibles pasa los 72 bytes del servidor
+      // (#296), así que cuenta bien pero «Guardar» sigue apagado por el tope.
+      for (final (nombre, unidad, entraEnElTope) in [
+        ('bandera', bandera, true),
+        ('familia', familia, false),
+        ('e con tilde descompuesta', eDescompuesta, true),
       ]) {
         await _completar(tester, 'A1${unidad * 5}');
         expect(
@@ -475,7 +477,12 @@ void main() {
 
         await _completar(tester, 'A1${unidad * 6}');
         expect(find.textContaining('faltan', findRichText: true), findsNothing, reason: nombre);
-        expect(_habilitado(tester), isTrue, reason: '$nombre: 8 caracteres visibles');
+        expect(_habilitado(tester), entraEnElTope, reason: '$nombre: 8 caracteres visibles');
+        expect(
+          find.text('Es demasiado larga. Acortala.'),
+          entraEnElTope ? findsNothing : findsOneWidget,
+          reason: nombre,
+        );
       }
     });
 
@@ -552,17 +559,17 @@ void main() {
       expect(find.text('REPETIR CONTRASEÑA · ✓ COINCIDEN'), findsNothing);
     });
 
-    testWidgets('texto pegado muy largo (5000 caracteres): se acepta tal cual, sin overflow', (
-      tester,
-    ) async {
+    testWidgets('texto pegado muy largo (5000 caracteres): se avisa sin recortarlo, sin overflow y '
+        'sin enviar (tope de 72 bytes, #296)', (tester) async {
       _pantalla(tester, const Size(360, 640), texto: 2.0);
       await _montar(tester);
       final larga = 'Aa1${'x' * 4997}';
       await _completar(tester, larga);
-      expect(_habilitado(tester), isTrue);
+      expect(find.text('Es demasiado larga. Acortala.'), findsOneWidget);
+      expect(_habilitado(tester), isFalse);
+      expect(_texto(tester, 'nueva'), larga);
       expect(tester.takeException(), isNull);
-      await _tocarGuardar(tester);
-      expect(_recuperacion.actualizaciones, [larga]);
+      expect(_recuperacion.actualizaciones, isEmpty);
     });
 
     testWidgets('un salto de línea pegado se descarta y la contraseña queda en una línea', (

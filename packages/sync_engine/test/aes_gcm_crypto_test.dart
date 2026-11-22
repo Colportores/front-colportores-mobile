@@ -183,13 +183,17 @@ void main() {
       snap.state = {'a': 1};
       await subida.backupNow(watermark: 'w-1');
 
+      final destino = FakeSnapshot();
       final otro = BackupService(
         archive: drive,
         crypto: AesGcmCrypto(_clave(8)),
-        snapshot: FakeSnapshot(),
+        snapshot: destino,
       );
 
-      await expectLater(otro.restore(), throwsA(isA<BackupIlegible>()));
+      // Una base que la clave no abre es una cadena sin base usable: no se restaura nada y la DB no
+      // se toca (HU-SYNC-006, «Varios resp.»: no frena a las demás cadenas).
+      expect(await otro.restore(), isNull);
+      expect(destino.restored, isNull);
     });
   });
 }

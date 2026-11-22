@@ -22,8 +22,8 @@ final class PersonaDadaDeBaja extends ResultadoBajaPersona {
   List<Object?> get props => [persona];
 }
 
-/// Debe algo y nadie confirmó todavía: no se escribió nada. La pantalla muestra el resumen [cuenta] y
-/// pide la doble confirmación (canvas 32D·02 y 32D·03).
+/// Debe algo o tiene entregas pendientes y nadie confirmó todavía: no se escribió nada. La pantalla
+/// muestra el resumen [cuenta] y pide la doble confirmación (canvas 32D·02 y 32D·03).
 final class BajaPersonaRequiereConfirmacion extends ResultadoBajaPersona {
   const BajaPersonaRequiereConfirmacion(this.cuenta);
 

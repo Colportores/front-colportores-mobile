@@ -415,6 +415,8 @@ void main() {
       );
       // A 2× el interruptor queda más abajo de lo que se ve: se baja hasta él.
       await tester.dragUntilVisible(_mostrar, find.byType(ListView), const Offset(0, -80));
+      // `dragUntilVisible` termina con un salto sin dibujar: se dibuja antes de tocar.
+      await tester.pump();
       await _mostrarLasBajas(tester);
 
       await tester.dragUntilVisible(_reactivar, find.byType(ListView), const Offset(0, -80));

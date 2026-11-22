@@ -13,7 +13,6 @@ void main() {
     medio: medio,
     fecha: DateTime(2026, 9, 18),
     ticketId: ticketId,
-    numeroCuota: 1,
     auditoria: auditoria,
   );
 
@@ -49,7 +48,6 @@ void main() {
         montoCentavos: 50000,
         medio: MedioCobranza.efectivo,
         fecha: DateTime(2026, 9, 18),
-        numeroCuota: 1,
         auditoria: Auditoria(
           createdAt: DateTime(2026, 1, 1),
           updatedAt: DateTime(2026, 1, 1),

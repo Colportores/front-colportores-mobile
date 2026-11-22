@@ -15,8 +15,11 @@ import 'package:colportores_mobile/features/auth/domain/entities/sesion.dart';
 import 'package:colportores_mobile/features/auth/domain/entities/usuario.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/iniciar_sesion_use_case.dart';
 import 'package:colportores_mobile/features/auth/domain/usecases/registrar_usuario_use_case.dart';
+import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart'
+    show MedioCobranza;
 import 'package:colportores_mobile/features/mapa/domain/entities/contexto_notas_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio_persona.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/evento_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ficha_de_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/nota_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona.dart';
@@ -298,6 +301,44 @@ void main() {
         expect(texto, isNot(contains('099123456')));
         expect(texto, isNot(contains('perro bravo')));
         expect(texto, isNot(contains('Italia')));
+      }
+    });
+
+    test('dado el historial de una casa (vista 39, C·03), cuando se interpola, no aparece ningun '
+        'nombre ni nota', () {
+      const pedro = PersonaDelEvento(nombre: 'Rosalia', apellido: 'Techera');
+      final eventos = <EventoDeLaCasa>[
+        VisitaDeLaCasa(
+          id: 'vis-1',
+          fecha: DateTime.utc(2026, 10, 5),
+          resultado: TipoResultadoVisita.entrevista,
+          persona: pedro,
+          nota: 'tiene un perro bravo',
+        ),
+        VentaDeLaCasa(
+          id: 'ven-1',
+          fecha: DateTime.utc(2026, 10, 6),
+          numeroTalonario: '0038',
+          montoCentavos: 1000,
+          pagadoCentavos: 0,
+          lineas: const [LineaDeFicha(nombre: 'Salud y Hogar', cantidad: 1)],
+          persona: pedro,
+          nota: 'tiene un perro bravo',
+        ),
+        CobroDeLaCasa(
+          id: 'cob-1',
+          fecha: DateTime.utc(2026, 10, 7),
+          montoCentavos: 500,
+          medio: MedioCobranza.efectivo,
+          ventaId: 'ven-1',
+          persona: pedro,
+        ),
+      ];
+
+      for (final texto in ['$pedro', for (final e in eventos) '$e', '$eventos']) {
+        expect(texto, isNot(contains('Rosalia')));
+        expect(texto, isNot(contains('Techera')));
+        expect(texto, isNot(contains('perro bravo')));
       }
     });
   });

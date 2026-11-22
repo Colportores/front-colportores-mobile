@@ -14,7 +14,6 @@ final class RegistrarDevolucionParams extends Equatable {
     required this.ventaId,
     required this.colportorId,
     required this.unidadesPorRenglon,
-    this.queHacer,
     this.motivo,
   });
 
@@ -30,21 +29,11 @@ final class RegistrarDevolucionParams extends Equatable {
   /// Cuántas unidades de cada renglón vuelven: `venta_item.id` → unidades.
   final Map<String, int> unidadesPorRenglon;
 
-  /// Qué hace con la plata de más, si el cliente pagó de más.
-  final QueHacerConLaDiferencia? queHacer;
-
   /// El motivo tal como se escribió; se limpia acá.
   final String? motivo;
 
   @override
-  List<Object?> get props => [
-    devolucionId,
-    ventaId,
-    colportorId,
-    unidadesPorRenglon,
-    queHacer,
-    motivo,
-  ];
+  List<Object?> get props => [devolucionId, ventaId, colportorId, unidadesPorRenglon, motivo];
 }
 
 /// HU-VEN-004: registra la devolución de una venta —parcial o total— sin anularla ni tocarla, y deja
@@ -85,7 +74,6 @@ final class RegistrarDevolucionUseCase
           for (final MapEntry(:key, :value) in params.unidadesPorRenglon.entries)
             if (value != 0) key: value,
         },
-        queHacer: params.queHacer,
         motivo: ReglasDeDevolucion.motivo(params.motivo),
         ahora: _ahora().toUtc(),
       ),

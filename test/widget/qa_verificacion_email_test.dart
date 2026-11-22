@@ -77,6 +77,9 @@ Future<void> _tocar(WidgetTester tester, String key) async {
   await tester.pumpAndSettle();
 }
 
+/// Lo que dice el campo del email cuando está incompleto o mal armado (#700).
+const _emailIncompleto = 'El email no es válido. Revisá que esté completo, como nombre@correo.com.';
+
 void main() {
   const tamanios = {'360x640': Size(360, 640), '412x915': Size(412, 915)};
   const estados = [
@@ -156,13 +159,13 @@ void main() {
     for (final (entrada, mensaje) in [
       ('', 'Ingresá tu email'),
       ('     ', 'Ingresá tu email'),
-      ('lucia', 'El email no es válido'),
-      ('lucia@', 'El email no es válido'),
-      ('lucia@correo', 'El email no es válido'),
+      ('lucia', _emailIncompleto),
+      ('lucia@', _emailIncompleto),
+      ('lucia@correo', _emailIncompleto),
       ('lu cia@correo.com', avisoCaracterNoPermitido),
       ('😀@😀.com', avisoCaracterNoPermitido),
       // Más largo que cualquier dirección (254): no sale al servidor y no rompe la pantalla.
-      ('${'a' * 300}@correo.com', 'El email no es válido'),
+      ('${'a' * 300}@correo.com', _emailIncompleto),
     ]) {
       testWidgets('"${entrada.length > 20 ? '${entrada.substring(0, 20)}…' : entrada}": '
           '$mensaje', (tester) async {
@@ -233,12 +236,12 @@ void main() {
         estado: EstadoVerificacionEmail.expirado,
       );
       await reenviarCon(tester, 'lucia');
-      expect(find.text('El email no es válido'), findsOneWidget);
+      expect(find.text(_emailIncompleto), findsOneWidget);
 
       await tester.enterText(find.byKey(const Key('verificacion_email_campo')), 'lucia@correo.com');
       await tester.pump();
 
-      expect(find.text('El email no es válido'), findsNothing);
+      expect(find.text(_emailIncompleto), findsNothing);
     });
   });
 

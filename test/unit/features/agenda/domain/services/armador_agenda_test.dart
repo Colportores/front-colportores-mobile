@@ -339,6 +339,38 @@ void main() {
       expect(FormatoAgenda.direccion(sinDireccion), isNull);
     });
 
+    test('una alternativa dada de baja marca la dirección; la casa y una alternativa viva no', () {
+      const baja = DireccionDeAgenda(
+        ubicacionId: 'u-alt',
+        tipo: TipoUbicacion.casa,
+        calle: 'Rivera',
+        numero: '77',
+        deBaja: true,
+      );
+      const viva = DireccionDeAgenda(
+        ubicacionId: 'u-alt',
+        tipo: TipoUbicacion.casa,
+        calle: 'Rivera',
+        numero: '77',
+      );
+      final base = itemAgenda('a', DateTime(2026, 10, 28, 9));
+      ItemAgenda con(DireccionDeAgenda alt) => ItemAgenda(
+        agenda: base.agenda,
+        personaNombre: base.personaNombre,
+        personaApellido: base.personaApellido,
+        casa: base.casa,
+        alternativa: alt,
+      );
+
+      expect(FormatoAgenda.direccion(con(baja)), 'Rivera 77 (dirección dada de baja)');
+      expect(FormatoAgenda.direccion(con(viva)), 'Rivera 77');
+      expect(FormatoAgenda.direccion(base), 'Av. Italia 1234');
+      expect(
+        FormatoAgenda.subtituloDeVisitaDeLaCasa(con(baja)),
+        contains('en Rivera 77 (dirección dada de baja)'),
+      );
+    });
+
     test('sin persona el título es la dirección; sin nada, «Visita sin datos»', () {
       final sinPersona = itemAgenda('a', DateTime(2026, 10, 28, 9), nombre: null, apellido: null);
       final vacia = itemAgenda(

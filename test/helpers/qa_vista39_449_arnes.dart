@@ -107,7 +107,7 @@ Future<ResultadoConQuien> montar449(
                       colportorId: 'col-1',
                     );
                     resultado
-                      ..elegida = e
+                      ..eleccion = e
                       ..cierres += 1;
                   },
                   child: const Text('abrir paso'),
@@ -163,6 +163,11 @@ Future<ResultadoConQuien> llegarA449(
       await tester.pump();
       await tester.tap(botonEmpezar449);
       await asentar(tester);
+      // Con «Todavía no sé con quién» (#653) la hoja es más alta: al terminar de tocar, el
+      // formulario queda arriba, como en r04, y no con el aviso de privacidad cortado a 7 dp (la guía
+      // de toque mide el renglón a medias, no lo que ve la persona).
+      await tester.ensureVisible(find.text('¿Con quién es la entrevista?'));
+      await tester.pump();
       return r;
     case Estado449.r04Falla:
       final r = await montar449(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/paquete_tiles.dart';
 import '../textos_mapas_offline.dart';
@@ -13,10 +14,9 @@ Future<bool?> mostrarHojaAchicarCobertura(
   required String mayor,
   required String elegido,
   required int liberanMegabytes,
-}) => showModalBottomSheet<bool>(
+}) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: true,
   builder: (_) => HojaAchicarCobertura(
     nivel: nivel,

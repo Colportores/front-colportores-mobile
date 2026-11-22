@@ -126,13 +126,14 @@ final class AlmacenControlable implements AlmacenSeguro {
 
 /// El repositorio de verdad sobre un almacén en memoria y un Google falso.
 final class RespaldoDriveArmado {
-  RespaldoDriveArmado({PrimerRespaldoDrive? primerRespaldo})
+  RespaldoDriveArmado({PrimerRespaldoDrive? primerRespaldo, DateTime Function()? ahora})
     : google = ServicioGoogleFalso(),
       almacen = AlmacenControlable() {
     repo = RespaldoDriveRepositoryImpl(
       almacen,
       google,
       primerRespaldo: primerRespaldo ?? const PrimerRespaldoSinMotor(),
+      ahora: ahora,
       logger: loggerMudo(),
     );
   }

@@ -14,6 +14,8 @@ final class VisitaModel extends Visita {
     required super.tipoResultado,
     required super.colportorId,
     super.jornadaId,
+    super.entrevistaEntrada,
+    super.entrevistaSalida,
     required super.auditoria,
   });
 
@@ -25,6 +27,8 @@ final class VisitaModel extends Visita {
     tipoResultado: visita.tipoResultado,
     colportorId: visita.colportorId,
     jornadaId: visita.jornadaId,
+    entrevistaEntrada: visita.entrevistaEntrada,
+    entrevistaSalida: visita.entrevistaSalida,
     auditoria: visita.auditoria,
   );
 
@@ -36,6 +40,8 @@ final class VisitaModel extends Visita {
     'tipo_resultado': tipoResultado.codigo,
     'colportor_id': colportorId,
     'jornada_id': jornadaId,
+    'entrevista_entrada': entrevistaEntrada?.toIso8601String(),
+    'entrevista_salida': entrevistaSalida?.toIso8601String(),
     ...auditoriaAJson(auditoria),
   };
 }

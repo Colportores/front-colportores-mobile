@@ -6921,6 +6921,22 @@ class Agenda extends Table with TableInfo<Agenda, AgendaData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<String> ventaId = GeneratedColumn<String>(
+    'venta_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> montoPrevisto = GeneratedColumn<int>(
+    'monto_previsto',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
     'created_at',
     aliasedName,
@@ -6975,6 +6991,8 @@ class Agenda extends Table with TableInfo<Agenda, AgendaData> {
     estado,
     colportorId,
     visitaId,
+    ventaId,
+    montoPrevisto,
     createdAt,
     updatedAt,
     createdBy,
@@ -7036,6 +7054,14 @@ class Agenda extends Table with TableInfo<Agenda, AgendaData> {
         DriftSqlType.string,
         data['${effectivePrefix}visita_id'],
       ),
+      ventaId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}venta_id'],
+      ),
+      montoPrevisto: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}monto_previsto'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -7069,6 +7095,7 @@ class Agenda extends Table with TableInfo<Agenda, AgendaData> {
     'PRIMARY KEY(id)',
     'CHECK(tipo IN (\'ENTREVISTA\', \'COBRANZA\'))',
     'CHECK(estado IN (\'PROGRAMADA\', \'CUMPLIDA\', \'NO_CUMPLIDA\', \'CANCELADA\'))',
+    'CHECK(monto_previsto IS NULL OR(monto_previsto > 0 AND tipo = \'COBRANZA\' AND venta_id IS NOT NULL))',
   ];
   @override
   bool get dontWriteConstraints => true;
@@ -7086,6 +7113,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
   final String estado;
   final String colportorId;
   final String? visitaId;
+  final String? ventaId;
+  final int? montoPrevisto;
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
@@ -7103,6 +7132,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
     required this.estado,
     required this.colportorId,
     this.visitaId,
+    this.ventaId,
+    this.montoPrevisto,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
@@ -7130,6 +7161,12 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
     map['colportor_id'] = Variable<String>(colportorId);
     if (!nullToAbsent || visitaId != null) {
       map['visita_id'] = Variable<String>(visitaId);
+    }
+    if (!nullToAbsent || ventaId != null) {
+      map['venta_id'] = Variable<String>(ventaId);
+    }
+    if (!nullToAbsent || montoPrevisto != null) {
+      map['monto_previsto'] = Variable<int>(montoPrevisto);
     }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -7164,6 +7201,12 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
       visitaId: visitaId == null && nullToAbsent
           ? const Value.absent()
           : Value(visitaId),
+      ventaId: ventaId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ventaId),
+      montoPrevisto: montoPrevisto == null && nullToAbsent
+          ? const Value.absent()
+          : Value(montoPrevisto),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       createdBy: createdBy == null && nullToAbsent
@@ -7193,6 +7236,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
       estado: serializer.fromJson<String>(json['estado']),
       colportorId: serializer.fromJson<String>(json['colportorId']),
       visitaId: serializer.fromJson<String?>(json['visitaId']),
+      ventaId: serializer.fromJson<String?>(json['ventaId']),
+      montoPrevisto: serializer.fromJson<int?>(json['montoPrevisto']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
@@ -7215,6 +7260,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
       'estado': serializer.toJson<String>(estado),
       'colportorId': serializer.toJson<String>(colportorId),
       'visitaId': serializer.toJson<String?>(visitaId),
+      'ventaId': serializer.toJson<String?>(ventaId),
+      'montoPrevisto': serializer.toJson<int?>(montoPrevisto),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
@@ -7235,6 +7282,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
     String? estado,
     String? colportorId,
     Value<String?> visitaId = const Value.absent(),
+    Value<String?> ventaId = const Value.absent(),
+    Value<int?> montoPrevisto = const Value.absent(),
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
@@ -7256,6 +7305,10 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
     estado: estado ?? this.estado,
     colportorId: colportorId ?? this.colportorId,
     visitaId: visitaId.present ? visitaId.value : this.visitaId,
+    ventaId: ventaId.present ? ventaId.value : this.ventaId,
+    montoPrevisto: montoPrevisto.present
+        ? montoPrevisto.value
+        : this.montoPrevisto,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
@@ -7287,6 +7340,10 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
           ? data.colportorId.value
           : this.colportorId,
       visitaId: data.visitaId.present ? data.visitaId.value : this.visitaId,
+      ventaId: data.ventaId.present ? data.ventaId.value : this.ventaId,
+      montoPrevisto: data.montoPrevisto.present
+          ? data.montoPrevisto.value
+          : this.montoPrevisto,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
@@ -7311,6 +7368,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
           ..write('estado: $estado, ')
           ..write('colportorId: $colportorId, ')
           ..write('visitaId: $visitaId, ')
+          ..write('ventaId: $ventaId, ')
+          ..write('montoPrevisto: $montoPrevisto, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -7333,6 +7392,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
     estado,
     colportorId,
     visitaId,
+    ventaId,
+    montoPrevisto,
     createdAt,
     updatedAt,
     createdBy,
@@ -7354,6 +7415,8 @@ class AgendaData extends DataClass implements Insertable<AgendaData> {
           other.estado == this.estado &&
           other.colportorId == this.colportorId &&
           other.visitaId == this.visitaId &&
+          other.ventaId == this.ventaId &&
+          other.montoPrevisto == this.montoPrevisto &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
@@ -7373,6 +7436,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
   final Value<String> estado;
   final Value<String> colportorId;
   final Value<String?> visitaId;
+  final Value<String?> ventaId;
+  final Value<int?> montoPrevisto;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
@@ -7391,6 +7456,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
     this.estado = const Value.absent(),
     this.colportorId = const Value.absent(),
     this.visitaId = const Value.absent(),
+    this.ventaId = const Value.absent(),
+    this.montoPrevisto = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
@@ -7410,6 +7477,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
     this.estado = const Value.absent(),
     required String colportorId,
     this.visitaId = const Value.absent(),
+    this.ventaId = const Value.absent(),
+    this.montoPrevisto = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
@@ -7435,6 +7504,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
     Expression<String>? estado,
     Expression<String>? colportorId,
     Expression<String>? visitaId,
+    Expression<String>? ventaId,
+    Expression<int>? montoPrevisto,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
@@ -7454,6 +7525,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
       if (estado != null) 'estado': estado,
       if (colportorId != null) 'colportor_id': colportorId,
       if (visitaId != null) 'visita_id': visitaId,
+      if (ventaId != null) 'venta_id': ventaId,
+      if (montoPrevisto != null) 'monto_previsto': montoPrevisto,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
@@ -7475,6 +7548,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
     Value<String>? estado,
     Value<String>? colportorId,
     Value<String?>? visitaId,
+    Value<String?>? ventaId,
+    Value<int?>? montoPrevisto,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
@@ -7494,6 +7569,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
       estado: estado ?? this.estado,
       colportorId: colportorId ?? this.colportorId,
       visitaId: visitaId ?? this.visitaId,
+      ventaId: ventaId ?? this.ventaId,
+      montoPrevisto: montoPrevisto ?? this.montoPrevisto,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
@@ -7539,6 +7616,12 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
     if (visitaId.present) {
       map['visita_id'] = Variable<String>(visitaId.value);
     }
+    if (ventaId.present) {
+      map['venta_id'] = Variable<String>(ventaId.value);
+    }
+    if (montoPrevisto.present) {
+      map['monto_previsto'] = Variable<int>(montoPrevisto.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -7574,6 +7657,8 @@ class AgendaCompanion extends UpdateCompanion<AgendaData> {
           ..write('estado: $estado, ')
           ..write('colportorId: $colportorId, ')
           ..write('visitaId: $visitaId, ')
+          ..write('ventaId: $ventaId, ')
+          ..write('montoPrevisto: $montoPrevisto, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -15764,22 +15849,6 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
-  late final GeneratedColumn<int> anuladoAt = GeneratedColumn<int>(
-    'anulado_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> motivoAnulacion = GeneratedColumn<String>(
-    'motivo_anulacion',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
   late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
     'created_at',
     aliasedName,
@@ -15834,8 +15903,6 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
     numeroAprobacion,
     referenciaTransferencia,
     bancoOrigen,
-    anuladoAt,
-    motivoAnulacion,
     createdAt,
     updatedAt,
     createdBy,
@@ -15897,14 +15964,6 @@ class Cobranza extends Table with TableInfo<Cobranza, CobranzaData> {
         DriftSqlType.string,
         data['${effectivePrefix}banco_origen'],
       ),
-      anuladoAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}anulado_at'],
-      ),
-      motivoAnulacion: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}motivo_anulacion'],
-      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -15955,8 +16014,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
   final String? numeroAprobacion;
   final String? referenciaTransferencia;
   final String? bancoOrigen;
-  final int? anuladoAt;
-  final String? motivoAnulacion;
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
@@ -15974,8 +16031,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     this.numeroAprobacion,
     this.referenciaTransferencia,
     this.bancoOrigen,
-    this.anuladoAt,
-    this.motivoAnulacion,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
@@ -16009,12 +16064,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     }
     if (!nullToAbsent || bancoOrigen != null) {
       map['banco_origen'] = Variable<String>(bancoOrigen);
-    }
-    if (!nullToAbsent || anuladoAt != null) {
-      map['anulado_at'] = Variable<int>(anuladoAt);
-    }
-    if (!nullToAbsent || motivoAnulacion != null) {
-      map['motivo_anulacion'] = Variable<String>(motivoAnulacion);
     }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -16053,12 +16102,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       bancoOrigen: bancoOrigen == null && nullToAbsent
           ? const Value.absent()
           : Value(bancoOrigen),
-      anuladoAt: anuladoAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(anuladoAt),
-      motivoAnulacion: motivoAnulacion == null && nullToAbsent
-          ? const Value.absent()
-          : Value(motivoAnulacion),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       createdBy: createdBy == null && nullToAbsent
@@ -16090,8 +16133,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
         json['referenciaTransferencia'],
       ),
       bancoOrigen: serializer.fromJson<String?>(json['bancoOrigen']),
-      anuladoAt: serializer.fromJson<int?>(json['anuladoAt']),
-      motivoAnulacion: serializer.fromJson<String?>(json['motivoAnulacion']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
@@ -16116,8 +16157,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
         referenciaTransferencia,
       ),
       'bancoOrigen': serializer.toJson<String?>(bancoOrigen),
-      'anuladoAt': serializer.toJson<int?>(anuladoAt),
-      'motivoAnulacion': serializer.toJson<String?>(motivoAnulacion),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
@@ -16138,8 +16177,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     Value<String?> numeroAprobacion = const Value.absent(),
     Value<String?> referenciaTransferencia = const Value.absent(),
     Value<String?> bancoOrigen = const Value.absent(),
-    Value<int?> anuladoAt = const Value.absent(),
-    Value<String?> motivoAnulacion = const Value.absent(),
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
@@ -16161,10 +16198,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
         ? referenciaTransferencia.value
         : this.referenciaTransferencia,
     bancoOrigen: bancoOrigen.present ? bancoOrigen.value : this.bancoOrigen,
-    anuladoAt: anuladoAt.present ? anuladoAt.value : this.anuladoAt,
-    motivoAnulacion: motivoAnulacion.present
-        ? motivoAnulacion.value
-        : this.motivoAnulacion,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
@@ -16196,10 +16229,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
       bancoOrigen: data.bancoOrigen.present
           ? data.bancoOrigen.value
           : this.bancoOrigen,
-      anuladoAt: data.anuladoAt.present ? data.anuladoAt.value : this.anuladoAt,
-      motivoAnulacion: data.motivoAnulacion.present
-          ? data.motivoAnulacion.value
-          : this.motivoAnulacion,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
@@ -16224,8 +16253,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
           ..write('numeroAprobacion: $numeroAprobacion, ')
           ..write('referenciaTransferencia: $referenciaTransferencia, ')
           ..write('bancoOrigen: $bancoOrigen, ')
-          ..write('anuladoAt: $anuladoAt, ')
-          ..write('motivoAnulacion: $motivoAnulacion, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -16248,8 +16275,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
     numeroAprobacion,
     referenciaTransferencia,
     bancoOrigen,
-    anuladoAt,
-    motivoAnulacion,
     createdAt,
     updatedAt,
     createdBy,
@@ -16271,8 +16296,6 @@ class CobranzaData extends DataClass implements Insertable<CobranzaData> {
           other.numeroAprobacion == this.numeroAprobacion &&
           other.referenciaTransferencia == this.referenciaTransferencia &&
           other.bancoOrigen == this.bancoOrigen &&
-          other.anuladoAt == this.anuladoAt &&
-          other.motivoAnulacion == this.motivoAnulacion &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
@@ -16292,8 +16315,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
   final Value<String?> numeroAprobacion;
   final Value<String?> referenciaTransferencia;
   final Value<String?> bancoOrigen;
-  final Value<int?> anuladoAt;
-  final Value<String?> motivoAnulacion;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
@@ -16312,8 +16333,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     this.numeroAprobacion = const Value.absent(),
     this.referenciaTransferencia = const Value.absent(),
     this.bancoOrigen = const Value.absent(),
-    this.anuladoAt = const Value.absent(),
-    this.motivoAnulacion = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
@@ -16333,8 +16352,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     this.numeroAprobacion = const Value.absent(),
     this.referenciaTransferencia = const Value.absent(),
     this.bancoOrigen = const Value.absent(),
-    this.anuladoAt = const Value.absent(),
-    this.motivoAnulacion = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
@@ -16360,8 +16377,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     Expression<String>? numeroAprobacion,
     Expression<String>? referenciaTransferencia,
     Expression<String>? bancoOrigen,
-    Expression<int>? anuladoAt,
-    Expression<String>? motivoAnulacion,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
@@ -16382,8 +16397,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
       if (referenciaTransferencia != null)
         'referencia_transferencia': referenciaTransferencia,
       if (bancoOrigen != null) 'banco_origen': bancoOrigen,
-      if (anuladoAt != null) 'anulado_at': anuladoAt,
-      if (motivoAnulacion != null) 'motivo_anulacion': motivoAnulacion,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
@@ -16405,8 +16418,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     Value<String?>? numeroAprobacion,
     Value<String?>? referenciaTransferencia,
     Value<String?>? bancoOrigen,
-    Value<int?>? anuladoAt,
-    Value<String?>? motivoAnulacion,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
@@ -16427,8 +16438,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
       referenciaTransferencia:
           referenciaTransferencia ?? this.referenciaTransferencia,
       bancoOrigen: bancoOrigen ?? this.bancoOrigen,
-      anuladoAt: anuladoAt ?? this.anuladoAt,
-      motivoAnulacion: motivoAnulacion ?? this.motivoAnulacion,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
@@ -16476,12 +16485,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
     if (bancoOrigen.present) {
       map['banco_origen'] = Variable<String>(bancoOrigen.value);
     }
-    if (anuladoAt.present) {
-      map['anulado_at'] = Variable<int>(anuladoAt.value);
-    }
-    if (motivoAnulacion.present) {
-      map['motivo_anulacion'] = Variable<String>(motivoAnulacion.value);
-    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -16517,8 +16520,6 @@ class CobranzaCompanion extends UpdateCompanion<CobranzaData> {
           ..write('numeroAprobacion: $numeroAprobacion, ')
           ..write('referenciaTransferencia: $referenciaTransferencia, ')
           ..write('bancoOrigen: $bancoOrigen, ')
-          ..write('anuladoAt: $anuladoAt, ')
-          ..write('motivoAnulacion: $motivoAnulacion, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -18384,6 +18385,10 @@ class DatabaseAtV24 extends GeneratedDatabase {
     'agenda_espacio_idx',
     'CREATE INDEX agenda_espacio_idx ON agenda (espacio_id)',
   );
+  late final Index agendaVentaIdx = Index(
+    'agenda_venta_idx',
+    'CREATE INDEX agenda_venta_idx ON agenda (venta_id)',
+  );
   late final Index visitaColportorIdx = Index(
     'visita_colportor_idx',
     'CREATE INDEX visita_colportor_idx ON visita (colportor_id, fecha)',
@@ -18516,6 +18521,7 @@ class DatabaseAtV24 extends GeneratedDatabase {
     agendaColportorIdx,
     agendaEspacioPersonaIdx,
     agendaEspacioIdx,
+    agendaVentaIdx,
     visitaColportorIdx,
     visitaEspacioPersonaIdx,
     visitaEspacioIdx,

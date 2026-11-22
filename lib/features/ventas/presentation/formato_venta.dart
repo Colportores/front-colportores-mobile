@@ -40,6 +40,9 @@ abstract final class TextosVenta {
   static const tituloAgregar = 'Agregar productos';
   static const sinCobrar = 'Sin cobrar';
 
+  /// El renglón de un misionero en 27A·05 (42B·08G).
+  static const misioneroSinCobrar = 'Misionero · sin cobrar';
+
   static const volver = 'Volver';
   static const tituloRegistrada = 'Venta registrada';
   static const entrega = 'ENTREGA';
@@ -61,6 +64,8 @@ abstract final class TextosVenta {
   static const motivoFalta = 'Escribí por qué cambiaste el monto.';
   static const montoInvalido = 'Escribí un monto válido, por ejemplo 8.500.';
   static const talonarioVacio = 'Escribí el número del talonario para registrar la venta.';
+  static const soloMisioneros =
+      'Solo misioneros no es una venta: anotalos al terminar la entrevista, en «Lo que dejaste».';
   static const talonarioRepetidoNota = 'Revisá el número del talonario para registrar la venta.';
   static const guardando = 'Guardando la venta';
   static const sinProductos = 'Elegí al menos un producto para registrar la venta.';

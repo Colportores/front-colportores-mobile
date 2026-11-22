@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../domain/entities/item_de_precio.dart';
 import '../formato_precios.dart';
 import 'piezas_precios.dart';
@@ -11,10 +12,9 @@ Future<void> mostrarHojaDetalleDelCombo(
   BuildContext context, {
   required PrecioDeCombo combo,
   required String ciudad,
-}) => showModalBottomSheet<void>(
+}) => mostrarHojaInferior<void>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   barrierColor: _scrim,
   shape: const RoundedRectangleBorder(

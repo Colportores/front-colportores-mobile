@@ -14,6 +14,7 @@ abstract final class FlujoAgendarVisita {
     String? espacioPersonaId,
     required String? colportorId,
     TipoAgenda tipo = TipoAgenda.entrevista,
+    DateTime? diaInicial,
   }) async {
     final mensajero = ScaffoldMessenger.maybeOf(context);
     final colportor = colportorId?.trim() ?? '';
@@ -27,6 +28,7 @@ abstract final class FlujoAgendarVisita {
       espacioPersonaId: espacioPersonaId,
       colportorId: colportor,
       tipo: tipo,
+      diaInicial: diaInicial,
     );
     if (guardada == null) return false;
     mensajero

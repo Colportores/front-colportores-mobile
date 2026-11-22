@@ -24,8 +24,8 @@ import 'anular_cobro_page.dart';
 /// - **Pasaron las 72 h** (30B-06): ya no se puede anular, ni siquiera por el coordinador (decisión de
 ///   Cristian, 23/10, «Anular 72 h»).
 /// - **Ticket validado** (30B-07): con el ticket de la tarjeta validado por el coordinador, la
-///   colportora no anula sola: se lo pide a él (decisión de Cristian, 23/10). Hasta que llegue el ticket
-///   local (HU-COB-007, #169), [ticketValidadoDelCobroProvider] responde «no» y lo cuida el servidor.
+///   colportora no anula sola: se lo pide a él (decisión de Cristian, 23/10). Lo dice
+///   [ticketValidadoDelCobroProvider], con el ticket local del cobro (HU-COB-007, #426).
 /// - Además lee el cobro: cargando, ya no está y error de lectura con «Reintentar».
 ///
 /// Devuelve `true` si en esta visita se anuló el cobro y `false` si no.

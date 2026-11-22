@@ -26,7 +26,6 @@ import 'hoja_espacios_arnes.dart'
         campoNumero,
         campoPiso,
         escribir,
-        filaDepto,
         habilitado;
 
 /// Un depto que ya estaba dado de baja cuando se abre la hoja.
@@ -58,7 +57,7 @@ void main() {
       (tester) async {
         await montar212(tester);
         await abrirHoja212(tester);
-        await tocar212(tester, filaDepto('esp-1'));
+        await editarDepto212(tester, 'esp-1');
 
         await tocar212(tester, botonDarDeBaja);
 
@@ -80,7 +79,7 @@ void main() {
       (tester) async {
         await montar212(tester);
         await abrirHoja212(tester);
-        await tocar212(tester, filaDepto('esp-1'));
+        await editarDepto212(tester, 'esp-1');
 
         await tocar212(tester, botonDarDeBaja);
 
@@ -99,7 +98,7 @@ void main() {
       (tester) async {
         await montar212(tester);
         await abrirHoja212(tester);
-        await tocar212(tester, filaDepto('esp-1'));
+        await editarDepto212(tester, 'esp-1');
 
         await tocar212(tester, botonDarDeBaja);
 
@@ -118,7 +117,7 @@ void main() {
       (tester) async {
         await montar212(tester);
         await abrirHoja212(tester);
-        await tocar212(tester, filaDepto('esp-1'));
+        await editarDepto212(tester, 'esp-1');
 
         await tocar212(tester, botonDarDeBaja);
 
@@ -174,7 +173,7 @@ void main() {
             await cargarFuentes211(tester);
             await montar212(tester, tamano: tamano, escala: escala);
             await abrirHoja212(tester);
-            await tocar212(tester, filaDepto('esp-1'));
+            await editarDepto212(tester, 'esp-1');
             await tocar212(tester, botonDarDeBaja);
 
             expect(find.text(avisoDosPersonas212), findsOneWidget);
@@ -195,7 +194,7 @@ void main() {
             await cargarFuentes211(tester);
             await montar212(tester, tamano: tamano, escala: escala);
             await abrirHoja212(tester);
-            await tocar212(tester, filaDepto('esp-1'));
+            await editarDepto212(tester, 'esp-1');
             await tocar212(tester, botonDarDeBaja);
 
             expect(find.text(bloqueo212), findsOneWidget);
@@ -214,7 +213,7 @@ void main() {
             await cargarFuentes211(tester);
             await montar212(tester, tamano: tamano, escala: escala);
             await abrirHoja212(tester);
-            await tocar212(tester, filaDepto('esp-1'));
+            await editarDepto212(tester, 'esp-1');
             await tocar212(tester, botonDarDeBaja);
             await tocar212(tester, find.byKey(ClavesHojaDepto.confirmarBaja));
             await cerrarHoja212(tester);
@@ -236,7 +235,7 @@ void main() {
       (tester) async {
         await montar212(tester);
         await abrirHoja212(tester);
-        await tocar212(tester, filaDepto('esp-1'));
+        await editarDepto212(tester, 'esp-1');
         await tocar212(tester, botonDarDeBaja);
         await tocar212(tester, find.text('Entendido'));
 

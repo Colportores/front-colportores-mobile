@@ -95,7 +95,6 @@ final class DiaDeTrabajo {
       'inicio': t.toIso8601String(),
       'fin': null,
       'acompaniante_id': null,
-      'tipo_acompaniamiento': null,
       'total_visitas': 0,
       'total_ventas': 0,
       'created_at': t.toIso8601String(),

@@ -51,7 +51,6 @@ class Cobranza extends Equatable {
     required this.medio,
     required DateTime fecha,
     this.ticketId,
-    this.numeroCuota,
     this.tarjetaTipo,
     this.tarjetaMarca,
     this.numeroAprobacion,
@@ -78,9 +77,6 @@ class Cobranza extends Equatable {
 
   /// FK opcional a `ticket.id` (esquema-datos.md: "ticket_id (FK opcional)").
   final String? ticketId;
-
-  /// Número de cuota (HU-COB-004); `null` si el cobro no es de una cuota (el servidor lo admite).
-  final int? numeroCuota;
 
   /// Solo con [MedioCobranza.tarjeta] (HU-COB-002, #396): débito o crédito. Opcional.
   final TipoTarjeta? tarjetaTipo;
@@ -122,7 +118,6 @@ class Cobranza extends Equatable {
     medio,
     fecha,
     ticketId,
-    numeroCuota,
     tarjetaTipo,
     tarjetaMarca,
     numeroAprobacion,

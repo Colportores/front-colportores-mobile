@@ -5,7 +5,9 @@ import '../../../../core/domain/entities/auditoria.dart';
 import '../../../../core/sync/encolador_sync.dart';
 import '../../../mapa/data/datasources/audit_log_table.dart';
 import '../../domain/entities/deposito.dart';
+import '../../domain/entities/totales_de_depositos.dart';
 import '../models/deposito_model.dart';
+import 'totales_de_depositos_drift.dart';
 
 /// La persistencia rechazó el depósito: el repositorio la traduce a un `Failure`.
 sealed class DepositoRechazadoException implements Exception {
@@ -72,6 +74,17 @@ final class DepositoLocalDataSourceDrift {
     return DepositoRegistrado(deposito: deposito);
   });
 
+  /// Ver [DepositoRepository.observar].
+  Stream<List<Deposito>> observar() =>
+      (_db.select(_db.depositos)
+            ..where((d) => d.deletedAt.isNull())
+            ..orderBy([(d) => OrderingTerm.desc(d.fecha), (d) => OrderingTerm.desc(d.id)]))
+          .watch()
+          .map((filas) => [for (final fila in filas) _aDeposito(fila)]);
+
+  /// Ver [DepositoRepository.totales].
+  Future<TotalesDeDepositos> totales() => TotalesDeDepositosDrift(_db).leer();
+
   /// Ver [DepositoRepository.todos].
   Future<List<Deposito>> todos() async {
     final filas =
@@ -90,6 +103,10 @@ final class DepositoLocalDataSourceDrift {
     concepto: DepositoModel.conceptoDesdeCodigo(fila.concepto),
     campaniaId: fila.campaniaId,
     ticketId: fila.ticketId,
+    validadoEn: fila.validadoEn,
+    validadoPor: fila.validadoPor,
+    rechazadoEn: fila.rechazadoEn,
+    motivoRechazo: fila.motivoRechazo,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,

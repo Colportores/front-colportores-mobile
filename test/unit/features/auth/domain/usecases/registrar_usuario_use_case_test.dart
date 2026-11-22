@@ -305,7 +305,9 @@ void main() {
           ),
         );
 
-        expect(campos, {'email': 'El email no es válido'});
+        expect(campos, {
+          'email': 'El email no es válido. Revisá que esté completo, como nombre@correo.com.',
+        });
       });
 
       for (final email in emailsIncompletos) {
@@ -323,7 +325,9 @@ void main() {
             ),
           );
 
-          expect(campos, {'email': 'El email no es válido'});
+          expect(campos, {
+            'email': 'El email no es válido. Revisá que esté completo, como nombre@correo.com.',
+          });
         });
       }
 

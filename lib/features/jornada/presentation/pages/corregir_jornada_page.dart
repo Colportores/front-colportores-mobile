@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dartz/dartz.dart' show Either;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../auth/domain/entities/sesion.dart';
+import '../../domain/entities/jornada.dart';
 import '../../domain/jornada_sin_cerrar.dart';
 import '../formato_jornada.dart';
 import '../providers/jornada_actual_notifier.dart';
@@ -29,6 +31,7 @@ class CorregirJornadaPage extends ConsumerStatefulWidget {
     required this.sesion,
     required this.inicio,
     this.inicioSiguiente,
+    this.finalizar,
   });
 
   final Sesion sesion;
@@ -39,6 +42,11 @@ class CorregirJornadaPage extends ConsumerStatefulWidget {
   /// Inicio de la jornada siguiente del mismo colportor, si hay una (viene de
   /// `FailureJornadaDeDiaAnterior`): el fin no puede pasarlo.
   final DateTime? inicioSiguiente;
+
+  /// Cómo se cierra la jornada con la hora elegida. Sin esto, la jornada en curso (la de Hoy). La
+  /// jornada que quedó abierta **con otra después** (la recuperación de dispositivo, vista 34) pasa
+  /// el cierre propio: no es la jornada en curso, y su tope es el inicio de la siguiente.
+  final Future<Either<Failure, Jornada>> Function(DateTime hora)? finalizar;
 
   @override
   ConsumerState<CorregirJornadaPage> createState() => _CorregirJornadaPageState();
@@ -165,9 +173,10 @@ class _CorregirJornadaPageState extends ConsumerState<CorregirJornadaPage> {
       _error = null;
     });
 
-    final resultado = await ref
-        .read(jornadaActualProvider(widget.sesion.usuarioId).notifier)
-        .finalizar(hora: hora);
+    final cerrarOtra = widget.finalizar;
+    final resultado = await (cerrarOtra != null
+        ? cerrarOtra(hora)
+        : ref.read(jornadaActualProvider(widget.sesion.usuarioId).notifier).finalizar(hora: hora));
 
     if (!mounted) return;
 
