@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../../core/error/failure.dart';
-import '../../../../core/presentation/hoja_segura.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../providers/respaldo_drive_providers.dart';
@@ -19,31 +19,29 @@ import 'aviso_drive.dart';
 Future<ResultadoConexionDrive?> mostrarHojaConectarDrive(
   BuildContext context, {
   bool conPrimerRespaldo = true,
-}) => showModalBottomSheet<ResultadoConexionDrive>(
+}) => mostrarHojaInferior<ResultadoConexionDrive>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   enableDrag: false,
   showDragHandle: false,
   backgroundColor: Colors.white,
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) => HojaSegura(child: HojaConectarDrive(conPrimerRespaldo: conPrimerRespaldo)),
+  builder: (_) => HojaConectarDrive(conPrimerRespaldo: conPrimerRespaldo),
 );
 
 /// Abre la hoja «¿Desconectar Google Drive?» (16D·05). Devuelve `true` si quedó desconectado.
-Future<bool?> mostrarHojaDesconectarDrive(BuildContext context) => showModalBottomSheet<bool>(
+Future<bool?> mostrarHojaDesconectarDrive(BuildContext context) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   enableDrag: false,
   showDragHandle: false,
   backgroundColor: Colors.white,
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) => const HojaSegura(child: HojaDesconectarDrive()),
+  builder: (_) => const HojaDesconectarDrive(),
 );
 
 enum _FaseConectar { previa, conectando, error, sinConexion }

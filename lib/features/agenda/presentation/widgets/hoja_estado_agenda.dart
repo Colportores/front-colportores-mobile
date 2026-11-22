@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../domain/entities/filtros_agenda.dart';
 import '../formato_agenda.dart';
 import 'piezas_agenda.dart';
@@ -11,10 +12,9 @@ const _scrim = Color(0x730E1A2B);
 Future<EstadoFiltroAgenda?> mostrarHojaEstadoAgenda(
   BuildContext context, {
   required EstadoFiltroAgenda actual,
-}) => showModalBottomSheet<EstadoFiltroAgenda>(
+}) => mostrarHojaInferior<EstadoFiltroAgenda>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   barrierColor: _scrim,
   shape: const RoundedRectangleBorder(

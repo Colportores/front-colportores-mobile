@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
-import '../../../../core/presentation/hoja_segura.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/consulta_lista_ubicaciones.dart';
@@ -31,16 +31,14 @@ Future<FiltrosLista?> mostrarHojaFiltrosLista(
   required String colportorId,
   required FiltrosLista actuales,
   required Coordenadas? posicion,
-}) => showModalBottomSheet<FiltrosLista>(
+}) => mostrarHojaInferior<FiltrosLista>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   barrierColor: _scrim,
   shape: _bordeHoja,
-  builder: (_) => HojaSegura(
-    child: HojaFiltrosLista(colportorId: colportorId, actuales: actuales, posicion: posicion),
-  ),
+  builder: (_) =>
+      HojaFiltrosLista(colportorId: colportorId, actuales: actuales, posicion: posicion),
 );
 
 /// Abre el menú del orden (vista 05: «Última actualización ▾» / «Por cercanía ▾»). «Por cercanía»
@@ -49,9 +47,8 @@ Future<OrdenListaUbicaciones?> mostrarHojaOrdenLista(
   BuildContext context, {
   required OrdenListaUbicaciones actual,
   required bool hayGps,
-}) => showModalBottomSheet<OrdenListaUbicaciones>(
+}) => mostrarHojaInferior<OrdenListaUbicaciones>(
   context: context,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   barrierColor: _scrim,
   shape: _bordeHoja,
@@ -150,9 +147,8 @@ class _HojaFiltrosListaState extends ConsumerState<HojaFiltrosLista> {
   }
 
   Future<void> _elegirCiudad() async {
-    final elegida = await showModalBottomSheet<_EleccionCiudad>(
+    final elegida = await mostrarHojaInferior<_EleccionCiudad>(
       context: context,
-      useSafeArea: true,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       barrierColor: _scrim,
@@ -163,9 +159,8 @@ class _HojaFiltrosListaState extends ConsumerState<HojaFiltrosLista> {
   }
 
   Future<void> _elegirProximidad() async {
-    final elegida = await showModalBottomSheet<ProximidadLista>(
+    final elegida = await mostrarHojaInferior<ProximidadLista>(
       context: context,
-      useSafeArea: true,
       backgroundColor: Colors.white,
       barrierColor: _scrim,
       shape: _bordeHoja,

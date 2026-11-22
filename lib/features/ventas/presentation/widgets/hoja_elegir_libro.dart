@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/presentation/hoja_segura.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../../../catalogo/domain/entities/item_de_precio.dart';
 import '../../../catalogo/domain/services/resolvedor_de_precios.dart';
@@ -15,14 +15,11 @@ Future<PrecioDeProducto?> mostrarHojaElegirLibro(
   required String titulo,
   required List<PrecioDeProducto> libros,
   PrecioDeProducto? actual,
-}) => showModalBottomSheet<PrecioDeProducto>(
+}) => mostrarHojaInferior<PrecioDeProducto>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: true,
-  builder: (_) => HojaSegura(
-    child: HojaElegirLibro(titulo: titulo, libros: libros, actual: actual),
-  ),
+  builder: (_) => HojaElegirLibro(titulo: titulo, libros: libros, actual: actual),
 );
 
 class HojaElegirLibro extends StatefulWidget {

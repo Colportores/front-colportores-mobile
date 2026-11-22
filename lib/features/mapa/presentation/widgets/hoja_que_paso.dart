@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../../../core/presentation/hoja_segura.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../textos_registrar_visita.dart';
 import 'piezas_alta.dart';
 
@@ -121,10 +121,9 @@ Future<bool> mostrarHojaQuePaso(
   CobroOfrecido? cobro,
   VentaOfrecida? venta,
 }) async {
-  final resultado = await showModalBottomSheet<bool>(
+  final resultado = await mostrarHojaInferior<bool>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
     // Sin arrastrar para cerrar: el arrastre no pasa por el `PopScope` y mientras se guarda la hoja no
     // se cierra. Las salidas son «Cancelar», el atrás y el toque afuera.
     enableDrag: false,
@@ -132,14 +131,12 @@ Future<bool> mostrarHojaQuePaso(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) => HojaSegura(
-      child: HojaQuePaso(
-        direccion: direccion,
-        ofrecidas: ofrecidas,
-        cobro: cobro,
-        venta: venta,
-        alElegir: alElegir,
-      ),
+    builder: (_) => HojaQuePaso(
+      direccion: direccion,
+      ofrecidas: ofrecidas,
+      cobro: cobro,
+      venta: venta,
+      alElegir: alElegir,
     ),
   );
   return resultado ?? false;

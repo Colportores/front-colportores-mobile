@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../../core/presentation/hoja_segura.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../formato_jornada.dart';
 
@@ -27,25 +27,22 @@ Future<HoraElegida?> mostrarHojaHoraInicio(
   String etiquetaCampo = 'HORA DE INICIO',
   bool mostrarRelativo = true,
   String? Function(DateTime hora)? notaDeHora,
-}) => showModalBottomSheet<HoraElegida>(
+}) => mostrarHojaInferior<HoraElegida>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: false,
   backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
-  builder: (_) => HojaSegura(
-    child: HojaHoraInicio(
-      ahora: ahora,
-      margenMinutos: margenMinutos,
-      minutosAtras: minutosAtras,
-      pregunta: pregunta,
-      etiquetaCampo: etiquetaCampo,
-      mostrarRelativo: mostrarRelativo,
-      notaDeHora: notaDeHora,
-    ),
+  builder: (_) => HojaHoraInicio(
+    ahora: ahora,
+    margenMinutos: margenMinutos,
+    minutosAtras: minutosAtras,
+    pregunta: pregunta,
+    etiquetaCampo: etiquetaCampo,
+    mostrarRelativo: mostrarRelativo,
+    notaDeHora: notaDeHora,
   ),
 );
 

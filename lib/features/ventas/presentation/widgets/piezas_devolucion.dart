@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/presentation/hoja_segura.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../textos_devolucion.dart';
 
@@ -154,13 +154,12 @@ const _formaHoja = RoundedRectangleBorder(
 Future<bool?> mostrarHojaConfirmarDevolucion(
   BuildContext context, {
   required List<DatoDeDevolucion> datos,
-}) => showModalBottomSheet<bool>(
+}) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: _formaHoja,
-  builder: (_) => HojaSegura(child: HojaConfirmarDevolucion(datos: datos)),
+  builder: (_) => HojaConfirmarDevolucion(datos: datos),
 );
 
 class HojaConfirmarDevolucion extends StatefulWidget {

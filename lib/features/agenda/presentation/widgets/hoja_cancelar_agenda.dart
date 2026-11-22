@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta;
 import '../../domain/entities/tipo_agenda.dart';
 import '../../domain/usecases/cancelar_agenda_use_case.dart';
@@ -20,10 +21,9 @@ Future<ResultadoCancelarAgenda?> mostrarHojaCancelarAgenda(
   BuildContext context, {
   required String agendaId,
   required TipoAgenda tipo,
-}) => showModalBottomSheet<ResultadoCancelarAgenda>(
+}) => mostrarHojaInferior<ResultadoCancelarAgenda>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // Sin arrastrar para cerrar: mientras la cancelación se escribe la hoja no se puede cerrar de
   // costado (el arrastre no pasa por el `PopScope`). Las salidas son «Volver», el atrás y el toque
   // afuera.

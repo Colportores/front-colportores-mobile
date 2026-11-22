@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../domain/entities/entrega_pendiente.dart';
 import '../formato_entrega_diferida.dart';
 import '../providers/entrega_diferida_providers.dart';
@@ -16,10 +17,9 @@ import 'piezas_entrega_diferida.dart';
 Future<EntregaPendiente?> mostrarHojaQueEntrega(
   BuildContext context, {
   required List<EntregaPendiente> pendientes,
-}) => showModalBottomSheet<EntregaPendiente>(
+}) => mostrarHojaInferior<EntregaPendiente>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
