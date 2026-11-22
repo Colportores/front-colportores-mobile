@@ -11,9 +11,13 @@ import '../../../cobranzas/presentation/widgets/piezas_cobro.dart'
     show AvisoDeCobroHecho, CampoDeFechaDelCobro;
 import '../../../cobranzas/presentation/widgets/piezas_medio_de_cobro.dart' show SegmentadoDeCobro;
 import '../../../cuenta/presentation/providers/cuenta_providers.dart';
+import '../../../cuenta/presentation/widgets/piezas_cuenta.dart' show ColoresCuenta;
 import '../../../mapa/presentation/widgets/dialogos_modificar.dart'
     show confirmarDescartarLoEscrito;
+import '../../../tickets/domain/entities/item_del_historial.dart';
+import '../../../tickets/domain/entities/ticket.dart' show TipoDeTarjeta;
 import '../../../tickets/domain/services/captura_de_foto.dart';
+import '../../../tickets/presentation/pages/historial_de_tickets_page.dart';
 import '../../../tickets/presentation/providers/tickets_providers.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../../ventas/domain/services/reglas_de_venta.dart';
@@ -44,17 +48,45 @@ import '../widgets/piezas_deposito.dart';
 /// - **Error** (33D-05): el formulario conserva lo cargado y el botón pasa a «Reintentar».
 /// - **Sin conexión** (33D-06): se registra igual en el teléfono y sube cuando vuelve la red.
 ///
+/// - **«Tarjeta»** (38A-01, regla R3 del 26/10: gana el canvas): si el depósito se hizo con tarjeta,
+///   débito o crédito; «No» (lo habitual con efectivo) no guarda nada. Va con el ticket del banco o de
+///   la oficina.
+/// - **«Cargar de nuevo»** (38B·02): [copiaDe] trae el monto, el destino, el concepto, la fecha y el
+///   número de un depósito rechazado; la foto hay que sacarla otra vez.
+///
 /// Devuelve `true` si se registró un depósito.
 class RegistrarDepositoPage extends ConsumerStatefulWidget {
-  const RegistrarDepositoPage({super.key, required this.colportorId});
+  const RegistrarDepositoPage({
+    super.key,
+    required this.colportorId,
+    this.copiaDe,
+    this.desdeMisTickets = false,
+  });
 
   /// UUID del colportor con la sesión iniciada.
   final String colportorId;
 
+  /// El depósito rechazado que se carga de nuevo (38B·02); `null` = uno nuevo.
+  final ItemDelHistorial? copiaDe;
+
+  /// Se abrió desde «Mis tickets»: el éxito no ofrece «Ver mis tickets», que ya está debajo.
+  final bool desdeMisTickets;
+
   /// Abre la pantalla encima de la actual. `true` si se registró un depósito.
-  static Future<bool> abrir(BuildContext context, {required String colportorId}) async {
+  static Future<bool> abrir(
+    BuildContext context, {
+    required String colportorId,
+    ItemDelHistorial? copiaDe,
+    bool desdeMisTickets = false,
+  }) async {
     final registrado = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => RegistrarDepositoPage(colportorId: colportorId)),
+      MaterialPageRoute(
+        builder: (_) => RegistrarDepositoPage(
+          colportorId: colportorId,
+          copiaDe: copiaDe,
+          desdeMisTickets: desdeMisTickets,
+        ),
+      ),
     );
     return registrado ?? false;
   }
@@ -78,6 +110,9 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
 
   var _concepto = ConceptoDeDeposito.casaEditora;
   var _destino = DestinoDeDeposito.banco;
+
+  /// Crédito o débito; `null` = «No» (38A-01, «Tarjeta»).
+  TipoDeTarjeta? _tarjeta;
 
   /// El día elegido (sin hora, día de Montevideo); `null` = hoy.
   DateTime? _dia;
@@ -109,7 +144,28 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
   @override
   void initState() {
     super.initState();
+    _copiarElRechazado();
     unawaited(_leerLoPorValidar());
+  }
+
+  /// «Cargar de nuevo» (38B·02): arranca con lo que tenía el depósito rechazado, menos la foto.
+  void _copiarElRechazado() {
+    final copia = widget.copiaDe;
+    if (copia == null) return;
+    _monto.text = FormatoVenta.montoParaEditar(copia.montoCentavos);
+    _concepto = copia.concepto ?? ConceptoDeDeposito.casaEditora;
+    _destino = switch (copia.lugar) {
+      LugarDelTicket.oficina => DestinoDeDeposito.oficina,
+      LugarDelTicket.retiro => DestinoDeDeposito.retiroCoordinador,
+      _ => DestinoDeDeposito.banco,
+    };
+    _tarjeta = copia.tarjetaTipo;
+    _referencia.text = copia.numeroAutorizacion ?? '';
+    final dia = ReglasDeVenta.diaDeMontevideo(copia.fecha.toUtc());
+    // Una fecha de hoy queda como «hoy»; una más vieja que el calendario no llega (un año), se acota.
+    final hoy = ReglasDeVenta.diaDeMontevideo(ref.read(relojDepositoProvider)().toUtc());
+    final limite = DateTime(hoy.year - 1, hoy.month, hoy.day);
+    if (!_mismoDia(dia, hoy)) _dia = dia.isBefore(limite) ? limite : dia;
   }
 
   @override
@@ -212,6 +268,17 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
   void _elegirConcepto(int i) {
     if (_enviando) return;
     setState(() => _concepto = ConceptoDeDeposito.values[i]);
+  }
+
+  void _elegirTarjeta(int i) {
+    if (_enviando) return;
+    setState(
+      () => _tarjeta = switch (i) {
+        0 => TipoDeTarjeta.debito,
+        1 => TipoDeTarjeta.credito,
+        _ => null,
+      },
+    );
   }
 
   void _elegirDestino(int i) {
@@ -334,6 +401,7 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
         campaniaId,
         foto == null ? null : identityHashCode(foto),
         referencia,
+        _destino.llevaTicket ? _tarjeta?.name : null,
       ].join('|');
       final previo = _intento;
       final ids = previo != null && previo.datos == datos
@@ -355,6 +423,7 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
           campaniaId: campaniaId,
           foto: foto,
           referencia: referencia.isEmpty ? null : referencia,
+          tarjetaTipo: _destino.llevaTicket ? _tarjeta : null,
         ),
       );
       if (!mounted) return;
@@ -601,6 +670,20 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
         habilitado: !_enviando,
       ),
       const SizedBox(height: 12),
+      SegmentadoDeCobro(
+        rotulo: TextosDeposito.tarjeta,
+        etiqueta: TextosDeposito.tarjetaEtiqueta,
+        opciones: const [TextosDeposito.debito, TextosDeposito.credito, TextosDeposito.sinTarjeta],
+        elegida: switch (_tarjeta) {
+          TipoDeTarjeta.debito => 0,
+          TipoDeTarjeta.credito => 1,
+          null => 2,
+        },
+        alElegir: _elegirTarjeta,
+        prefijoDeClave: 'deposito_tarjeta',
+        habilitado: !_enviando,
+      ),
+      const SizedBox(height: 12),
     ];
   }
 
@@ -647,11 +730,48 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
           ),
         ],
       ],
-      cta: BotonDeVenta(
-        key: const Key('deposito_listo'),
-        texto: TextosDeposito.listo,
-        alPresionar: _cerrar,
+      cta: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 38A-06: desde acá se ve el ticket recién cargado en «Mis tickets». Desde «Mis tickets» no
+          // se ofrece: la lista ya está debajo y se actualiza sola.
+          if (!widget.desdeMisTickets) ...[
+            OutlinedButton(
+              key: const Key('deposito_ver_mis_tickets'),
+              onPressed: _verMisTickets,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+                foregroundColor: ColoresCuenta.navy,
+                side: const BorderSide(color: ColoresCuenta.navy, width: 1.5),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: const Text(
+                TextosDeposito.verMisTickets,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          BotonDeVenta(
+            key: const Key('deposito_listo'),
+            texto: TextosDeposito.listo,
+            alPresionar: _cerrar,
+          ),
+        ],
       ),
     );
+  }
+
+  /// «Ver mis tickets» (38A-06): cierra la pantalla (devuelve `true`: se registró) y abre el historial.
+  /// Un segundo toque antes de que cierre no abre dos.
+  void _verMisTickets() {
+    if (_cerrando) return;
+    _cerrando = true;
+    final navegador = Navigator.of(context);
+    final colportorId = widget.colportorId;
+    navegador.pop(true);
+    // Encima de la pantalla que estaba debajo de esta.
+    unawaited(HistorialDeTicketsPage.abrirEn(navegador, colportorId: colportorId));
   }
 }

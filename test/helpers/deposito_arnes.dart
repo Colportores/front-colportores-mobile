@@ -87,6 +87,15 @@ final class TicketsFalsos implements TicketRepository {
     );
   }
 
+  /// Las copias de fotos que siguen en el teléfono, por id de ticket (el detalle de «Mis tickets»).
+  final fotosLocales = <String, Uint8List>{};
+
+  @override
+  Future<Either<Failure, Uint8List?>> bytesDeLaFoto(String ticketId) async {
+    final registrada = guardados.where((g) => g.ticket.id == ticketId).firstOrNull;
+    return Right(fotosLocales[ticketId] ?? registrada?.foto);
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

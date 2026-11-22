@@ -200,8 +200,8 @@ void main() {
       expect(repo.registrados, isEmpty);
     });
 
-    test('el ticket de un depósito no pide tarjeta ni autorización y no guarda los datos de la '
-        'tarjeta aunque lleguen', () async {
+    test('el ticket de un depósito no pide tarjeta ni autorización; si llega crédito o débito lo '
+        'guarda, pero no la marca (38A-01)', () async {
       final r = await registrar(
         _params(
           tipo: TipoDeTicket.deposito,
@@ -213,7 +213,7 @@ void main() {
 
       expect(r.isRight(), isTrue);
       final t = repo.registrados.single.ticket;
-      expect(t.tarjetaTipo, isNull);
+      expect(t.tarjetaTipo, TipoDeTarjeta.debito);
       expect(t.tarjetaMarca, isNull);
     });
 
