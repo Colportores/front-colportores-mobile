@@ -1444,6 +1444,7 @@ void main() {
       _datos.respuestaResumen = const Left(FailureInesperado(causa: 'sin db'));
       await _montar(tester);
 
+      await tester.ensureVisible(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.tap(find.byKey(const Key('configuracion_cerrar_sesion')));
       await tester.pumpAndSettle();
       await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
