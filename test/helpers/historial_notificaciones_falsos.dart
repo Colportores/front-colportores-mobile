@@ -21,9 +21,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// El «ahora» de los tests del centro: viernes 23 de octubre de 2026, 16:10 (hora local).
 final ahoraDelCentro = DateTime(2026, 10, 23, 16, 10);
 
-/// Un recordatorio de visita recibido [hace] antes de [ahoraDelCentro].
+/// Un aviso (por defecto, un recordatorio de visita) recibido [hace] antes de [ahoraDelCentro].
 Notificacion aviso(
   String id, {
+  TipoNotificacion tipo = TipoNotificacion.recordatorioVisita,
   Duration hace = const Duration(minutes: 40),
   String titulo = 'Cobranza a las 16:00',
   String? detalle = 'Av. Italia 2810',
@@ -32,7 +33,7 @@ Notificacion aviso(
   bool conDestino = true,
 }) => Notificacion(
   id: id,
-  tipo: TipoNotificacion.recordatorioVisita,
+  tipo: tipo,
   titulo: titulo,
   detalle: detalle,
   destino: conDestino ? (destino ?? DestinoAgenda('agenda-$id')) : null,
