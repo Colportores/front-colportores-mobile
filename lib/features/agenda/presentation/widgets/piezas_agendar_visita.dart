@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../mapa/presentation/widgets/campos_ubicacion.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart';
@@ -514,10 +515,9 @@ Future<DateTime?> mostrarHojaDiaYHora(
   bool conHora = true,
   bool conDia = true,
   bool sinHoyNiManana = false,
-}) => showModalBottomSheet<DateTime>(
+}) => mostrarHojaInferior<DateTime>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: _formaHoja,
   builder: (_) => HojaDiaYHora(
@@ -784,10 +784,9 @@ Future<bool?> mostrarHojaHoraPasada(
   BuildContext context, {
   required String texto,
   String confirmar = TextosAgendarVisita.agendarIgual,
-}) => showModalBottomSheet<bool>(
+}) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: _formaHoja,
   builder: (contexto) => SafeArea(

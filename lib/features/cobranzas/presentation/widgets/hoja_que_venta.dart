@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart' show AvisoAlta, ColoresAlta;
 import '../../domain/entities/venta_con_saldo.dart';
@@ -82,10 +83,9 @@ Future<SalidaQueVenta> salirDeHojaQueVenta(
     fallo = true;
   }
   if (!context.mounted) return const CerroQueVenta();
-  final salio = await showModalBottomSheet<Object>(
+  final salio = await mostrarHojaInferior<Object>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
     backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

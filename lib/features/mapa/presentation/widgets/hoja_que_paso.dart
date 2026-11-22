@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../textos_registrar_visita.dart';
 import 'piezas_alta.dart';
 
@@ -121,10 +122,9 @@ Future<bool> mostrarHojaQuePaso(
   VentaOfrecida? venta,
   String titulo = TextosRegistrarVisita.titulo,
 }) async {
-  final resultado = await showModalBottomSheet<bool>(
+  final resultado = await mostrarHojaInferior<bool>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
     // Sin arrastrar para cerrar: el arrastre no pasa por el `PopScope` y mientras se guarda la hoja no
     // se cierra. Las salidas son «Cancelar», el atrás y el toque afuera.
     enableDrag: false,

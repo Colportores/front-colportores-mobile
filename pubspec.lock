@@ -221,11 +221,11 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: "v1.0.0"
-      resolved-ref: f2632aaf32afafabbc5222d8b9fc1941c23a50d2
+      ref: "v1.1.0"
+      resolved-ref: b4c1e8bc6a515c6fadc8d9b5cc6250f192457e4b
       url: "https://github.com/Colportores/lib-mapa.git"
     source: git
-    version: "1.0.0"
+    version: "1.1.0"
   connectivity_plus:
     dependency: "direct main"
     description:

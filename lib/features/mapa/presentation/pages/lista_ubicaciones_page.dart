@@ -16,6 +16,7 @@ import '../formato_lista_ubicaciones.dart';
 import '../formato_ubicaciones.dart';
 import '../providers/baja_ubicacion_providers.dart';
 import '../providers/duplicados_providers.dart';
+import '../providers/fuera_del_area_providers.dart' show idsFueraDelAreaProvider;
 import '../providers/lista_ubicaciones_notifier.dart';
 import '../providers/lista_ubicaciones_providers.dart';
 import '../providers/personas_providers.dart' show lectorUltimaVisitaDeLaUbicacionProvider;
@@ -512,6 +513,10 @@ class _ListaUbicacionesPageState extends ConsumerState<ListaUbicacionesPage>
                           alRegistrar: () => unawaited(_registrar()),
                           notificador: _notificador,
                           desplazamiento: _desplazamiento,
+                          // #713 (decisión del 17/11, P1 §2): la etiqueta «FUERA DE TU ÁREA» como en
+                          // «Cercanía», sin ocultar nada: ver u ocultar es solo del mapa.
+                          fueraDelArea:
+                              ref.watch(idsFueraDelAreaProvider).value ?? const <String>{},
                         ),
                       ),
                     ],
@@ -870,6 +875,7 @@ class _Cuerpo extends StatelessWidget {
     required this.notificador,
     required this.desplazamiento,
     required this.avisoDuplicados,
+    this.fueraDelArea = const {},
   });
 
   final ListaUbicacionesState estado;
@@ -883,6 +889,10 @@ class _Cuerpo extends StatelessWidget {
 
   /// La baja que tiene abierta la hoja de «Reactivar»: su fila va resaltada.
   final String? reactivandoId;
+
+  /// Las ubicaciones que el motor marcó fuera del área (#713): su fila lleva la etiqueta. La Lista no
+  /// oculta ninguna (el interruptor de «Referencias» es solo del mapa).
+  final Set<String> fueraDelArea;
   final VoidCallback alRegistrar;
   final ListaUbicacionesNotifier notificador;
   final ScrollController desplazamiento;
@@ -1043,6 +1053,7 @@ class _Cuerpo extends StatelessWidget {
           // se toca (HU-UBI-005, «Reactivar»).
           alReactivar: item.puedeReactivarse ? () => alReactivar(item) : null,
           seleccionada: id == reactivandoId,
+          fueraDelArea: fueraDelArea.contains(id),
         );
       },
     );

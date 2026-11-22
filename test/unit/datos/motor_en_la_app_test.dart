@@ -258,6 +258,38 @@ void main() {
       );
     }
 
+    test('un pull que trae los espacios de B antes de que la unión suba no los devuelve a B ni '
+        'reactiva el fundido (#714)', () async {
+      final ubicaciones = conElTrabajo();
+      await ubicaciones.insertar(_ubicacion, espacio: _espacio);
+      await ubicaciones.insertar(
+        UbicacionModel.fromJson({..._ubicacion.toJson(), 'id': b, 'numero': '1236'}),
+        espacio: EspacioModel.fromJson({..._espacio.toJson(), 'id': 'esp-b', 'ubicacion_id': b}),
+      );
+      await sembrarEspacio(db, id: 'esp-b2', ubicacionId: b, numeroDepto: '2B');
+      await motor.syncNow();
+      await ubicaciones.unirDuplicada(_ubi, b, ahora: DateTime.utc(2026, 10, 16, 13));
+      // El coordinador toca los espacios de B en el servidor (todavía colgados de B y vivos):
+      // Realtime avisa y el motor baja sin subir.
+      servidor.seed('espacio', [
+        for (final f in servidor.rowsOf('espacio'))
+          if (f['ubicacion_id'] == b) {...f, 'sync_version': (f['sync_version']! as int) + 1},
+      ]);
+
+      await motor.trigger(SyncTrigger.realtime);
+
+      Future<EspacioFila> espacio(String id) =>
+          (db.select(db.espacios)..where((e) => e.id.equals(id))).getSingle();
+      expect((await espacio('esp-b2')).ubicacionId, _ubi, reason: 'el depto sigue en A');
+      expect((await espacio('esp-b')).deletedAt, isNotNull, reason: 'el fundido sigue de baja');
+      expect((await trabajosDeUnion()).single.state, 'PENDING');
+
+      // Cuando la unión sube y queda aplicada, esos espacios dejan de estar protegidos.
+      expect((await motor.syncNow()).ok, isTrue);
+      expect((await trabajosDeUnion()).single.state, 'DONE');
+      expect(await DriftJobStore(db).withUnapplied('espacio', ['esp-b', 'esp-b2']), isEmpty);
+    });
+
     test('el provider usa el motor cuando hay uno, y sin motor el que falla', () {
       final conMotor = ProviderContainer(overrides: [motorSyncProvider.overrideWithValue(motor)]);
       addTearDown(conMotor.dispose);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../domain/entities/entrega_pendiente.dart';
 import '../formato_entrega_diferida.dart';
 import '../providers/entrega_diferida_providers.dart';
@@ -16,10 +17,9 @@ import 'piezas_entrega_diferida.dart';
 Future<EntregaPendiente?> mostrarHojaQueEntrega(
   BuildContext context, {
   required List<EntregaPendiente> pendientes,
-}) => showModalBottomSheet<EntregaPendiente>(
+}) => mostrarHojaInferior<EntregaPendiente>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -71,14 +71,20 @@ class _HojaQueEntregaState extends ConsumerState<HojaQueEntrega> {
               style: TextStyle(fontSize: 14, height: 1.4, color: Color(0xFF5B6B82)),
             ),
             const SizedBox(height: 14),
-            for (final p in widget.pendientes) ...[
+            for (final (i, p) in widget.pendientes.indexed) ...[
               DecoratedBox(
                 decoration: BoxDecoration(
                   border: Border.all(color: const Color(0xFFE3E7EE)),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: TarjetaDeEntregaPendiente(
-                  key: ValueKey('que_entrega_${p.ventaId}'),
+                  // Una venta puede tener dos entregas (una por cita, «Entrega cita»): la segunda lleva su
+                  // número para que la clave no se repita.
+                  key: ValueKey(
+                    widget.pendientes.take(i).any((o) => o.ventaId == p.ventaId)
+                        ? 'que_entrega_${p.ventaId}_$i'
+                        : 'que_entrega_${p.ventaId}',
+                  ),
                   tono: p.sinFecha
                       ? TonoDeEntrega.sinFecha
                       : p.estaAtrasada(ahora)

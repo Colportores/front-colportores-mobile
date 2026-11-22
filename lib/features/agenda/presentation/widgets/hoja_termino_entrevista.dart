@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../jornada/presentation/formato_jornada.dart';
 import '../../../jornada/presentation/widgets/hoja_hora_inicio.dart';
@@ -70,10 +71,9 @@ Future<SalidaTerminoEntrevista?> mostrarHojaTerminoEntrevista(
   required GuardarEntrevista alGuardar,
   List<MisioneroParaDejar> misioneros = const [],
   DateTime Function()? reloj,
-}) => showModalBottomSheet<SalidaTerminoEntrevista>(
+}) => mostrarHojaInferior<SalidaTerminoEntrevista>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: false,
   // La asa arrastra y cierra la hoja (la entrevista sigue en curso), salvo mientras guarda: ahí la
   // hoja frena el arrastre ella misma, porque el arrastre no pasa por el `PopScope` (QA #450).

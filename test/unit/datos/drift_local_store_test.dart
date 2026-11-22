@@ -2,9 +2,12 @@
 // columna y por nombre. La prueba de que eso está bien es la identidad: la fila del cloud
 // (`Modelo.toJson()`, la forma con la que viaja) aplicada por `applyDelta` se lee igual que el
 // modelo, con los mismos DAOs y conversores que usa la app.
+import 'dart:async';
+
 import 'package:colportores_mobile/catalogo.dart';
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
+import 'package:colportores_mobile/datos/drift_job_store.dart';
 import 'package:colportores_mobile/datos/drift_local_store.dart';
 import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/agenda/data/models/agenda_model.dart';
@@ -15,10 +18,11 @@ import 'package:colportores_mobile/features/mapa/data/datasources/zona_local_dat
 import 'package:colportores_mobile/features/mapa/data/models/campania_ciudad_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/zona_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/zona_vertice_model.dart';
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_engine/port_contracts.dart';
+import 'package:sync_engine/sync_engine.dart';
 
 import '../../helpers/campo_falsos.dart';
 import '../../helpers/logger_mudo.dart';
@@ -432,5 +436,283 @@ void main() {
     // Una tabla nueva sin declarar en `catalogo.dart` revienta acá y al arrancar el motor: con
     // datos personales, olvidarse no puede ser silencioso.
     expect(() => registroDeLaApp(db.allTables.map((t) => t.actualTableName)), returnsNormally);
+  });
+
+  group('fuera del área (§2.1): se marca, nunca se borra', () {
+    Map<String, Object?> ubi(String id) => {..._ubicacion, 'id': id};
+
+    Future<void> tener(List<String> ids) =>
+        store.applyDelta({'ubicacion': ids.map(ubi).toList()}, scope: 'replica', watermark: 'w0');
+
+    test('out_of_area la marca y la app la ve', () async {
+      await tener(['u1', 'u2']);
+
+      await store.applyDelta(
+        const {},
+        scope: 'replica',
+        watermark: 'w1',
+        notices: const PullNotices(
+          outOfArea: {
+            'ubicacion': ['u1'],
+          },
+        ),
+      );
+
+      expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+      expect(await db.select(db.ubicaciones).get(), hasLength(2), reason: 'nada se borra');
+    });
+
+    test('la que vuelve a bajar deja de estar afuera', () async {
+      await tener(['u1']);
+      await store.applyDelta(
+        const {},
+        scope: 'replica',
+        watermark: 'w1',
+        notices: const PullNotices(
+          outOfArea: {
+            'ubicacion': ['u1'],
+          },
+        ),
+      );
+
+      await tener(['u1']);
+
+      expect(await store.observarFueraDelArea('ubicacion').first, isEmpty);
+    });
+
+    test('area_reset: lo que no vuelve a bajar queda afuera recién en la última página, '
+        'y lo que tiene escrituras sin subir no cuenta', () async {
+      await tener(['u1', 'u2', 'u3', 'u4']);
+      // u4 tiene una corrección en la cola que todavía no subió.
+      await DriftJobStore(db).append(
+        SyncJob(
+          clientOpId: 'op-u4',
+          entity: 'ubicacion',
+          op: Op.update,
+          payload: ubi('u4'),
+          createdAt: DateTime.utc(2026, 10, 16),
+          rowPk: 'u4',
+        ),
+      );
+
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u2')],
+        },
+        scope: 'replica',
+        watermark: 'r1',
+        notices: const PullNotices(areaReset: {'ubicacion'}, complete: false),
+      );
+      expect(
+        await store.observarFueraDelArea('ubicacion').first,
+        isEmpty,
+        reason: 'a mitad de la descarga no se sabe qué quedó afuera',
+      );
+
+      // El LWW de un push, en el medio, no concluye nada.
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u9')],
+        },
+        scope: 'mirror',
+        watermark: null,
+      );
+
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u3')],
+        },
+        scope: 'replica',
+        watermark: 'r2',
+        notices: const PullNotices(),
+      );
+
+      expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+      expect(await db.select(db.ubicaciones).get(), hasLength(5));
+    });
+
+    test('house_status se marca por su clave, ubicacion_id', () async {
+      Map<String, Object?> casa(String id) => {
+        'ubicacion_id': id,
+        'lat': -34.9,
+        'lon': -56.16,
+        'tipo_ubicacion': 'CASA',
+        'color': 'RECHAZO',
+        'prioridad': 7,
+        'created_at': '2026-10-23T13:45:10.123Z',
+        'updated_at': '2026-10-23T13:50:00.000Z',
+        'created_by': 'col-1',
+        'deleted_at': null,
+        'sync_version': 1,
+      };
+      await store.applyDelta(
+        {
+          'house_status': [casa('ub-1'), casa('ub-2')],
+        },
+        scope: 'mirror',
+        watermark: 'w0',
+      );
+
+      await store.applyDelta(
+        {
+          'house_status': [casa('ub-2')],
+        },
+        scope: 'mirror',
+        watermark: 'w1',
+        notices: const PullNotices(areaReset: {'house_status'}),
+      );
+
+      expect(await store.observarFueraDelArea('house_status').first, {'ub-1'});
+      expect(await db.select(db.houseStatuses).get(), hasLength(2), reason: 'nada se borra');
+    });
+
+    test(
+      'un pull sin avisos ni filas nuevas igual cierra la descarga que quedó a medias',
+      () async {
+        await tener(['u1', 'u2']);
+        await store.applyDelta(
+          {
+            'ubicacion': [ubi('u2')],
+          },
+          scope: 'replica',
+          watermark: 'r1',
+          notices: const PullNotices(areaReset: {'ubicacion'}, complete: false),
+        );
+
+        // La última página llega vacía: es la que dice que la descarga terminó.
+        await store.applyDelta(
+          const {},
+          scope: 'replica',
+          watermark: 'r2',
+          notices: const PullNotices(),
+        );
+
+        expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+      },
+    );
+  });
+
+  group('lo que no subió se pregunta dentro de la transacción (#714)', () {
+    Map<String, Object?> ubi(String id, {String calle = 'del servidor', int version = 4}) => {
+      ..._ubicacion,
+      'id': id,
+      'calle': calle,
+      'sync_version': version,
+    };
+
+    Future<String?> calleDe(String id) async =>
+        (await (db.select(db.ubicaciones)..where((u) => u.id.equals(id))).getSingle()).calle;
+
+    test('lo que unapplied nombra no se escribe ni sale de la marca', () async {
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u1', calle: 'mía', version: 3), ubi('u2', version: 3)],
+        },
+        scope: 'replica',
+        watermark: 'w0',
+      );
+      await store.applyDelta(
+        const {},
+        scope: 'replica',
+        watermark: 'w1',
+        notices: const PullNotices(
+          outOfArea: {
+            'ubicacion': ['u1'],
+          },
+        ),
+      );
+      final preguntas = <String>[];
+
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u1'), ubi('u2')],
+        },
+        scope: 'replica',
+        watermark: 'w2',
+        unapplied: (entidad, pks) async {
+          preguntas.add('$entidad: ${pks.join(',')}');
+          return {'u1'};
+        },
+      );
+
+      expect(preguntas, ['ubicacion: u1,u2']);
+      expect(await calleDe('u1'), 'mía');
+      expect(await calleDe('u2'), 'del servidor');
+      expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+      expect(await store.watermarkOf('replica'), 'w2');
+    });
+
+    test('una escritura de la app que llega mientras se aplica el delta queda después, entera: '
+        'el eco no la pisa', () async {
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u1', calle: 'vieja', version: 3)],
+        },
+        scope: 'replica',
+        watermark: 'w0',
+      );
+      final cola = DriftJobStore(db);
+      final adentro = Completer<void>();
+      final seguir = Completer<void>();
+      final aplicar = store.applyDelta(
+        {
+          'ubicacion': [ubi('u1', calle: 'el eco')],
+        },
+        scope: 'replica',
+        watermark: 'w1',
+        unapplied: (entidad, pks) async {
+          adentro.complete();
+          await seguir.future;
+          return cola.withUnapplied(entidad, pks);
+        },
+      );
+      await adentro.future;
+      // La colportora corrige la dirección: la fila y su job, en su transacción (la de la app).
+      final corregir = db.transaction(() async {
+        await (db.update(db.ubicaciones)..where((u) => u.id.equals('u1'))).write(
+          const UbicacionesCompanion(calle: Value('corregida')),
+        );
+        await cola.append(
+          SyncJob(
+            clientOpId: 'op-u1',
+            entity: 'ubicacion',
+            op: Op.update,
+            payload: ubi('u1', calle: 'corregida', version: 4),
+            createdAt: DateTime.utc(2026, 10, 16),
+            rowPk: 'u1',
+          ),
+        );
+      });
+      await pumpEventQueue();
+      seguir.complete();
+
+      await aplicar;
+      await corregir;
+
+      expect(await calleDe('u1'), 'corregida');
+      expect(await cola.withUnapplied('ubicacion', ['u1']), {'u1'});
+    });
+
+    test('area_reset: lo que unapplied nombra no queda a la espera ni termina afuera', () async {
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u1'), ubi('u2'), ubi('u3')],
+        },
+        scope: 'replica',
+        watermark: 'w0',
+      );
+
+      await store.applyDelta(
+        {
+          'ubicacion': [ubi('u3')],
+        },
+        scope: 'replica',
+        watermark: 'r1',
+        notices: const PullNotices(areaReset: {'ubicacion'}),
+        unapplied: (entidad, pks) async => pks.toSet().intersection({'u2'}),
+      );
+
+      expect(await store.observarFueraDelArea('ubicacion').first, {'u1'});
+    });
   });
 }

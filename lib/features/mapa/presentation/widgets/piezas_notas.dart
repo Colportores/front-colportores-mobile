@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/nota_de_texto.dart';
 import '../textos_notas.dart';
@@ -351,10 +352,9 @@ class HojaOpcionesNota extends StatefulWidget {
   final String titulo;
 
   static Future<AccionNota?> mostrar(BuildContext context, {required String titulo}) =>
-      showModalBottomSheet<AccionNota>(
+      mostrarHojaInferior<AccionNota>(
         context: context,
         isScrollControlled: true,
-        useSafeArea: true,
         showDragHandle: true,
         builder: (_) => HojaOpcionesNota(titulo: titulo),
       );

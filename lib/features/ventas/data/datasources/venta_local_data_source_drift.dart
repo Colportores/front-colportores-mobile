@@ -330,7 +330,7 @@ final class VentaLocalDataSourceDrift {
     final venta = await (_db.select(
       _db.ventas,
     )..where((v) => v.id.equals(ventaId))).getSingleOrNull();
-    if (venta == null) return (cobranzaAgendada: false, entregaAgendada: false);
+    if (venta == null) return (cobranzaAgendada: false);
     final citas =
         await (_db.select(_db.agendas)..where(
               (a) =>
@@ -340,12 +340,7 @@ final class VentaLocalDataSourceDrift {
                       (a.ventaId.isNull() & a.espacioPersonaId.equals(venta.espacioPersonaId))),
             ))
             .get();
-    return (
-      cobranzaAgendada: citas.any((c) => c.tipo == TipoAgenda.cobranza.codigo),
-      entregaAgendada: citas.any(
-        (c) => c.tipo == TipoAgenda.entrega.codigo && c.ventaId == ventaId,
-      ),
-    );
+    return (cobranzaAgendada: citas.any((c) => c.tipo == TipoAgenda.cobranza.codigo));
   }
 
   /// Ver `VentaQueCreceRepository.sumar`. Lanza [VentaCerradaException] si la venta ya no está

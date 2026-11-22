@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/nueva_venta.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/venta_abierta.dart';
+import 'package:colportores_mobile/features/ventas/domain/usecases/sumar_a_la_venta_use_case.dart';
 import 'package:colportores_mobile/features/ventas/presentation/formato_venta.dart';
 import 'package:colportores_mobile/features/ventas/presentation/textos_venta_que_crece.dart';
 import 'package:flutter/material.dart';
@@ -190,24 +191,124 @@ void main() {
       );
     });
 
-    testWidgets('si la venta ya tiene el monto cambiado, no se cambia el de lo que suma', (
+    // Decisión de Cristian del 11/11, «Dos motivos» (#706).
+    VentaAbierta conMotivo(String motivo) => VentaAbierta(
+      ventaId: 'v-39',
+      espacioPersonaId: 'ep-1',
+      numeroTalonario: '0039',
+      fecha: DateTime.utc(2026, 10, 23, 15),
+      montoTotalCentavos: 110000,
+      cobradoCentavos: 0,
+      motivoMontoManual: motivo,
+    );
+
+    testWidgets(
+      'con el monto ya cambiado a mano se puede cambiar otra vez: junta los dos motivos',
+      (tester) async {
+        final venta = conMotivo('redondeo');
+        final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta]));
+        await montarNuevaVenta(tester, e, creceSobre: venta);
+        await _sumarSaludYHogar(tester);
+
+        await tocar(tester, find.byKey(const Key('venta_cambiar_monto')));
+        await escribir(tester, _campo('venta_monto'), '1.500');
+        await escribir(tester, _campo('venta_motivo'), 'descuento del libro nuevo');
+        await tocar(tester, _cta);
+
+        final suma = e.crece.sumas.single;
+        expect(suma.motivo, 'redondeo · descuento del libro nuevo');
+        expect(suma.diferencia, -50000);
+      },
+    );
+
+    testWidgets(
+      'si los dos motivos no entran en 500, el campo dice cuántos quedan y no deja sumar',
+      (tester) async {
+        final venta = conMotivo('v' * 480);
+        final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta]));
+        await montarNuevaVenta(tester, e, creceSobre: venta);
+        await _sumarSaludYHogar(tester);
+
+        await tocar(tester, find.byKey(const Key('venta_cambiar_monto')));
+        await escribir(tester, _campo('venta_monto'), '1.500');
+        // 480 + « · » = 483: quedan 17 para lo nuevo.
+        await escribir(tester, _campo('venta_motivo'), 'descuento del libro nuevo');
+
+        final aviso = SumarALaVentaUseCase.motivoNoEntra(17);
+        expect(find.text(aviso), findsWidgets);
+        expect(_habilitado(tester), isFalse);
+        await tester.tap(_cta, warnIfMissed: false);
+        await tester.pump();
+        expect(e.crece.sumas, isEmpty);
+
+        // Acortado, entra y se suma.
+        await escribir(tester, _campo('venta_motivo'), 'descuento');
+        expect(find.text(aviso), findsNothing);
+        expect(_habilitado(tester), isTrue);
+        await tocar(tester, _cta);
+        expect(e.crece.sumas.single.motivo, '${'v' * 480} · descuento');
+      },
+    );
+
+    testWidgets(
+      'con el motivo viejo en 500 dice la salida: «Volver al monto calculado» suma (P1)',
+      (tester) async {
+        final venta = conMotivo('v' * 500);
+        final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta]));
+        await montarNuevaVenta(tester, e, creceSobre: venta);
+        await _sumarSaludYHogar(tester);
+
+        await tocar(tester, find.byKey(const Key('venta_cambiar_monto')));
+        await escribir(tester, _campo('venta_monto'), '1.500');
+        await escribir(tester, _campo('venta_motivo'), 'x');
+
+        final aviso = SumarALaVentaUseCase.motivoNoEntra(0);
+        expect(aviso, contains('Volver al monto calculado'));
+        expect(find.text(aviso), findsWidgets);
+        expect(_habilitado(tester), isFalse);
+
+        await verVisible(tester, find.byKey(const Key('venta_usar_calculado')));
+        await tocar(tester, find.byKey(const Key('venta_usar_calculado')));
+        expect(find.text(aviso), findsNothing);
+        expect(_habilitado(tester), isTrue);
+        await tocar(tester, _cta);
+        expect(e.crece.sumas.single.motivo, isNull);
+      },
+    );
+
+    // Decisión del 12/11, P1 del QA de #709: la ayuda dice que el motivo nuevo se suma.
+    testWidgets('con un motivo ya puesto, la ayuda del campo dice que el nuevo se le suma', (
       tester,
     ) async {
-      final conMotivo = VentaAbierta(
-        ventaId: 'v-39',
-        espacioPersonaId: 'ep-1',
-        numeroTalonario: '0039',
-        fecha: DateTime.utc(2026, 10, 23, 15),
-        montoTotalCentavos: 110000,
-        cobradoCentavos: 0,
-        motivoMontoManual: 'redondeo',
-      );
-      final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [conMotivo]));
-      await montarNuevaVenta(tester, e, creceSobre: conMotivo);
+      final venta = conMotivo('redondeo');
+      final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta]));
+      await montarNuevaVenta(tester, e, creceSobre: venta);
+      await _sumarSaludYHogar(tester);
+      await tocar(tester, find.byKey(const Key('venta_cambiar_monto')));
+
+      expect(find.text(TextosVentaQueCrece.motivoQueSeSuma), findsOneWidget);
+      expect(find.text(TextosVenta.avisoMotivo), findsNothing);
+    });
+
+    testWidgets('sin motivo de antes, la ayuda de siempre', (tester) async {
+      final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta39]));
+      await montarNuevaVenta(tester, e, creceSobre: venta39);
+      await _sumarSaludYHogar(tester);
+      await tocar(tester, find.byKey(const Key('venta_cambiar_monto')));
+
+      expect(find.text(TextosVenta.avisoMotivo), findsOneWidget);
+      expect(find.text(TextosVentaQueCrece.motivoQueSeSuma), findsNothing);
+    });
+
+    testWidgets('con el monto calculado el motivo viejo queda como estaba', (tester) async {
+      final venta = conMotivo('redondeo');
+      final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta]));
+      await montarNuevaVenta(tester, e, creceSobre: venta);
       await _sumarSaludYHogar(tester);
 
-      expect(find.byKey(const Key('venta_cambiar_monto')), findsNothing);
-      expect(find.text(TextosVentaQueCrece.yaTieneMotivo), findsOneWidget);
+      await tocar(tester, _cta);
+
+      expect(e.crece.sumas.single.motivo, isNull);
     });
 
     testWidgets('los misioneros no se ofrecen: van por «Lo que dejaste»', (tester) async {
@@ -268,6 +369,32 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.text('Sumar a la venta 0039'), findsOneWidget);
+    });
+
+    testWidgets('al 200 % el aviso de los dos motivos que no entran se lee entero (#706)', (
+      tester,
+    ) async {
+      final venta = VentaAbierta(
+        ventaId: 'v-39',
+        espacioPersonaId: 'ep-1',
+        numeroTalonario: '0039',
+        fecha: DateTime.utc(2026, 10, 23, 15),
+        montoTotalCentavos: 110000,
+        cobradoCentavos: 0,
+        motivoMontoManual: 'v' * 480,
+      );
+      final e = EntornoDeVenta(crece: VentaQueCreceEnMemoria(abiertas: [venta]));
+      await montarNuevaVenta(tester, e, creceSobre: venta, escala: 2, tamano: const Size(320, 568));
+      await _sumarSaludYHogar(tester);
+      await verVisible(tester, find.byKey(const Key('venta_cambiar_monto')));
+      await tocar(tester, find.byKey(const Key('venta_cambiar_monto')));
+      await verVisible(tester, _campo('venta_monto'));
+      await escribir(tester, _campo('venta_monto'), '1.500');
+      await verVisible(tester, _campo('venta_motivo'));
+      await escribir(tester, _campo('venta_motivo'), 'descuento del libro nuevo');
+
+      expect(tester.takeException(), isNull);
+      expect(find.text(SumarALaVentaUseCase.motivoNoEntra(17)), findsWidgets);
     });
   });
 }

@@ -114,10 +114,14 @@ abstract final class FormatoEntregaDiferida {
 
   /// «Grecia 3310 · Nuestros Hijos × 1» o «Mataojo 2044 · Depto 3B · 2 productos». Con un solo
   /// producto y su nombre se dice cuál; si no se sabe el nombre o son varios, cuántos.
+  ///
+  /// Con [conVenta] (la venta tiene más de una tarjeta, una por cita) suma «Venta 0042» al principio,
+  /// para que se vea que son de la misma venta (decisión del orquestador del 12/11, P2 del QA de #709).
   static String detalleDeLaTarjeta(
     EntregaPendiente entrega, {
     required String direccion,
     required Map<String, String>? nombres,
+    bool conVenta = false,
   }) {
     final lineas = entrega.lineas;
     final String productos;
@@ -127,6 +131,11 @@ abstract final class FormatoEntregaDiferida {
     } else {
       productos = '${lineas.length} ${lineas.length == 1 ? 'producto' : 'productos'}';
     }
-    return [direccion, productos].where((t) => t.isNotEmpty).join(' · ');
+    final talonario = entrega.numeroTalonario;
+    return [
+      if (conVenta && talonario != null) TextosEntregaDiferida.venta(talonario),
+      direccion,
+      productos,
+    ].where((t) => t.isNotEmpty).join(' · ');
   }
 }

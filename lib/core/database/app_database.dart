@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../datos/sync_fuera_del_area_table.dart';
 import '../../datos/sync_queue_table.dart';
 import '../../features/agenda/data/datasources/agendas_table.dart';
 import '../../features/agenda/data/datasources/visita_misioneros_table.dart';
@@ -25,6 +26,7 @@ import '../../features/mapa/data/datasources/espacios_table.dart';
 import '../../features/mapa/data/datasources/geojson_converter.dart';
 import '../../features/mapa/data/datasources/house_status_table.dart';
 import '../../features/mapa/data/datasources/notas_table.dart';
+import '../../features/mapa/data/datasources/paises_table.dart';
 import '../../features/mapa/data/datasources/pares_duplicados_table.dart';
 import '../../features/mapa/data/datasources/personas_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
@@ -90,6 +92,7 @@ part 'app_database.g.dart';
     ParametrosGlobales,
     Stocks,
     Ciudades,
+    Paises,
     Campanias,
     CampaniasColportor,
     Ventas,
@@ -102,6 +105,7 @@ part 'app_database.g.dart';
     TicketFotosLocales,
     DeudaCasaCaches,
     UnionesLocales,
+    SyncFueraDelArea,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -181,10 +185,13 @@ class AppDatabase extends _$AppDatabase {
   /// - 36: `ubicacion_union_local`, qué movió cada unión de duplicados hecha en el teléfono, solo
   ///   local: si el servidor rechaza su trabajo, la unión se deshace y el par queda separado
   ///   (decisión de Cristian, 10/11, «Unión rech.»; HU-UBI-006, #679).
+  /// - 37: `sync_fuera_del_area`, la marca del motor de las casas que salieron del área del colportor
+  ///   (contrato-sync-engine §2.1): el pull de `ubicacion`, `espacio` y `house_status` (I2, #181); y
+  ///   `pais`, la réplica del catálogo de países que el contrato lista como `pull` (P1 de #181).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 36;
+  static const int versionEsquema = 37;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -519,6 +526,12 @@ class AppDatabase extends _$AppDatabase {
     // datos son simulados hasta diciembre: no se migra nada).
     from35To36: (m, esquema) async {
       await m.createTable(esquema.ubicacionUnionLocal);
+    },
+    // Solo crea la marca de «fuera del área» del motor y la réplica de `pais`, vacías: nada de lo
+    // guardado cambia. La marca la llena el pull de las casas y `pais`, el del catálogo (#181).
+    from36To37: (m, esquema) async {
+      await m.createTable(esquema.syncFueraDelArea);
+      await m.createTable(esquema.pais);
     },
   );
 }

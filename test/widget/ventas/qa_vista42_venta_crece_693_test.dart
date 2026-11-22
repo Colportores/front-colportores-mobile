@@ -1295,10 +1295,7 @@ void main() {
     testWidgets('el aviso del mapa dice el saldo nuevo y el flujo devuelve la casa libre', (
       tester,
     ) async {
-      final repo = VentasAbiertasQA(
-        abiertas: [_v39],
-        citas: (cobranzaAgendada: true, entregaAgendada: true),
-      );
+      final repo = VentasAbiertasQA(abiertas: [_v39], citas: (cobranzaAgendada: true));
       final e = EntornoDeVenta(crece: repo);
       final salidas = await abrirDesdeLaCasa(tester, e);
       await tocar(tester, find.text('Libros'));
@@ -1306,6 +1303,9 @@ void main() {
       await tocar(tester, find.text(TextosVenta.agregarALaVenta));
       await tocar(tester, find.byKey(const Key('venta_cta')));
       await tocar(tester, find.byKey(const Key('venta_terminar')));
+      // Sin entregar el libro nuevo, se pide su fecha (27C·01, «Entrega cita» #706): se vuelve sin
+      // elegirla.
+      await tocar(tester, find.byKey(const Key('venta_atras')));
 
       expect(find.text(r'Libro sumado a la venta 0039. Saldo $ 2.800.'), findsOneWidget);
       expect(salidas.single, isA<VentaRegistradaEnLaCasa>());
@@ -1314,10 +1314,7 @@ void main() {
     testWidgets(
       '«Cobrar ahora» abre el cobro con la venta que creció y la persona (no una venta nueva)',
       (tester) async {
-        final repo = VentasAbiertasQA(
-          abiertas: [_v39],
-          citas: (cobranzaAgendada: true, entregaAgendada: true),
-        );
+        final repo = VentasAbiertasQA(abiertas: [_v39], citas: (cobranzaAgendada: true));
         final e = EntornoDeVenta(crece: repo);
         final contextos = <ContextoDeCobroDeLaVenta>[];
         await abrirDesdeLaCasa(
@@ -1348,10 +1345,7 @@ void main() {
     testWidgets(
       'si el cobro se hizo pero no se puede leer el saldo, el aviso no dice un saldo mayor al que se debe',
       (tester) async {
-        final repo = VentasAbiertasQA(
-          abiertas: [_v39],
-          citas: (cobranzaAgendada: true, entregaAgendada: true),
-        );
+        final repo = VentasAbiertasQA(abiertas: [_v39], citas: (cobranzaAgendada: true));
         final e = EntornoDeVenta(crece: repo);
         await abrirDesdeLaCasa(tester, e, cobrar: (_) async => true);
         await tocar(tester, find.text('Libros'));

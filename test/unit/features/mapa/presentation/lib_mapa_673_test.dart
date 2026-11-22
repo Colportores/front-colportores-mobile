@@ -58,7 +58,7 @@ void main() {
       expect(await rootBundle.loadString(rutaEstiloBaseMapa), estiloBase);
       final metadatos =
           (jsonDecode(estiloBase) as Map<String, dynamic>)['metadata'] as Map<String, dynamic>;
-      expect(metadatos['colportores:estilo'], '1.0.0');
+      expect(metadatos['colportores:estilo'], '1.1.0');
     });
 
     test('dado el bundle de la app, cuando se listan los assets, entonces ya no queda la copia a '
@@ -257,10 +257,20 @@ void main() {
   });
 
   group('las zonas usan la regla de contraste de la librería', () {
-    test('la zona sin color es el valor del móvil del token (el azul de siempre)', () {
-      expect(ColoresZona.porDefecto, Color(TokensMapa.zonaSinColor.movil));
-      expect(ColoresZona.porDefecto.toARGB32(), 0xFF13407A);
-      expect(ColoresZona.borde(null), ColoresZona.porDefecto);
+    test('la zona sin color es el gris del token, el mismo del panel (#695, «Zona s/color»)', () {
+      expect(ColoresZona.porDefecto, const Color(TokensMapa.zonaSinColor));
+      expect(ColoresZona.porDefecto.toARGB32(), 0xFF8A94A6);
+    });
+
+    test('dada una zona sin color, cuando se dibuja, entonces el borde es el gris del token '
+        'oscurecido hasta 3:1 (ya no el azul primario)', () {
+      final borde = ColoresZona.borde(null);
+
+      expect(borde.toARGB32(), ContrasteMapa.bordeDeZona(0xFF8A94A6));
+      expect(borde.toARGB32(), isNot(0xFF13407A));
+      expect(ColoresZona.contraste(borde), greaterThanOrEqualTo(ColoresZona.contrasteMinimo));
+      expect(ColoresZona.borde(''), borde);
+      expect(ColoresZona.borde('#8A94A6'), borde);
     });
 
     test(

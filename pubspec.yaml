@@ -42,7 +42,7 @@ dependencies:
   colportores_mapa:
     git:
       url: https://github.com/Colportores/lib-mapa.git
-      ref: v1.0.0
+      ref: v1.1.0
       path: dart
   connectivity_plus: ^7.3.1
   crypto: ^3.0.7

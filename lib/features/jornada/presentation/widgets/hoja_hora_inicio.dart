@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../formato_jornada.dart';
 
@@ -26,10 +27,9 @@ Future<HoraElegida?> mostrarHojaHoraInicio(
   String etiquetaCampo = 'HORA DE INICIO',
   bool mostrarRelativo = true,
   String? Function(DateTime hora)? notaDeHora,
-}) => showModalBottomSheet<HoraElegida>(
+}) => mostrarHojaInferior<HoraElegida>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: false,
   backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
   shape: const RoundedRectangleBorder(

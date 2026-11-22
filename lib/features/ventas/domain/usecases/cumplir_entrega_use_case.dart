@@ -12,7 +12,12 @@ import 'diferir_entrega_use_case.dart';
 
 /// Parámetros de [CumplirEntregaUseCase].
 final class CumplirEntregaParams extends Equatable {
-  const CumplirEntregaParams({required this.ventaId, this.entregaIds, this.nuevaFecha});
+  const CumplirEntregaParams({
+    required this.ventaId,
+    this.entregaIds,
+    this.nuevaFecha,
+    this.agendaId,
+  });
 
   final String ventaId;
 
@@ -24,8 +29,13 @@ final class CumplirEntregaParams extends Equatable {
   /// lo que queda se queda **sin fecha** («Sin fecha»).
   final DateTime? nuevaFecha;
 
+  /// La cita que se marca («Entregado hoy» del detalle de la agenda): se entregan solo sus libros. Una
+  /// venta puede tener una cita por cada grupo de libros diferido (decisión de Cristian del 11/11,
+  /// «Entrega cita»). `null`: lo de [entregaIds], o toda la venta.
+  final String? agendaId;
+
   @override
-  List<Object?> get props => [ventaId, entregaIds, nuevaFecha];
+  List<Object?> get props => [ventaId, entregaIds, nuevaFecha, agendaId];
 }
 
 /// Lo que devuelve [CumplirEntregaUseCase]: lo que quedó guardado y qué pasó con el aviso.
@@ -100,10 +110,15 @@ final class CumplirEntregaUseCase
       idDeLaCita: _generarId(),
       entregaIds: params.entregaIds,
       nuevaFecha: nueva,
+      agendaId: params.agendaId,
     );
     return hecha.fold((falla) async => Left<Failure, ResultadoCumplirEntrega>(falla), (
       entrega,
     ) async {
+      // Otras citas de la venta que este «Entregado» también cerró: sus avisos no suenan.
+      for (final id in entrega.otrasCitasCumplidas) {
+        await _sacarRecordatorio(id);
+      }
       final cita = entrega.cita;
       if (cita == null) return Right(ResultadoCumplirEntrega(entrega: entrega));
       if (entrega.citaCumplida) {

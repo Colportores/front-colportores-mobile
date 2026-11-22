@@ -37,6 +37,7 @@ import 'hoja_depto.dart' show SalidaHojaDepto, VerDeptoElegido, mostrarHojaDepto
 import 'hoja_ubicacion.dart' show abridorEdicionUbicacionProvider;
 import 'pestanas_hoja_casa.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta;
+import 'piezas_fuera_del_area.dart' show EtiquetaFueraDelArea;
 import 'piezas_hoja_casa.dart';
 import 'piezas_lista_ubicaciones.dart' show ColoresLista;
 import 'piezas_mapa_ubicaciones.dart' show ClavesMapaUbicaciones;
@@ -116,6 +117,7 @@ class HojaCasa extends ConsumerStatefulWidget {
     this.alAbrirOtra,
     this.recienRegistrada = false,
     this.atras,
+    this.fueraDelArea = false,
   });
 
   final ItemListaUbicacion item;
@@ -149,6 +151,10 @@ class HojaCasa extends ConsumerStatefulWidget {
   /// ya maneja el atrás del teléfono (el mapa, que con él cierra la hoja): `null` en el valor = el atrás
   /// cierra la hoja. Sin esto, la hoja lo maneja con su propio `PopScope` (la hoja modal de la Lista).
   final ValueNotifier<VoidCallback?>? atras;
+
+  /// La casa quedó fuera del área del colportor (#713, R-UB12): bajo la cabecera va la etiqueta
+  /// «FUERA DE TU ÁREA». La casa se usa igual (no se borra nada).
+  final bool fueraDelArea;
 
   @override
   ConsumerState<HojaCasa> createState() => _HojaCasaState();
@@ -311,7 +317,15 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
-            children: [cabecera, const SizedBox(height: 10), cuerpo],
+            children: [
+              cabecera,
+              if (widget.fueraDelArea) ...[
+                const SizedBox(height: 6),
+                const Align(alignment: Alignment.centerLeft, child: EtiquetaFueraDelArea()),
+              ],
+              const SizedBox(height: 10),
+              cuerpo,
+            ],
           ),
         ),
       ),

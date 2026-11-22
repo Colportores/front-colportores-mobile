@@ -38,6 +38,7 @@ class _RepoQueExplota extends EntregasEnMemoria {
     required String idDeLaCita,
     Set<String>? entregaIds,
     DateTime? nuevaFecha,
+    String? agendaId,
   }) => throw StateError('sin base abierta');
 }
 

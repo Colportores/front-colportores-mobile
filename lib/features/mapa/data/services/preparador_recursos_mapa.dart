@@ -18,8 +18,9 @@ class PreparadorRecursosMapa {
     this.version = versionRecursosMapa,
   }) : _bundle = bundle ?? rootBundle;
 
-  /// Los glyphs y sprites de lib-mapa v1.0.0 (los de `@protomaps/basemaps` 5.7.2). Cambiarla cuando
-  /// el tag nuevo de `colportores_mapa` cambia los archivos de su `assets/mapa/`.
+  /// Los glyphs y sprites de lib-mapa v1.0.0 (los de `@protomaps/basemaps` 5.7.2; v1.1.0 no los
+  /// tocó, así que la copia no se repite). Cambiarla cuando el tag nuevo de `colportores_mapa` cambia
+  /// los archivos de su `assets/mapa/glyphs` o `assets/mapa/sprites`.
   static const versionRecursosMapa = 'lib-mapa-1.0.0';
 
   /// Donde Flutter deja los assets del paquete `colportores_mapa` (declarados en su `pubspec.yaml`).

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../providers/respaldo_drive_providers.dart';
@@ -12,25 +13,28 @@ import 'aviso_drive.dart';
 /// Abre la hoja «Respaldo en tu Google Drive» (16D·02, 03, 08 y 09). Devuelve cómo terminó el
 /// intento ([DriveQuedoConectado], o [DriveNoQuedoConectado] con [FailureDriveCancelado] si la
 /// persona cerró la pantalla de Google), o `null` si tocó «Ahora no».
-Future<ResultadoConexionDrive?> mostrarHojaConectarDrive(BuildContext context) =>
-    showModalBottomSheet<ResultadoConexionDrive>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      enableDrag: false,
-      showDragHandle: false,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => const HojaConectarDrive(),
-    );
-
-/// Abre la hoja «¿Desconectar Google Drive?» (16D·05). Devuelve `true` si quedó desconectado.
-Future<bool?> mostrarHojaDesconectarDrive(BuildContext context) => showModalBottomSheet<bool>(
+///
+/// Con [conPrimerRespaldo] en `false` la conexión no hace el primer respaldo («Recuperar mi
+/// respaldo», 16G·03, #707).
+Future<ResultadoConexionDrive?> mostrarHojaConectarDrive(
+  BuildContext context, {
+  bool conPrimerRespaldo = true,
+}) => mostrarHojaInferior<ResultadoConexionDrive>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
+  enableDrag: false,
+  showDragHandle: false,
+  backgroundColor: Colors.white,
+  shape: const RoundedRectangleBorder(
+    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+  ),
+  builder: (_) => HojaConectarDrive(conPrimerRespaldo: conPrimerRespaldo),
+);
+
+/// Abre la hoja «¿Desconectar Google Drive?» (16D·05). Devuelve `true` si quedó desconectado.
+Future<bool?> mostrarHojaDesconectarDrive(BuildContext context) => mostrarHojaInferior<bool>(
+  context: context,
+  isScrollControlled: true,
   enableDrag: false,
   showDragHandle: false,
   backgroundColor: Colors.white,
@@ -46,7 +50,10 @@ enum _FaseConectar { previa, conectando, error, sinConexion }
 /// persona está en la pantalla de Google la hoja no se puede cerrar ni se puede tocar dos veces.
 /// Si falla, queda abierta con el aviso y «Reintentar»; sin conexión, el botón espera a que vuelva.
 class HojaConectarDrive extends ConsumerStatefulWidget {
-  const HojaConectarDrive({super.key});
+  const HojaConectarDrive({this.conPrimerRespaldo = true, super.key});
+
+  /// Si la conexión hace el primer respaldo; `false` en «Recuperar mi respaldo» (16G·03, #707).
+  final bool conPrimerRespaldo;
 
   @override
   ConsumerState<HojaConectarDrive> createState() => _HojaConectarDriveState();
@@ -61,7 +68,9 @@ class _HojaConectarDriveState extends ConsumerState<HojaConectarDrive> {
     setState(() => _fase = _FaseConectar.conectando);
     ResultadoConexionDrive resultado;
     try {
-      resultado = await ref.read(estadoRespaldoDriveProvider.notifier).conectar();
+      resultado = await ref
+          .read(estadoRespaldoDriveProvider.notifier)
+          .conectar(conPrimerRespaldo: widget.conPrimerRespaldo);
     } on Object {
       resultado = const DriveNoQuedoConectado(FailureDriveNoConectado());
     }

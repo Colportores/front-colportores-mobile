@@ -154,7 +154,10 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
   });
 
   @override
-  Future<Either<Failure, ConexionDrive>> conectar(String usuarioId) => _encolar(() async {
+  Future<Either<Failure, ConexionDrive>> conectar(
+    String usuarioId, {
+    bool conPrimerRespaldo = true,
+  }) => _encolar(() async {
     final CuentaGoogle cuenta;
     try {
       cuenta = await _google.conectar();
@@ -183,7 +186,8 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
     }
 
     _log.info(LogModulo.backup, 'DRIVE_CONECTADO', 'respaldo en Drive conectado');
-    final primero = await _hacerPrimerRespaldo();
+    // Para recuperar (#707) no se sube el teléfono vacío: el asistente cuenta solo los viejos.
+    final primero = conPrimerRespaldo && await _hacerPrimerRespaldo();
     return Right(ConexionDrive(estado: conectada, primerRespaldoHecho: primero));
   });
 

@@ -88,8 +88,13 @@ final class EntregarAhoraUseCase implements UseCase<EntregaRegistrada, EntregarA
       ahora: _ahora().toUtc(),
       generarId: _generarId,
     );
-    final cita = entregada.fold<String?>((_) => null, (r) => r.citaCumplidaId);
-    if (cita != null) await _sacarRecordatorio(cita);
+    final citas = entregada.fold<List<String>>(
+      (_) => const [],
+      (r) => [?r.citaCumplidaId, ...r.otrasCitasCumplidas],
+    );
+    for (final cita in citas) {
+      await _sacarRecordatorio(cita);
+    }
     return entregada;
   }
 

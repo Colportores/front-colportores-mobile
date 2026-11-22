@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../domain/services/ciudades_para_alta.dart';
 import '../providers/alta_ubicacion_providers.dart';
@@ -23,10 +24,9 @@ Future<CiudadCatalogo?> mostrarHojaCiudad(
   required String colportorId,
   String? elegidaId,
   required ValueChanged<CiudadCatalogo> alElegir,
-}) => showModalBottomSheet<CiudadCatalogo>(
+}) => mostrarHojaInferior<CiudadCatalogo>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: true,
   backgroundColor: Colors.white,
   shape: const RoundedRectangleBorder(

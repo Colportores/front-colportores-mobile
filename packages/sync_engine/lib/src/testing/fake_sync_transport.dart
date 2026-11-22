@@ -324,9 +324,14 @@ class FakeSyncTransport implements SyncTransport {
         syncVersion: duplicada.version,
       );
     }
+    // Como el servidor (baja lógica): B baja en el pull con su `deleted_at`, y
+    // un `alsoPull` no la revive en el teléfono.
     final fila = _apply(
       job.entity,
-      duplicada.payload,
+      {
+        ...duplicada.payload,
+        'deleted_at': _clock().toUtc().toIso8601String(),
+      },
       version: duplicada.version + 1,
       deleted: true,
     );

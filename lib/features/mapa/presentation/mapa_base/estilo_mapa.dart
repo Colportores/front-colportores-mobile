@@ -58,6 +58,14 @@ abstract final class ConstructorEstiloMapa {
   static const capaCuadradoRespaldo = 'colportores:cuadrado-respaldo';
   static const capaCuadradoNumero = 'colportores:cuadrado-numero';
   static const capaNuevo = 'colportores:nuevo';
+
+  /// El aro de las casas fuera del área (#713): una capa por fuente, por debajo de los marcadores.
+  /// No responden al toque (la casa se toca por su marcador).
+  static const capaFueraDelArea = 'colportores:fuera-del-area';
+  static const capaFueraDelAreaLibres = 'colportores:fuera-del-area-libres';
+
+  /// La propiedad de un punto fuera del área ([PuntoMapa.fueraDelArea]).
+  static const propiedadFueraDelArea = 'fuera';
   static const capaGps = 'colportores:gps';
 
   /// El radio del círculo de una candidata (en px): con una letra y con dos («AA», «AB»…).
@@ -285,6 +293,7 @@ abstract final class ConstructorEstiloMapa {
               'imagen': MarcadorCercano.nombre(p.etiqueta!, p.variante),
             ..._propiedadesDeEstado(p, imagenes),
             if (p.atenuado) propiedadAtenuado: true,
+            if (p.fueraDelArea) propiedadFueraDelArea: true,
           },
         },
     ],
@@ -511,6 +520,48 @@ abstract final class ConstructorEstiloMapa {
     'text-ignore-placement': true,
   };
 
+  static const List<Object?> _estaFueraDelArea = [
+    '==',
+    ['get', propiedadFueraDelArea],
+    true,
+  ];
+
+  /// El radio del aro de una casa fuera del área: un poco más grande que su marcador, según cómo se
+  /// dibuja (el cuadrado de M·02 mide 40 dp; el seleccionado lleva su aro doble).
+  static const List<Object?> _radioFueraDelArea = [
+    'match',
+    ['get', 'estilo'],
+    'cuadradoSeleccionado',
+    radioFueraDelAreaCuadradoSeleccionado,
+    'cuadrado',
+    radioFueraDelAreaCuadrado,
+    'seleccionado',
+    ['+', _radioPorEtiqueta, 10],
+    radioFueraDelArea,
+  ];
+
+  /// Los radios del aro «fuera del área» (en px): alrededor de un punto, de un cuadrado de M·02 y del
+  /// cuadrado elegido (con su aro doble).
+  static const radioFueraDelArea = 17.0;
+  static const radioFueraDelAreaCuadrado = 26.0;
+  static const radioFueraDelAreaCuadradoSeleccionado = 30.0;
+
+  /// El aro de las casas fuera del área de [fuente]: un disco blanco translúcido (contraste sobre
+  /// cualquier fondo) con el borde ámbar. Va por debajo del marcador.
+  static Map<String, dynamic> _aroFueraDelArea(String id, String fuente, String blanco) => {
+    'id': id,
+    'type': 'circle',
+    'source': fuente,
+    'filter': ['all', _noEsGrupo, _estaFueraDelArea],
+    'paint': {
+      'circle-color': blanco,
+      'circle-opacity': .6,
+      'circle-radius': _radioFueraDelArea,
+      'circle-stroke-width': 3,
+      'circle-stroke-color': _hex(ColoresMapa.fueraDelArea),
+    },
+  };
+
   static List<Map<String, dynamic>> _capasPropias(
     ConfigVistaMapa config, {
     required bool conRecursos,
@@ -603,6 +654,9 @@ abstract final class ConstructorEstiloMapa {
           'line-dasharray': [4, 3],
         },
       },
+      // #713: el aro de las casas fuera del área, debajo de todos los marcadores.
+      _aroFueraDelArea(capaFueraDelArea, fuentePuntos, blanco),
+      _aroFueraDelArea(capaFueraDelAreaLibres, fuentePuntosLibres, blanco),
       {
         'id': 'colportores:contexto-sombra',
         'type': 'circle',

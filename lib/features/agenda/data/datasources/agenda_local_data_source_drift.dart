@@ -10,6 +10,7 @@ import '../../../mapa/data/datasources/audit_log_table.dart';
 import '../../../mapa/data/datasources/notas_table.dart';
 import '../../../mapa/domain/services/house_status_updater.dart';
 import '../../../ventas/data/models/entrega_model.dart';
+import '../../../ventas/domain/services/reglas_de_entrega.dart';
 import '../../domain/entities/agenda.dart';
 import '../../domain/entities/cambios_de_agenda.dart';
 import '../../domain/entities/detalle_de_agenda.dart';
@@ -662,16 +663,56 @@ final class AgendaLocalDataSourceDrift implements AgendaLocalDataSource {
       );
 
   /// Mover la cita de una entrega (HU-VEN-003) mueve también la fecha prevista de lo que falta
-  /// entregar de esa venta: la lista de «Entregas pendientes» y la Agenda dicen la misma fecha. Lo que
-  /// ya se entregó conserva la que se había acordado. Se encola cada fila con su `update`.
+  /// entregar **de esa cita**: la lista de «Entregas pendientes» y la Agenda dicen la misma fecha. Lo
+  /// que ya se entregó conserva la que se había acordado, y lo de otra cita de la misma venta (lo que se
+  /// le sumó, decisión de Cristian del 11/11, «Entrega cita») conserva la suya. Se encola cada fila
+  /// con su `update`. [cita] es la fila como estaba antes de moverla.
   Future<void> _moverLaFechaDeLaEntrega(AgendaFila cita, DateTime cuando, DateTime instante) async {
     final ventaId = cita.ventaId;
     if (cita.tipo != TipoAgenda.entrega.codigo || ventaId == null) return;
-    final pendientes =
-        await (_db.select(_db.entregas)..where(
-              (e) => e.ventaId.equals(ventaId) & e.pendiente.equals(true) & e.deletedAt.isNull(),
-            ))
+    final todas =
+        await (_db.select(_db.entregas)
+              ..where(
+                (e) => e.ventaId.equals(ventaId) & e.pendiente.equals(true) & e.deletedAt.isNull(),
+              )
+              ..orderBy([(e) => OrderingTerm.asc(e.createdAt), (e) => OrderingTerm.asc(e.id)]))
             .get();
+    final citas =
+        await (_db.select(_db.agendas)
+              ..where(
+                (a) =>
+                    a.ventaId.equals(ventaId) &
+                    a.tipo.equals(TipoAgenda.entrega.codigo) &
+                    a.estado.equals(EstadoAgenda.programada.codigo) &
+                    a.deletedAt.isNull(),
+              )
+              ..orderBy([(a) => OrderingTerm.asc(a.createdAt), (a) => OrderingTerm.asc(a.id)]))
+            .get();
+    // Cada cita con su grupo, como estaban antes de mover esta (la fila ya tiene la fecha nueva).
+    final reparto = ReglasDeEntrega.repartirCitas(
+      [
+        for (final c in citas)
+          (
+            id: c.id,
+            fecha:
+                (c.id == cita.id ? cita.fechaProgramada : c.fechaProgramada).millisecondsSinceEpoch,
+          ),
+      ],
+      [for (final e in todas) e.fechaPrevista?.millisecondsSinceEpoch],
+    );
+    final List<EntregaFila> pendientes;
+    if (reparto.containsKey(cita.id)) {
+      final fecha = reparto[cita.id];
+      pendientes = [
+        for (final e in todas)
+          if (e.fechaPrevista?.millisecondsSinceEpoch == fecha) e,
+      ];
+    } else if (citas.length <= 1) {
+      // La única cita de la venta, sin un grupo a su hora (datos de antes): mueve todo lo pendiente.
+      pendientes = todas;
+    } else {
+      pendientes = const [];
+    }
     for (final fila in pendientes) {
       if (fila.fechaPrevista == cuando) continue;
       final nueva = EntregaModel.desdeFila(fila).editada(ahora: instante, fechaPrevista: cuando);

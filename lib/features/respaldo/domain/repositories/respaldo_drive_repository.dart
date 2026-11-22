@@ -21,12 +21,20 @@ abstract interface class RespaldoDriveRepository {
   /// Abre la pantalla de Google, pide el permiso de Drive (solo `drive.appdata`) y deja guardada
   /// la cuenta. Después intenta el primer respaldo; que falle no desconecta.
   ///
+  /// Con [conPrimerRespaldo] en `false` no se intenta el primer respaldo y la conexión vuelve con
+  /// `primerRespaldoHecho: false`. Es lo que usa «Recuperar mi respaldo» (16G·03, #707, decisión de
+  /// Cristian del 11/11, «Resp. vacío»): se conecta para traer un respaldo viejo, y subir el
+  /// teléfono vacío sumaría un respaldo nuevo que el asistente contaría como uno más.
+  ///
   /// - `Left(FailureDriveCancelado)`: la persona cerró o rechazó la pantalla de Google.
   /// - `Left(FailureSinConexion)`: sin red.
   /// - `Left(FailureDrivePermisoIncompleto)`: Google conectó la cuenta pero sin el permiso de
   ///   Drive.
   /// - `Left(FailureDriveNoConectado)`: cualquier otra causa.
-  Future<Either<Failure, ConexionDrive>> conectar(String usuarioId);
+  Future<Either<Failure, ConexionDrive>> conectar(
+    String usuarioId, {
+    bool conPrimerRespaldo = true,
+  });
 
   /// Deja de usar la cuenta: olvida la cuenta guardada (los respaldos dejan de ejecutarse) y le
   /// pide a Google que retire el permiso. Los archivos ya subidos siguen en el Drive. Retirar el

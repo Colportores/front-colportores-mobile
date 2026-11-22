@@ -138,13 +138,16 @@ class EstadoRespaldoDriveNotifier extends AsyncNotifier<EstadoRespaldoDrive> {
   /// Conecta Drive: abre la pantalla de Google, y con el permiso queda guardado y se intenta el
   /// primer respaldo. Una sola conexión (o desconexión) a la vez: la segunda llamada devuelve
   /// [DriveOcupado]. Nunca lanza.
-  Future<ResultadoConexionDrive> conectar() async {
+  ///
+  /// Con [conPrimerRespaldo] en `false` no se hace el primer respaldo: es la conexión de «Recuperar
+  /// mi respaldo» (16G·03, #707), que no sube el teléfono vacío.
+  Future<ResultadoConexionDrive> conectar({bool conPrimerRespaldo = true}) async {
     final usuarioId = _usuarioId;
     if (_enCurso || usuarioId == null) return const DriveOcupado();
     _enCurso = true;
     _generacion++;
     try {
-      final resultado = await _repo.conectar(usuarioId);
+      final resultado = await _repo.conectar(usuarioId, conPrimerRespaldo: conPrimerRespaldo);
       return resultado.fold(DriveNoQuedoConectado.new, (conexion) {
         if (ref.mounted && _usuarioId == usuarioId) state = AsyncData(conexion.estado);
         return DriveQuedoConectado(primerRespaldoHecho: conexion.primerRespaldoHecho);

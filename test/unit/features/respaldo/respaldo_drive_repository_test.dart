@@ -185,6 +185,27 @@ void main() {
       expect(_estado(await con.repo.estado('u-1')), isA<DriveConectada>());
     });
 
+    test('dado que se conecta para recuperar (#707), cuando conecta, no hace el primer respaldo '
+        'pero la cuenta queda conectada', () async {
+      final primero = PrimerRespaldoFalso();
+      final con = RespaldoDriveArmado(primerRespaldo: primero);
+
+      final c = (await con.repo.conectar(
+        'u-1',
+        conPrimerRespaldo: false,
+      )).fold((f) => throw StateError('$f'), (c) => c);
+
+      expect(primero.llamadas, 0, reason: 'el teléfono vacío no se sube');
+      expect(c.primerRespaldoHecho, isFalse);
+      expect(c.estado, isA<DriveConectada>());
+      expect(_estado(await con.repo.estado('u-1')), isA<DriveConectada>());
+
+      // Conectar desde la fila «Cuenta Drive» (sin el parámetro) sigue haciéndolo.
+      final otra = (await con.repo.conectar('u-1')).fold((f) => throw StateError('$f'), (c) => c);
+      expect(primero.llamadas, 1);
+      expect(otra.primerRespaldoHecho, isTrue);
+    });
+
     test('sin motor de respaldo todavía, el primer respaldo no se dice hecho', () async {
       final c = (await a.repo.conectar('u-1')).fold((f) => throw StateError('$f'), (c) => c);
       expect(c.primerRespaldoHecho, isFalse);

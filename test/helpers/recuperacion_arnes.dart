@@ -230,7 +230,11 @@ final class ArnesRecuperacion {
 
   /// Perezoso a propósito: el repositorio arma una cola de `Future`s, y si se creara en un `setUp`
   /// (fuera del reloj falso de `testWidgets`) sus pasos no avanzarían con `tester.pump`.
-  late final RespaldoDriveArmado drive = RespaldoDriveArmado();
+  late final RespaldoDriveArmado drive = RespaldoDriveArmado(primerRespaldo: primerRespaldo);
+
+  /// El primer respaldo al conectar Drive: cuenta cuántas veces se pidió (#707). Por defecto no
+  /// sale, como sin motor; un test pone `resultado = true` para verlo hecho.
+  final primerRespaldo = PrimerRespaldoFalso()..resultado = false;
 
   /// Lo del asistente solo: sirve para armar la app entera, que trae su propia sesión y conexión.
   List<Override> get overridesDelAsistente => [

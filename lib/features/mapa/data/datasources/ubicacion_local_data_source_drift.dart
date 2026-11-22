@@ -431,7 +431,8 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   /// - **Encolado**: la actualización de A solo si cambió de tipo (es una fila común, que sale antes
   ///   que el trabajo) y el trabajo «marcar como duplicado». No se encolan los espacios movidos ni
   ///   el tombstone de B: los aplica el servidor al correr el trabajo (su forma y qué más viaja es
-  ///   del motor de sync).
+  ///   del motor de sync). Hasta que se aplique, el pull no pisa esos espacios: `DriftJobStore`
+  ///   los cuenta como filas con escrituras sin aplicar (#714).
   /// - **Qué movió** (`ubicacion_union_local`, con el `id` del trabajo): los `id` de los espacios
   ///   pasados y fundidos, de lo que colgaba de los fundidos, de las alternativas y de las notas, si
   ///   dio de baja a B y si A pasó a edificio. Con eso `UnionesRechazadasDrift` la deshace si el
