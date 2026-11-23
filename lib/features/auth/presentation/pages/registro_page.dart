@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dartz/dartz.dart' show Right;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
@@ -288,7 +289,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
         abierta = false;
       }
       if (!mounted) return;
-      if (!abierta) _avisarTerminos(TerminosDeUso.avisoNoSeAbrio);
+      if (!abierta) _avisarTerminosSinNavegador();
     } finally {
       _abriendoTerminos = false;
     }
@@ -302,6 +303,29 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
     } on Object {
       return null;
     }
+  }
+
+  /// El aviso de «no se pudo abrir»: la dirección se puede seleccionar y tiene «Copiar». Dura más
+  /// que un aviso común: hay que leerla y tocar.
+  void _avisarTerminosSinNavegador() {
+    final mensajero = ScaffoldMessenger.of(context);
+    mensajero
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 12),
+          content: SelectableText(TerminosDeUso.avisoNoSeAbrio),
+          action: SnackBarAction(
+            label: TerminosDeUso.accionCopiar,
+            onPressed: () {
+              unawaited(Clipboard.setData(ClipboardData(text: TerminosDeUso.direccion.toString())));
+              mensajero
+                ..hideCurrentSnackBar()
+                ..showSnackBar(const SnackBar(content: Text(TerminosDeUso.avisoCopiada)));
+            },
+          ),
+        ),
+      );
   }
 
   void _avisarTerminos(String texto) {

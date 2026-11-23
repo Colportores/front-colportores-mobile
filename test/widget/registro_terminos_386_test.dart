@@ -11,6 +11,7 @@ import 'package:colportores_mobile/features/auth/presentation/providers/auth_pro
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -53,7 +54,8 @@ final class _MonitorFalso implements MonitorConectividad {
 }
 
 const _sinConexion = 'Necesitás conexión para leer los términos.';
-const _noSeAbrio = 'No pudimos abrir los términos. Probá de nuevo en unos minutos.';
+const _noSeAbrio =
+    'No pudimos abrir los términos. Podés leerlos en colportores.github.io/terminos/v1';
 
 /// El `ProviderScope` va como argumento directo de `pumpWidget` (riverpod_lint).
 Future<void> _montar(
@@ -237,6 +239,62 @@ void main() {
 
       expect(abridor.abiertas, hasLength(2));
       expect(find.text(_noSeAbrio), findsNothing, reason: 'el aviso viejo no queda a la vista');
+    });
+
+    testWidgets('el aviso lleva la dirección seleccionable y «Copiar» la copia entera', (
+      tester,
+    ) async {
+      pantallaChica(tester);
+      abridor.resultado = false;
+      final copiado = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (
+        llamada,
+      ) async {
+        if (llamada.method == 'Clipboard.setData') {
+          copiado.add((llamada.arguments as Map)['text'] as String);
+        }
+        return null;
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      await _montar(tester, abridor: abridor, monitor: monitor);
+      await _entrarAlRegistro(tester);
+
+      await _tocarTerminos(tester);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.byType(SelectableText), findsOneWidget);
+      expect(find.text(_noSeAbrio), findsOneWidget);
+
+      await tester.tap(find.text('Copiar'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(copiado, ['https://colportores.github.io/terminos/v1/']);
+      expect(find.text('Dirección copiada.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('el aviso largo con el texto al 200 % se lee entero y sin desborde', (
+      tester,
+    ) async {
+      pantallaChica(tester);
+      abridor.resultado = false;
+      await _montar(tester, abridor: abridor, monitor: monitor, escalaTexto: 2);
+      await _entrarAlRegistro(tester);
+
+      await _tocarTerminos(tester);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text(_noSeAbrio), findsOneWidget);
+      expect(find.text('Copiar'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('una excepción de la plataforma avisa igual y no deja el toque trabado', (

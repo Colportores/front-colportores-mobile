@@ -16,8 +16,19 @@ abstract final class TerminosDeUso {
   /// Aviso cuando no hay conexión para abrir la página (texto del issue #386).
   static const String avisoSinConexion = 'Necesitás conexión para leer los términos.';
 
+  /// La dirección sin el `https://`, como se muestra en el aviso para que se pueda leer y copiar.
+  static String get direccionCorta =>
+      '${direccion.host}${direccion.path}'.replaceFirst(RegExp(r'/$'), '');
+
   /// Aviso cuando hay conexión pero el teléfono no pudo abrir la página (sin navegador, o se
-  /// rechazó la apertura). Texto propuesto, a confirmar: dice qué pasó y qué hacer.
-  static const String avisoNoSeAbrio =
-      'No pudimos abrir los términos. Probá de nuevo en unos minutos.';
+  /// rechazó la apertura): dice qué pasó y da una salida que sirve (decisión del 23/11, #386). La
+  /// dirección va seleccionable y con «Copiar».
+  static String get avisoNoSeAbrio =>
+      'No pudimos abrir los términos. Podés leerlos en $direccionCorta';
+
+  /// Botón del aviso: copia la dirección completa para pegarla en otro navegador o app.
+  static const String accionCopiar = 'Copiar';
+
+  /// Confirmación tras copiar la dirección.
+  static const String avisoCopiada = 'Dirección copiada.';
 }
