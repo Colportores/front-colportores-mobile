@@ -1,9 +1,10 @@
 /// Los textos del respaldo en Drive (HU-SYNC-004, vista 16 «Cuenta Drive», artboards 16D·01 a
-/// 16D·10).
+/// 16D·10; otra cuenta de Google, 16E·01 a 16E·04; la franja del Drive en Hoy, 16F·01 a 16F·04).
 ///
 /// Los literales de la HU van tal cual; el resto es el del canvas. Los que no están en ninguno de
 /// los dos (estado «Revisando…», «No pudimos ver el estado», «Todavía no hubo un respaldo»,
-/// «No pudimos desconectar…») son propuesta: mapa §2, texto, a confirmar.
+/// «No pudimos desconectar…», «Ocultar hasta mañana», los de lector de pantalla de 16E y 16F) son
+/// propuesta: mapa §2, texto, a confirmar.
 abstract final class TextosRespaldoDrive {
   // La sección y la fila.
   static const seccion = 'Respaldo';
@@ -79,4 +80,50 @@ abstract final class TextosRespaldoDrive {
   static const desconectando = 'Desconectando…';
   static const cancelar = 'Cancelar';
   static const noPudimosDesconectar = 'No pudimos desconectar tu Drive. Probá de nuevo.';
+
+  // Otra cuenta de Google (16E·01 a 16E·04, #550).
+  static const tituloOtraCuenta = 'Esta no es la cuenta de tu respaldo';
+  static String textoOtraCuenta({required String anterior, required String nueva}) =>
+      'Tu respaldo anterior quedó en $anterior. Ahora te conectaste con $nueva.';
+  static const rotuloRespaldoAnterior = 'Respaldo anterior';
+  static const rotuloUltimoRespaldo = 'Último respaldo';
+  static const rotuloCuentaDeAhora = 'Cuenta de ahora';
+  static const noSeBorraNada = 'No se borra nada: el respaldo anterior sigue en la otra cuenta.';
+  static const volverALaCuentaAnterior = 'Volver a la cuenta anterior';
+  static const seguirConLaCuentaNueva = 'Seguir con la cuenta nueva';
+  static const tituloSeguirConLaNueva = '¿Seguir con la cuenta nueva?';
+  static String textoSeguirConLaNueva({required String anterior, required String nueva}) =>
+      'Desde esta noche el respaldo se guarda en $nueva. El anterior queda en $anterior: no se '
+      'borra, pero deja de actualizarse.';
+  static const volverALaAnterior = 'Volver a la anterior';
+  static const sinConexionParaCambiarDeCuenta = 'Necesitás conexión para cambiar de cuenta.';
+  static String volvioALaAnterior(String anterior) => 'Listo. Tu respaldo sigue en $anterior.';
+  static const sinRespaldoEnEstaCuenta = 'Todavía sin respaldo en esta cuenta';
+
+  /// Lo que dice el lector de pantalla de la fila con otra cuenta por confirmar (propuesta).
+  static const pistaCuentaPorConfirmar = 'Abre las opciones para elegir con qué cuenta seguir';
+
+  /// «20/10 · 03:10»: el último respaldo en la hoja de otra cuenta.
+  static String fechaDelUltimoRespaldo(DateTime respaldo) {
+    String dos(int n) => n.toString().padLeft(2, '0');
+    return '${dos(respaldo.day)}/${dos(respaldo.month)} · ${dos(respaldo.hour)}:${dos(respaldo.minute)}';
+  }
+
+  // La franja del Drive en Hoy (16F·01 a 16F·04, #550).
+  static const franjaRevocada =
+      'Google ya no nos deja guardar tu respaldo. Lo que cargues desde ahora no tiene copia.';
+  static const franjaReconectarEnConfiguracion = 'Reconectar en Configuración';
+  static const franjaDriveLleno = 'Tu Drive está lleno. El respaldo de anoche no se guardó.';
+  static const franjaVerEnConfiguracion = 'Ver en Configuración';
+  static const franjaOculta = 'Te lo recordamos mañana. Lo ves en Configuración.';
+
+  /// Cómo se cierra la franja (el canvas solo dibuja el resultado, 16F·04): propuesta.
+  static const ocultarHastaManiana = 'Ocultar hasta mañana';
+
+  /// Si no se pudo anotar que se ocultó (propuesta): la franja sigue a la vista.
+  static const noPudimosOcultar = 'No pudimos ocultar el aviso. Probá de nuevo.';
+
+  /// El engranaje de Hoy con la marca roja mientras la franja está oculta y el problema sigue
+  /// (16F·04): propuesta para el lector de pantalla.
+  static const configuracionConAviso = 'Configuración: hay un aviso del respaldo';
 }

@@ -24,6 +24,11 @@ import '../services/servicio_google.dart';
 ///
 /// Anota también **cuándo se conectó** cada cuenta (`conectado_en`, #583): sin ningún respaldo, los
 /// días «sin respaldo» se cuentan desde ahí.
+///
+/// Si al conectar Google devuelve una cuenta distinta de la que ya tenía el respaldo (16E·01), la fila
+/// queda `por_confirmar` con la cuenta anterior (`anterior_email`, `anterior_id`) hasta que la persona
+/// elija: ahí el respaldo está frenado. Si oculta la franja del Drive de Hoy (16F·04), el día queda en
+/// `franja_oculta`; cualquier cambio de estado la vuelve a mostrar.
 final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
   RespaldoDriveRepositoryImpl(
     this._almacen,
@@ -56,6 +61,11 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
   static const _revocada = 'revocada';
   static const _sinEspacio = 'sin_espacio';
   static const _conectadoEn = 'conectado_en';
+  static const _porConfirmar = 'por_confirmar';
+  static const _anteriorEmail = 'anterior_email';
+  static const _anteriorId = 'anterior_id';
+  static const _franjaOculta = 'franja_oculta';
+  static const _camposOpcionales = [_conectadoEn, _anteriorEmail, _anteriorId, _franjaOculta];
 
   Future<Map<String, Map<String, String>>> _leerTodo() async {
     final valor = await _almacen.leer(ClaveSegura.respaldoDrive);
@@ -74,12 +84,12 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
       final id = value['id'];
       final estado = value['estado'];
       if (email is String && id is String && estado is String && email.isNotEmpty) {
-        final desde = value[_conectadoEn];
         todo[key] = {
           'email': email,
           'id': id,
           'estado': estado,
-          if (desde is String) _conectadoEn: desde,
+          for (final campo in _camposOpcionales)
+            if (value[campo] case final String texto) campo: texto,
         };
       }
     }
@@ -107,7 +117,15 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
     if (fila == null) return const DriveSinConectar();
     final email = fila['email']!;
     final id = fila['id']!;
+    final anteriorEmail = fila[_anteriorEmail];
+    final anteriorId = fila[_anteriorId];
     return switch (fila['estado']) {
+      _porConfirmar when anteriorEmail != null && anteriorId != null => DriveCuentaPorConfirmar(
+        email: email,
+        cuentaId: id,
+        anteriorEmail: anteriorEmail,
+        anteriorCuentaId: anteriorId,
+      ),
       _revocada => DrivePermisoRevocado(email: email, cuentaId: id),
       _sinEspacio => DriveSinEspacio(email: email, cuentaId: id),
       _ => DriveConectada(email: email, cuentaId: id),
@@ -165,13 +183,37 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
       return Left(_traducirFalloDeGoogle(e));
     }
 
-    final conectada = DriveConectada(email: cuenta.email, cuentaId: cuenta.id);
+    final DriveConCuenta conectada;
+    var volvioDeOtraCuenta = false;
     try {
       final todo = await _leerTodoOVacio();
+      // La cuenta de referencia es la del respaldo anterior: si ya había otra por confirmar, sigue
+      // siendo la que tenía el respaldo antes de ella.
+      final previa = todo[usuarioId];
+      final anteriorId = previa?[_anteriorId] ?? previa?['id'];
+      final anteriorEmail = previa?[_anteriorEmail] ?? previa?['email'];
+      // Para recuperar (conPrimerRespaldo en `false`, #707) la cuenta que elige es la que quiere
+      // buscar: no se compara con la del respaldo anterior.
+      final otra =
+          conPrimerRespaldo &&
+              anteriorId != null &&
+              anteriorEmail != null &&
+              anteriorId != cuenta.id
+          ? DriveCuentaPorConfirmar(
+              email: cuenta.email,
+              cuentaId: cuenta.id,
+              anteriorEmail: anteriorEmail,
+              anteriorCuentaId: anteriorId,
+            )
+          : null;
+      volvioDeOtraCuenta = previa?[_anteriorId] != null && otra == null;
+      conectada = otra ?? DriveConectada(email: cuenta.email, cuentaId: cuenta.id);
       todo[usuarioId] = {
         'email': cuenta.email,
         'id': cuenta.id,
-        'estado': _conectada,
+        'estado': otra == null ? _conectada : _porConfirmar,
+        if (otra != null) _anteriorEmail: otra.anteriorEmail,
+        if (otra != null) _anteriorId: otra.anteriorCuentaId,
         _conectadoEn: _ahora().toUtc().toIso8601String(),
       };
       await _escribirTodo(todo);
@@ -185,9 +227,21 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
       return const Left(FailureDriveNoConectado());
     }
 
-    _log.info(LogModulo.backup, 'DRIVE_CONECTADO', 'respaldo en Drive conectado');
-    // Para recuperar (#707) no se sube el teléfono vacío: el asistente cuenta solo los viejos.
-    final primero = conPrimerRespaldo && await _hacerPrimerRespaldo();
+    _log.info(
+      LogModulo.backup,
+      conectada is DriveCuentaPorConfirmar ? 'DRIVE_OTRA_CUENTA' : 'DRIVE_CONECTADO',
+      conectada is DriveCuentaPorConfirmar
+          ? 'se conectó otra cuenta de Google: falta elegir con cuál seguir'
+          : 'respaldo en Drive conectado',
+    );
+    // Con otra cuenta por confirmar no se sube nada: el primer respaldo espera a la elección. Al
+    // volver a la cuenta anterior tampoco: su respaldo sigue ahí. Para recuperar (#707) no se sube
+    // el teléfono vacío: el asistente cuenta solo los viejos.
+    final primero =
+        conPrimerRespaldo &&
+        conectada is DriveConectada &&
+        !volvioDeOtraCuenta &&
+        await _hacerPrimerRespaldo();
     return Right(ConexionDrive(estado: conectada, primerRespaldoHecho: primero));
   });
 
@@ -234,6 +288,85 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
       error is SocketException || error is http.ClientException || error is TimeoutException;
 
   @override
+  Future<Either<Failure, ConexionDrive>> confirmarCuentaNueva(
+    String usuarioId, {
+    bool conPrimerRespaldo = true,
+  }) async {
+    final anotada = await _encolar<Either<Failure, (DriveConCuenta, bool)>>(() async {
+      try {
+        final todo = await _leerTodo();
+        final fila = todo[usuarioId];
+        if (fila == null) return const Left(FailureDriveNoConectado());
+        final estado = _aEstado(fila);
+        if (estado is! DriveCuentaPorConfirmar) {
+          return estado is DriveConCuenta
+              ? Right((estado, false))
+              : const Left(FailureDriveNoConectado());
+        }
+        final elegida = {
+          'email': fila['email']!,
+          'id': fila['id']!,
+          'estado': _conectada,
+          if (fila[_conectadoEn] case final String desde) _conectadoEn: desde,
+        };
+        todo[usuarioId] = elegida;
+        await _escribirTodo(todo);
+        _log.info(LogModulo.backup, 'DRIVE_CUENTA_NUEVA', 'se siguió con la cuenta nueva');
+        return Right((_aEstado(elegida) as DriveConCuenta, true));
+      } on Object catch (e) {
+        // Como al conectar: a la persona se le dice lo de siempre, no el aviso del almacén de la base
+        // de datos (que habla de reinstalar la app). La causa va al log.
+        _falloDelAlmacen('escribir', e);
+        return const Left(FailureDriveNoConectado());
+      }
+    });
+    // Fuera de la cola: el primer respaldo vuelve a leer el estado de este mismo repositorio.
+    return anotada.fold<Future<Either<Failure, ConexionDrive>>>(
+      (falla) async => Left(falla),
+      (anotado) async => Right(
+        ConexionDrive(
+          estado: anotado.$1,
+          primerRespaldoHecho: conPrimerRespaldo && anotado.$2 && await _hacerPrimerRespaldo(),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<Either<Failure, Unit>> ocultarFranja(String usuarioId) => _encolar(() async {
+    try {
+      final todo = await _leerTodo();
+      final fila = todo[usuarioId];
+      if (fila == null) return const Right(unit);
+      todo[usuarioId] = {...fila, _franjaOculta: _dia(_ahora())};
+      await _escribirTodo(todo);
+      return const Right(unit);
+    } on Object catch (e) {
+      return Left(_falloDelAlmacen('escribir', e));
+    }
+  });
+
+  @override
+  Future<DateTime?> franjaOcultaEl(String usuarioId) => _encolar(() async {
+    try {
+      final guardado = (await _leerTodo())[usuarioId]?[_franjaOculta];
+      if (guardado == null) return null;
+      final dia = DateTime.tryParse(guardado);
+      return dia == null ? null : DateTime(dia.year, dia.month, dia.day);
+    } on Object catch (e) {
+      _falloDelAlmacen('leer', e);
+      return null;
+    }
+  });
+
+  /// El día de [instante] en la hora del teléfono, como `AAAA-MM-DD`.
+  String _dia(DateTime instante) {
+    final local = instante.toLocal();
+    return '${local.year.toString().padLeft(4, '0')}-'
+        '${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+  }
+
+  @override
   Future<Either<Failure, Unit>> desconectar(String usuarioId) => _encolar(() async {
     try {
       final todo = await _leerTodoOVacio();
@@ -262,11 +395,15 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
       final fila = todo[usuarioId];
       if (fila == null) return const Right(DriveSinConectar());
       if (fila['estado'] == nuevo ||
+          // Con otra cuenta por confirmar el respaldo está frenado: no hay permiso que perder ni
+          // espacio que llenar hasta que la persona elija.
+          fila['estado'] == _porConfirmar ||
           (soloDesde != null && fila['estado'] != soloDesde) ||
           (cuentaId != null && fila['id'] != cuentaId)) {
         return Right(_aEstado(fila));
       }
-      final cambiada = {...fila, 'estado': nuevo};
+      // Cambia el estado: la franja oculta de Hoy vuelve a salir (16F·04).
+      final cambiada = {...fila, 'estado': nuevo}..remove(_franjaOculta);
       todo[usuarioId] = cambiada;
       await _escribirTodo(todo);
       return Right(_aEstado(cambiada));
