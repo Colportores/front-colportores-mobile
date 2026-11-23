@@ -99,15 +99,21 @@ void main() {
       expect(d.depositosValidadosCentavos, 4500);
     });
 
-    test('sin cuenta el total es 0 y el saldo del pedido sale igual (b2 de supabase/tests/0179)', () {
-      final d = CalculadorDeLaDeuda.calcular(
-        _insumos(pedidos: [_pedido('b2', DateTime.utc(2026, 10, 5), monto: 8000)], depositos: 2000),
-        ahora: _ahora,
-      );
-      expect(d.deudaTotalCentavos, 0);
-      expect(_resumen(d), 'b2:8000/2000/6000');
-      expect(d.saldosNoDanElTotal, isTrue);
-    });
+    test(
+      'sin cuenta el total es 0 y el saldo del pedido sale igual (b2 de supabase/tests/0179)',
+      () {
+        final d = CalculadorDeLaDeuda.calcular(
+          _insumos(
+            pedidos: [_pedido('b2', DateTime.utc(2026, 10, 5), monto: 8000)],
+            depositos: 2000,
+          ),
+          ahora: _ahora,
+        );
+        expect(d.deudaTotalCentavos, 0);
+        expect(_resumen(d), 'b2:8000/2000/6000');
+        expect(d.saldosNoDanElTotal, isTrue);
+      },
+    );
 
     test('sin pedidos ni deuda no debe nada (33B·02)', () {
       final d = CalculadorDeLaDeuda.calcular(_insumos(), ahora: _ahora);
@@ -176,7 +182,10 @@ void main() {
       final d = CalculadorDeLaDeuda.calcular(
         _insumos(
           deuda: 15000,
-          historial: [cambio(const Duration(days: 3), 15000), cambio(const Duration(days: 10), 9000)],
+          historial: [
+            cambio(const Duration(days: 3), 15000),
+            cambio(const Duration(days: 10), 9000),
+          ],
         ),
         ahora: _ahora,
       );
