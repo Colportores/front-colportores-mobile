@@ -95,6 +95,7 @@ Future<void> montar386(
   required AbridorFalso386 abridor,
   required MonitorFalso386 monitor,
   double escala = 1,
+  bool lectorDePantalla = false,
   AuthRemoteDataSourceEnMemoria? remote,
 }) async {
   tester.view.physicalSize = tamanio;
@@ -116,7 +117,10 @@ Future<void> montar386(
         builder: (context, child) => RepaintBoundary(
           key: raiz386,
           child: MediaQuery(
-            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escala)),
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(escala),
+              accessibleNavigation: lectorDePantalla,
+            ),
             child: child!,
           ),
         ),

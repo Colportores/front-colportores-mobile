@@ -164,6 +164,29 @@ void main() {
       expect(find.text(avisoDecidido386, findRichText: true), findsOneWidget);
     });
 
+    testWidgets('con lector de pantalla el aviso no se cierra solo y se cierra con la «x»', (
+      tester,
+    ) async {
+      abridor.resultado = false;
+      await montar386(
+        tester,
+        tamanio: const Size(412, 915),
+        abridor: abridor,
+        monitor: monitor,
+        lectorDePantalla: true,
+      );
+      await tocarEnlace386(tester);
+
+      await tester.pump(const Duration(seconds: 30));
+
+      expect(find.text(avisoDecidido386, findRichText: true), findsOneWidget);
+      expect(find.text('Copiar dirección'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text(avisoDecidido386, findRichText: true), findsNothing);
+    });
+
     for (final (nombreTam, tam) in _tamanios) {
       for (final escala in _escalas) {
         testWidgets(
