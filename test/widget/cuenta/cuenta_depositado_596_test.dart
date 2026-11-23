@@ -183,10 +183,11 @@ void main() {
         );
       }
       expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
-      expect(find.text('›'), findsNWidgets(4));
-      // Más «Registrar depósito» de ACCIONES (HU-CTA-004, #443), «+ Hacer un pedido» (HU-STK-009, #387) y
-      // el enlace «Mis pedidos».
-      expect(find.byType(InkWell), findsNWidgets(7));
+      // Más la fila «Mis tickets» (#388), que también lleva «›».
+      expect(find.text('›'), findsNWidgets(5));
+      // Más «+ Hacer un pedido», «Cargar ticket» y «Registrar depósito» de ACCIONES (HU-STK-009 #387, vista
+      // 38 y HU-CTA-004 #443) y las filas «Mis pedidos» (#387) y «Mis tickets» (#388).
+      expect(find.byType(InkWell), findsNWidgets(9));
     });
   });
 

@@ -233,6 +233,7 @@ void main() {
           cedula: '12345678',
           email: 'lucia.silva@correo.com',
           password: 'Secreto123',
+          terminosVersion: 'v1',
         );
 
         await _montarPagina(tester, remote: remote, password: 'Secreto123');
