@@ -109,8 +109,10 @@ List<Override> overrides443(
     compresorDeImagenProvider.overrideWithValue(
       compresor ?? CompresorDePrueba([900], legible: arnes.legible),
     ),
-    campaniaDelAlquilerProvider.overrideWith(
-      (ref, _) async => campania != null ? campania() : arnes.campania,
+    campaniasParaElAlquilerProvider.overrideWith(
+      (ref, _) async => campania != null
+          ? campaniasDelArnes(arnes, campania: await campania())
+          : campaniasDelArnes(arnes),
     ),
     conexionProvider.overrideWith((ref) => Stream.value(arnes.conexion)),
   ];

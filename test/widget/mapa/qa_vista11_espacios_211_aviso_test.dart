@@ -131,9 +131,6 @@ void _seVe(WidgetTester tester, String texto) {
 String _nombre(_Causa c, Size t, double escala) =>
     'aviso_${c.name}_${t.width.toInt()}x${t.height.toInt()}_x$escala';
 
-/// `true` corre los tests que documentan un hallazgo (hoy con `skip`).
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 void main() {
   group('el aviso dentro de la hoja: causa × tamaño × texto (fuentes reales)', () {
     for (final tamano in [telefonoChico211, telefonoGrande211]) {
@@ -298,10 +295,10 @@ void main() {
   });
 
   // ---------------------------------------------------------------- hallazgo
-  // skip: QA #211 — `_avisar` hace `Scrollable.ensureVisible(aviso)` con la alineación por defecto
-  // (el aviso queda en el borde de arriba) y, como el encabezado es el primer hijo de la lista, la
-  // dirección, la cuenta de deptos y la «✕» salen de la vista aunque el aviso ya se viera entero
-  // (360×640, 412×915, texto ×1 y ×2). Salir sigue siendo posible (atrás, cortina, subir la lista).
+  // QA #211: `_avisar` hacía `Scrollable.ensureVisible(aviso)` con la alineación por defecto (el
+  // aviso quedaba en el borde de arriba) y, como el encabezado es el primer hijo de la lista, la
+  // dirección, la cuenta de deptos y la «✕» salían de la vista aunque el aviso ya se viera entero
+  // (360×640, 412×915, texto ×1 y ×2). Arreglado con `keepVisibleAtStart`: la lista solo se corre si el aviso no se ve.
   group('el encabezado de la hoja sigue a la vista con el aviso puesto', () {
     for (final tamano in [telefonoChico211, telefonoGrande211]) {
       for (final escala in [1.0, 2.0]) {
@@ -311,7 +308,7 @@ void main() {
 
           expect(cerrarHojaUbicacion.hitTestable(), findsOneWidget, reason: 'la «✕» quedó fuera');
           expect(find.text('Mataojo 2044').hitTestable(), findsOneWidget);
-        }, skip: !_verHallazgos);
+        });
       }
     }
   });
