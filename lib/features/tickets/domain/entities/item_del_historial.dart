@@ -29,6 +29,10 @@ enum EstadoDelItem {
   porValidar,
   validado,
   rechazado,
+
+  /// El coordinador devolvió la plata de un pago de alquiler que ya había validado (`anulado_at`): no
+  /// suma a nada. La fila queda en el historial (nunca se pierde un registro).
+  devuelto,
 }
 
 /// Qué filtro de los chips de 38B·01 está elegido.
@@ -81,7 +85,10 @@ final class ItemDelHistorial extends Equatable {
     FotoLocalDeTicket? foto,
   }) {
     final rechazado = deposito.rechazadoEn != null || ticket?.estado == EstadoDeTicket.rechazado;
-    final validado = deposito.validadoEn != null || ticket?.estado == EstadoDeTicket.validado;
+    // Un pago devuelto (`anulado_at`) no es validado ni «se acreditó»: lo anuló el coordinador.
+    final devuelto = deposito.anuladoAt != null && !rechazado;
+    final validado =
+        !devuelto && (deposito.validadoEn != null || ticket?.estado == EstadoDeTicket.validado);
     final sinLlegar =
         deposito.auditoria.syncVersion == 0 ||
         (ticket != null && ticket.auditoria.syncVersion == 0);
@@ -99,6 +106,8 @@ final class ItemDelHistorial extends Equatable {
       concepto: deposito.concepto,
       estado: rechazado
           ? EstadoDelItem.rechazado
+          : devuelto
+          ? EstadoDelItem.devuelto
           : validado
           ? EstadoDelItem.validado
           : sinLlegar

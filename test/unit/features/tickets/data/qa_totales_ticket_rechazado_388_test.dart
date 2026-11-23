@@ -25,9 +25,6 @@ import 'package:test/test.dart';
 import '../../../../helpers/logger_mudo.dart';
 import '../../../../helpers/tickets_falsos.dart';
 
-/// `--dart-define=QA_HALLAZGOS=true` corre los tests con `skip` para verlos fallar.
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 final _ahora = DateTime.utc(2026, 11, 10, 15);
 
 void main() {
@@ -109,26 +106,75 @@ void main() {
     expect(item.sePuedeCargarDeNuevo, isTrue);
   });
 
+  test('un depósito cuyo ticket se rechazó no suma a «Por validar» ni a lo depositado, y su plata '
+      'vuelve a la mano (como efectivo_en_mano() del servidor)', () async {
+    await depositoEnElServidor();
+    await elCoordinador('RECHAZADO', motivo: 'La foto no se lee');
+
+    expect(await totales.porValidar(), 0, reason: 'el historial lo dice «No se acreditó»');
+    expect(await totales.validado(), 0);
+    expect(
+      await totales.sacadoDeLaMano(),
+      0,
+      reason: 'si no, «Cargar de nuevo» dice «\$ 0 en mano»',
+    );
+    expect(await totales.listar(), isEmpty);
+  });
+
   test(
-    'un depósito cuyo ticket se rechazó no suma a «Por validar» ni a lo depositado, y su plata '
-    'vuelve a la mano (como efectivo_en_mano() del servidor)',
+    'un depósito validado cuyo ticket quedó rechazado tampoco acredita (ante la duda, no)',
     () async {
       await depositoEnElServidor();
+      await (db.update(
+        db.depositos,
+      )..where((d) => d.id.equals('d-1'))).write(DepositosCompanion(validadoEn: Value(_ahora)));
       await elCoordinador('RECHAZADO', motivo: 'La foto no se lee');
 
-      expect(await totales.porValidar(), 0, reason: 'el historial lo dice «No se acreditó»');
       expect(await totales.validado(), 0);
-      expect(
-        await totales.sacadoDeLaMano(),
-        0,
-        reason: 'si no, «Cargar de nuevo» dice «\$ 0 en mano»',
-      );
-      expect(await totales.listar(), isEmpty);
+      expect(await totales.porValidar(), 0);
+      expect(await totales.sacadoDeLaMano(), 0);
     },
-    // skip — QA #388: TotalesDeDepositosDrift mira solo validado_en/rechazado_en del depósito, no el
-    // `ticket.estado = RECHAZADO` con el que baja el rechazo de un depósito con ticket (el CHECK del
-    // servidor impide `rechazado_en` ahí): Mi Cuenta sigue en «Por validar $ 1.000» y «En mano $ 0».
-    skip: !_verHallazgos,
+  );
+
+  test('un ticket pendiente o validado no cambia nada: el depósito sigue sumando', () async {
+    await depositoEnElServidor();
+    await elCoordinador('VALIDADO');
+    await (db.update(
+      db.depositos,
+    )..where((d) => d.id.equals('d-1'))).write(DepositosCompanion(validadoEn: Value(_ahora)));
+
+    expect(await totales.validado(), 100000);
+    expect(await totales.sacadoDeLaMano(), 100000);
+    expect((await totales.listar()).single.validado, isTrue);
+  });
+
+  test(
+    'Mi Cuenta se entera cuando baja el rechazo del ticket, sin que cambie el depósito',
+    () async {
+      await depositoEnElServidor();
+      final tablas = totales.tablas;
+
+      expect(tablas, containsAll([db.depositos, db.tickets]));
+    },
+  );
+
+  test(
+    'el pago de alquiler devuelto sale del historial como «Devuelto», no como «Validado»',
+    () async {
+      await depositoEnElServidor();
+      await elCoordinador('VALIDADO');
+      await (db.update(db.depositos)..where((d) => d.id.equals('d-1'))).write(
+        DepositosCompanion(validadoEn: Value(_ahora), anuladoAt: Value(_ahora)),
+      );
+
+      final item = (await historial.leer()).items.single;
+
+      expect(item.estado, EstadoDelItem.devuelto);
+      expect(item.validadoEn, isNull);
+      expect(item.sePuedeCargarDeNuevo, isFalse);
+      expect(await totales.validado(), 0);
+      expect(await totales.sacadoDeLaMano(), 0, reason: 'su efectivo vuelve a estar en mano');
+    },
   );
 
   test(

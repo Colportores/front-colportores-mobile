@@ -33,12 +33,14 @@ abstract final class TextosTickets {
   static const estadoValidado = 'Validado';
   static const estadoRechazado = 'Rechazado';
   static const estadoEnCola = 'En cola';
+  static const estadoDevuelto = 'Devuelto';
 
   static String estado(EstadoDelItem estado) => switch (estado) {
     EstadoDelItem.porValidar => estadoPorValidar,
     EstadoDelItem.validado => estadoValidado,
     EstadoDelItem.rechazado => estadoRechazado,
     EstadoDelItem.enCola => estadoEnCola,
+    EstadoDelItem.devuelto => estadoDevuelto,
   };
 
   /// La primera parte de la línea de arriba («BANCO», «RETIRO»).
@@ -176,6 +178,9 @@ abstract final class TextosTickets {
       'Queda por validar: se acredita cuando tu coordinador valide el ticket.';
   static const porValidarSinTicket =
       'Queda por validar: se acredita cuando tu coordinador confirme el retiro.';
+
+  /// El coordinador devolvió un pago de alquiler que había validado: ya no suma (decisión del 23/11).
+  static const devueltoDelDetalle = 'Tu coordinador te devolvió el pago. No suma a tu cuenta.';
   static const enColaDelDetalle =
       'Todavía no llegó al servidor. Se envía cuando vuelva la conexión.';
 

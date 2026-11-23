@@ -107,6 +107,7 @@ final class DepositoLocalDataSourceDrift {
     validadoPor: fila.validadoPor,
     rechazadoEn: fila.rechazadoEn,
     motivoRechazo: fila.motivoRechazo,
+    anuladoAt: fila.anuladoAt,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,

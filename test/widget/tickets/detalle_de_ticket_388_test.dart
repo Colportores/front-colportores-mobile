@@ -301,6 +301,34 @@ void main() {
     });
   });
 
+  group('devuelto (el coordinador devolvió un pago de alquiler validado)', () {
+    testWidgets('dice que se devolvió y que no suma, sin «Cargar de nuevo»', (tester) async {
+      final repo = HistorialControlable(
+        inicial: historialCon([
+          itemDePrueba('d1', estado: EstadoDelItem.devuelto, concepto: ConceptoDeDeposito.alquiler),
+        ]),
+      );
+      await _abrirDetalle(tester, 'd1', repo: repo);
+
+      expect(_texto('Tu coordinador te devolvió el pago. No suma a tu cuenta.'), findsOneWidget);
+      expect(find.byKey(const Key('ticket_aviso_devuelto')), findsOneWidget);
+      expect(_texto('Se acreditó al alquiler.'), findsNothing);
+      expect(find.byKey(const Key('ticket_cargar_de_nuevo')), findsNothing);
+    });
+
+    testWidgets('la fila de la lista dice «Devuelto»', (tester) async {
+      await montarHistorial(
+        tester,
+        HistorialControlable(
+          inicial: historialCon([itemDePrueba('d1', estado: EstadoDelItem.devuelto)]),
+        ),
+        arnes: ArnesDeDeposito(),
+      );
+
+      expect(_texto('Devuelto'), findsOneWidget);
+    });
+  });
+
   group('por validar y en cola', () {
     testWidgets('por validar con ticket dice qué falta; un retiro, que falta que lo confirme', (
       tester,

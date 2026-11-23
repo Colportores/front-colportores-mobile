@@ -28,6 +28,7 @@ import '../textos_tickets.dart';
     tinta: ColoresCuenta.rojo,
   ),
   EstadoDelItem.enCola => (glifo: '⇡', fondo: ColoresCuenta.grisFondo, tinta: ColoresCuenta.gris),
+  EstadoDelItem.devuelto => (glifo: '↩', fondo: ColoresCuenta.grisFondo, tinta: ColoresCuenta.gris),
 };
 
 /// Los filtros de 38B·01: «Todos», «Por validar», «Rechazados» y «Alquiler».

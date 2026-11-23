@@ -37,6 +37,7 @@ final class ResumenDeCuentaLocalDataSourceDrift {
     _db.espacios,
     _db.ventaItems,
     _db.depositos,
+    _db.tickets,
     _db.syncMetas,
   };
 

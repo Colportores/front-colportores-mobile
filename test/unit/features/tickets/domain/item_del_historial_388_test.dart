@@ -20,6 +20,7 @@ Deposito _deposito({
   DateTime? validadoEn,
   DateTime? rechazadoEn,
   String? motivoRechazo,
+  DateTime? anuladoAt,
 }) => Deposito(
   id: id,
   montoCentavos: 480000,
@@ -31,6 +32,7 @@ Deposito _deposito({
   validadoEn: validadoEn,
   rechazadoEn: rechazadoEn,
   motivoRechazo: motivoRechazo,
+  anuladoAt: anuladoAt,
   auditoria: Auditoria(createdAt: _fecha, updatedAt: _fecha, syncVersion: syncVersion),
 );
 
@@ -114,6 +116,30 @@ void main() {
       expect(item.estado, EstadoDelItem.rechazado);
       expect(item.motivoRechazo, 'La foto no se lee');
       expect(item.sePuedeCargarDeNuevo, isTrue);
+    });
+
+    test('un pago validado que el coordinador devolvió es «devuelto», no «validado»', () {
+      final item = ItemDelHistorial.deDeposito(
+        _deposito(concepto: ConceptoDeDeposito.alquiler, validadoEn: _fecha, anuladoAt: _fecha),
+        ticket: _ticket(estado: EstadoDeTicket.validado, revisadoEn: _fecha),
+      );
+
+      expect(item.estado, EstadoDelItem.devuelto);
+      expect(item.validadoEn, isNull, reason: 'no se dice «se acreditó»');
+      expect(item.sePuedeCargarDeNuevo, isFalse);
+      expect(FiltroDeTickets.todos.acepta(item), isTrue, reason: 'la fila no sale del historial');
+      expect(FiltroDeTickets.alquiler.acepta(item), isTrue);
+      expect(FiltroDeTickets.porValidar.acepta(item), isFalse);
+      expect(FiltroDeTickets.rechazados.acepta(item), isFalse);
+    });
+
+    test('un depósito sin anular sigue validado', () {
+      final item = ItemDelHistorial.deDeposito(
+        _deposito(validadoEn: _fecha),
+        ticket: _ticket(estado: EstadoDeTicket.validado, revisadoEn: _fecha),
+      );
+
+      expect(item.estado, EstadoDelItem.validado);
     });
 
     test('rechazado gana sobre validado: ante la duda no se acredita', () {

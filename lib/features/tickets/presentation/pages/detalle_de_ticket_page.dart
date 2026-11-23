@@ -126,6 +126,7 @@ class _DetalleDeTicketPageState extends ConsumerState<DetalleDeTicketPage> {
         TipoDeAviso.info,
       ),
       EstadoDelItem.enCola => (TextosTickets.enColaDelDetalle, TipoDeAviso.sinConexion),
+      EstadoDelItem.devuelto => (TextosTickets.devueltoDelDetalle, TipoDeAviso.info),
     };
     return KeyedSubtree(
       key: Key('ticket_aviso_${item.estado.name}'),
