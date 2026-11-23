@@ -107,11 +107,7 @@ class DeudaCasaPage extends ConsumerWidget {
           const SliverToBoxAdapter(child: NotaDeLaDeuda(texto: TextosDeuda.saldosNoDanElTotal)),
         // Lo pagado de más del alquiler bajó esta deuda (decisión «Alquiler fav», 28/10, HU-CTA-007): la
         // pantalla dice de dónde viene ese descuento.
-        if (ref
-                .watch(alquilerDelColportorProvider(colportorId))
-                .asData
-                ?.value
-                .pagadoDeMasCentavos
+        if (ref.watch(alquilerDelColportorProvider(colportorId)).asData?.value.pagadoDeMasCentavos
             case final deMas? when deMas > 0)
           SliverToBoxAdapter(
             child: NotaDeLaDeuda(
