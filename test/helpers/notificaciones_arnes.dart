@@ -15,8 +15,10 @@ import 'package:colportores_mobile/features/agenda/presentation/providers/record
 import 'package:colportores_mobile/features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/auth_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
+import 'package:colportores_mobile/features/notificaciones/data/repositories/avisos_del_servidor_repository_impl.dart';
 import 'package:colportores_mobile/features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
 import 'package:colportores_mobile/features/notificaciones/data/repositories/preferencias_recordatorios_repository_impl.dart';
+import 'package:colportores_mobile/features/notificaciones/presentation/providers/avisos_del_servidor_providers.dart';
 import 'package:colportores_mobile/features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'package:colportores_mobile/features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
@@ -47,7 +49,11 @@ final class Telefono {
   final recordatorios = RecordatoriosEnMemoria();
   final agendas = AgendasParaRecordarEnMemoria();
 
+  /// Los avisos que manda el servidor (HU-NOT-004, sección AVISOS): lo que hay en `usuario.notif_preferences`.
+  final avisos = AvisosDelServidorEnMemoria();
+
   List<Override> get overrides => [
+    avisosDelServidorRepositoryProvider.overrideWithValue(avisos),
     preferenciasRecordatoriosRepositoryProvider.overrideWithValue(preferencias),
     recordatoriosProvider.overrideWithValue(recordatorios),
     agendasParaRecordarProvider.overrideWithValue(agendas),
