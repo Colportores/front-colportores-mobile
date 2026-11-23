@@ -6,6 +6,7 @@ import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/avisos_del_servidor.dart';
 import 'aviso_notificaciones.dart';
 import 'preferencias_recordatorios_widgets.dart';
+import 'renglon_con_par_al_final.dart';
 
 /// Abre el selector de hora del sistema (24 h) en [actual] y devuelve la hora elegida, o `null` si se
 /// cerró sin elegir.
@@ -83,42 +84,53 @@ class _FilaHoraDelAvisoState extends State<FilaHoraDelAviso> {
           constraints: const BoxConstraints(minHeight: 56),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            // `Wrap` y no `Row`: con el texto al 200 % el título y la hora no entran en un renglón.
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              runSpacing: 4,
-              children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 240),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.titulo,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: habilitada ? null : colores.gris,
-                        ),
-                      ),
-                      Text(
-                        widget.detalle,
-                        style: theme.textTheme.bodySmall?.copyWith(color: colores.gris),
-                      ),
-                    ],
+            // Ni `Row` ni `Wrap`: con el texto al 200 % el título y la hora no entran en un renglón y
+            // la hora con su `›` baja entera, a la derecha y sin recorte.
+            child: RenglonConParAlFinal(
+              anchoMaximoDelTitulo: 240,
+              titulo: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.titulo,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: habilitada ? null : colores.gris,
+                    ),
                   ),
-                ),
-                Text(
-                  widget.hora.texto,
-                  key: widget.valorKey,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontFamily: 'JetBrainsMono',
-                    fontWeight: FontWeight.w500,
-                    color: habilitada ? theme.colorScheme.primary : colores.gris,
+                  Text(
+                    widget.detalle,
+                    style: theme.textTheme.bodySmall?.copyWith(color: colores.gris),
                   ),
-                ),
-              ],
+                ],
+              ),
+              par: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // `Flexible`: con una letra muy grande en un teléfono chico la hora se parte antes
+                  // que salirse de la fila.
+                  Flexible(
+                    child: Text(
+                      widget.hora.texto,
+                      key: widget.valorKey,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontFamily: 'JetBrainsMono',
+                        fontWeight: FontWeight.w500,
+                        color: habilitada ? theme.colorScheme.primary : colores.gris,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // La flecha dice «esto se toca» (como las filas de 24D·01); la lee el botón entero.
+                  ExcludeSemantics(
+                    child: Text(
+                      '›',
+                      key: const Key('hora_del_aviso_flecha'),
+                      style: theme.textTheme.titleLarge?.copyWith(color: colores.gris),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

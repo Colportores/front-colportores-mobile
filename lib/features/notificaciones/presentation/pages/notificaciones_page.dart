@@ -115,9 +115,11 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
 
   Future<void> _cambiarActivados({required bool activados}) async {
     final mensajero = ScaffoldMessenger.of(context);
+    // El teléfono guarda el interruptor y el servidor recibe su copia desde el notificador de los
+    // avisos, que sigue vivo aunque la persona salga de la pantalla mientras tanto.
     await ref
-        .read(preferenciasRecordatoriosProvider.notifier)
-        .cambiarActivados(activados: activados);
+        .read(avisosDelServidorProvider.notifier)
+        .cambiarRecordatoriosDeAgenda(activados: activados);
     // Con los recordatorios apagados no se avisa nada: el aviso de la anticipación («te avisamos 35
     // min antes») que sigue a la vista contradiría al aviso fijo de 24B·02 (#155).
     // Si la persona salió de la pantalla mientras se guardaba no se puede leer el estado (`ref`): vale
@@ -126,13 +128,6 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
         ? ref.read(preferenciasRecordatoriosProvider).value?.preferencias.activados == false
         : !activados;
     if (apagados) mensajero.clearSnackBars();
-    // El servidor guarda una copia del interruptor (para no mandar «Mañana tenés visitas» con los
-    // recordatorios apagados): se la sincroniza en silencio con lo que quedó en el teléfono.
-    if (!mounted) return;
-    final quedo = ref.read(preferenciasRecordatoriosProvider).value?.preferencias.activados;
-    if (quedo != null) {
-      unawaited(ref.read(avisosDelServidorProvider.notifier).sincronizarAgenda(activados: quedo));
-    }
   }
 
   /// Guarda la anticipación y, si se guardó, avisa a cuántos recordatorios les tocó la hora nueva.
@@ -326,9 +321,10 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
       pedido.horaAgenda != actual.horaAgenda,
     ].where((cambio) => cambio).length;
     if (interruptores + horas > 1) return TextosNotificaciones.errorAlGuardarVarios;
-    return horas == 1
-        ? TextosNotificaciones.errorAlGuardarHora
-        : TextosNotificaciones.errorAlGuardar;
+    if (horas == 0) return TextosNotificaciones.errorAlGuardar;
+    return TextosNotificaciones.errorAlGuardarHora(
+      pedido.horaCuota != actual.horaCuota ? HoraDeAviso.cuotas : HoraDeAviso.visitasDeManana,
+    );
   }
 
   /// La sección AVISOS (grupo B, #516): los avisos que manda el servidor. Cargando (24B·05), error al
