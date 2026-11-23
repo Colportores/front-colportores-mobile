@@ -172,6 +172,79 @@ void main() {
     },
   );
 
+  /// El ticket `t-<n>` del último depósito de banco, como queda después de un pull.
+  Future<void> ticketDelUltimo(String estado, {String? motivo}) => db.customStatement(
+    'INSERT INTO ticket (id, tipo, estado, motivo_rechazo, created_at, updated_at) '
+    "VALUES ('t-$n', 'DEPOSITO', '$estado', ${motivo == null ? 'NULL' : "'$motivo'"}, 1, 1)",
+  );
+
+  test(
+    'dado un depósito de banco cuyo ticket rechazó el coordinador, cuando se lee, sale «rechazado» '
+    'con su motivo y no cuenta como «por validar»',
+    () async {
+      await campania('c-1', monto: 1000000);
+      await inscripcion('c-1');
+      await pago('c-1', 150000, destino: 'BANCO');
+      await ticketDelUltimo('RECHAZADO', motivo: 'la foto no se lee');
+      await pago('c-1', 200000, destino: 'OFICINA');
+      await ticketDelUltimo('PENDIENTE');
+      await pago('c-1', 300000, destino: 'BANCO', validado: true);
+      await ticketDelUltimo('VALIDADO');
+
+      final c = (await fuente.leer('col-1')).campanias.single;
+
+      expect(c.porValidarCentavos, 200000);
+      expect(c.pagadoCentavos, 300000);
+      expect(c.saldoCentavos, 700000);
+      final rechazado = c.pagos.singleWhere((p) => p.estado == EstadoDePagoDeAlquiler.rechazado);
+      expect(rechazado.montoCentavos, 150000);
+      expect(rechazado.motivoDelRechazo, 'la foto no se lee');
+    },
+  );
+
+  test(
+    'un ticket rechazado sin motivo no inventa uno, y un depósito ya validado no se rechaza por su '
+    'ticket',
+    () async {
+      await campania('c-1', monto: 1000000);
+      await inscripcion('c-1');
+      await pago('c-1', 150000, destino: 'BANCO');
+      await ticketDelUltimo('RECHAZADO');
+      await pago('c-1', 250000, destino: 'BANCO', validado: true);
+      await ticketDelUltimo('RECHAZADO');
+
+      final c = (await fuente.leer('col-1')).campanias.single;
+
+      expect(c.pagadoCentavos, 250000);
+      expect(c.porValidarCentavos, 0);
+      expect(c.pagos.where((p) => p.estado == EstadoDePagoDeAlquiler.rechazado), hasLength(1));
+      expect(
+        c.pagos.singleWhere((p) => p.estado == EstadoDePagoDeAlquiler.rechazado).motivoDelRechazo,
+        isNull,
+      );
+    },
+  );
+
+  test(
+    'cuando baja el rechazo del ticket, el Stream avisa y el pago deja de estar «por validar»',
+    () async {
+      await campania('c-1', monto: 1000000);
+      await inscripcion('c-1');
+      await pago('c-1', 150000, destino: 'BANCO');
+      await ticketDelUltimo('PENDIENTE');
+      final emitidos = <int>[];
+      final sub = fuente.observar('col-1').listen((a) => emitidos.add(a.porValidarCentavos));
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      await db.customStatement("UPDATE ticket SET estado = 'RECHAZADO'");
+      db.markTablesUpdated({db.tickets});
+      await pumpEventQueue();
+
+      expect(emitidos, [150000, 0]);
+    },
+  );
+
   test('dado depósitos de casa editora, sin campaña, de otra campaña o dados de baja, cuando se '
       'lee, no cuentan para esta campaña', () async {
     await campania('c-1', monto: 1000000);

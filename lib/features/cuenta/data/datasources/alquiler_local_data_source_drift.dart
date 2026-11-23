@@ -12,7 +12,8 @@ import '../../domain/entities/alquiler.dart';
 ///   deja de deber el alquiler, decisión «Alq. de baja», 27/10) y que cobran alquiler (`alquiler_monto`
 ///   mayor que 0; sin monto o en 0 la campaña no cobra). Las más nuevas primero.
 /// - **Pagos**: los depósitos vivos con concepto `ALQUILER` y esa `campania_id`. Cada uno tiene su
-///   estado por las columnas del servidor: un `anulado_at` lo deja «devuelto», un `rechazado_en`
+///   estado por las columnas del servidor: un `anulado_at` lo deja «devuelto», un `rechazado_en` (o,
+///   sin validar, su ticket `RECHAZADO`: el depósito de banco u oficina se rechaza con su ticket)
 ///   «rechazado» (ante la duda no se acredita, como [TotalesDeDepositosDrift]), un `validado_en`
 ///   «validado» y sin ninguna «por validar».
 /// - **Pagado de más**: no queda «a favor»: es lo que bajó la deuda con la casa editora (decisión del
@@ -26,6 +27,7 @@ final class AlquilerLocalDataSourceDrift {
     _db.campanias,
     _db.campaniasColportor,
     _db.depositos,
+    _db.tickets,
     _db.syncMetas,
   };
 
@@ -66,23 +68,34 @@ final class AlquilerLocalDataSourceDrift {
 
   /// Los pagos de alquiler de cada campaña, el más nuevo primero.
   Future<Map<String, List<PagoDeAlquiler>>> _pagosPorCampania() async {
+    // El depósito de banco u oficina se rechaza con su ticket (`ticket.estado = 'RECHAZADO'`), no con
+    // `rechazado_en` (esa marca es del retiro, 0152): sin el ticket quedaría «por validar» para siempre.
     final filas = await _db
         .customSelect(
-          'SELECT campania_id, monto, fecha, destino, validado_en, rechazado_en, anulado_at, '
-          'motivo_rechazo FROM deposito '
-          "WHERE deleted_at IS NULL AND concepto = 'ALQUILER' AND campania_id IS NOT NULL "
-          'ORDER BY fecha DESC, id DESC',
+          'SELECT d.campania_id AS campania_id, d.monto AS monto, d.fecha AS fecha, '
+          'd.destino AS destino, d.validado_en AS validado_en, d.rechazado_en AS rechazado_en, '
+          'd.anulado_at AS anulado_at, d.motivo_rechazo AS motivo_rechazo, '
+          't.estado AS ticket_estado, t.motivo_rechazo AS ticket_motivo FROM deposito d '
+          'LEFT JOIN ticket t ON t.id = d.ticket_id AND t.deleted_at IS NULL '
+          "WHERE d.deleted_at IS NULL AND d.concepto = 'ALQUILER' AND d.campania_id IS NOT NULL "
+          'ORDER BY d.fecha DESC, d.id DESC',
           readsFrom: _tablas,
         )
         .get();
     final porCampania = <String, List<PagoDeAlquiler>>{};
     for (final f in filas) {
+      final validado = f.readNullable<int>('validado_en') != null;
+      final ticketRechazado = !validado && f.readNullable<String>('ticket_estado') == 'RECHAZADO';
       final estado = _estado(
-        validado: f.readNullable<int>('validado_en') != null,
-        rechazado: f.readNullable<int>('rechazado_en') != null,
+        validado: validado,
+        rechazado: f.readNullable<int>('rechazado_en') != null || ticketRechazado,
         anulado: f.readNullable<int>('anulado_at') != null,
       );
-      final motivo = f.readNullable<String>('motivo_rechazo')?.trim();
+      final motivo =
+          (ticketRechazado
+                  ? f.readNullable<String>('ticket_motivo')
+                  : f.readNullable<String>('motivo_rechazo'))
+              ?.trim();
       (porCampania[f.read<String>('campania_id')] ??= []).add(
         PagoDeAlquiler(
           montoCentavos: f.read<int>('monto'),
