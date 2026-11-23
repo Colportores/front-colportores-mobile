@@ -27,8 +27,8 @@ abstract final class TerminosDeUso {
       'No pudimos abrir los términos. Podés leerlos en $direccionCorta';
 
   /// Botón del aviso: copia la dirección completa para pegarla en otro navegador o app.
-  static const String accionCopiar = 'Copiar';
+  static const String accionCopiar = 'Copiar dirección';
 
   /// Confirmación tras copiar la dirección.
-  static const String avisoCopiada = 'Dirección copiada.';
+  static const String avisoCopiada = 'Copiamos la dirección.';
 }

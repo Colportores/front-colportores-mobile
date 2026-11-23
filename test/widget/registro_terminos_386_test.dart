@@ -64,6 +64,7 @@ Future<void> _montar(
   required _MonitorFalso monitor,
   AuthRemoteDataSourceEnMemoria? remote,
   double escalaTexto = 1,
+  bool lector = false,
 }) => tester.pumpWidget(
   ProviderScope(
     overrides: [
@@ -78,7 +79,9 @@ Future<void> _montar(
     child: MaterialApp(
       theme: temaClaro(),
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(escalaTexto)),
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(escalaTexto), accessibleNavigation: lector),
         child: child!,
       ),
       home: Builder(
@@ -271,13 +274,49 @@ void main() {
       expect(find.byType(SelectableText), findsOneWidget);
       expect(find.text(_noSeAbrio), findsOneWidget);
 
-      await tester.tap(find.text('Copiar'));
+      await tester.tap(find.text('Copiar dirección'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
       expect(copiado, ['https://colportores.github.io/terminos/v1/']);
-      expect(find.text('Dirección copiada.'), findsOneWidget);
+      expect(find.text('Copiamos la dirección.'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('el aviso se cierra solo a los 12 s', (tester) async {
+      pantallaChica(tester);
+      abridor.resultado = false;
+      await _montar(tester, abridor: abridor, monitor: monitor);
+      await _entrarAlRegistro(tester);
+
+      await _tocarTerminos(tester);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(seconds: 5));
+      expect(find.text(_noSeAbrio), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 8));
+      await tester.pumpAndSettle();
+      expect(find.text(_noSeAbrio), findsNothing);
+    });
+
+    testWidgets('con lector de pantalla el aviso no se cierra solo y se cierra con la «x»', (
+      tester,
+    ) async {
+      pantallaChica(tester);
+      abridor.resultado = false;
+      await _montar(tester, abridor: abridor, monitor: monitor, lector: true);
+      await _entrarAlRegistro(tester);
+
+      await _tocarTerminos(tester);
+      await tester.pump(const Duration(seconds: 60));
+
+      expect(find.text(_noSeAbrio), findsOneWidget);
+      expect(find.byIcon(Icons.close), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_noSeAbrio), findsNothing);
     });
 
     testWidgets('el aviso largo con el texto al 200 % se lee entero y sin desborde', (
@@ -293,7 +332,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
 
       expect(find.text(_noSeAbrio), findsOneWidget);
-      expect(find.text('Copiar'), findsOneWidget);
+      expect(find.text('Copiar dirección'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 

@@ -145,12 +145,12 @@ void main() {
       await montar386(tester, tamanio: const Size(412, 915), abridor: abridor, monitor: monitor);
       await tocarEnlace386(tester);
 
-      await tester.tap(find.text('Copiar'));
+      await tester.tap(find.text('Copiar dirección'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
       expect(copiados, ['https://colportores.github.io/terminos/v1/']);
-      expect(find.text('Dirección copiada.'), findsOneWidget);
+      expect(find.text('Copiamos la dirección.'), findsOneWidget);
       expect(find.text(avisoDecidido386), findsNothing);
     });
 
@@ -180,18 +180,18 @@ void main() {
             );
             await tocarEnlace386(tester);
 
-            expect(find.text('Copiar'), findsOneWidget);
-            final boton = tester.getRect(find.text('Copiar'));
+            expect(find.text('Copiar dirección'), findsOneWidget);
+            final boton = tester.getRect(find.text('Copiar dirección'));
             final pantalla = Offset.zero & tam;
             expect(
               pantalla.contains(boton.topLeft) && pantalla.contains(boton.bottomRight),
               isTrue,
             );
             expect(tester.takeException(), isNull);
-            await tester.tap(find.text('Copiar'));
+            await tester.tap(find.text('Copiar dirección'));
             await tester.pump();
             await tester.pump(const Duration(milliseconds: 400));
-            expect(find.text('Dirección copiada.'), findsOneWidget);
+            expect(find.text('Copiamos la dirección.'), findsOneWidget);
           },
         );
       }

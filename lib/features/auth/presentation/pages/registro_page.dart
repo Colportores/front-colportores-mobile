@@ -305,24 +305,42 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
     }
   }
 
-  /// El aviso de «no se pudo abrir»: la dirección se puede seleccionar y tiene «Copiar». Dura más
-  /// que un aviso común: hay que leerla y tocar.
+  /// El aviso de «no se pudo abrir»: la dirección se puede seleccionar y trae «Copiar dirección»
+  /// (decisión del 23/11, regla R6: el gesto a mano). El botón va dentro del contenido, debajo del
+  /// texto: a 200 % una acción al costado dejaría la dirección en una columna angosta. Con lector de
+  /// pantalla o con foco de teclado el aviso no se cierra solo (AA): se cierra con la «x» o al copiar.
   void _avisarTerminosSinNavegador() {
     final mensajero = ScaffoldMessenger.of(context);
+    final colores = Theme.of(context).colorScheme;
+    final sinCierreAutomatico =
+        MediaQuery.accessibleNavigationOf(context) ||
+        FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
     mensajero
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           duration: const Duration(seconds: 12),
-          content: SelectableText(TerminosDeUso.avisoNoSeAbrio),
-          action: SnackBarAction(
-            label: TerminosDeUso.accionCopiar,
-            onPressed: () {
-              unawaited(Clipboard.setData(ClipboardData(text: TerminosDeUso.direccion.toString())));
-              mensajero
-                ..hideCurrentSnackBar()
-                ..showSnackBar(const SnackBar(content: Text(TerminosDeUso.avisoCopiada)));
-            },
+          persist: sinCierreAutomatico,
+          showCloseIcon: sinCierreAutomatico,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SelectableText(TerminosDeUso.avisoNoSeAbrio),
+              TextButton(
+                key: const Key('registro_terminos_copiar'),
+                style: TextButton.styleFrom(foregroundColor: colores.inversePrimary),
+                onPressed: () {
+                  unawaited(
+                    Clipboard.setData(ClipboardData(text: TerminosDeUso.direccion.toString())),
+                  );
+                  mensajero
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(const SnackBar(content: Text(TerminosDeUso.avisoCopiada)));
+                },
+                child: const Text(TerminosDeUso.accionCopiar),
+              ),
+            ],
           ),
         ),
       );

@@ -51,7 +51,7 @@ void main() {
           abridor.resultado = false;
           await montar386(tester, tamanio: tam, abridor: abridor, monitor: monitor, escala: escala);
           await tocarEnlace386(tester);
-          expect(find.text('Copiar'), findsOneWidget);
+          expect(find.text('Copiar dirección'), findsOneWidget);
           await tester.drag(find.byType(Scrollable).first, const Offset(0, 5000));
           await tester.pump();
 
