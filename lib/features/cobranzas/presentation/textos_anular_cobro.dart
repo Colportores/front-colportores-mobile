@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import '../../agenda/presentation/formato_agendar_visita.dart';
+import '../../ventas/domain/entities/venta_para_devolver.dart' show CuentaDeLaVenta;
 import '../domain/entities/cobranza.dart';
 import '../domain/entities/detalle_del_cobro.dart';
 import 'textos_medio_de_cobro.dart';
@@ -122,10 +125,15 @@ abstract final class FormatoAnulacion {
   static DateTime aMontevideo(DateTime instante) =>
       instante.toUtc().subtract(const Duration(hours: 3));
 
-  /// El saldo de la venta una vez anulado [cobro]: lo que debía sumado a ese cobro, sin pasar del total.
+  /// El saldo de la venta una vez anulado el cobro de [detalle]: la cuenta de la venta (con sus
+  /// devoluciones, HU-VEN-004) sin lo que valía ese cobro; es lo que mostrará 30B-05 después.
   static int saldoSinElCobro(DetalleDelCobro detalle) {
-    final saldo = detalle.venta.saldoCentavos + detalle.cobranza.montoCentavos;
-    final total = detalle.venta.montoTotalCentavos;
-    return saldo > total ? total : saldo;
+    final venta = detalle.venta;
+    final cobradoSinElCobro = math.max(0, venta.cobradoCentavos - detalle.cobranza.montoCentavos);
+    return CuentaDeLaVenta(
+      montoTotalCentavos: venta.montoTotalCentavos,
+      cobradoCentavos: cobradoSinElCobro,
+      devueltoCentavos: venta.devueltoCentavos,
+    ).saldoCentavos;
   }
 }

@@ -57,7 +57,9 @@ final class AnularCobroUseCase implements UseCase<AnulacionHecha, AnularCobroPar
     String? justificacion;
     if (motivo == MotivoDeAnulacion.otro) {
       justificacion = RegistrarCobroUseCase.limpiar(params.justificacion);
-      if (justificacion == null || justificacion.length > maximoJustificacion) {
+      // En puntos de código (`runes`), la misma medida del campo (`LimitarPuntosDeCodigo`): con
+      // `String.length` (UTF-16) lo que el campo deja escribir (101 a 200 emoji) se rechazaría.
+      if (justificacion == null || justificacion.runes.length > maximoJustificacion) {
         return const Left(FailureAnulacionSinMotivo());
       }
     }

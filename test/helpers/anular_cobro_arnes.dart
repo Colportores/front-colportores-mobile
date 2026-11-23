@@ -31,6 +31,8 @@ DetalleDelCobro detalleDeEjemplo({
   DateTime? fecha,
   MedioCobranza medio = MedioCobranza.efectivo,
   int cobrado = 390000,
+  int devuelto = 0,
+  int montoTotal = 450000,
   String? cliente = 'María Fernández',
   DateTime? anuladoAt,
   MotivoDeAnulacion? motivo,
@@ -51,8 +53,9 @@ DetalleDelCobro detalleDeEjemplo({
       ventaId: 'v-42',
       numeroTalonario: '0042',
       fecha: DateTime.utc(2026, 10, 12, 15),
-      montoTotalCentavos: 450000,
+      montoTotalCentavos: montoTotal,
       cobradoCentavos: cobrado,
+      devueltoCentavos: devuelto,
     ),
     cliente: cliente,
   );
@@ -142,6 +145,7 @@ final class AnulacionesEnMemoria implements AnulacionDeCobroRepository {
         fecha: actual.venta.fecha,
         montoTotalCentavos: actual.venta.montoTotalCentavos,
         cobradoCentavos: actual.venta.cobradoCentavos - c.montoCentavos,
+        devueltoCentavos: actual.venta.devueltoCentavos,
       ),
       cliente: actual.cliente,
     );

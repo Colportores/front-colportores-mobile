@@ -235,6 +235,38 @@ void main() {
       expect(a.repo.recibidos, isEmpty, reason: 'hasta el «Sí» no se anula nada');
     });
 
+    testWidgets('con devolución total, el saldo que dice es el real (la cuenta de la venta)', (
+      tester,
+    ) async {
+      // Venta de $ 1.000, un único cobro de $ 500 y devolución total: tras anular no debe nada.
+      final repo = AnulacionesEnMemoria(
+        cobros: [
+          detalleDeEjemplo(monto: 50000, cobrado: 50000, montoTotal: 100000, devuelto: 100000),
+        ],
+      );
+      await montarDetalleDelCobro(tester, repo: repo);
+      await irAAnular(tester, m: MotivoDeAnulacion.montoEquivocado);
+      await tocar(tester, botonPrincipal);
+
+      expect(textoDe('anular_cobro_confirmar_texto'), contains(r'vuelve a $ 0 y'));
+    });
+
+    testWidgets('con devolución parcial, el saldo es lo que se queda menos lo pagado sin el cobro', (
+      tester,
+    ) async {
+      // Venta de $ 1.000, cobro de $ 500, devolución de $ 600: se queda con $ 400 y, sin el cobro, los debe.
+      final repo = AnulacionesEnMemoria(
+        cobros: [
+          detalleDeEjemplo(monto: 50000, cobrado: 50000, montoTotal: 100000, devuelto: 60000),
+        ],
+      );
+      await montarDetalleDelCobro(tester, repo: repo);
+      await irAAnular(tester, m: MotivoDeAnulacion.montoEquivocado);
+      await tocar(tester, botonPrincipal);
+
+      expect(textoDe('anular_cobro_confirmar_texto'), contains(r'vuelve a $ 400 y'));
+    });
+
     testWidgets('con tarjeta, lo que se resta es del dinero depositado', (tester) async {
       await montarDetalleDelCobro(
         tester,
