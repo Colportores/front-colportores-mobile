@@ -18,8 +18,6 @@ import '../helpers/notificaciones_arnes.dart';
 import '../helpers/qa_hojas_teclado_324_arnes.dart' show cargarTipografias;
 import '../helpers/qa_vista24_alarmas_510_arnes.dart';
 
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 /// Los estados en los que el aviso tiene que estar.
 const _conAviso = {
   Estado617.avisoSolo,
@@ -293,11 +291,7 @@ void main() {
     });
   });
 
-  // skip: QA #510 (PR #617) — el aviso de «No pudimos abrir los ajustes» de un intento viejo
-  // (`_alarmasNoAbren` en `NotificacionesPage`) queda en el estado de la página y reaparece cuando el
-  // aviso vuelve (permiso prendido y quitado, o «Recordatorios de agenda» apagados y prendidos), sin
-  // que la persona haya tocado «Abrir ajustes» de nuevo.
-  group('hallazgos', () {
+  group('hallazgos arreglados (#626)', () {
     testWidgets('el «No pudimos abrir los ajustes» de antes no reaparece cuando el aviso vuelve '
         '(permiso prendido y quitado)', (tester) async {
       final t = telefono617();
@@ -319,7 +313,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(avisoAlarmas, findsOneWidget);
       expect(noAbrenAlarmas, findsNothing);
-    }, skip: !_conHallazgos);
+    });
 
     testWidgets('el «No pudimos abrir los ajustes» de antes no reaparece al apagar y prender '
         '«Recordatorios de agenda»', (tester) async {
@@ -337,7 +331,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(avisoAlarmas, findsOneWidget);
       expect(noAbrenAlarmas, findsNothing);
-    }, skip: !_conHallazgos);
+    });
   });
 
   group('la app entera', () {

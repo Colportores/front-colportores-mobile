@@ -237,8 +237,10 @@ class AvisoSinConexionCuenta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Región viva: «Sin conexión…» se anuncia al lector cuando aparece, como el error de 33A·05 (QA #596).
     return Semantics(
       container: true,
+      liveRegion: true,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),

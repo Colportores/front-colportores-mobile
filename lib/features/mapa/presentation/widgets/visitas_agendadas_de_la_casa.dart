@@ -25,6 +25,14 @@ abstract final class ClavesVisitasAgendadas {
   static const cambiar = Key('visitas_agendadas_cambiar');
 }
 
+/// La guarda de «un solo destino abierto a la vez» de la hoja de la casa: la comparten los botones de la
+/// hoja («Registrar visita», «+ Agendar», cobrar…) y las filas de «Visitas agendadas», para que tocar
+/// una fila y «+ Agendar» a la vez no abra dos destinos (QA #491). Es un campo y no estado de la UI:
+/// corta el segundo toque aunque llegue antes de volver a dibujar.
+class GuardaDeDestino {
+  bool ocupada = false;
+}
+
 /// «VISITAS AGENDADAS» de la hoja de la casa (vista 23, 23B·10 «En el mapa: tocar la casa»): las
 /// visitas `PROGRAMADA` de la casa —la entrevista del jueves, la cobranza del sábado—, de la más
 /// temprana a la más tardía, no solo la próxima. Es la misma lista de la Agenda filtrada por esa casa;
@@ -48,12 +56,16 @@ class VisitasAgendadasDeLaCasa extends ConsumerStatefulWidget {
     required this.colportorId,
     required this.ubicacionId,
     required this.ahora,
+    this.guarda,
     this.espacioId,
   });
 
   final String colportorId;
   final String ubicacionId;
   final DateTime ahora;
+
+  /// La guarda que comparte con los botones de la hoja; `null` = solo la de sus propias filas.
+  final GuardaDeDestino? guarda;
 
   /// Con un depto elegido (vista 39, C·10) solo las de ese depto; `null` = todas las de la casa.
   final String? espacioId;
@@ -92,8 +104,10 @@ class _VisitasAgendadasDeLaCasaState extends ConsumerState<VisitasAgendadasDeLaC
   }
 
   Future<void> _abrir(FutureOr<Object?> Function(String) destino, String agendaId) async {
-    if (_abriendo) return;
+    final guarda = widget.guarda;
+    if (_abriendo || (guarda?.ocupada ?? false)) return;
     _abriendo = true;
+    guarda?.ocupada = true;
     final mensajero = ScaffoldMessenger.maybeOf(context);
     try {
       await destino(agendaId);
@@ -102,6 +116,7 @@ class _VisitasAgendadasDeLaCasaState extends ConsumerState<VisitasAgendadasDeLaC
       mensajero?.showSnackBar(const SnackBar(content: Text(TextosAgenda.noPudimosAbrir)));
     } finally {
       _abriendo = false;
+      guarda?.ocupada = false;
     }
   }
 
