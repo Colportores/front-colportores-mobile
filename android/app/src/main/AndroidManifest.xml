@@ -123,5 +123,11 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- url_launcher: abrir una página https en el navegador (términos de uso, #386); sin esto,
+             en Android 11+ el sistema oculta los navegadores a la app. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>

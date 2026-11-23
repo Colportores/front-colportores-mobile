@@ -32,6 +32,7 @@ void main() {
           cedula: '12345678',
           email: 'bruno@example.com',
           password: 'Secreto123',
+          terminosVersion: 'v1',
         );
 
         final resultado = await repository.iniciarSesion(

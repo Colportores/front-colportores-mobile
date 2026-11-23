@@ -5,12 +5,16 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../domain/entities/politica_password.dart';
 import '../../domain/entities/resultado_registro.dart';
+import '../../domain/entities/terminos_de_uso.dart';
 import '../../domain/usecases/bloqueo_reenvio_verificacion_use_cases.dart';
+import '../providers/abridor_de_pagina_providers.dart';
 import '../providers/auth_providers.dart';
 import '../providers/sesion_notifier.dart';
 import '../widgets/banner_error_con_accion.dart';
@@ -71,6 +75,9 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
   bool _aceptaTerminos = false;
   bool _aceptaTradeOffE2E = false;
 
+  /// `true` mientras se abre la página de los términos: un segundo toque no abre otra.
+  bool _abriendoTerminos = false;
+
   /// `true` mientras la contraseña tipeada pasa los 72 bytes que acepta Supabase Auth: el campo lo
   /// dice y «Continuar» queda deshabilitado (nunca se recorta lo que escribió).
   bool _passwordDemasiadoLarga = false;
@@ -87,7 +94,7 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
   @override
   void initState() {
     super.initState();
-    _terminosRecognizer = TapGestureRecognizer()..onTap = _proximamente;
+    _terminosRecognizer = TapGestureRecognizer()..onTap = _abrirTerminos;
     _password.addListener(_alCambiarPassword);
   }
 
@@ -258,10 +265,49 @@ class _RegistroPageState extends ConsumerState<RegistroPage> {
     );
   }
 
-  void _proximamente() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Disponible próximamente')));
+  /// «términos de uso»: abre en el navegador la página de la versión vigente (decisión «Términos»,
+  /// 07/10). Sin conexión avisa y no abre; si la apertura falla (sin navegador, rechazo del sistema
+  /// o una excepción de la plataforma) también avisa. En todos los casos el toque queda libre para
+  /// reintentar.
+  Future<void> _abrirTerminos() async {
+    if (_abriendoTerminos) return;
+    _abriendoTerminos = true;
+    // Un aviso de un intento anterior no queda a la vista mientras se abre la página.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    try {
+      final conexion = await _conexionDeAhora();
+      if (!mounted) return;
+      if (conexion == TipoConexion.sinConexion) {
+        _avisarTerminos(TerminosDeUso.avisoSinConexion);
+        return;
+      }
+      var abierta = false;
+      try {
+        abierta = await ref.read(abridorDePaginaProvider).abrir(TerminosDeUso.direccion);
+      } on Object {
+        abierta = false;
+      }
+      if (!mounted) return;
+      if (!abierta) _avisarTerminos(TerminosDeUso.avisoNoSeAbrio);
+    } finally {
+      _abriendoTerminos = false;
+    }
+  }
+
+  /// La conexión de ahora, o `null` si no se pudo leer: no se afirma que falta y se intenta abrir
+  /// (el navegador dice lo suyo si de verdad no hay red).
+  Future<TipoConexion?> _conexionDeAhora() async {
+    try {
+      return await ref.read(monitorConectividadProvider).actual();
+    } on Object {
+      return null;
+    }
+  }
+
+  void _avisarTerminos(String texto) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(texto)));
   }
 
   @override
