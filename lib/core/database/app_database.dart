@@ -190,10 +190,13 @@ class AppDatabase extends _$AppDatabase {
   ///   `pais`, la réplica del catálogo de países que el contrato lista como `pull` (P1 de #181).
   /// - 38: `cobranza` suma `anulado_at` y `motivo_anulacion`, la marca de anulado que sube con el cobro
   ///   (backend-supabase 0072, HU-COB-006, #422).
+  /// - 39: `campania.alquiler_monto` (lo que cobra la campaña de alquiler) y `deposito.anulado_at` (el
+  ///   pago de alquiler devuelto), que bajan por el pull: de ahí sale el saldo de «Mi alquiler»
+  ///   (backend-supabase 0114 y 0167, HU-CTA-007, #389).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 38;
+  static const int versionEsquema = 39;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -540,6 +543,15 @@ class AppDatabase extends _$AppDatabase {
     from37To38: (m, esquema) async {
       await m.addColumn(esquema.cobranza, esquema.cobranza.anuladoAt);
       await m.addColumn(esquema.cobranza, esquema.cobranza.motivoAnulacion);
+    },
+    // Suma `campania.alquiler_monto` y `deposito.anulado_at`, vacías: ninguna campaña ni depósito que ya
+    // estaba cambia ni se encola al migrar. Hasta que el pull las traiga, una campaña sin monto se lee
+    // como «no cobra alquiler» (ante la duda no se inventa una deuda) y ningún depósito está anulado. El
+    // servidor sube la versión de la fila al cambiar el monto o devolver el pago, así que el próximo
+    // pull las completa (agregar la columna no mueve el cursor del delta, como en el esquema 18).
+    from38To39: (m, esquema) async {
+      await m.addColumn(esquema.campania, esquema.campania.alquilerMonto);
+      await m.addColumn(esquema.deposito, esquema.deposito.anuladoAt);
     },
   );
 }
