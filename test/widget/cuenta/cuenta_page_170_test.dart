@@ -28,16 +28,15 @@ void main() {
     });
 
     testWidgets(
-      'en V1 no se dibuja nada de lo V2 ni lo que no lleva a ningún lado: de las acciones '
-      'solo «Registrar depósito» (HU-CTA-004, #443); ni enlaces, ni previews, ni «Próximamente»',
+      'no se dibuja nada de lo que no lleva a ningún lado: de las acciones «Registrar depósito» '
+      '(HU-CTA-004, #443) y «+ Hacer un pedido» (HU-STK-009, #387), y el enlace «Mis pedidos»; ni '
+      'previews, ni «Próximamente»',
       (tester) async {
         await montarCuenta(tester, RepositorioDeCuentaControlable(inicial: resumenDelCanvas));
 
         for (final texto in [
           'DEPOSITADO',
-          '+ Hacer un pedido',
           'Cargar ticket',
-          'Mis pedidos',
           'Mis tickets',
           'Alquiler',
           'Stock y beca',
@@ -49,11 +48,14 @@ void main() {
           expect(find.textContaining(texto), findsNothing, reason: texto);
         }
         // Lo que se toca: tres tarjetas, la deuda con la casa editora (33B, HU-CTA-002) y las dos que abren
-        // su detalle en «Mi plata» (HU-CTA-003), y «Registrar depósito» (33A·01 ACCIONES, HU-CTA-004);
+        // su detalle en «Mi plata» (HU-CTA-003), «Mis pedidos» (37B, HU-STK-009) y las dos acciones de
+        // «ACCIONES»: «+ Hacer un pedido» (37A) y «Registrar depósito» (33A·01, HU-CTA-004);
         // «Depositado» no se dibuja hasta la primera bajada.
         expect(find.text('›'), findsNWidgets(3));
-        expect(find.byType(InkWell), findsNWidgets(4));
+        expect(find.byType(InkWell), findsNWidgets(6));
         expect(find.text('Registrar depósito'), findsOneWidget);
+        expect(find.text('+ Hacer un pedido'), findsOneWidget);
+        expect(find.text('Mis pedidos'), findsOneWidget);
         expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
       },
     );

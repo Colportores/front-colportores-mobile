@@ -33,6 +33,13 @@ class Campanias extends Table {
 
   TextColumn get createdBy => text().nullable()();
 
+  /// El límite de deuda de la campaña (`campania.limite_deuda`, backend-supabase 0120, decisión de
+  /// Cristian, 25/10, «Límite ped.»), en **centavos**; `null` = la campaña no tiene límite (o todavía no
+  /// bajó del servidor). Es uno por campaña, el mismo para todos sus colportores. Baja en el pull para que
+  /// la app avise sin conexión al armar un pedido (HU-STK-009): solo avisa, no bloquea. Va al final porque
+  /// llegó con la versión 40 del esquema (`ALTER TABLE … ADD COLUMN`).
+  IntColumn get limiteDeuda => integer().nullable()();
+
   /// Soft delete: una campaña dada de baja no cuenta como vigente ni por empezar.
   IntColumn get deletedAt => integer().nullable().map(const FechaUtcConverter())();
 

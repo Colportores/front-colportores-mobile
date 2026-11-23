@@ -8,6 +8,10 @@ import '../../../depositos/presentation/pages/registrar_deposito_page.dart';
 import '../../../depositos/presentation/providers/depositos_providers.dart'
     show ticketsDeDepositoRechazadosProvider, ticketsDeDepositoSinSubirProvider;
 import '../../../depositos/presentation/widgets/aviso_tickets_sin_subir.dart';
+import '../../../pedidos/presentation/pages/mis_pedidos_page.dart';
+import '../../../pedidos/presentation/pages/pedir_pedido_page.dart';
+import '../../../pedidos/presentation/textos_pedidos.dart';
+import '../../../pedidos/presentation/widgets/enlace_a_mis_pedidos.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../domain/entities/resumen_de_cuenta.dart';
 import '../providers/cuenta_providers.dart';
@@ -75,6 +79,19 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       await RegistrarDepositoPage.abrir(context, colportorId: widget.colportorId);
     } finally {
       _abriendoDeposito = false;
+    }
+  }
+
+  /// Ya se está abriendo «Nuevo pedido» o «Mis pedidos».
+  var _abriendoPedido = false;
+
+  Future<void> _abrirPedido(Future<void> Function() abrir) async {
+    if (_abriendoPedido) return;
+    _abriendoPedido = true;
+    try {
+      await abrir();
+    } finally {
+      _abriendoPedido = false;
     }
   }
 
@@ -169,8 +186,26 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                       alAbrir: () => _abrir(tipo),
                       cifra: cifra,
                     ),
+                // «Mis pedidos · N por autorizar ›» (33A·01, HU-STK-009).
+                EnlaceAMisPedidos(
+                  colportorId: widget.colportorId,
+                  alAbrir: () => unawaited(
+                    _abrirPedido(
+                      () => MisPedidosPage.abrir(context, colportorId: widget.colportorId),
+                    ),
+                  ),
+                ),
                 AccionesDeCuenta(
                   acciones: [
+                    AccionDeCuenta(
+                      texto: TextosPedidos.hacerUnPedido,
+                      clave: const Key('cuenta_hacer_un_pedido'),
+                      alTocar: () => unawaited(
+                        _abrirPedido(
+                          () => PedirPedidoPage.abrir(context, colportorId: widget.colportorId),
+                        ),
+                      ),
+                    ),
                     AccionDeCuenta(
                       texto: TextosCuenta.registrarDeposito,
                       clave: const Key('cuenta_registrar_deposito'),
