@@ -33,6 +33,7 @@ final class DetalleDeMiPlataLocalDataSourceDrift {
     _db.cobranzas,
     _db.devoluciones,
     _db.depositos,
+    _db.tickets,
     _db.syncMetas,
     _db.espacioPersonas,
     _db.espacios,

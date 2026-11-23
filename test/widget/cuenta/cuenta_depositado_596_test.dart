@@ -183,9 +183,11 @@ void main() {
         );
       }
       expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
-      expect(find.text('›'), findsNWidgets(4));
-      // Más «Registrar depósito» de ACCIONES (HU-CTA-004, #443).
-      expect(find.byType(InkWell), findsNWidgets(5));
+      // Más la fila «Mis tickets» (#388), que también lleva «›».
+      expect(find.text('›'), findsNWidgets(5));
+      // Más «Cargar ticket» y «Registrar depósito» de ACCIONES (vista 38 y HU-CTA-004, #443) y la fila
+      // «Mis tickets» (#388).
+      expect(find.byType(InkWell), findsNWidgets(7));
     });
   });
 

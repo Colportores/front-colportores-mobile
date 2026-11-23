@@ -8,6 +8,9 @@ import '../../../depositos/presentation/pages/registrar_deposito_page.dart';
 import '../../../depositos/presentation/providers/depositos_providers.dart'
     show ticketsDeDepositoRechazadosProvider, ticketsDeDepositoSinSubirProvider;
 import '../../../depositos/presentation/widgets/aviso_tickets_sin_subir.dart';
+import '../../../tickets/presentation/pages/historial_de_tickets_page.dart';
+import '../../../tickets/presentation/providers/tickets_providers.dart'
+    show historialDeTicketsProvider;
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../domain/entities/resumen_de_cuenta.dart';
 import '../providers/cuenta_providers.dart';
@@ -35,7 +38,8 @@ import 'mi_plata_page.dart';
 /// teléfono con lo que bajó con la sincronización (HU-CTA-002, #671): se muestra con la hora de esa bajada y
 /// su toque abre el detalle por pedido (33B).
 /// Las tres cifras se tocan y abren su detalle en «Mi plata» (HU-CTA-003, 33C). Debajo, «ACCIONES» con
-/// «Registrar depósito» (HU-CTA-004, vista 33 D).
+/// «Cargar ticket» y «Registrar depósito» (HU-CTA-004, vistas 38 A y 33 D) y la fila «Mis tickets»
+/// (HU-COB-009, vista 38B).
 class CuentaPage extends ConsumerStatefulWidget {
   const CuentaPage({super.key, required this.colportorId, this.activa = true});
 
@@ -77,6 +81,19 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       await RegistrarDepositoPage.abrir(context, colportorId: widget.colportorId);
     } finally {
       _abriendoDeposito = false;
+    }
+  }
+
+  /// Ya se está abriendo «Mis tickets».
+  var _abriendoTickets = false;
+
+  Future<void> _abrirMisTickets() async {
+    if (_abriendoTickets) return;
+    _abriendoTickets = true;
+    try {
+      await HistorialDeTicketsPage.abrir(context, colportorId: widget.colportorId);
+    } finally {
+      _abriendoTickets = false;
     }
   }
 
@@ -186,6 +203,16 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                     ),
                 AccionesDeCuenta(
                   acciones: [
+                    // «Cargar ticket» (vista 38): el mismo formulario que «Registrar depósito» (desde
+                    // «Paso ticket» el ticket y el depósito se cargan juntos).
+                    AccionDeCuenta(
+                      texto: TextosCuenta.cargarTicket,
+                      clave: const Key('cuenta_cargar_ticket'),
+                      alTocar: () => unawaited(_registrarDeposito()),
+                      apagadaPorque: datos.enMano.totalCentavos > 0
+                          ? null
+                          : TextosCuenta.sinPlataParaDepositar,
+                    ),
                     AccionDeCuenta(
                       texto: TextosCuenta.registrarDeposito,
                       clave: const Key('cuenta_registrar_deposito'),
@@ -196,6 +223,15 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                           : TextosCuenta.sinPlataParaDepositar,
                     ),
                   ],
+                ),
+                // 33A·01: la puerta de «Mis tickets» (vista 38B), con cuántos esperan validación.
+                FilaDeEnlaceDeCuenta(
+                  key: const Key('cuenta_mis_tickets'),
+                  texto: TextosCuenta.misTickets,
+                  valor: _ticketsPorValidar(
+                    ref.watch(historialDeTicketsProvider).value?.porValidar,
+                  ),
+                  alTocar: () => unawaited(_abrirMisTickets()),
                 ),
                 // La línea de enlaces (33A·01): sin alquiler en ninguna campaña no hay línea (HU-CTA-007).
                 if (ref.watch(alquilerDelColportorProvider(widget.colportorId)).asData?.value
@@ -221,6 +257,10 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       ],
     );
   }
+
+  /// «1 por validar»; sin tickets esperando (o sin saberlo) no se dice nada.
+  static String? _ticketsPorValidar(int? cuantos) =>
+      cuantos == null || cuantos == 0 ? null : TextosCuenta.ticketsPorValidar(cuantos);
 
   /// La cifra de cada tarjeta; `null` = no se dibuja («Depositado» antes de la primera bajada).
   static CifraDeCuenta? _cifraDe(TipoDeCifra tipo, ResumenDeCuenta datos) => switch (tipo) {

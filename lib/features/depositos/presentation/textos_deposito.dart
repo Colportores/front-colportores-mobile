@@ -47,8 +47,17 @@ abstract final class TextosDeposito {
   static const sinCamara = 'Este teléfono no tiene cámara: elegí la foto del ticket de la galería.';
 
   /// El número de operación del banco (la «referencia» de HU-CTA-004): opcional.
-  static const referencia = 'Nº DE OPERACIÓN';
+  /// «Nº DE AUTORIZACIÓN» tal cual el canvas (38A-01; regla R3 del 26/10, gana el canvas): en un
+  /// depósito es el número de operación que da el banco.
+  static const referencia = 'Nº DE AUTORIZACIÓN';
   static const referenciaHint = 'Opcional';
+
+  /// «Tarjeta»: si el depósito se hizo con tarjeta (38A-01).
+  static const tarjeta = 'TARJETA';
+  static const tarjetaEtiqueta = 'Tarjeta del depósito';
+  static const debito = 'Débito';
+  static const credito = 'Crédito';
+  static const sinTarjeta = 'No';
 
   /// El retiro no lleva foto (HU-CTA-004, «Retiro coord»).
   static const retiroSinFoto =
@@ -90,6 +99,9 @@ abstract final class TextosDeposito {
   // --- 33D-04 -------------------------------------------------------------------------------
   static const tituloRegistrado = 'Depósito registrado';
   static const listo = 'Listo';
+
+  /// 38A-06: llevar al historial desde el éxito.
+  static const verMisTickets = 'Ver mis tickets';
   static const filaEnMano = 'En mano';
 
   /// Con «Acredita V1» el depósito no pasa a «Depositado» al registrarlo, sino a lo

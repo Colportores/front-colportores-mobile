@@ -472,10 +472,15 @@ class AccionesDeCuenta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final motivos = [
-      for (final a in acciones)
-        if (a.apagadaPorque case final motivo?) (clave: a.clave, motivo: motivo),
-    ];
+    // Dos acciones apagadas por lo mismo («Cargar ticket» y «Registrar depósito» sin efectivo) lo dicen
+    // una sola vez.
+    final motivos = <({Key clave, String motivo})>[];
+    for (final a in acciones) {
+      final motivo = a.apagadaPorque;
+      if (motivo != null && !motivos.any((m) => m.motivo == motivo)) {
+        motivos.add((clave: a.clave, motivo: motivo));
+      }
+    }
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Column(
@@ -529,6 +534,81 @@ class AccionesDeCuenta extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Una fila de enlace de 33A·01 («Mis tickets · 1 por validar ›»): el rótulo a la izquierda, lo que
+/// hay (si hay algo) y «›» a la derecha, y toda la fila se toca. Crece con el texto: con letra grande
+/// el valor baja a otra línea en vez de cortarse.
+class FilaDeEnlaceDeCuenta extends StatelessWidget {
+  const FilaDeEnlaceDeCuenta({super.key, required this.texto, required this.alTocar, this.valor});
+
+  final String texto;
+
+  /// «1 por validar»; sin él, solo «›».
+  final String? valor;
+  final VoidCallback alTocar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      button: true,
+      onTap: alTocar,
+      label: valor == null ? texto : '$texto, $valor',
+      child: Material(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: ColoresCuenta.borde),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: alTocar,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 56),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    texto,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: ColoresCuenta.tinta,
+                    ),
+                  ),
+                ),
+                if (valor != null) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      valor!,
+                      textAlign: TextAlign.end,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 13.5,
+                        color: ColoresCuenta.gris,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 8),
+                const Text(
+                  '›',
+                  textScaler: TextScaler.noScaling,
+                  style: TextStyle(fontSize: 22, color: ColoresCuenta.gris),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
