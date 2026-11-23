@@ -39,28 +39,57 @@ class _RemotoQueMideSolapes implements RecuperacionPasswordRemoteDataSource {
 }
 
 void main() {
-  test(
-    'dado A varada pasado el tope, cuando B y C llegan a la vez, nunca hay dos pedidos en el '
-    'aire (cada uno espera al anterior)',
-    () async {
-      final remoto = _RemotoQueMideSolapes();
-      final repo = RecuperacionPasswordRepositoryImpl(
-        remoto,
-        logger: loggerMudo(),
-        tope: const Duration(milliseconds: 50),
-      );
+  test('dado A varada pasado el tope, cuando B y C llegan a la vez, nunca hay dos pedidos en el '
+      'aire (cada uno espera al anterior)', () async {
+    final remoto = _RemotoQueMideSolapes();
+    final repo = RecuperacionPasswordRepositoryImpl(
+      remoto,
+      logger: loggerMudo(),
+      tope: const Duration(milliseconds: 50),
+    );
 
-      expect(await repo.actualizarPassword('ClaveAaaa1'), isA<Left<Failure, Unit>>());
-      final b = repo.actualizarPassword('ClaveBbbb1');
-      final c = repo.actualizarPassword('ClaveCccc1');
-      remoto.primeraVarada.complete();
-      await Future.wait([b, c]);
+    expect(await repo.actualizarPassword('ClaveAaaa1'), isA<Left<Failure, Unit>>());
+    final b = repo.actualizarPassword('ClaveBbbb1');
+    final c = repo.actualizarPassword('ClaveCccc1');
+    remoto.primeraVarada.complete();
+    await Future.wait([b, c]);
 
-      expect(remoto.maximoEnElAire, 1, reason: 'B y C salieron juntos tras esperar a A');
-      expect(remoto.enOrden, ['ClaveAaaa1', 'ClaveBbbb1', 'ClaveCccc1']);
-    },
-    skip:
-        'QA #556: dos guardados que esperan al mismo pedido varado salen juntos (menor: la '
-        'pantalla bloquea el botón mientras guarda, solo se da llamando al repositorio dos veces)',
-  );
+    expect(remoto.maximoEnElAire, 1, reason: 'B y C salieron juntos tras esperar a A');
+    expect(remoto.enOrden, ['ClaveAaaa1', 'ClaveBbbb1', 'ClaveCccc1']);
+  });
+
+  test('dado un pedido que falla al instante, cuando llega otro, no espera el tope: el turno se '
+      'suelta aunque el pedido no haya salido', () async {
+    final remoto = _RemotoQueFallaLaPrimera();
+    final repo = RecuperacionPasswordRepositoryImpl(
+      remoto,
+      logger: loggerMudo(),
+      tope: const Duration(seconds: 30),
+    );
+
+    expect(await repo.actualizarPassword('ClaveAaaa1'), isA<Left<Failure, Unit>>());
+    final b = await repo.actualizarPassword('ClaveBbbb1').timeout(const Duration(seconds: 5));
+
+    expect(b, isA<Right<Failure, Unit>>());
+    expect(remoto.recibidas, ['ClaveBbbb1']);
+  });
+}
+
+/// Un remoto cuya primera llamada lanza sin llegar a devolver un `Future`.
+class _RemotoQueFallaLaPrimera implements RecuperacionPasswordRemoteDataSource {
+  final List<String> recibidas = [];
+  bool _primera = true;
+
+  @override
+  Future<void> actualizarPassword(String nueva) {
+    if (_primera) {
+      _primera = false;
+      throw StateError('falla antes de salir');
+    }
+    recibidas.add(nueva);
+    return Future<void>.value();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
