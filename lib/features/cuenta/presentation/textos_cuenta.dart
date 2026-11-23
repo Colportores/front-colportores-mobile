@@ -159,8 +159,10 @@ abstract final class FormatoCuenta {
   /// «de ayer a las 21:00», «de hoy a las 07:05» o «del 28/10 a las 09:00».
   static String _cuandoYHora(DateTime instante, DateTime ahora) {
     final momento = instante.toLocal();
-    final hoy = DateTime(ahora.year, ahora.month, ahora.day);
-    final dia = DateTime(momento.year, momento.month, momento.day);
+    // Los días se cuentan como fechas de calendario (en UTC): con `DateTime` locales, en un huso con
+    // cambio de hora, dos medianoches seguidas distan 23 h y `inDays` daba 0 («de hoy» por «de ayer»).
+    final hoy = DateTime.utc(ahora.year, ahora.month, ahora.day);
+    final dia = DateTime.utc(momento.year, momento.month, momento.day);
     String dos(int n) => n.toString().padLeft(2, '0');
     final cuando = switch (hoy.difference(dia).inDays) {
       0 => 'de hoy',

@@ -154,6 +154,8 @@ class FilaDeptoDeBaja extends StatelessWidget {
         onPressed: apagado ? null : alReactivar,
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(48, 48),
+          // El tema deja el relleno horizontal en 0: la letra tocaba el borde de la píldora (QA #473).
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           foregroundColor: ColoresAlta.azul,
           side: const BorderSide(color: ColoresAlta.grisBorde, width: 1.5),
         ),

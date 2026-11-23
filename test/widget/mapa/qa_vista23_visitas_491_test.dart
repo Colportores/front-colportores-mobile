@@ -2,7 +2,6 @@
 // con «VISITAS AGENDADAS», «Registrar visita» y «+ Agendar». Matriz de estados × 360x640 / 412x915 ×
 // texto 1,0 / 2,0 dentro del alto real que el mapa le da a la hoja (un tercio el resumen, la mitad
 // arriba): sin overflow, textos dentro, todo alcanzable al desplazar, y los casos límite de cada flujo.
-// Los hallazgos van con `skip` (`--dart-define=QA_HALLAZGOS=true` los corre).
 import 'dart:async';
 
 import 'package:colportores_mobile/features/mapa/presentation/widgets/estados_hoja_casa.dart';
@@ -224,8 +223,6 @@ void main() {
   });
 
   group('Doble toque, falla a mitad y acciones superpuestas', () {
-    // skip: QA #491 — las filas (`_abriendo`) y los botones de la hoja (`_enCurso`) tienen guardas
-    // separadas: con un detalle abriéndose, «+ Agendar» (o «Registrar visita») abre otro destino, y al revés.
     probar491('tocar una fila y «+ Agendar» a la vez abre un solo destino', (tester) async {
       final abierto = Completer<Object?>();
       final m = await montar491(
@@ -247,7 +244,7 @@ void main() {
       );
       abierto.complete(null);
       await tester.pump();
-    }, skip: !verHallazgos);
+    });
 
     probar491('tocar «+ Agendar» y una fila a la vez abre un solo destino', (tester) async {
       final abierto = Completer<Object?>();
@@ -269,7 +266,7 @@ void main() {
       await tester.tap(_filas.first);
       await tester.pump();
       expect(m.detalles, hasLength(1), reason: 'al volver, las filas se pueden tocar otra vez');
-    }, skip: !verHallazgos);
+    });
 
     probar491('si «+ Agendar» falla, avisa, el botón se rehabilita y se puede reintentar', (
       tester,
