@@ -49,9 +49,37 @@ AlquilerDeCampania campaniaCon({
 }) =>
     AlquilerDeCampania(campaniaId: id, campania: nombre, montoCentavos: monto * 100, pagos: pagos);
 
-/// El alquiler del colportor con las campañas dadas.
-AlquilerDelColportor alquilerCon(List<AlquilerDeCampania> campanias, {DateTime? bajadoEn}) =>
-    AlquilerDelColportor(campanias: campanias, bajadoEn: bajadoEn);
+/// El alquiler del colportor con las campañas dadas (y las de baja, #740).
+AlquilerDelColportor alquilerCon(
+  List<AlquilerDeCampania> campanias, {
+  DateTime? bajadoEn,
+  List<AlquilerDeBaja> bajas = const [],
+}) => AlquilerDelColportor(campanias: campanias, bajas: bajas, bajadoEn: bajadoEn);
+
+/// Una decisión del coordinador sobre lo pagado de una baja; el monto va en pesos.
+DecisionDeAlquiler decisionDe(DestinoDeLoPagado destino, int pesos, {DateTime? en}) =>
+    DecisionDeAlquiler(
+      destino: destino,
+      montoCentavos: pesos * 100,
+      decididaEn: en ?? diaDeAlquiler(11, 12),
+    );
+
+/// La campaña de una baja (#740): sus pagos y las decisiones vigentes del coordinador, la más nueva
+/// primero.
+AlquilerDeBaja bajaCon({
+  String id = 'b-1',
+  String nombre = 'Otoño 2026',
+  List<PagoDeAlquiler> pagos = const [],
+  List<DecisionDeAlquiler> decisiones = const [],
+}) => AlquilerDeBaja(campaniaId: id, campania: nombre, pagos: pagos, decisiones: decisiones);
+
+/// Ana se dio de baja de Otoño después de pagar \$ 5.000 y su coordinador todavía no decidió.
+final alquilerDeBajaPorDecidir = alquilerCon(
+  const [],
+  bajas: [
+    bajaCon(pagos: [pagoDe(5000)]),
+  ],
+);
 
 /// 38C·01: $ 18.500 de alquiler, $ 6.000 pagados (un retiro validado el 15/10): faltan $ 12.500.
 final alquilerDelCanvas = alquilerCon([

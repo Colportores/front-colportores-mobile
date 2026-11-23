@@ -29,6 +29,30 @@ abstract final class TextosAlquiler {
   /// El subtítulo de cada campaña: «Primavera 2026 · monto fijo por campaña».
   static String subtitulo(String campania) => '$campania · monto fijo por campaña';
 
+  // --- La campaña de la baja (#740, HU-CTA-007): los textos de la decisión del coordinador los dio el
+  // issue (regla R1, 23/11); el resto no está en el canvas (para confirmar) ---
+
+  /// Lo pagado que el coordinador todavía no decidió (o lo que pagó después de la última decisión).
+  static const porDecidirDeLaBaja = 'Lo que pagaste queda por decidir: lo decide tu coordinador.';
+
+  /// Lo que decidió el coordinador con lo pagado.
+  static String decisionDelCoordinador(DestinoDeLoPagado destino) => switch (destino) {
+    DestinoDeLoPagado.devolverAlColportor => 'Tu coordinador decidió devolvértelo.',
+    DestinoDeLoPagado.aCuentaDelProximoDeposito =>
+      'Tu coordinador lo dejó a cuenta de tu próximo depósito.',
+    DestinoDeLoPagado.seLoQuedaElCoordinador => 'Tu coordinador decidió quedárselo.',
+  };
+
+  /// El subtítulo de una campaña de la que se dio de baja: no cobra más alquiler, solo queda lo pagado.
+  static String subtituloDeBaja(String campania) => '$campania · inscripción dada de baja';
+
+  /// Debajo de cada decisión, de cuánto fue y cuándo se decidió: con dos decisiones se sabe cuál es cuál.
+  static String detalleDeLaDecision(DecisionDeAlquiler decision) =>
+      '${FormatoCuenta.monto(decision.montoCentavos)} · ${FormatoCuenta.fecha(decision.decididaEn)}';
+
+  /// Debajo de «por decidir», de cuánto es.
+  static String detalleDeLoPorDecidir(int centavos) => FormatoCuenta.monto(centavos);
+
   // --- Los que el canvas no dibuja (para confirmar) ---
   static const volver = 'Volver';
   static const reintentar = 'Reintentar';

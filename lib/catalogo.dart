@@ -109,6 +109,11 @@ final specsDeLaApp = <SyncSpec>[
   // el servidor todavía no la publica (backend-supabase 0145), el pull ignora la entidad.
   SyncSpec.pull('stock'),
 
+  // Lo que el coordinador decidió con lo pagado de alquiler por quien se dio de baja (backend-supabase
+  // 0201, #301; HU-CTA-007, #740): solo bajada, cada persona las suyas (`usuario_id`). Sin texto libre;
+  // la baja lógica es una decisión deshecha. La app nunca la escribe. Sin `realtime`: baja en el ciclo.
+  SyncSpec.pull('alquiler_decision'),
+
   // local: jamás sale del teléfono por sync (Ley 18.331). Solo el backup E2E.
   SyncSpec.local('audit_log'),
   // La copia local del nombre del usuario (#243): viene de Auth, no del sync.
