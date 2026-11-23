@@ -19,6 +19,8 @@ import 'pedir_pedido_page.dart';
 ///   vuelve atrás, así que se confirma) y, si pasaba el límite, el aviso de que su coordinador lo tiene en
 ///   cuenta.
 /// - **No autorizado**: el motivo de su coordinador y «Armar uno nuevo».
+/// - **No se envió** (#748): el servidor rechazó el pedido al sincronizar; la causa, qué hacer y «Armar uno
+///   nuevo». No se cancela (no llegó) ni se borra.
 /// - Autorizado, despachado, recibido y cancelado: solo lectura (el canvas no los dibuja; con lo autorizado
 ///   cuando el coordinador redujo una línea).
 ///
@@ -139,7 +141,7 @@ class _DetalleDePedidoPageState extends ConsumerState<DetalleDePedidoPage> {
           peligro: true,
           alTocar: () => unawaited(_cancelar()),
         ),
-        EstadoDelPedido.rechazado => BotonDePedido(
+        EstadoDelPedido.rechazado || EstadoDelPedido.noSeEnvio => BotonDePedido(
           texto: TextosPedidos.armarUnoNuevo,
           alTocar: () => unawaited(PedirPedidoPage.abrir(context, colportorId: widget.colportorId)),
         ),
@@ -183,6 +185,11 @@ class _Cuerpo extends StatelessWidget {
             AvisoDePedido(
               clase: ClaseDeAviso.error,
               texto: TextosPedidos.noAutorizado(pedido.motivoRechazo),
+            ),
+          if (pedido.estado == EstadoDelPedido.noSeEnvio)
+            AvisoDePedido(
+              clase: ClaseDeAviso.error,
+              texto: TextosPedidos.noSeEnvio(pedido.rechazoAlEnviar),
             ),
           if (pedido.estado == EstadoDelPedido.cancelado)
             const AvisoDePedido(

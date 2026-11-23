@@ -122,6 +122,7 @@ abstract final class TextosPedidos {
     EstadoDelPedido.recibido => 'Recibido',
     EstadoDelPedido.rechazado => 'No autorizado',
     EstadoDelPedido.cancelado => 'Cancelado',
+    EstadoDelPedido.noSeEnvio => 'No se envió',
   };
 
   /// La fecha de la tarjeta: «HOY» o «15/10».
@@ -172,6 +173,17 @@ abstract final class TextosPedidos {
         : 'Tu coordinador no lo autorizó: «$m».';
   }
 
+  /// 37B, pedido que el servidor rechazó al sincronizar (#748, decisión del 23/11 «una operación rechazada
+  /// nunca se descarta»): la causa concreta y qué hacer. El de la fecha es el del issue; el otro es provisorio
+  /// y no afirma lo que el teléfono no sabe (mapa §2: texto).
+  static String noSeEnvio(CausaDelRechazoAlEnviar? causa) => switch (causa) {
+    CausaDelRechazoAlEnviar.fueraDeLaCampania =>
+      'Tu pedido no se envió: la fecha queda fuera de tu campaña. Armalo de nuevo o hablá con tu '
+          'coordinador.',
+    _ =>
+      'Tu pedido no se envió: el servidor no lo aceptó. Armalo de nuevo o hablá con tu coordinador.',
+  };
+
   static const pedidoCancelado = 'Cancelaste este pedido. Ya no le llega a tu coordinador.';
   static const cancelarPedido = 'Cancelar pedido';
   static const cancelando = 'Cancelando…';
@@ -197,4 +209,17 @@ abstract final class TextosPedidos {
   static const hacerUnPedido = '+ Hacer un pedido';
   static const misPedidos = 'Mis pedidos';
   static String porAutorizar(int n) => n == 1 ? '1 por autorizar' : '$n por autorizar';
+
+  /// Los que el servidor rechazó al sincronizar, para que Mi Cuenta no los esconda (mapa §2: texto).
+  static String noSeEnviaron(int n) => n == 1 ? '1 no se envió' : '$n no se enviaron';
+
+  /// El resumen de la fila «Mis pedidos» de Mi Cuenta: lo que sigue en juego y lo que no se envió; `null` si
+  /// no hay ni una cosa ni la otra.
+  static String? resumenDePedidos({required int porAutorizar, required int noSeEnviaron}) {
+    final partes = [
+      if (porAutorizar > 0) TextosPedidos.porAutorizar(porAutorizar),
+      if (noSeEnviaron > 0) TextosPedidos.noSeEnviaron(noSeEnviaron),
+    ];
+    return partes.isEmpty ? null : partes.join(' · ');
+  }
 }

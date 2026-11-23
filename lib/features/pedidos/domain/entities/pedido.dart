@@ -14,7 +14,13 @@ enum EstadoDelPedido {
   rechazado('RECHAZADO'),
 
   /// Lo canceló la colportora antes de que lo autorizaran. No se borra (HU-STK-009).
-  cancelado('CANCELADO');
+  cancelado('CANCELADO'),
+
+  /// El servidor no aceptó el pedido al sincronizar (el alta quedó `INVALID` en la cola de sync, #748): no
+  /// llegó y no hay quien lo decida. **No es un estado del servidor**: se deriva de la cola al leer, nunca se
+  /// guarda ni viaja, y por eso no tiene código. Si la cola lo reintenta y el servidor lo acepta, vuelve a
+  /// «por autorizar» solo. No se borra nada (una operación rechazada nunca se descarta).
+  noSeEnvio('');
 
   const EstadoDelPedido(this.codigo);
 
@@ -24,13 +30,27 @@ enum EstadoDelPedido {
   /// Un código que esta versión no conoce se deja como «por autorizar»: el pedido no desaparece y, como
   /// mucho, la colportora ve que todavía no se decidió.
   static EstadoDelPedido desdeCodigo(String codigo) =>
-      values.firstWhere((e) => e.codigo == codigo, orElse: () => porAutorizar);
+      values.firstWhere((e) => e != noSeEnvio && e.codigo == codigo, orElse: () => porAutorizar);
 
   /// Mientras está por autorizar la colportora lo puede cancelar; después lo decide el coordinador.
   bool get sePuedeCancelar => this == porAutorizar;
 
   /// «En camino»: el coordinador ya dijo que sí y todavía no llegó.
   bool get enCamino => this == autorizado || this == despachado;
+}
+
+/// Por qué el servidor no aceptó el alta de un pedido al sincronizar (el código del rechazo de la cola, en
+/// contrato-sync-engine §2 «Pedido a la casa editora»).
+enum CausaDelRechazoAlEnviar {
+  /// `42501`: la fecha del pedido no cae en la ventana de su inscripción a una campaña.
+  fueraDeLaCampania,
+
+  /// Cualquier otro código: el servidor no lo aceptó y el teléfono no sabe decir por qué.
+  otra;
+
+  /// El código con que el servidor rechazó el alta (`sync_queue.code`).
+  static CausaDelRechazoAlEnviar desdeCodigo(String codigo) =>
+      codigo == '42501' ? fueraDeLaCampania : otra;
 }
 
 /// Una línea de un pedido: qué producto y cuántas unidades.
@@ -76,6 +96,7 @@ final class Pedido extends Equatable {
     this.montoAutorizadoCentavos,
     this.motivoRechazo,
     this.numero,
+    this.rechazoAlEnviar,
   }) : lineas = List.unmodifiable(lineas);
 
   final String id;
@@ -101,6 +122,9 @@ final class Pedido extends Equatable {
   /// El «Pedido #231» del servidor; `null` hasta que el pedido llega.
   final int? numero;
 
+  /// Por qué el servidor no aceptó el alta: solo con [EstadoDelPedido.noSeEnvio].
+  final CausaDelRechazoAlEnviar? rechazoAlEnviar;
+
   final Auditoria auditoria;
 
   /// Lo que muestra el pedido: lo autorizado si ya se decidió, y si no lo pedido.
@@ -124,6 +148,7 @@ final class Pedido extends Equatable {
     montoAutorizadoCentavos,
     motivoRechazo,
     numero,
+    rechazoAlEnviar,
     auditoria,
   ];
 }

@@ -75,6 +75,7 @@ Pedido pedidoDe({
   int? montoAutorizadoCentavos,
   String? motivoRechazo,
   int? numero,
+  CausaDelRechazoAlEnviar? rechazoAlEnviar,
 }) {
   final f = fecha ?? ahoraPedidos;
   return Pedido(
@@ -94,6 +95,7 @@ Pedido pedidoDe({
     montoAutorizadoCentavos: montoAutorizadoCentavos,
     motivoRechazo: motivoRechazo,
     numero: numero,
+    rechazoAlEnviar: rechazoAlEnviar,
     auditoria: Auditoria(createdAt: f, updatedAt: f, createdBy: 'col-1'),
   );
 }
