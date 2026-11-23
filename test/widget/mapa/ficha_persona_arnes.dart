@@ -165,6 +165,10 @@ final class MundoFicha {
   var conRegistrarVisita = false;
   var conDevolucion = false;
   var conRegistrarEntrega = false;
+
+  /// Con destino para tocar un cobro del historial (vista 30 B): guarda cada `id` que se abrió.
+  var conVerCobro = false;
+  final cobrosAbiertos = <String>[];
 }
 
 typedef ContextoDeVisitaFicha = ({String ubicacionId, String? espacioId, String? agendaId});
@@ -228,6 +232,11 @@ Future<void> montarFicha(
           editarPersonaDesdeLaFichaProvider.overrideWithValue((id) async {
             mundo.ediciones.add(id);
             await mundo.compuertaEdicion?.future;
+            return null;
+          }),
+        if (mundo.conVerCobro)
+          verCobroDesdeLaFichaProvider.overrideWithValue((id) {
+            mundo.cobrosAbiertos.add(id);
             return null;
           }),
         if (mundo.conDevolucion)

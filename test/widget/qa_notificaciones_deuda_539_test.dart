@@ -132,6 +132,12 @@ void main() {
 
       await tester.tap(filaDe('a'));
       await tester.pump(const Duration(milliseconds: 300));
+      // La fila «Tipo de aviso» (#484) sube a la lista: «b» queda abajo y se baja a buscarla.
+      await tester.scrollUntilVisible(
+        filaDe('b'),
+        100,
+        scrollable: find.descendant(of: centroLista, matching: find.byType(Scrollable)),
+      );
       await tester.tap(filaDe('b'));
       await _asentarAviso(tester);
 

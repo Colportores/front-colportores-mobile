@@ -31,8 +31,10 @@ abstract final class ReglasDeTicket {
     fecha.toUtc(),
   ).isAfter(ReglasDeVenta.diaDeMontevideo(ahora.toUtc()));
 
-  /// Un texto opcional (autorización, marca) cabe en lo que acepta el servidor.
-  static bool textoValido(String? texto) => texto == null || texto.length <= largoMaximoTexto;
+  /// Un texto opcional (autorización, marca) cabe en lo que acepta el servidor. Se cuenta en puntos
+  /// de código (`runes`), como el campo (`LimitarPuntosDeCodigo`) y el `char_length` del servidor:
+  /// con `String.length` (UTF-16) 21 emoji pasarían el campo y el caso de uso los rechazaría.
+  static bool textoValido(String? texto) => texto == null || texto.runes.length <= largoMaximoTexto;
 
   /// El número de autorización es obligatorio en el ticket de tarjeta.
   static bool pideAutorizacion(TipoDeTicket tipo) => tipo == TipoDeTicket.cobroTarjeta;

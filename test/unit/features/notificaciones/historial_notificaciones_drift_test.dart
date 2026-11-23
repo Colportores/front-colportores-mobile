@@ -244,6 +244,31 @@ void main() {
 
       expect((await lista()).every((n) => n.leida), isTrue);
     });
+
+    test('marcarTodasLeidas con ids marca solo esos y deja los demás sin leer', () async {
+      await repo.registrar(_aviso('a'), ahora: _ahora);
+      await repo.registrar(_aviso('b'), ahora: _ahora);
+      await repo.registrar(_aviso('c'), ahora: _ahora);
+      await repo.marcarLeida('c', ahora: _ahora);
+
+      final r = await repo.marcarTodasLeidas(ahora: _ahora, ids: {'a', 'c', 'no-existe'});
+
+      expect(r, const Right<Failure, Unit>(unit));
+      final porId = {for (final n in await lista()) n.id: n};
+      expect(porId['a']!.leida, isTrue);
+      expect(porId['b']!.leida, isFalse);
+      expect(porId['c']!.leidaEn, _ahora);
+    });
+
+    test('marcarTodasLeidas con más de 500 ids los marca todos (de a lotes)', () async {
+      for (var i = 0; i < 520; i++) {
+        await repo.registrar(_aviso('n-$i'), ahora: _ahora);
+      }
+
+      await repo.marcarTodasLeidas(ahora: _ahora, ids: {for (var i = 0; i < 520; i++) 'n-$i'});
+
+      expect((await lista()).every((n) => n.leida), isTrue);
+    });
   });
 
   group('borrar', () {

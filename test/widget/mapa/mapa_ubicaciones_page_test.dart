@@ -286,10 +286,10 @@ void main() {
         gps: gpsSinPermiso(),
       );
 
-      m.mapa.tocarPunto('d');
+      m.mapa.tocarPunto('a');
       await asentarLista(tester);
 
-      expect(find.text('Negocio · Entrevista agendada'), findsOneWidget);
+      expect(find.text('Casa · Cobranza pendiente'), findsOneWidget);
       expect(find.textContaining('de vos'), findsNothing);
     });
 

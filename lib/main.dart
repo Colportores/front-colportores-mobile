@@ -51,6 +51,7 @@ import 'features/auth/presentation/providers/avisos_zona_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/cobranzas/presentation/flujo_cobrar_desde_la_casa.dart';
 import 'features/cobranzas/presentation/pages/cobro_efectivo_page.dart';
+import 'features/cobranzas/presentation/pages/detalle_del_cobro_page.dart';
 import 'features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
@@ -59,8 +60,8 @@ import 'features/mapa/presentation/flujo_ficha_desde_la_casa.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/flujo_ver_venta_desde_la_casa.dart';
 import 'features/mapa/presentation/providers/baja_ubicacion_providers.dart';
-import 'features/mapa/presentation/providers/ficha_persona_providers.dart'
-    show registrarEntregaDesdeLaFichaProvider;
+import 'features/mapa/presentation/providers/ficha_persona_providers.dart';
+import 'features/mapa/presentation/providers/historial_de_la_casa_providers.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'features/mapa/presentation/providers/lugar_de_trabajo_providers.dart';
 import 'features/mapa/presentation/providers/personas_providers.dart';
@@ -73,6 +74,7 @@ import 'features/notificaciones/presentation/enganches_push_remotas.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
+import 'features/notificaciones/presentation/providers/registro_token_push_providers.dart';
 import 'features/respaldo/data/repositories/recuperacion_resuelta_repository_impl.dart';
 import 'features/respaldo/data/repositories/respaldo_drive_repository_impl.dart';
 import 'features/respaldo/data/services/nivel_bateria_canal.dart';
@@ -490,6 +492,34 @@ Future<void> main() async {
             );
           },
         ),
+        // Un cobro del historial de la ficha (vista 32 B) abre su detalle y «Anular cobro» (vista 30 B,
+        // HU-COB-006, #424).
+        verCobroDesdeLaFichaProvider.overrideWith(
+          (ref) => (cobranzaId) {
+            final contexto = navigatorKeyColportores.currentContext;
+            final colportorId = ref.read(sesionProvider).value?.usuarioId;
+            if (contexto == null || colportorId == null) return false;
+            return DetalleDelCobroPage.abrir(
+              contexto,
+              cobranzaId: cobranzaId,
+              colportorId: colportorId,
+            );
+          },
+        ),
+        // Un cobro del Historial de la casa (vista 39, C·04, #446) abre el mismo detalle y «Anular cobro»
+        // (vista 30 B, decisión de Cristian del 30/10, casilla de #168 en #446).
+        verCobroDesdeLaCasaProvider.overrideWith(
+          (ref) => (cobranzaId) {
+            final contexto = navigatorKeyColportores.currentContext;
+            final colportorId = ref.read(sesionProvider).value?.usuarioId;
+            if (contexto == null || colportorId == null) return false;
+            return DetalleDelCobroPage.abrir(
+              contexto,
+              cobranzaId: cobranzaId,
+              colportorId: colportorId,
+            );
+          },
+        ),
         // «Programar entrevista» (vista 39, R·02): «Agendar visita» (vista 23 A, #408) con la casa y,
         // si se sabe, la persona ya resueltas. Vuelve a la hoja de la casa con la casa en amarillo.
         programarEntrevistaDesdeLaCasaProvider.overrideWith(
@@ -535,10 +565,12 @@ Future<void> main() async {
         // lo marca como leído y lleva a su destino. Las recibe `firebase_messaging` si Firebase
         // arrancó; si no, `pushRemotasProvider` se queda con el fake que no recibe nada.
         if (pushRemotas != null) pushRemotasProvider.overrideWithValue(pushRemotas),
+        // HU-NOT-001 («Token FCM»): al cerrar sesión, el token del teléfono se vacía en el servidor.
+        retiroTokenPushProvider.overrideWith(retirarTokenPush),
         ...EnganchesPushRemotas.enganches(navigatorKeyColportores),
         // Pestaña Historial de la hoja de la casa (vista 39, C·03 y C·04, #446): las visitas, las ventas
-        // y los cobros del lugar, todos en el teléfono. Un cobro abre su detalle (vista 30 B) cuando
-        // se enganche `verCobroDesdeLaCasaProvider` (PR #585). «Ver la venta» del detalle de una
+        // y los cobros del lugar, todos en el teléfono. Un cobro abre su detalle (vista 30 B) por
+        // `verCobroDesdeLaCasaProvider`, enganchado más arriba. «Ver la venta» del detalle de una
         // venta abre las cuotas de esa venta (vista 30 A, decisión del 10/11, P2 de #446).
         FlujoVerVentaDesdeLaCasa.enganche(navigatorKeyColportores),
         pestanaHistorialDeLaCasaProvider.overrideWithValue(

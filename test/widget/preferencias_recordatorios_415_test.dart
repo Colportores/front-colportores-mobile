@@ -124,10 +124,12 @@ void main() {
       expect(_apagadosAviso, findsNothing);
       expect(_errorGuardar, findsNothing);
       expect(find.text(textoApagadas), findsNothing);
-      // Solo lo que funciona sin la push (decisión «Notif. S8»): ni Pedidos, ni Tickets, ni Cuotas.
-      for (final t in ['Pedidos', 'Tickets', 'Cuotas', 'Asignaciones', 'Promociones', 'AVISOS']) {
-        expect(find.text(t), findsNothing);
+      // Con las push (#516) la pantalla suma la sección AVISOS: Pedidos, Tickets, Cuotas y
+      // Asignaciones. «Promociones» no (decisión de Cristian, 04/11).
+      for (final t in ['AVISOS', 'Pedidos', 'Tickets', 'Cuotas', 'Asignaciones']) {
+        expect(find.text(t), findsOneWidget, reason: t);
       }
+      expect(find.text('Promociones'), findsNothing);
     });
 
     testWidgets('lo guardado se ve al entrar: apagado y 90 minutos', (tester) async {

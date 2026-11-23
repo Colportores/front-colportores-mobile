@@ -44,7 +44,9 @@ final class MarcarTodasLeidasUseCase {
   final HistorialNotificacionesRepository _repositorio;
   final DateTime Function() _ahora;
 
-  Future<Either<Failure, Unit>> call() => _repositorio.marcarTodasLeidas(ahora: _ahora());
+  /// Marca como leídas solo las de [ids] (las que se veían con un filtro) o todas si es `null`.
+  Future<Either<Failure, Unit>> call({Set<String>? ids}) =>
+      _repositorio.marcarTodasLeidas(ahora: _ahora(), ids: ids);
 }
 
 final class BorrarTodasLasNotificacionesUseCase {

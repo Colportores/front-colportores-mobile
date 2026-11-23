@@ -123,6 +123,8 @@ class HojaMapaUbicaciones extends StatefulWidget {
     required this.alActivarGps,
     required this.alRegistrar,
     this.colportorId,
+    this.recienRegistrada,
+    this.atrasDeLaHoja,
     this.hojaDelMapa = const HojaDelMapaState(),
     this.agendados = const AsyncLoading<VistaAgendados>(),
     this.alElegirPestana,
@@ -155,6 +157,12 @@ class HojaMapaUbicaciones extends StatefulWidget {
 
   /// El colportor con la sesión iniciada: sin él la hoja de la casa no ofrece «+ Agregar persona».
   final String? colportorId;
+
+  /// La ubicación que se acaba de registrar desde el mapa ([HojaCasa.recienRegistrada]).
+  final String? recienRegistrada;
+
+  /// Dónde deja la hoja de la casa su atrás de a un paso ([HojaCasa.atras]).
+  final ValueNotifier<VoidCallback?>? atrasDeLaHoja;
 
   /// La pestaña elegida y el chip de tipo de «Agendados».
   final HojaDelMapaState hojaDelMapa;
@@ -278,6 +286,8 @@ class _HojaMapaUbicacionesState extends State<HojaMapaUbicaciones> {
                             arriba: altura == AlturaHoja.mitad,
                             colportorId: widget.colportorId,
                             alAbrirOtra: widget.alElegir,
+                            recienRegistrada: seleccionada.ubicacion.id == widget.recienRegistrada,
+                            atras: widget.atrasDeLaHoja,
                             fueraDelArea: widget.fueraDelArea.ids.contains(
                               seleccionada.ubicacion.id,
                             ),

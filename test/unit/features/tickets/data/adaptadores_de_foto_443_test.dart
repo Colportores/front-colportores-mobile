@@ -1,5 +1,7 @@
 // Los adaptadores de la foto del ticket (#443, decisión de Cristian del 03/11 en #169): la cámara con
 // image_picker y el compresor con flutter_image_compress, con la parte nativa reemplazada.
+import 'dart:async';
+
 import 'package:colportores_mobile/features/tickets/data/services/capturador_image_picker.dart';
 import 'package:colportores_mobile/features/tickets/data/services/compresor_flutter_image_compress.dart';
 import 'package:colportores_mobile/features/tickets/domain/services/captura_de_foto.dart';
@@ -90,8 +92,42 @@ void main() {
       );
     });
 
-    test('abrir los ajustes no hace nada y no lanza', () async {
-      await capturador(_Picker()).abrirLosAjustes();
+    group('abrir los ajustes (29C-07, #427)', () {
+      const canal = MethodChannel('test/ajustes_capturador');
+      final mensajero = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      tearDown(() => mensajero.setMockMethodCallHandler(canal, null));
+
+      CapturadorImagePicker conCanal() => CapturadorImagePicker(
+        picker: _Picker(),
+        logger: loggerMudo(),
+        canalDeAjustes: canal,
+        tiempoMaximo: const Duration(milliseconds: 50),
+      );
+
+      test('pide al canal nativo la pantalla de la app en los ajustes', () async {
+        final llamados = <String>[];
+        mensajero.setMockMethodCallHandler(canal, (llamado) async {
+          llamados.add(llamado.method);
+          return true;
+        });
+
+        await conCanal().abrirLosAjustes();
+
+        expect(llamados, ['abrirAjustesApp']);
+      });
+
+      test('sin canal (iOS), con error o sin respuesta no lanza', () async {
+        await conCanal().abrirLosAjustes();
+
+        mensajero.setMockMethodCallHandler(
+          canal,
+          (_) async => throw PlatformException(code: 'SEGURIDAD_DISPOSITIVO'),
+        );
+        await conCanal().abrirLosAjustes();
+
+        mensajero.setMockMethodCallHandler(canal, (_) => Completer<Object?>().future);
+        await conCanal().abrirLosAjustes();
+      });
     });
   });
 

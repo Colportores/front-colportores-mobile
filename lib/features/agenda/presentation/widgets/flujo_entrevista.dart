@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../../core/error/failure.dart';
+import '../../../auth/presentation/providers/campanias_inscriptas_providers.dart'
+    show campaniaQueFrena;
+import '../../../auth/presentation/widgets/aviso_campania_por_empezar.dart';
 import '../../../cobranzas/presentation/pages/modificar_cuotas_page.dart';
 import '../../../cobranzas/presentation/providers/cobranzas_providers.dart'
     show planDeCuotasRepositoryProvider, saldoPendienteRepositoryProvider;
@@ -764,6 +767,15 @@ abstract final class FlujoEntrevista {
       direccion: direccion,
     );
     if (!context.mounted) return const VentaSinCompletar();
+    // Con la campaña por empezar no se vende (HU-AUTH-008, «Cuenta antes»): el aviso dice cuándo
+    // empieza. Va antes de abrir la venta, así no se carga todo para que el servidor la rechace, y
+    // no se guarda nada: la entrevista sigue como estaba.
+    final porEmpezar = await campaniaQueFrena(ref.read, colportorId);
+    if (porEmpezar != null) {
+      avisarCampaniaPorEmpezar(mensajero, porEmpezar);
+      return const VentaSinCompletar();
+    }
+    if (!context.mounted) return const VentaSinCompletar();
     final guardada = await navegador.push(
       NuevaVentaPage.ruta(
         argumentos: ArgumentosDeVenta(
@@ -992,6 +1004,13 @@ abstract final class FlujoEntrevista {
       persona: rotulo.persona,
       direccion: rotulo.direccion,
     );
+    if (!contextoFirme.mounted) return false;
+    // Con la campaña por empezar tampoco se suma a una venta (HU-AUTH-008, «Cuenta antes»).
+    final porEmpezar = await campaniaQueFrena(ref.read, colportorId);
+    if (porEmpezar != null) {
+      avisarCampaniaPorEmpezar(mensajero, porEmpezar);
+      return false;
+    }
     if (!contextoFirme.mounted) return false;
     final guardada = await navegador.push(
       NuevaVentaPage.ruta(

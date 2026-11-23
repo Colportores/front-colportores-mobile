@@ -13,7 +13,13 @@ abstract final class TextosCuentaAsignada {
   static const titulo = 'Ya te asignaron';
   static const abriendo = 'Abriendo tu pantalla principal…';
 
-  static String zona(AsignacionCampania a) => 'Zona ${a.zona} · ${a.ciudad}';
+  /// «Zona Centro · Montevideo», o `null` si no se conoce la zona (el renglón no se muestra). Sin la
+  /// ciudad, solo «Zona Centro».
+  static String? zona(AsignacionCampania a) {
+    final zona = a.zona;
+    if (zona == null) return null;
+    return a.ciudad == null ? 'Zona $zona' : 'Zona $zona · ${a.ciudad}';
+  }
 }
 
 /// 18-A07: la cuenta pasó a activa con la app abierta. Dice a qué campaña y zona se asignó al
@@ -102,10 +108,12 @@ class _CuentaAsignadaPageState extends ConsumerState<CuentaAsignadaPage> {
                         spacing: 4,
                         children: [
                           Text(asignacion.campania, style: theme.textTheme.bodyLarge),
-                          Text(
-                            TextosCuentaAsignada.zona(asignacion),
-                            style: theme.textTheme.bodyLarge,
-                          ),
+                          if (TextosCuentaAsignada.zona(asignacion) case final zona?)
+                            Text(
+                              zona,
+                              key: const Key('asignada_zona'),
+                              style: theme.textTheme.bodyLarge,
+                            ),
                         ],
                       ),
                     Padding(

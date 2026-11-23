@@ -33,7 +33,7 @@ final historialDeLaCasaProvider = StreamProvider.autoDispose.family<List<EventoD
 /// 30 B, HU-COB-006): recibe el `id` del cobro y devuelve cuando se cerró. Igual que en la ficha de la
 /// persona (decisión de Cristian, 30/10, casilla de #168 en #446). **Sin destino**: mientras sea `null`
 /// la fila del cobro no se puede tocar y no lleva «›» (HU-UBI-003: un botón sin destino no se
-/// muestra). Lo engancha `main.dart` cuando `DetalleDelCobroPage` esté en `develop` (PR #585).
+/// muestra). Lo engancha `main.dart` con `DetalleDelCobroPage` (PR #585).
 final verCobroDesdeLaCasaProvider = Provider<FutureOr<Object?> Function(String cobranzaId)?>(
   (ref) => null,
 );

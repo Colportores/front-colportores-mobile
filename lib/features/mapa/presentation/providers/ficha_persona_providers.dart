@@ -96,3 +96,10 @@ typedef ContextoDeEntregaDeLaFicha = ({
 /// esta rama): mientras sea `null` «Registrar entrega» no se muestra.
 final registrarEntregaDesdeLaFichaProvider =
     Provider<FutureOr<Object?> Function(ContextoDeEntregaDeLaFicha)?>((ref) => null);
+
+/// A dónde lleva tocar un cobro del historial de la ficha (el detalle del cobro y «Anular cobro», vista
+/// 30 B, HU-COB-006): recibe el `id` del cobro y devuelve cuando se cerró. **Sin destino** (o mientras el
+/// historial no traiga cobros): la fila del cobro no se puede tocar.
+final verCobroDesdeLaFichaProvider = Provider<FutureOr<Object?> Function(String cobranzaId)?>(
+  (ref) => null,
+);
