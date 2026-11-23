@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../../domain/services/situacion_de_campania.dart';
 
@@ -34,7 +37,43 @@ void avisarCampaniaPorEmpezar(ScaffoldMessengerState? mensajero, CampaniaPorEmpe
         content: Text(TextosCampaniaPorEmpezar.aviso(campania)),
         duration: _duracionDelAviso,
         persist: sinPrisa,
+        // Fijo y no flotante: el flotante no entra arriba de la barra de pestañas de «Inicio» (QA
+        // ronda 1 de #62); el fijo se apoya sobre ella.
+        behavior: SnackBarBehavior.fixed,
         showCloseIcon: true,
       ),
     );
+}
+
+/// Si el aviso con el texto de [campania] entra en el espacio de [pantalla] (la región de arriba de la
+/// barra de «Inicio», donde se apoya) con el tamaño de letra de la persona. Con letra al 200 % en
+/// 360×640 son 8 renglones y no entra: quien tiene el aviso fijo a la vista (la pantalla «Hoy») lleva
+/// la vista hasta él en vez de repetirlo abajo ([llevarAlAvisoFijo]).
+bool avisoEntraEnPantalla(BuildContext pantalla, CampaniaPorEmpezar campania) {
+  final medidas = MediaQuery.of(pantalla);
+  final disponible = (pantalla.size ?? medidas.size).height;
+  final pintor = TextPainter(
+    text: TextSpan(
+      text: TextosCampaniaPorEmpezar.aviso(campania),
+      style: Theme.of(pantalla).textTheme.bodyMedium,
+    ),
+    textDirection: Directionality.of(pantalla),
+    textScaler: medidas.textScaler,
+  )..layout(maxWidth: medidas.size.width - 100);
+  final alto = pintor.height + 28;
+  pintor.dispose();
+  return alto <= disponible;
+}
+
+/// Lleva la vista hasta el aviso fijo de [contexto] (sin animación: respeta quitar movimiento) y lo
+/// anuncia a quien usa lector de pantalla.
+void llevarAlAvisoFijo(BuildContext avisoFijo, BuildContext pantalla, CampaniaPorEmpezar campania) {
+  unawaited(Scrollable.ensureVisible(avisoFijo, duration: Duration.zero));
+  unawaited(
+    SemanticsService.sendAnnouncement(
+      View.of(pantalla),
+      TextosCampaniaPorEmpezar.aviso(campania),
+      Directionality.of(pantalla),
+    ),
+  );
 }

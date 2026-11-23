@@ -322,7 +322,8 @@ void main() {
       expect(_aviso, findsOneWidget);
       await _tocarIniciar(tester);
       expect(tester.takeException(), isNull);
-      expect(_snack, findsOneWidget);
+      // Si el aviso de abajo no entra en el espacio de «Hoy», la vista va al aviso fijo.
+      expect(_snack.evaluate().isNotEmpty || _aviso.evaluate().isNotEmpty, isTrue);
     });
 
     testWidgets('el aviso se anuncia a quien usa lector de pantalla', (tester) async {

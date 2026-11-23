@@ -54,6 +54,9 @@ class _JornadaPageState extends ConsumerState<JornadaPage> with FinDeJornada<Jor
   DateTime? _horaInicio;
   bool _iniciando = false;
 
+  /// Los avisos de campaña de «Hoy»: a ellos se lleva la vista si el aviso de abajo no entra.
+  final _avisos = GlobalKey();
+
   /// Se intentó iniciar y resultó que ya hay una jornada abierta (otro teléfono, otra sesión):
   /// se muestra el bloqueo de la HU (A07) hasta que el colportor vaya a la jornada en curso.
   bool _bloqueadaPorEnCurso = false;
@@ -100,7 +103,13 @@ class _JornadaPageState extends ConsumerState<JornadaPage> with FinDeJornada<Jor
     if (!mounted) return;
     if (porEmpezar != null) {
       setState(() => _iniciando = false);
-      avisarCampaniaPorEmpezar(ScaffoldMessenger.maybeOf(context), porEmpezar);
+      final fijo = _avisos.currentContext;
+      if (fijo != null && fijo.mounted && !avisoEntraEnPantalla(context, porEmpezar)) {
+        // Con letra muy grande el aviso de abajo no entra: se lleva la vista al aviso fijo de «Hoy».
+        llevarAlAvisoFijo(fijo, context, porEmpezar);
+      } else {
+        avisarCampaniaPorEmpezar(ScaffoldMessenger.maybeOf(context), porEmpezar);
+      }
       return;
     }
 
@@ -149,7 +158,7 @@ class _JornadaPageState extends ConsumerState<JornadaPage> with FinDeJornada<Jor
               cabecera: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  AvisosDeCampaniaEnHoy(usuarioId: widget.sesion.usuarioId),
+                  AvisosDeCampaniaEnHoy(key: _avisos, usuarioId: widget.sesion.usuarioId),
                   if (jornada == null)
                     _cabeceraSinJornada(ahora)
                   else if (_bloqueadaPorEnCurso)

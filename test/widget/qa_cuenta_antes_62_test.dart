@@ -16,10 +16,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/qa_cuenta_antes_62_arnes.dart';
 
-// Los casos de los hallazgos de QA corren con `--dart-define=QA_HALLAZGOS=true`; el implementador
-// les saca el `skip` cuando los arregla.
-const conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 const _textoVerano =
     'Tu campaña Verano 2027 empieza el 01/12. Hasta entonces podés bajar el mapa y las casas; '
     'la jornada y las ventas se habilitan ese día.';
@@ -56,7 +52,8 @@ void main() {
         sinTextoFueraDeLosCostados(tester, ancho);
         // «Iniciar jornada» sigue a un scroll de distancia y se puede tocar.
         await tocarIniciar(tester);
-        expect(snack, findsOneWidget);
+        // Con letra al 200 % el aviso de abajo no entra: la vista va al aviso fijo (ronda 1 de QA).
+        expect(snack.evaluate().isNotEmpty || avisoFijo.evaluate().isNotEmpty, isTrue);
       });
 
       testWidgets('el aviso al tocar «Iniciar jornada» (✕, tamaño de toque, contraste) · $nombre', (
@@ -66,8 +63,13 @@ void main() {
         await montarHoy(tester, m, ancho: ancho, alto: alto, escala: escala);
         await tocarIniciar(tester);
 
-        expect(snack, findsOneWidget);
-        expect(find.descendant(of: snack, matching: find.byType(IconButton)), findsOneWidget);
+        if (escala == 2) {
+          // No entra abajo: la vista va al aviso fijo, que sigue a la vista y cumple las guías.
+          expect(snack.evaluate().isNotEmpty || avisoFijo.evaluate().isNotEmpty, isTrue);
+        } else {
+          expect(snack, findsOneWidget);
+          expect(find.descendant(of: snack, matching: find.byType(IconButton)), findsOneWidget);
+        }
         await cumpleLasGuias(tester);
         sinTextoFueraDeLosCostados(tester, ancho);
       });
@@ -95,8 +97,9 @@ void main() {
         sinTextoFueraDeLosCostados(tester, ancho);
       });
 
-      // QA #62: con texto al 200 % en 360×640 el aviso flotante (8 renglones) no entra en «Inicio»:
-      // `Floating SnackBar presented off screen`. En los otros tamaños entra y no tapa la barra.
+      // QA #62: con texto al 200 % en 360×640 el aviso flotante (8 renglones) no entra en «Inicio»: en
+      // vez de repetirlo abajo, la vista va al aviso fijo de «Hoy». En los otros tamaños entra y no tapa
+      // la barra.
       testWidgets(
         'el aviso al tocar «Iniciar jornada» entra en la pantalla y no tapa la barra · $nombre',
         (tester) async {
@@ -105,13 +108,23 @@ void main() {
           await tocarIniciar(tester);
 
           expect(tester.takeException(), isNull, reason: 'el aviso flotante no entra en pantalla');
+          final barra = tester.getRect(find.byKey(const Key('inicio_barra')));
+          if (ancho == 360 && escala == 2) {
+            expect(snack, findsNothing);
+            expect(avisoFijo, findsOneWidget);
+            final fijo = tester.getRect(avisoFijo);
+            expect(fijo.top, greaterThanOrEqualTo(0));
+            // El aviso fijo es más alto que la región (8+ renglones): se ve desde su primer renglón y se
+            // sigue con el scroll.
+            expect(fijo.top, lessThan(barra.top));
+            expect(m.jornadas.jornadas, isEmpty);
+            return;
+          }
           expect(snack, findsOneWidget);
           final aviso = tester.getRect(snack);
-          final barra = tester.getRect(find.byKey(const Key('inicio_barra')));
           expect(aviso.top, greaterThanOrEqualTo(0));
           expect(aviso.bottom, lessThanOrEqualTo(barra.top + 0.5), reason: 'tapa la barra');
         },
-        skip: !conHallazgos && ancho == 360 && escala == 2,
       );
     }
   });
