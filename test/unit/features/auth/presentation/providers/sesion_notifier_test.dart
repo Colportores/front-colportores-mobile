@@ -8,6 +8,7 @@ import 'package:colportores_mobile/core/database/database_helper.dart';
 import 'package:colportores_mobile/core/database/database_providers.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/logging/app_logger.dart';
+import 'package:colportores_mobile/core/notificaciones/notificaciones_providers.dart';
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
 import 'package:colportores_mobile/core/secure_storage/fakes/almacen_seguro_en_memoria.dart';
@@ -685,6 +686,70 @@ void main() {
       expect(container.read(dbLocalProvider), isNull);
       expect(helper.abierta, isFalse);
       expect(clave.destruida, isTrue);
+    });
+
+    group('el token de push se vacía antes de cerrar (HU-NOT-001, «Token FCM», #414)', () {
+      /// Un contenedor aparte, con el gancho del cierre reemplazado por [gancho].
+      Future<ProviderContainer> conGancho(Future<void> Function() gancho) async {
+        container.dispose();
+        container = ProviderContainer(
+          overrides: [
+            authRemoteDataSourceProvider.overrideWithValue(remote),
+            authLocalDataSourceProvider.overrideWithValue(local),
+            databaseHelperProvider.overrideWithValue(helper),
+            retiroTokenPushProvider.overrideWithValue(gancho),
+          ],
+        );
+        await iniciarSesion();
+        return container;
+      }
+
+      test('cuando cierra sesión, el gancho corre con la sesión todavía válida', () async {
+        var llamadas = 0;
+        Sesion? sesionAlRetirar;
+        int? cierresAlRetirar;
+        final c = await conGancho(() async {
+          llamadas++;
+          sesionAlRetirar = container.read(sesionProvider).value;
+          cierresAlRetirar = remote.llamadasCerrarSesion;
+        });
+
+        await c.read(sesionProvider.notifier).cerrarSesion();
+
+        expect(llamadas, 1);
+        expect(sesionAlRetirar, isNotNull, reason: 'el RPC necesita el JWT');
+        expect(cierresAlRetirar, 0, reason: 'antes de revocar el JWT');
+        expect(c.read(sesionProvider).value, isNull);
+        expect(remote.llamadasCerrarSesion, 1);
+      });
+
+      test('si el gancho falla, el cierre de sesión sigue igual', () async {
+        final c = await conGancho(() async => throw StateError('sin red'));
+
+        final resultado = await c.read(sesionProvider.notifier).cerrarSesion();
+
+        expect(resultado.isRight(), isTrue);
+        expect(c.read(sesionProvider).value, isNull);
+        expect(remote.llamadasCerrarSesion, 1);
+      });
+
+      test(
+        'el gancho que tarda se espera, y el cierre sigue cuando termina (sin pisarse)',
+        () async {
+          final puerta = Completer<void>();
+          final c = await conGancho(() => puerta.future);
+
+          final cierre = c.read(sesionProvider.notifier).cerrarSesion();
+          await pumpEventQueue();
+          expect(remote.llamadasCerrarSesion, 0, reason: 'todavía espera al servidor del token');
+          expect(c.read(sesionProvider).value, isNotNull);
+
+          puerta.complete();
+          await cierre;
+          expect(c.read(sesionProvider).value, isNull);
+          expect(remote.llamadasCerrarSesion, 1);
+        },
+      );
     });
   });
 

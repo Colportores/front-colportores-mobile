@@ -7,6 +7,7 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/database/sesion_usuario_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../../../core/notificaciones/notificaciones_providers.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../../domain/entities/cierre_forzado.dart';
@@ -364,6 +365,8 @@ class SesionNotifier extends _$SesionNotifier {
     bool conservarCorreo = false,
   }) async {
     final Either<Failure, ResultadoCierreSesion> resultado;
+    // Con la sesión todavía válida: el servidor deja de mandarle avisos a este teléfono.
+    await _retirarTokenPush();
     try {
       resultado = await ref.read(cerrarSesionUseCaseProvider)(const NoParams());
     } on Object catch (e, st) {
@@ -427,6 +430,8 @@ class SesionNotifier extends _$SesionNotifier {
     bool reintento = false,
     void Function(PasoBorrado paso)? alAvanzar,
   }) async {
+    // Con la sesión todavía válida (el borrado la cierra): lo mismo que al cerrar sesión.
+    await _retirarTokenPush();
     final resultado = await ref.read(borrarDatosLocalesUseCaseProvider)(
       BorrarDatosLocalesParams(
         incluirBackupDrive: incluirBackupDrive,
@@ -561,6 +566,19 @@ class SesionNotifier extends _$SesionNotifier {
         e,
         st,
       );
+    }
+  }
+
+  /// HU-NOT-001 («Token FCM»): le dice al servidor que este teléfono ya no recibe los avisos de la
+  /// cuenta. Tarda como mucho unos segundos y nunca lanza: un cierre de sesión no puede quedar
+  /// colgado ni fallar por esto.
+  Future<void> _retirarTokenPush() async {
+    try {
+      await ref.read(retiroTokenPushProvider)();
+    } on Object catch (e) {
+      _log.info(LogModulo.push, 'TOKEN_PUSH_RETIRAR', 'no se pudo vaciar el token de push', {
+        'tipo': e.runtimeType.toString(),
+      });
     }
   }
 

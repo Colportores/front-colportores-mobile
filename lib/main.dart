@@ -72,6 +72,7 @@ import 'features/notificaciones/presentation/enganches_push_remotas.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
+import 'features/notificaciones/presentation/providers/registro_token_push_providers.dart';
 import 'features/respaldo/data/repositories/recuperacion_resuelta_repository_impl.dart';
 import 'features/respaldo/data/repositories/respaldo_drive_repository_impl.dart';
 import 'features/respaldo/data/services/nivel_bateria_canal.dart';
@@ -528,6 +529,8 @@ Future<void> main() async {
         // lo marca como leído y lleva a su destino. Las recibe `firebase_messaging` si Firebase
         // arrancó; si no, `pushRemotasProvider` se queda con el fake que no recibe nada.
         if (pushRemotas != null) pushRemotasProvider.overrideWithValue(pushRemotas),
+        // HU-NOT-001 («Token FCM»): al cerrar sesión, el token del teléfono se vacía en el servidor.
+        retiroTokenPushProvider.overrideWith(retirarTokenPush),
         ...EnganchesPushRemotas.enganches(navigatorKeyColportores),
         // Pestaña Historial de la hoja de la casa (vista 39, C·03 y C·04, #446): las visitas, las ventas
         // y los cobros del lugar, todos en el teléfono. Un cobro abre su detalle (vista 30 B) cuando
