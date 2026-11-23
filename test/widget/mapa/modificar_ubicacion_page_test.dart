@@ -1041,11 +1041,10 @@ void main() {
       expect(_habilitado(tester, _guardar), isFalse);
       expect(e.repo.escrituras, isEmpty);
 
+      // A Negocio ya no se bloquea: el negocio es como un edificio (Cristian, 09/11, «Negocio mapa»).
       await _tocar(tester, find.text('Negocio'));
-      expect(
-        find.text('Esta ubicación tiene 3 espacios. Borralos o reubicalos primero.'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
+      expect(_habilitado(tester, _guardar), isTrue);
 
       await _tocar(tester, find.text('Edificio'));
       expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
@@ -1058,7 +1057,7 @@ void main() {
         espacios: 2,
       );
 
-      await _tocar(tester, find.text('Negocio'));
+      await _tocar(tester, find.text('Casa'));
 
       expect(
         find.text('Esta ubicación tiene 2 espacios. Borralos o reubicalos primero.'),
@@ -1091,19 +1090,42 @@ void main() {
       expect(e.salidas.single, isA<UbicacionEditada>());
     });
 
-    testWidgets('con un solo departamento, a Negocio también se guarda', (tester) async {
-      final e = await _montar(
-        tester,
-        ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
-        espacios: 1,
-      );
+    testWidgets(
+      'con un solo departamento, a Negocio también se guarda y el depto sigue con su número '
+      '(Cristian, 09/11, «Negocio mapa»)',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+          espacios: 1,
+        );
 
-      await _tocar(tester, find.text('Negocio'));
-      await _tocar(tester, _guardar);
+        await _tocar(tester, find.text('Negocio'));
+        await _tocar(tester, _guardar);
 
-      expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.negocio);
-      expect(e.repo.escrituras.single.reduceAUnEspacio, isTrue);
-    });
+        expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.negocio);
+        expect(e.repo.escrituras.single.reduceAUnEspacio, isFalse);
+      },
+    );
+
+    testWidgets(
+      'de edificio con 3 deptos a Negocio se guarda sin perder ninguno (Cristian, 09/11)',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+          espacios: 3,
+        );
+
+        await _tocar(tester, find.text('Negocio'));
+        expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
+        expect(find.textContaining('queda como el espacio'), findsNothing);
+        await _tocar(tester, _guardar);
+
+        expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.negocio);
+        expect(e.repo.escrituras.single.reduceAUnEspacio, isFalse);
+      },
+    );
 
     for (final tipo in [TipoUbicacion.edificio, TipoUbicacion.negocio]) {
       testWidgets(
@@ -1432,12 +1454,12 @@ void main() {
       expect(e.salidas.single, isA<UbicacionEditada>());
     });
 
-    testWidgets('la línea dice «de la casa» o «del negocio» según el tipo nuevo y se va al volver '
-        'al tipo guardado', (tester) async {
+    testWidgets('la línea dice «de la casa» solo al pasar a Casa (a Negocio el depto sigue con su '
+        'número, 09/11) y se va al volver al tipo guardado', (tester) async {
       await _montar(tester, repo: _conUnDepto(TipoUbicacion.edificio));
 
       await _tocar(tester, find.text('Negocio'));
-      expect(find.text(_lineaNegocio), findsOneWidget);
+      expect(find.text(_lineaNegocio), findsNothing);
       expect(find.text(_lineaCasa), findsNothing);
 
       await _tocar(tester, find.text('Casa'));
@@ -2334,7 +2356,7 @@ void main() {
         'cuenta, y al volver a un solo departamento se guarda lo tipeado', (tester) async {
       final repo = _conUnDepto(TipoUbicacion.edificio);
       await _montar(tester, repo: repo);
-      await _tocar(tester, find.text('Negocio'));
+      await _tocar(tester, find.text('Casa'));
       await _escribirCalle(tester, 'Av. Brasil');
       await _escribirNumero(tester, '1238');
 
@@ -2349,14 +2371,11 @@ void main() {
       await _asentar(tester);
       expect(find.widgetWithText(TextField, 'Av. Brasil'), findsOneWidget);
       expect(find.widgetWithText(TextField, '1238'), findsOneWidget);
-      expect(find.text(_lineaNegocio), findsOneWidget);
+      expect(find.text(_lineaCasa), findsOneWidget);
       await _tocar(tester, _guardar);
 
       final nueva = repo.escrituras.single.nueva;
-      expect(
-        (nueva.tipo, nueva.calle, nueva.numero),
-        (TipoUbicacion.negocio, 'Av. Brasil', '1238'),
-      );
+      expect((nueva.tipo, nueva.calle, nueva.numero), (TipoUbicacion.casa, 'Av. Brasil', '1238'));
     });
 
     testWidgets('dos cambios seguidos antes de que la hoja se redibuje: queda la cuenta de ahora, '
@@ -2510,7 +2529,7 @@ void main() {
         've sin desbordes', (tester) async {
       final repo = _conUnDepto(TipoUbicacion.edificio);
       await _montar(tester, repo: repo, tamano: const Size(360, 640), escala: 2);
-      await _tocar(tester, find.text('Negocio'));
+      await _tocar(tester, find.text('Casa'));
 
       repo.cambiarEspacios(120);
       await _asentar(tester);

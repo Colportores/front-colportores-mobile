@@ -25,6 +25,27 @@ abstract final class TextosEstadosHojaCasa {
   // E·04 — casa dada de baja.
   static const dadaDeBaja =
       'Esta casa está dada de baja: podés ver lo que pasó, pero no registrar nada.';
+
+  /// El lugar que muestra la hoja, para los avisos: «esta casa», «este edificio» o «este negocio» (en el
+  /// depto, [esteDepto]). El canvas dibuja los avisos para una casa; en un edificio o en un depto dicen
+  /// el lugar del que hablan (P2 de `452-qa-261111-1635`).
+  static String esteLugar(TipoUbicacion tipo) => switch (tipo) {
+    TipoUbicacion.casa => 'esta casa',
+    TipoUbicacion.edificio => 'este edificio',
+    TipoUbicacion.negocio => 'este negocio',
+  };
+  static const esteDepto = 'este depto';
+
+  /// E·02 dicho del lugar: «No pudimos leer este depto en tu teléfono.» ([esteLugar] o [esteDepto]).
+  static String errorAlLeerDe(String lugar) => 'No pudimos leer $lugar en tu teléfono.';
+
+  /// E·04 dicho de la ubicación de tipo [tipo]: la casa como el canvas, «Este edificio está dado de
+  /// baja: …» en un edificio (también en sus deptos: la baja es del edificio).
+  static String dadaDeBajaDe(TipoUbicacion tipo) => switch (tipo) {
+    TipoUbicacion.casa => dadaDeBaja,
+    TipoUbicacion.edificio || TipoUbicacion.negocio =>
+      'E${esteLugar(tipo).substring(1)} está dado de baja: podés ver lo que pasó, pero no registrar nada.',
+  };
   static const reactivar = 'Reactivar';
 
   // E·06 — varias ubicaciones en el mismo punto.
@@ -147,15 +168,21 @@ class AvisoHojaCasa extends StatefulWidget {
     this.accionAlLado = false,
   });
 
-  /// E·02 · «No pudimos leer esta casa en tu teléfono.» con «Reintentar».
-  factory AvisoHojaCasa.errorAlLeer({Key? key, required FutureOr<void> Function() alReintentar}) =>
-      AvisoHojaCasa._(
-        key: key ?? ClavesEstadosHojaCasa.avisoErrorAlLeer,
-        tono: TonoAvisoHojaCasa.error,
-        texto: TextosEstadosHojaCasa.errorAlLeer,
-        etiquetaDeLaAccion: TextosEstadosHojaCasa.reintentar,
-        alAccionar: alReintentar,
-      );
+  /// E·02 · «No pudimos leer esta casa en tu teléfono.» con «Reintentar». Con [lugar] (ver
+  /// [TextosEstadosHojaCasa.esteLugar]) dice ese lugar en vez de «esta casa».
+  factory AvisoHojaCasa.errorAlLeer({
+    Key? key,
+    required FutureOr<void> Function() alReintentar,
+    String? lugar,
+  }) => AvisoHojaCasa._(
+    key: key ?? ClavesEstadosHojaCasa.avisoErrorAlLeer,
+    tono: TonoAvisoHojaCasa.error,
+    texto: lugar == null
+        ? TextosEstadosHojaCasa.errorAlLeer
+        : TextosEstadosHojaCasa.errorAlLeerDe(lugar),
+    etiquetaDeLaAccion: TextosEstadosHojaCasa.reintentar,
+    alAccionar: alReintentar,
+  );
 
   /// «No pudimos leer tu agenda.» con «Reintentar», cuando no se puede leer la lista de «Visitas
   /// agendadas» de la casa (23B·09, el mismo aviso de la pestaña Agenda).
@@ -173,15 +200,18 @@ class AvisoHojaCasa extends StatefulWidget {
 
   /// E·04 · «Esta casa está dada de baja: podés ver lo que pasó, pero no registrar nada.» con
   /// «Reactivar». Sin [alReactivar] (la baja por unión de duplicados no se reactiva, HU-UBI-005) el
-  /// aviso va sin acción.
-  factory AvisoHojaCasa.dadaDeBaja({Key? key, FutureOr<void> Function()? alReactivar}) =>
-      AvisoHojaCasa._(
-        key: key ?? ClavesEstadosHojaCasa.avisoDadaDeBaja,
-        tono: TonoAvisoHojaCasa.atencion,
-        texto: TextosEstadosHojaCasa.dadaDeBaja,
-        etiquetaDeLaAccion: alReactivar == null ? null : TextosEstadosHojaCasa.reactivar,
-        alAccionar: alReactivar,
-      );
+  /// aviso va sin acción. Con [tipo] dice el lugar ([TextosEstadosHojaCasa.dadaDeBajaDe]).
+  factory AvisoHojaCasa.dadaDeBaja({
+    Key? key,
+    FutureOr<void> Function()? alReactivar,
+    TipoUbicacion tipo = TipoUbicacion.casa,
+  }) => AvisoHojaCasa._(
+    key: key ?? ClavesEstadosHojaCasa.avisoDadaDeBaja,
+    tono: TonoAvisoHojaCasa.atencion,
+    texto: TextosEstadosHojaCasa.dadaDeBajaDe(tipo),
+    etiquetaDeLaAccion: alReactivar == null ? null : TextosEstadosHojaCasa.reactivar,
+    alAccionar: alReactivar,
+  );
 
   /// E·05 · «Estás a 650 m de esta casa.» Solo informa: no bloquea ni pide confirmar (pregunta 6
   /// abierta). Con una distancia que no existe (NaN, infinita o negativa) no dibuja nada.
