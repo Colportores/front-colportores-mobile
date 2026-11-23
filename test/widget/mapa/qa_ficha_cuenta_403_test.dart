@@ -97,13 +97,7 @@ void main() {
         await db
             .into(db.productos)
             .insert(
-              ProductosCompanion.insert(
-                id: id,
-                nombre: nombre,
-                tipo: 'LIBRO',
-                createdAt: t0,
-                updatedAt: t0,
-              ),
+              ProductosCompanion.insert(id: id, nombre: nombre, createdAt: t0, updatedAt: t0),
             );
       }
       if (datos != null) await datos();
