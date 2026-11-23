@@ -44,6 +44,7 @@ import 'generated/schema_v35.dart' as v35;
 import 'generated/schema_v36.dart' as v36;
 import 'generated/schema_v37.dart' as v37;
 import 'generated/schema_v38.dart' as v38;
+import 'generated/schema_v39.dart' as v39;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
@@ -2439,6 +2440,76 @@ void main() {
         final anulado = await nuevo.select(nuevo.cobranza).getSingle();
         expect(anulado.anuladoAt, 5);
         expect(anulado.motivoAnulacion, 'Otro');
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 38, cuando migra a la 39, se conserva todo y las tablas de las '
+      'transferencias quedan vacías y sin nada para subir (#512)', () async {
+    // HU-STK-005 (#512): solo se suman `transferencia_stock` y `transferencia_item`. El stock, la cola y
+    // los watermarks no se tocan: lo que esperaba subir sigue esperando (convenciones §9).
+    const stock = v38.StockData(
+      id: 'st-1',
+      usuarioId: 'col-1',
+      productoId: 'p-1',
+      cantidadDisponible: 6,
+      cantidadReservada: 0,
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 3,
+    );
+    const job = v38.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'venta',
+      op: 'insert',
+      payload: '{"id":"v-1"}',
+      rowPk: 'v-1',
+      createdAt: 1758700000000,
+      state: 'PENDING',
+      code: '',
+      message: '',
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 38,
+      newVersion: 39,
+      createOld: v38.DatabaseAtV38.new,
+      createNew: v39.DatabaseAtV39.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.stock, stock)
+          ..insert(viejo.syncQueue, job);
+      },
+      validateItems: (nuevo) async {
+        final stocks = await nuevo.select(nuevo.stock).get();
+        expect(stocks.map((s) => s.toJson()), [stock.toJson()]);
+        final jobs = await nuevo.select(nuevo.syncQueue).get();
+        expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+        expect(await nuevo.select(nuevo.transferenciaStock).get(), isEmpty);
+        expect(await nuevo.select(nuevo.transferenciaItem).get(), isEmpty);
+
+        const insertar =
+            'INSERT INTO transferencia_stock (id, origen_id, destino_id, created_at, updated_at) VALUES ';
+        await nuevo.customStatement("$insertar('t-1', 'ana', 'juan', 1, 1)");
+        final fila = await nuevo.select(nuevo.transferenciaStock).getSingle();
+        expect(fila.estado, 'PENDIENTE_AUTORIZACION', reason: 'nace por autorizar');
+        expect(fila.solicitanteId, isNull);
+        expect(fila.fechaSolicitud, isNull, reason: 'sin hora del servidor: «En cola»');
+        await expectLater(
+          nuevo.customStatement("$insertar('t-2', 'ana', 'ana', 1, 1)"),
+          throwsA(anything),
+          reason: 'las dos puntas son distintas (CHECK del servidor)',
+        );
+        await expectLater(
+          nuevo.customStatement(
+            'INSERT INTO transferencia_item (id, transferencia_id, producto_id, cantidad, created_at, '
+            "updated_at) VALUES ('l-1', 't-1', 'p-1', 0, 1, 1)",
+          ),
+          throwsA(anything),
+          reason: 'la cantidad es mayor que cero',
+        );
       },
     );
   });

@@ -1500,3 +1500,78 @@ final class FailureTicketNoEncontrado extends Failure {
   const FailureTicketNoEncontrado()
     : super(mensaje: 'No encontramos ese ticket.', codigo: 'TICKET_NO_ENCONTRADO');
 }
+
+// --- Transferencias de materiales (HU-STK-005, vista 40, #512) -----------------------------------
+
+/// La transferencia no se pudo guardar en el teléfono (40A·08). No se guardó ni se encoló nada: se puede
+/// reintentar con lo mismo. El canvas dice «Quedó guardada acá», pero eso solo es verdad si la falla es
+/// posterior al guardado: cuando falla la escritura, lo verdadero es que no se envió nada (texto a
+/// confirmar, «mapa §2: texto»).
+final class FailureTransferenciaNoGuardada extends Failure {
+  const FailureTransferenciaNoGuardada({this.causa})
+    : super(
+        mensaje: 'No pudimos enviar la transferencia. No se envió nada: probá de nuevo.',
+        codigo: 'TRANSFERENCIA_NO_GUARDADA',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// La transferencia no tiene la forma que el servidor acepta (sin materiales, sin compañero, consigo
+/// misma o con una cantidad que no sirve). La pantalla no deja llegar hasta acá: es la red de seguridad.
+final class FailureTransferenciaInvalida extends Failure {
+  const FailureTransferenciaInvalida()
+    : super(
+        mensaje: 'Elegí a quién se lo pedís y sumá al menos un material.',
+        codigo: 'TRANSFERENCIA_INVALIDA',
+      );
+}
+
+/// La transferencia ya no se puede cancelar: no es del colportor o su coordinadora ya la decidió
+/// (decisión «Cancelar tr.»: solo quien la pidió, solo mientras está por autorizar).
+final class FailureTransferenciaNoCancelable extends Failure {
+  const FailureTransferenciaNoCancelable()
+    : super(
+        mensaje: 'Esta transferencia ya no se puede cancelar: tu coordinadora ya la decidió.',
+        codigo: 'TRANSFERENCIA_NO_CANCELABLE',
+      );
+}
+
+/// La cancelación no se pudo guardar en el teléfono: la transferencia sigue como estaba.
+final class FailureTransferenciaNoCancelada extends Failure {
+  const FailureTransferenciaNoCancelada({this.causa})
+    : super(
+        mensaje: 'No pudimos cancelar la transferencia. Sigue por autorizar: probá de nuevo.',
+        codigo: 'TRANSFERENCIA_NO_CANCELADA',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudieron leer las transferencias (40B·10): la base local no se pudo leer. Es otra cosa que
+/// «todavía no hay transferencias».
+final class FailureTransferenciasNoDisponibles extends Failure {
+  const FailureTransferenciasNoDisponibles()
+    : super(
+        mensaje: 'No pudimos traer tus transferencias.',
+        codigo: 'TRANSFERENCIAS_NO_DISPONIBLES',
+      );
+}
+
+/// No se pudo traer a los colportores de la campaña (40A·02): el servidor no la dio o no hay conexión.
+/// El canvas no dibuja este caso (texto a confirmar, «mapa §2: texto»).
+final class FailureCompanierosNoDisponibles extends Failure {
+  const FailureCompanierosNoDisponibles()
+    : super(
+        mensaje: 'No pudimos traer a los colportores de tu campaña. Probá de nuevo con conexión.',
+        codigo: 'COMPANIEROS_NO_DISPONIBLES',
+      );
+}

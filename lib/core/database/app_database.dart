@@ -36,6 +36,7 @@ import '../../features/mapa/data/datasources/zonas_table.dart';
 import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
 import '../../features/stock/data/datasources/stocks_table.dart';
 import '../../features/tickets/data/datasources/tickets_table.dart';
+import '../../features/transferencias/data/datasources/transferencias_table.dart';
 import '../../features/ventas/data/datasources/componentes_converter.dart';
 import '../../features/ventas/data/datasources/devoluciones_table.dart';
 import '../../features/ventas/data/datasources/entregas_table.dart';
@@ -91,6 +92,8 @@ part 'app_database.g.dart';
     PreciosGenerales,
     ParametrosGlobales,
     Stocks,
+    TransferenciasStock,
+    TransferenciaItems,
     Ciudades,
     Paises,
     Campanias,
@@ -190,10 +193,13 @@ class AppDatabase extends _$AppDatabase {
   ///   `pais`, la réplica del catálogo de países que el contrato lista como `pull` (P1 de #181).
   /// - 38: `cobranza` suma `anulado_at` y `motivo_anulacion`, la marca de anulado que sube con el cobro
   ///   (backend-supabase 0072, HU-COB-006, #422).
+  /// - 39: `transferencia_stock` y `transferencia_item`, las transferencias de materiales entre colportores
+  ///   que el teléfono pide y cancela, y que baja a las dos puntas (backend-supabase 0139 y 0148,
+  ///   HU-STK-005, #512).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 38;
+  static const int versionEsquema = 39;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -540,6 +546,15 @@ class AppDatabase extends _$AppDatabase {
     from37To38: (m, esquema) async {
       await m.addColumn(esquema.cobranza, esquema.cobranza.anuladoAt);
       await m.addColumn(esquema.cobranza, esquema.cobranza.motivoAnulacion);
+    },
+    // Solo crea las tablas de las transferencias, vacías (las llena el pull y el colportor al pedirlas):
+    // nada de lo guardado cambia ni se encola al migrar.
+    from38To39: (m, esquema) async {
+      await m.createTable(esquema.transferenciaStock);
+      await m.createIndex(esquema.transferenciaStockOrigenIdx);
+      await m.createIndex(esquema.transferenciaStockDestinoIdx);
+      await m.createTable(esquema.transferenciaItem);
+      await m.createIndex(esquema.transferenciaItemTransferenciaIdx);
     },
   );
 }
