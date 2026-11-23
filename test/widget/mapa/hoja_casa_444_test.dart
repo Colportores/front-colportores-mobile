@@ -15,8 +15,10 @@ import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_hoj
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_mapa_ubicaciones.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/deptos_falsos.dart';
 import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/lista_ubicaciones_falsos.dart' show ahoraLista;
 import '../../helpers/persona_falsos.dart';
@@ -42,6 +44,7 @@ Future<_Montaje> _montar(
   double escala = 1,
   Size tamano = const Size(390, 844),
   _Montaje? montaje,
+  List<Override> extras = const [],
 }) async {
   final m = montaje ?? _Montaje();
   tester.view.physicalSize = tamano;
@@ -51,14 +54,17 @@ Future<_Montaje> _montar(
   await tester.pumpWidget(
     ProviderScope(
       key: UniqueKey(),
-      overrides: overridesHojaCasa(
-        lectura: lectura,
-        lecturas: m.lecturas,
-        registrarVisita: registrarVisita == null
-            ? null
-            : (contexto) => registrarVisita(contexto, m),
-        cobrar: cobrar == null ? null : (contexto) => cobrar(contexto, m),
-      ),
+      overrides: [
+        ...overridesHojaCasa(
+          lectura: lectura,
+          lecturas: m.lecturas,
+          registrarVisita: registrarVisita == null
+              ? null
+              : (contexto) => registrarVisita(contexto, m),
+          cobrar: cobrar == null ? null : (contexto) => cobrar(contexto, m),
+        ),
+        ...extras,
+      ],
       child: MaterialApp(
         theme: temaClaro(),
         builder: (context, child) => MediaQuery(
@@ -151,17 +157,17 @@ void main() {
       expect(subtitulo(tester), isNot(contains('Entrega pendiente')));
     });
 
-    testWidgets('en un edificio (sin espacio leído) no se sabe: sigue «Entrega y pago»', (
-      tester,
-    ) async {
+    testWidgets('en un edificio la línea es la de sus deptos (C·09, #452): no dice el estado de la '
+        'casa ni «Entrega pendiente»', (tester) async {
       await _montar(
         tester,
         item: itemDeLaHoja(tipo: TipoUbicacion.edificio, estado: EstadoCasa.entregaYPago),
         lectura: (_) => Stream.value(const ContextoDeLaCasa()),
+        extras: overridesDeptos(),
       );
       await _drenar(tester);
 
-      expect(subtitulo(tester), contains('Entrega y pago'));
+      expect(subtitulo(tester), 'Edificio · 1 depto · a 20\u00A0m de vos');
     });
 
     testWidgets('otro estado sin saldo no cambia de nombre', (tester) async {
@@ -324,7 +330,8 @@ void main() {
       expect(_texto(tester, _subtitulo), 'Casa');
     });
 
-    testWidgets('un negocio dice «Negocio», y un edificio no lee personas', (tester) async {
+    testWidgets('un edificio no lee personas hasta elegir el depto (C·09); con el depto, lee ese '
+        'espacio y «Registrar visita» lo lleva (C·10, #452)', (tester) async {
       final lecturas = <ClaveDeLaCasa>[];
       final m = _Montaje();
       await _montar(
@@ -333,17 +340,25 @@ void main() {
         item: itemDeLaHoja(tipo: TipoUbicacion.edificio, estado: EstadoCasa.sinVisita),
         lectura: (clave) {
           lecturas.add(clave);
-          return Stream.value(const ContextoDeLaCasa());
+          return Stream.value(ContextoDeLaCasa(espacioId: clave.espacioId));
         },
         registrarVisita: (contexto, m) => m.visitas.add(contexto),
+        extras: overridesDeptos(),
       );
 
       expect(_texto(tester, _subtitulo), startsWith('Edificio'));
-      expect(lecturas.single.tipo, TipoUbicacion.edificio);
+      expect(lecturas, isEmpty);
+      expect(_registrar, findsNothing);
+
+      await abrirDepto(tester);
+      expect(lecturas.single, (
+        ubicacionId: 'u-1',
+        tipo: TipoUbicacion.edificio,
+        espacioId: 'esp-3B',
+      ));
       await tester.tap(_registrar);
       await tester.pump();
-      // En un edificio el contexto es el depto: sin uno elegido, el espacio llega vacío.
-      expect(m.visitas, [(ubicacionId: 'u-1', espacioId: null, agendaId: null)]);
+      expect(m.visitas, [(ubicacionId: 'u-1', espacioId: 'esp-3B', agendaId: null)]);
     });
 
     testWidgets(

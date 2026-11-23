@@ -126,12 +126,16 @@ void main() {
   });
 
   /// Escucha, deja correr la lectura inicial y devuelve lo emitido y los errores.
-  Future<(List<ContextoDeLaCasa>, List<Object>)> escuchar(TipoUbicacion tipo) async {
+  Future<(List<ContextoDeLaCasa>, List<Object>)> escuchar(
+    TipoUbicacion tipo, {
+    String? espacioId,
+  }) async {
     final emitidos = <ContextoDeLaCasa>[];
     final errores = <Object>[];
     final suscripcion = caso(
       ubicacionId: 'ub-1',
       tipo: tipo,
+      espacioId: espacioId,
     ).listen(emitidos.add, onError: errores.add);
     addTearDown(suscripcion.cancel);
     await pumpEventQueue();
@@ -196,7 +200,7 @@ void main() {
   });
 
   test('sin nota emite el contexto con nota null', () async {
-    final (emitidos, _) = await escuchar(TipoUbicacion.negocio);
+    final (emitidos, _) = await escuchar(TipoUbicacion.casa);
     personas.de(espacio.id).add([ana]);
     notas.controlador.add(null);
     await pumpEventQueue();
@@ -217,6 +221,36 @@ void main() {
     expect(personas.controladores, isEmpty);
   });
 
+  test(
+    'un negocio es como un edificio (Cristian, 09/11): sin depto elegido no tiene espacio',
+    () async {
+      final (emitidos, _) = await escuchar(TipoUbicacion.negocio);
+      notas.controlador.add(null);
+      await pumpEventQueue();
+
+      expect(emitidos.single.espacioId, isNull);
+      expect(emitidos.single.personas, isEmpty);
+      expect(espacios.consultadas, isEmpty);
+    },
+  );
+
+  for (final tipo in [TipoUbicacion.edificio, TipoUbicacion.negocio]) {
+    test('con el depto elegido (C·10), el contexto de un ${tipo.name} es ese depto', () async {
+      final (emitidos, _) = await escuchar(tipo, espacioId: 'depto-3b');
+      personas.de('depto-3b').add([ana]);
+      notas.controlador.add(null);
+      await pumpEventQueue();
+
+      expect(emitidos.single.espacioId, 'depto-3b');
+      expect(emitidos.single.personas, [ana]);
+      expect(
+        espacios.consultadas,
+        isEmpty,
+        reason: 'no hace falta listar: el depto ya está elegido',
+      );
+    });
+  }
+
   test('una casa sin ningún espacio activo emite sin personas', () async {
     espacios.respuesta = const Right([]);
     final (emitidos, _) = await escuchar(TipoUbicacion.casa);
@@ -225,6 +259,25 @@ void main() {
 
     expect(emitidos.single.espacioId, isNull);
     expect(emitidos.single.personas, isEmpty);
+  });
+
+  test('una casa con más de un espacio activo no elige ninguno: es como un edificio sin depto '
+      '(P1 de 452-qa-261111-1635)', () async {
+    final otro = Espacio(
+      id: 'esp-2',
+      ubicacionId: 'ub-1',
+      numeroDepto: null,
+      piso: null,
+      auditoria: auditoriaPersonas(),
+    );
+    espacios.respuesta = Right([espacio, otro]);
+    final (emitidos, _) = await escuchar(TipoUbicacion.casa);
+    notas.controlador.add(null);
+    await pumpEventQueue();
+
+    expect(emitidos.single.espacioId, isNull);
+    expect(emitidos.single.personas, isEmpty);
+    expect(personas.controladores, isEmpty);
   });
 
   test('un saldo que no se puede leer no frena nada: la persona queda sin saldo', () async {

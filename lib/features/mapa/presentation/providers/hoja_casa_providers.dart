@@ -50,9 +50,10 @@ final observarContextoDeLaCasaUseCaseProvider = Provider<ObservarContextoDeLaCas
 /// «Reintentar» es de quien lo toca.
 Duration? _sinReintentos(int intento, Object error) => null;
 
-/// Qué ubicación lee la hoja: su `id` y su tipo (que decide si hay un solo espacio o un depto por
-/// elegir). Editar la dirección no cambia la clave: la hoja no vuelve a «cargando».
-typedef ClaveDeLaCasa = ({String ubicacionId, TipoUbicacion tipo});
+/// Qué ubicación lee la hoja: su `id`, su tipo (que decide si hay un solo espacio o un depto por
+/// elegir) y, en un edificio o un negocio, el depto elegido ([espacioId], C·10; `null` mientras se
+/// elige, C·09). Editar la dirección no cambia la clave: la hoja no vuelve a «cargando».
+typedef ClaveDeLaCasa = ({String ubicacionId, TipoUbicacion tipo, String? espacioId});
 
 /// Lo que la hoja de la casa [clave] muestra además de la ubicación: su espacio, las personas, lo que
 /// deben y la nota más reciente. Una falla de lectura es el error del provider.
@@ -60,6 +61,7 @@ final contextoDeLaCasaProvider = StreamProvider.autoDispose.family<ContextoDeLaC
   (ref, clave) => ref.watch(observarContextoDeLaCasaUseCaseProvider)(
     ubicacionId: clave.ubicacionId,
     tipo: clave.tipo,
+    espacioId: clave.espacioId,
   ),
   retry: _sinReintentos,
 );

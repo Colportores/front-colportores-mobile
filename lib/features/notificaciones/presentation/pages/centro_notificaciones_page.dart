@@ -8,14 +8,17 @@ import '../../../../core/logging/app_logger.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../domain/entities/destino_notificacion.dart';
 import '../../domain/entities/notificacion.dart';
+import '../../domain/entities/tipo_notificacion.dart';
 import '../../domain/usecases/historial_notificaciones_use_cases.dart';
 import '../formato_centro_notificaciones.dart';
 import '../providers/conciliacion_recordatorios_providers.dart';
 import '../providers/historial_notificaciones_providers.dart';
 import '../widgets/aviso_notificaciones.dart';
 import '../widgets/fila_notificacion.dart';
+import '../widgets/fila_tipo_de_aviso.dart';
 import '../widgets/hojas_centro_notificaciones.dart';
 import '../widgets/textos_centro_notificaciones.dart';
+import '../widgets/textos_filtro_tipo_notificacion.dart';
 
 /// Centro de notificaciones (vista 24, grupo C; HU-NOT-005): los avisos de los últimos 90 días, el
 /// más reciente primero y agrupados por día, con los que no se leyeron marcados «Nueva». Se entra por
@@ -25,6 +28,11 @@ import '../widgets/textos_centro_notificaciones.dart';
 ///   lugar ya no existe (24C·07) la lista queda abierta y lo explica.
 /// - «⋯» (24C·02): marcar todas como leídas, o borrarlas (24C·03, con confirmación). Solo con avisos.
 /// - Sin avisos (24C·04), cargando (24C·05) y error al leer con «Reintentar» (24C·06).
+/// - Filtro por tipo (grupo D, #484): la fila «Tipo de aviso» arriba de la lista (24D·01) abre la hoja
+///   para elegirlo (24D·02); con un tipo elegido la fila lo dice y «✕ Quitar» vuelve a «Todos»
+///   (24D·03); sin avisos de ese tipo el vacío lo dice y ofrece «Ver todos» (24D·04). El filtro vive
+///   mientras la pantalla está abierta: al volver a entrar arranca en «Todos». «Borrar todas» borra
+///   los avisos que se ven (los del filtro), no los que quedan ocultos.
 class CentroNotificacionesPage extends ConsumerStatefulWidget {
   const CentroNotificacionesPage({super.key});
 
@@ -46,6 +54,12 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
 
   /// El menú o una de sus acciones está en curso.
   bool _conMenu = false;
+
+  /// El tipo de aviso que se está viendo; `null` es «Todos».
+  TipoNotificacion? _filtro;
+
+  /// La hoja del filtro está abierta: un segundo toque no abre otra encima.
+  bool _conHojaFiltro = false;
 
   @override
   void initState() {
@@ -186,9 +200,31 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
     }
   }
 
+  void _cambiarFiltro(TipoNotificacion? tipo) {
+    if (tipo == _filtro) return;
+    setState(() => _filtro = tipo);
+    _anunciar(TextosFiltroTipoNotificacion.anuncioFiltro(tipo));
+  }
+
+  /// La fila «Tipo de aviso» (24D·01/03): abre la hoja y aplica lo que se confirme con «Listo».
+  Future<void> _elegirTipo() async {
+    if (_conHojaFiltro || _conMenu) return;
+    _conHojaFiltro = true;
+    try {
+      final elegido = await mostrarHojaTipoDeAviso(context, actual: _filtro);
+      if (!mounted || elegido == null) return;
+      _cambiarFiltro(elegido.tipo);
+    } finally {
+      _conHojaFiltro = false;
+    }
+  }
+
   Future<void> _abrirMenu(List<Notificacion> avisos) async {
-    if (_conMenu) return;
+    if (_conMenu || _conHojaFiltro) return;
     _conMenu = true;
+    // Con un filtro puesto «Marcar todas» alcanza lo que se veía al abrir el menú (decisión P2): lo
+    // que el filtro oculta, o llegó con el menú abierto, queda «Nueva». Sin filtro, todos (`null`).
+    final idsMarcar = _filtro == null ? null : {for (final a in avisos) a.id};
     try {
       final accion = await mostrarMenuCentroNotificaciones(
         context,
@@ -197,7 +233,7 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
       if (!mounted || accion == null) return;
       switch (accion) {
         case AccionMenuCentro.marcarTodas:
-          await _marcarTodas();
+          await _marcarTodas(idsMarcar);
         case AccionMenuCentro.borrarTodas:
           await _confirmarBorrado(avisos);
       }
@@ -206,8 +242,8 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
     }
   }
 
-  Future<void> _marcarTodas() async {
-    final resultado = await ref.read(marcarTodasLeidasUseCaseProvider)();
+  Future<void> _marcarTodas(Set<String>? ids) async {
+    final resultado = await ref.read(marcarTodasLeidasUseCaseProvider)(ids: ids);
     if (!mounted) return;
     resultado.fold(
       (_) => _avisar(TextosCentroNotificaciones.errorAlMarcar),
@@ -241,6 +277,13 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
       AsyncData(:final value) => value,
       _ => null,
     };
+    // Lo que se ve con el filtro puesto; sin filtro, todo.
+    final visibles = avisos == null || _filtro == null
+        ? avisos
+        : [
+            for (final a in avisos)
+              if (a.tipo == _filtro) a,
+          ];
 
     return Scaffold(
       key: const Key('centro_notificaciones_pagina'),
@@ -271,12 +314,12 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
                       ),
                     ),
                   ),
-                  // El menú solo tiene sentido con avisos que marcar o borrar.
-                  if (avisos != null && avisos.isNotEmpty)
+                  // El menú solo tiene sentido con avisos que marcar o borrar (los que se ven).
+                  if (visibles != null && visibles.isNotEmpty)
                     IconButton(
                       key: const Key('centro_menu'),
                       tooltip: TextosCentroNotificaciones.menu,
-                      onPressed: () => unawaited(_abrirMenu(avisos)),
+                      onPressed: () => unawaited(_abrirMenu(visibles)),
                       icon: const Icon(Icons.more_horiz),
                     ),
                 ],
@@ -300,9 +343,16 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
             Expanded(
               child: switch (estado) {
                 AsyncData(:final value) when value.isEmpty => _Vacio(colores: colores),
-                AsyncData(:final value) => Padding(
+                AsyncData() => Padding(
                   padding: EdgeInsets.only(bottom: _reservaDelAviso),
-                  child: _Lista(avisos: value, onAbrir: _abrir, controlador: _scroll),
+                  child: _Lista(
+                    avisos: visibles ?? const [],
+                    filtro: _filtro,
+                    onAbrir: _abrir,
+                    onElegirTipo: () => unawaited(_elegirTipo()),
+                    onQuitarFiltro: () => _cambiarFiltro(null),
+                    controlador: _scroll,
+                  ),
                 ),
                 AsyncError() => ListView(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
@@ -328,17 +378,29 @@ class _CentroNotificacionesPageState extends ConsumerState<CentroNotificacionesP
 }
 
 class _Lista extends ConsumerWidget {
-  const _Lista({required this.avisos, required this.onAbrir, required this.controlador});
+  const _Lista({
+    required this.avisos,
+    required this.filtro,
+    required this.onAbrir,
+    required this.onElegirTipo,
+    required this.onQuitarFiltro,
+    required this.controlador,
+  });
 
   final ScrollController controlador;
+
+  /// Los avisos que se ven (ya filtrados). Vacía solo con un [filtro] sin avisos (24D·04).
   final List<Notificacion> avisos;
+  final TipoNotificacion? filtro;
   final void Function(Notificacion aviso) onAbrir;
+  final VoidCallback onElegirTipo;
+  final VoidCallback onQuitarFiltro;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ahora = ref.watch(relojHistorialNotificacionesProvider)();
-    // Rótulo de día + avisos, en una sola lista para que se construya perezosa.
-    final filas = <Object>[];
+    // La fila del filtro, rótulo de día + avisos, en una sola lista para que se construya perezosa.
+    final filas = <Object>[const _FilaFiltro()];
     String? ultimoDia;
     for (final aviso in avisos) {
       final dia = rotuloDelDia(aviso.recibidaEn, ahora: ahora);
@@ -348,6 +410,8 @@ class _Lista extends ConsumerWidget {
       }
       filas.add(aviso);
     }
+    // Sin avisos de ese tipo (24D·04): la fila sigue arriba y el vacío dice qué tipo está filtrado.
+    if (avisos.isEmpty && filtro != null) filas.add(_VacioDelFiltro(tipo: filtro!));
     return ListView.separated(
       key: const Key('centro_lista'),
       controller: controlador,
@@ -355,7 +419,16 @@ class _Lista extends ConsumerWidget {
       itemCount: filas.length,
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, i) => switch (filas[i]) {
+        _FilaFiltro() => FilaTipoDeAviso(
+          tipo: filtro,
+          onCambiar: onElegirTipo,
+          onQuitar: onQuitarFiltro,
+        ),
         final String dia => RotuloDiaNotificaciones(texto: dia),
+        final _VacioDelFiltro vacio => _VacioDelFiltroVista(
+          tipo: vacio.tipo,
+          onVerTodos: onQuitarFiltro,
+        ),
         final Notificacion aviso => FilaNotificacion(
           key: Key('centro_aviso_${aviso.id}'),
           notificacion: aviso,
@@ -363,6 +436,81 @@ class _Lista extends ConsumerWidget {
         ),
         _ => const SizedBox.shrink(),
       },
+    );
+  }
+}
+
+/// El lugar de la fila «Tipo de aviso» en la lista.
+class _FilaFiltro {
+  const _FilaFiltro();
+}
+
+/// Marca, en la lista, el vacío de un filtro sin avisos.
+class _VacioDelFiltro {
+  const _VacioDelFiltro({required this.tipo});
+
+  final TipoNotificacion tipo;
+}
+
+/// 24D·04: sin avisos de ese tipo. Dice cuál está filtrado, qué hace llegar uno y ofrece «Ver todos».
+class _VacioDelFiltroVista extends StatelessWidget {
+  const _VacioDelFiltroVista({required this.tipo, required this.onVerTodos});
+
+  final TipoNotificacion tipo;
+  final VoidCallback onVerTodos;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>() ?? ColoresColportaje.unica;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 40, 10, 0),
+      child: Column(
+        spacing: 12,
+        children: [
+          Semantics(
+            key: const Key('filtro_vacio'),
+            container: true,
+            liveRegion: true,
+            child: Column(
+              spacing: 12,
+              children: [
+                ExcludeSemantics(
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE6EEF8),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.notifications_none,
+                      size: 28,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+                Text(
+                  TextosFiltroTipoNotificacion.vacioTitulo(tipo),
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge,
+                ),
+                Text(
+                  TextosFiltroTipoNotificacion.vacioTexto(tipo),
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+          BotonPildora(
+            clave: const Key('filtro_ver_todos'),
+            texto: TextosFiltroTipoNotificacion.verTodos,
+            estilo: EstiloBotonPildora.secundario,
+            onPressed: onVerTodos,
+          ),
+        ],
+      ),
     );
   }
 }

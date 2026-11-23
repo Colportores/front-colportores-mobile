@@ -57,6 +57,7 @@ class VisitasAgendadasDeLaCasa extends ConsumerStatefulWidget {
     required this.ubicacionId,
     required this.ahora,
     this.guarda,
+    this.espacioId,
   });
 
   final String colportorId;
@@ -65,6 +66,9 @@ class VisitasAgendadasDeLaCasa extends ConsumerStatefulWidget {
 
   /// La guarda que comparte con los botones de la hoja; `null` = solo la de sus propias filas.
   final GuardaDeDestino? guarda;
+
+  /// Con un depto elegido (vista 39, C·10) solo las de ese depto; `null` = todas las de la casa.
+  final String? espacioId;
 
   @override
   ConsumerState<VisitasAgendadasDeLaCasa> createState() => _VisitasAgendadasDeLaCasaState();
@@ -124,7 +128,14 @@ class _VisitasAgendadasDeLaCasaState extends ConsumerState<VisitasAgendadasDeLaC
 
     // Con un error (también el que llega después de los primeros datos) la lista no se dibuja: el
     // aviso va aparte, arriba en la hoja.
-    final todas = leida.hasError ? null : leida.value;
+    final deLaCasa = leida.hasError ? null : leida.value;
+    final espacioId = widget.espacioId;
+    final todas = espacioId == null || deLaCasa == null
+        ? deLaCasa
+        : [
+            for (final v in deLaCasa)
+              if (v.agenda.espacioId == espacioId) v,
+          ];
     if (todas == null || todas.isEmpty) return const SizedBox.shrink();
     final recien = _recien;
     final tarjeta = recien == null
