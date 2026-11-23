@@ -69,6 +69,7 @@ final class ItemDelHistorial extends Equatable {
     this.concepto,
     this.ticketId,
     this.depositoId,
+    this.cobroId,
     this.numeroAutorizacion,
     this.tarjetaTipo,
     this.motivoRechazo,
@@ -127,10 +128,14 @@ final class ItemDelHistorial extends Equatable {
 
   /// Un ticket que ningún depósito nombra: el de un cobro con tarjeta, o el de un depósito que todavía
   /// no bajó.
-  factory ItemDelHistorial.deTicket(Ticket ticket, {FotoLocalDeTicket? foto}) {
+  ///
+  /// [cobroId] es el cobro con tarjeta vivo que hoy tiene este ticket ligado (`cobranza.ticket_id`); sin
+  /// él (el cobro se anuló o ya se ligó a un ticket nuevo) no hay a qué cobro volver a cargarle el ticket.
+  factory ItemDelHistorial.deTicket(Ticket ticket, {FotoLocalDeTicket? foto, String? cobroId}) {
     return ItemDelHistorial(
       id: ticket.id,
       ticketId: ticket.id,
+      cobroId: cobroId,
       fecha: ticket.fecha,
       montoCentavos: ticket.montoCentavos,
       lugar: switch (ticket.tipo) {
@@ -168,6 +173,9 @@ final class ItemDelHistorial extends Equatable {
   final String? ticketId;
   final String? depositoId;
 
+  /// El cobro con tarjeta al que está ligado el ticket (solo en [LugarDelTicket.cobroConTarjeta]).
+  final String? cobroId;
+
   /// Cuándo se depositó o se sacó el ticket (UTC).
   final DateTime fecha;
   final int montoCentavos;
@@ -194,14 +202,18 @@ final class ItemDelHistorial extends Equatable {
   /// El servidor rechazó la foto para siempre (más de 2 MiB, tipo que no acepta).
   final bool fotoRechazada;
 
-  /// Se puede volver a cargar: un depósito o un retiro rechazado. El ticket de un cobro con tarjeta se
-  /// carga desde el cobro (vista 29), no desde acá.
+  /// Se puede volver a cargar: un depósito o un retiro rechazado, o el ticket rechazado de un cobro con
+  /// tarjeta que sigue ligado a su cobro (regla R7, seguimiento #728): ese se abre con el cobro
+  /// precargado (vista 29 C).
   bool get sePuedeCargarDeNuevo =>
       estado == EstadoDelItem.rechazado &&
-      depositoId != null &&
-      (lugar == LugarDelTicket.banco ||
-          lugar == LugarDelTicket.oficina ||
-          lugar == LugarDelTicket.retiro);
+      switch (lugar) {
+        LugarDelTicket.banco ||
+        LugarDelTicket.oficina ||
+        LugarDelTicket.retiro => depositoId != null,
+        LugarDelTicket.cobroConTarjeta => cobroId != null,
+        LugarDelTicket.deposito || LugarDelTicket.otro => false,
+      };
 
   /// `EquatableConfig.stringify` arranca en `true` en debug y [motivoRechazo] es texto libre de otra
   /// persona (convenciones-desarrollo.md §7.5): `'$item'` no lo imprime.
@@ -213,6 +225,7 @@ final class ItemDelHistorial extends Equatable {
     id,
     ticketId,
     depositoId,
+    cobroId,
     fecha,
     montoCentavos,
     lugar,

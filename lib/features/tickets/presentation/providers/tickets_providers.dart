@@ -11,6 +11,7 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../cobranzas/domain/entities/cobranza.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart';
 import '../../data/datasources/historial_de_tickets_drift.dart';
 import '../../data/datasources/ticket_local_data_source_drift.dart';
@@ -249,6 +250,10 @@ final class _HistorialSinBase implements HistorialDeTicketsRepository {
   @override
   Stream<HistorialDeTickets> observar() =>
       Stream.error(StateError('La base de datos local no está abierta'));
+
+  @override
+  Future<Cobranza?> cobroConTarjeta(String cobroId) =>
+      Future.error(StateError('La base de datos local no está abierta'));
 }
 
 /// Sin reintentos: un `Stream` que falla deja el error a la vista con su «Reintentar» en vez de

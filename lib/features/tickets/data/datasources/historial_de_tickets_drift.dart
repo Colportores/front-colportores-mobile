@@ -2,6 +2,8 @@ import 'package:drift/drift.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../../../datos/drift_sync_meta.dart';
+import '../../../cobranzas/data/datasources/cobranza_local_data_source_drift.dart';
+import '../../../cobranzas/domain/entities/cobranza.dart';
 import '../../../depositos/data/datasources/deposito_local_data_source_drift.dart';
 import '../../domain/entities/item_del_historial.dart';
 import '../../domain/entities/ticket.dart';
@@ -24,6 +26,7 @@ final class HistorialDeTicketsDrift implements HistorialDeTicketsRepository {
     _db.depositos,
     _db.tickets,
     _db.ticketFotosLocales,
+    _db.cobranzas,
     _db.syncMetas,
   };
 
@@ -38,6 +41,7 @@ final class HistorialDeTicketsDrift implements HistorialDeTicketsRepository {
     final depositos = _db.depositos;
     final tickets = _db.tickets;
     final fotos = _db.ticketFotosLocales;
+    final cobros = _db.cobranzas;
 
     final deDepositos = await (_db.select(depositos)..where((d) => d.deletedAt.isNull())).join([
       leftOuterJoin(tickets, tickets.id.equalsExp(depositos.ticketId) & tickets.deletedAt.isNull()),
@@ -49,10 +53,18 @@ final class HistorialDeTicketsDrift implements HistorialDeTicketsRepository {
       ..addColumns([depositos.ticketId])
       ..where(depositos.ticketId.isNotNull());
     final sueltos =
-        await (_db.select(tickets)
-              ..where((t) => t.deletedAt.isNull() & t.id.isNotInQuery(nombrados)))
-            .join([leftOuterJoin(fotos, fotos.ticketId.equalsExp(tickets.id))])
-            .get();
+        await (_db.select(
+          tickets,
+        )..where((t) => t.deletedAt.isNull() & t.id.isNotInQuery(nombrados))).join([
+          leftOuterJoin(fotos, fotos.ticketId.equalsExp(tickets.id)),
+          // El cobro vivo que tiene este ticket ligado: sin él no hay a qué cobro rehacerle el ticket.
+          leftOuterJoin(
+            cobros,
+            cobros.ticketId.equalsExp(tickets.id) &
+                cobros.deletedAt.isNull() &
+                cobros.anuladoAt.isNull(),
+          ),
+        ]).get();
 
     final items = <ItemDelHistorial>[
       for (final fila in deDepositos)
@@ -65,6 +77,7 @@ final class HistorialDeTicketsDrift implements HistorialDeTicketsRepository {
         ItemDelHistorial.deTicket(
           TicketLocalDataSourceDrift.aTicket(fila.readTable(tickets)),
           foto: _foto(fila.readTableOrNull(fotos)),
+          cobroId: fila.readTableOrNull(cobros)?.id,
         ),
     ];
     // La más nueva primero; con la misma fecha, el id más alto (los ids son UUID v7: crecen con el tiempo).
@@ -74,6 +87,15 @@ final class HistorialDeTicketsDrift implements HistorialDeTicketsRepository {
     });
     final bajadoEn = (await DriftSyncMeta(_db).read()).lastPullAt;
     return HistorialDeTickets(items: items, bajadoEn: bajadoEn);
+  }
+
+  @override
+  Future<Cobranza?> cobroConTarjeta(String cobroId) async {
+    final fila =
+        await (_db.select(_db.cobranzas)
+              ..where((c) => c.id.equals(cobroId) & c.deletedAt.isNull() & c.anuladoAt.isNull()))
+            .getSingleOrNull();
+    return fila == null ? null : CobranzaLocalDataSourceDrift.aEntidad(fila);
   }
 
   static Ticket? _ticket(TicketFila? fila) =>
