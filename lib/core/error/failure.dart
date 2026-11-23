@@ -1500,3 +1500,62 @@ final class FailureTicketNoEncontrado extends Failure {
   const FailureTicketNoEncontrado()
     : super(mensaje: 'No encontramos ese ticket.', codigo: 'TICKET_NO_ENCONTRADO');
 }
+
+// --- Pedidos a la casa editora (HU-STK-009, vista 37, #387) --------------------------------------
+
+/// El pedido no se pudo guardar en el teléfono (37A·07). No se guardó ni se encoló nada: se puede reintentar
+/// con lo mismo. El canvas dice «Quedó guardado acá», pero eso solo es verdad si la falla es posterior al
+/// guardado: cuando falla la escritura, lo verdadero es que no se envió nada (texto a confirmar, «mapa §2:
+/// texto»).
+final class FailurePedidoNoGuardado extends Failure {
+  const FailurePedidoNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos enviar el pedido. No se envió nada: probá de nuevo.',
+        codigo: 'PEDIDO_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// El pedido no tiene la forma que el servidor acepta (vacío, cantidad que no sirve, producto repetido o que
+/// no se puede pedir). La pantalla no deja llegar hasta acá: es la red de seguridad.
+final class FailurePedidoInvalido extends Failure {
+  const FailurePedidoInvalido()
+    : super(mensaje: 'Sumá al menos un producto para enviar el pedido.', codigo: 'PEDIDO_INVALIDO');
+}
+
+/// El pedido ya no se puede cancelar: no es de la colportora o su coordinador ya lo decidió (decisión
+/// «Cancelar ped»: solo quien lo pidió, solo mientras está por autorizar).
+final class FailurePedidoNoCancelable extends Failure {
+  const FailurePedidoNoCancelable()
+    : super(
+        mensaje: 'Este pedido ya no se puede cancelar: tu coordinador ya lo decidió.',
+        codigo: 'PEDIDO_NO_CANCELABLE',
+      );
+}
+
+/// La cancelación no se pudo guardar en el teléfono: el pedido sigue como estaba.
+final class FailurePedidoNoCancelado extends Failure {
+  const FailurePedidoNoCancelado({this.causa})
+    : super(
+        mensaje: 'No pudimos cancelar el pedido. Sigue por autorizar: probá de nuevo.',
+        codigo: 'PEDIDO_NO_CANCELADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudieron leer los pedidos (37B·06): la base local no se pudo leer. Es otra cosa que «todavía no
+/// pediste nada».
+final class FailurePedidosNoDisponibles extends Failure {
+  const FailurePedidosNoDisponibles()
+    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'PEDIDOS_NO_DISPONIBLES');
+}
