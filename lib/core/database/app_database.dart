@@ -13,7 +13,8 @@ import '../../features/catalogo/data/datasources/precios_por_ciudad_table.dart';
 import '../../features/catalogo/data/datasources/producto_colecciones_table.dart';
 import '../../features/catalogo/data/datasources/productos_table.dart';
 import '../../features/cobranzas/data/datasources/cobranzas_table.dart';
-import '../../features/cuenta/data/datasources/deuda_casa_cache_table.dart';
+import '../../features/cuenta/data/datasources/cuenta_colportor_table.dart';
+import '../../features/cuenta/data/datasources/cuenta_deuda_historial_table.dart';
 import '../../features/depositos/data/datasources/depositos_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
@@ -34,6 +35,8 @@ import '../../features/mapa/data/datasources/uniones_locales_table.dart';
 import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
 import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
+import '../../features/stock/data/datasources/pedido_items_table.dart';
+import '../../features/stock/data/datasources/pedidos_casa_editora_table.dart';
 import '../../features/stock/data/datasources/stocks_table.dart';
 import '../../features/tickets/data/datasources/tickets_table.dart';
 import '../../features/ventas/data/datasources/componentes_converter.dart';
@@ -103,7 +106,10 @@ part 'app_database.g.dart';
     Depositos,
     Tickets,
     TicketFotosLocales,
-    DeudaCasaCaches,
+    CuentasColportor,
+    CuentaDeudaHistoriales,
+    PedidosCasaEditora,
+    PedidoItems,
     UnionesLocales,
     SyncFueraDelArea,
   ],
@@ -195,10 +201,16 @@ class AppDatabase extends _$AppDatabase {
   ///   (backend-supabase 0114 y 0167, HU-CTA-007, #389).
   /// - 40: `producto` pierde `tipo` (backend-supabase 0198, #233: el servidor ya no tiene la columna;
   ///   la categoría la reemplaza desde la 27) (#735).
+  /// - 41: la deuda con la casa editora baja con la sincronización (decisión de Cristian, 05/11;
+  ///   backend-supabase 0179, #254; HU-CTA-002, #671): `cuenta_colportor` y `cuenta_deuda_historial`,
+  ///   réplicas de solo lectura, y `pedido_casa_editora` y `pedido_item`, que el contrato declara `push` con
+  ///   pull de lo propio (0124) y por ahora solo reciben lo que baja; con ellas el teléfono calcula la deuda,
+  ///   el saldo por pedido y la variación semanal sin llamar al servidor. `deuda_casa_cache`, la última
+  ///   respuesta de la RPC, se quita: ya nadie la llena (se vuelve a calcular de lo que baja).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 40;
+  static const int versionEsquema = 41;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -561,6 +573,26 @@ class AppDatabase extends _$AppDatabase {
     // pull no los vuelve a bajar). La tabla no tiene índices propios ni nada que apunte a ella.
     from39To40: (m, esquema) async {
       await m.alterTable(TableMigration(esquema.producto));
+    },
+    // Crea las cuatro réplicas de la deuda con la casa editora, vacías (las llena el pull, entero la primera
+    // vez), y quita `deuda_casa_cache`: era la última respuesta de la RPC, que ya no se llama, y la deuda
+    // vuelve a calcularse de lo que baja (los datos son simulados hasta diciembre: no se migra nada). Nada
+    // de lo guardado por la colportora cambia ni se encola al migrar. Borra la fecha de la última bajada de
+    // `sync_meta` (igual que `from15To16`): la instalación ya bajó alguna vez, pero estas réplicas todavía
+    // no, y «hubo una bajada y no hay cuenta» no es «no hay deuda» sino «todavía no sé»: sin esto, hasta
+    // la primera sincronización la tarjeta diría «$ 0». Los watermarks no se tocan: el servidor baja
+    // desde cero las entidades que el teléfono nunca bajó.
+    from40To41: (m, esquema) async {
+      await m.createTable(esquema.cuentaColportor);
+      await m.createIndex(esquema.cuentaColportorUsuarioIdx);
+      await m.createTable(esquema.cuentaDeudaHistorial);
+      await m.createIndex(esquema.cuentaDeudaHistorialUsuarioIdx);
+      await m.createTable(esquema.pedidoCasaEditora);
+      await m.createIndex(esquema.pedidoCasaEditoraColportorIdx);
+      await m.createTable(esquema.pedidoItem);
+      await m.createIndex(esquema.pedidoItemPedidoIdx);
+      await m.deleteTable('deuda_casa_cache');
+      await m.database.customStatement("DELETE FROM sync_meta WHERE clave = 'last_pull_at'");
     },
   );
 }

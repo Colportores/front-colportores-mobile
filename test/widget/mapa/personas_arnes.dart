@@ -41,6 +41,9 @@ Future<void> asentar(WidgetTester tester, [int veces = 12]) async {
 /// Lo que la pantalla de arranque recibió al volver del alta.
 final class ResultadoAlta {
   Persona? persona;
+
+  /// El vínculo con el espacio que el alta creó junto con la persona (#671).
+  String? vinculoId;
   var cierres = 0;
 }
 
@@ -76,7 +79,8 @@ Future<ResultadoAlta> montarAlta(
                     colportorId: 'col-1',
                   );
                   resultado
-                    ..persona = p
+                    ..persona = p?.persona
+                    ..vinculoId = p?.vinculoId
                     ..cierres += 1;
                 },
                 child: const Text('abrir alta'),
