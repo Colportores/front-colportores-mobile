@@ -594,42 +594,41 @@ void main() {
 
   // ---------------------------------------------------------------------------------------------
   group('Saldo que dice la hoja de confirmación (30B-04) contra el que queda (30B-05)', () {
-    testWidgets(
-      'con una venta con devolución, «vuelve a X» es el saldo real tras anular',
-      (tester) async {
-        // Venta de $ 1.000, cobro único de $ 1.000 y una devolución de $ 400: hoy el saldo es 0 y, sin
-        // el cobro, el cliente se queda con $ 600 y debe $ 600 (cuenta de `CuentaDeLaVenta`).
-        final base = detalleDeEjemplo(monto: 100000, cobrado: 100000);
-        final conDevolucion = DetalleDelCobro(
-          cobranza: base.cobranza,
-          venta: VentaConSaldo(
-            ventaId: 'v-42',
-            numeroTalonario: '0042',
-            fecha: _ventaFecha,
-            montoTotalCentavos: 100000,
-            cobradoCentavos: 100000,
-            devueltoCentavos: 40000,
-          ),
-          cliente: 'María Fernández',
-        );
-        final sinElCobro = VentaConSaldo(
+    testWidgets('con una venta con devolución, «vuelve a X» es el saldo real tras anular', (
+      tester,
+    ) async {
+      // Venta de $ 1.000, cobro único de $ 1.000 y una devolución de $ 400: hoy el saldo es 0 y, sin
+      // el cobro, el cliente se queda con $ 600 y debe $ 600 (cuenta de `CuentaDeLaVenta`).
+      final base = detalleDeEjemplo(monto: 100000, cobrado: 100000);
+      final conDevolucion = DetalleDelCobro(
+        cobranza: base.cobranza,
+        venta: VentaConSaldo(
           ventaId: 'v-42',
           numeroTalonario: '0042',
           fecha: _ventaFecha,
           montoTotalCentavos: 100000,
-          cobradoCentavos: 0,
+          cobradoCentavos: 100000,
           devueltoCentavos: 40000,
-        );
-        expect(sinElCobro.saldoCentavos, 60000, reason: 'la cuenta real tras anular');
+        ),
+        cliente: 'María Fernández',
+      );
+      final sinElCobro = VentaConSaldo(
+        ventaId: 'v-42',
+        numeroTalonario: '0042',
+        fecha: _ventaFecha,
+        montoTotalCentavos: 100000,
+        cobradoCentavos: 0,
+        devueltoCentavos: 40000,
+      );
+      expect(sinElCobro.saldoCentavos, 60000, reason: 'la cuenta real tras anular');
 
-        await montarDetalleDelCobro(tester, repo: AnulacionesEnMemoria(cobros: [conDevolucion]));
-        await irAAnular(tester, m: MotivoDeAnulacion.montoEquivocado);
-        await tocar(tester, botonPrincipal);
+      await montarDetalleDelCobro(tester, repo: AnulacionesEnMemoria(cobros: [conDevolucion]));
+      await irAAnular(tester, m: MotivoDeAnulacion.montoEquivocado);
+      await tocar(tester, botonPrincipal);
 
-        expect(find.textContaining(r'vuelve a $ 600 '), findsOneWidget);
-        expect(find.textContaining(r'vuelve a $ 1.000 '), findsNothing);
-      },
-    );
+      expect(find.textContaining(r'vuelve a $ 600 '), findsOneWidget);
+      expect(find.textContaining(r'vuelve a $ 1.000 '), findsNothing);
+    });
   });
 
   // ---------------------------------------------------------------------------------------------
