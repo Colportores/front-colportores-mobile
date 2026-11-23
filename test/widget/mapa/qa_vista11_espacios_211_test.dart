@@ -9,7 +9,7 @@
 //  - casos límite: la posición de la lista tras editar, la última baja sin personas, los avisos
 //    como región viva para el lector de pantalla;
 //  - privacidad: `toString()` del espacio.
-// Los hallazgos van con `skip:` y el motivo `QA #211`.
+// Los hallazgos de QA #211 ya están arreglados: no queda ningún test con `skip` en este archivo.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -32,9 +32,6 @@ const _avisoDeLaHu =
 const _ultimoDeLaHu =
     'No podés borrar el último espacio activo con personas. Agregá otro o reubicá las personas '
     'primero.';
-
-/// `true` corre los tests que documentan un hallazgo (hoy con `skip`).
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 String _nombre(EstadoV11 e, Size t, double escala) =>
     '${e.name}_${t.width.toInt()}x${t.height.toInt()}_x$escala';
@@ -107,10 +104,9 @@ void main() {
           expect(rt.left - rb.left, greaterThanOrEqualTo(12), reason: 'botón $rb, texto $rt');
           expect(rb.right - rt.right, greaterThanOrEqualTo(12), reason: 'botón $rb, texto $rt');
         },
-        // skip: QA #211 — el `outlinedButtonTheme` no tiene padding horizontal (pensado para botones
-        // de ancho completo) y «Editar edificio» / «Editar casa» van de ancho propio: el texto toca
-        // el borde.
-        skip: !_verHallazgos,
+        // QA #211: el `outlinedButtonTheme` no tiene relleno horizontal (pensado para botones de
+        // ancho completo) y «Editar edificio» / «Editar casa» van de ancho propio: el texto tocaba el
+        // borde. Arreglado con el relleno propio del botón.
       );
     }
   });
@@ -688,9 +684,8 @@ void main() {
         expect(tester.getSemantics(campoPiso).label, contains('PISO'));
         h.dispose();
       },
-      // skip: QA #211 — el campo no tiene nombre accesible: la etiqueta «NÚMERO · OBLIGATORIO» es un
-      // Text suelto y el lector dice «cuadro de edición» a secas.
-      skip: !_verHallazgos,
+      // QA #211: la etiqueta «NÚMERO · OBLIGATORIO» era un Text suelto y el lector decía «cuadro de
+      // edición» a secas. Arreglado: la etiqueta va en el nombre del campo.
     );
   });
 
