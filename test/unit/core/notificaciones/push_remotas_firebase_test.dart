@@ -16,6 +16,8 @@ final class _Plugin {
   Completer<void>? demora;
   Object? falla;
   var consultasInicial = 0;
+  final rotaciones = StreamController<String>();
+  String? token;
 
   Future<RemoteMessage?> laQueAbrioLaApp() async {
     consultasInicial++;
@@ -28,12 +30,15 @@ final class _Plugin {
     alFrente: alFrente.stream,
     tocadas: tocadas.stream,
     laQueAbrioLaApp: laQueAbrioLaApp,
+    token: () async => token,
+    tokenRotado: rotaciones.stream,
   );
 
   // Sin await: una fuente que no es de difusión y nadie escuchó no termina nunca de cerrarse.
   void cerrar() {
     unawaited(alFrente.close());
     unawaited(tocadas.close());
+    unawaited(rotaciones.close());
   }
 }
 
@@ -249,6 +254,49 @@ void main() {
       );
 
       expect(push, isNull);
+    });
+  });
+
+  group('PushRemotasFirebase: el token (HU-NOT-001, «Token FCM»)', () {
+    test('obtenerToken devuelve el del plugin, y null si todavía no hay', () async {
+      final plugin = _Plugin();
+      addTearDown(plugin.cerrar);
+      final push = plugin.adaptador();
+
+      expect(await push.obtenerToken(), isNull);
+      plugin.token = 'fcm-1';
+      expect(await push.obtenerToken(), 'fcm-1');
+    });
+
+    test(
+      'tokenRotado lleva cada token nuevo (onTokenRefresh), aunque la fuente no sea de difusión',
+      () async {
+        final plugin = _Plugin();
+        addTearDown(plugin.cerrar);
+        final push = plugin.adaptador();
+        final recibidos = <String>[];
+        final sub = push.tokenRotado.listen(recibidos.add);
+        addTearDown(sub.cancel);
+
+        plugin.rotaciones
+          ..add('fcm-2')
+          ..add('fcm-3');
+        await pumpEventQueue();
+
+        expect(recibidos, ['fcm-2', 'fcm-3']);
+      },
+    );
+
+    test('una falla del plugin al dar el token llega a quien lo pidió (él decide reintentar)', () {
+      final plugin = PushRemotasFirebase(
+        alFrente: const Stream<RemoteMessage>.empty(),
+        tocadas: const Stream<RemoteMessage>.empty(),
+        laQueAbrioLaApp: () async => null,
+        token: () async => throw StateError('SERVICE_NOT_AVAILABLE'),
+        tokenRotado: const Stream<String>.empty(),
+      );
+
+      expect(plugin.obtenerToken(), throwsStateError);
     });
   });
 }
