@@ -175,7 +175,27 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
   Future<Either<Failure, ConexionDrive>> conectar(
     String usuarioId, {
     bool conPrimerRespaldo = true,
-  }) => _encolar(() async {
+  }) async {
+    final anotada = await _encolar(() => _anotarConexion(usuarioId, conPrimerRespaldo));
+    // Fuera de la cola: el primer respaldo vuelve a leer el estado de este mismo repositorio
+    // (`estado()` también se encola) y, adentro, esperaría a una cola que lo espera a él.
+    return anotada.fold<Future<Either<Failure, ConexionDrive>>>(
+      (falla) async => Left(falla),
+      (anotado) async => Right(
+        ConexionDrive(
+          estado: anotado.$1,
+          primerRespaldoHecho: anotado.$2 && await _hacerPrimerRespaldo(),
+        ),
+      ),
+    );
+  }
+
+  /// La parte de [conectar] que va en la cola: abre Google y anota la cuenta. Devuelve el estado
+  /// que quedó y si corresponde hacer el primer respaldo.
+  Future<Either<Failure, (DriveConCuenta, bool)>> _anotarConexion(
+    String usuarioId,
+    bool conPrimerRespaldo,
+  ) async {
     final CuentaGoogle cuenta;
     try {
       cuenta = await _google.conectar();
@@ -237,13 +257,9 @@ final class RespaldoDriveRepositoryImpl implements RespaldoDriveRepository {
     // Con otra cuenta por confirmar no se sube nada: el primer respaldo espera a la elección. Al
     // volver a la cuenta anterior tampoco: su respaldo sigue ahí. Para recuperar (#707) no se sube
     // el teléfono vacío: el asistente cuenta solo los viejos.
-    final primero =
-        conPrimerRespaldo &&
-        conectada is DriveConectada &&
-        !volvioDeOtraCuenta &&
-        await _hacerPrimerRespaldo();
-    return Right(ConexionDrive(estado: conectada, primerRespaldoHecho: primero));
-  });
+    final hacerPrimero = conPrimerRespaldo && conectada is DriveConectada && !volvioDeOtraCuenta;
+    return Right((conectada, hacerPrimero));
+  }
 
   Future<bool> _hacerPrimerRespaldo() async {
     try {

@@ -6,11 +6,25 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/secure_storage/almacen_seguro.dart';
 import 'package:colportores_mobile/features/respaldo/data/services/servicio_google.dart';
 import 'package:colportores_mobile/features/respaldo/domain/entities/estado_respaldo_drive.dart';
+import 'package:colportores_mobile/features/respaldo/domain/repositories/respaldo_drive_repository.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../helpers/respaldo_drive_falsos.dart';
+
+/// El primer respaldo del motor de verdad: antes de subir lee el estado del MISMO repositorio.
+final class _PrimerQueLeeElRepo implements PrimerRespaldoDrive {
+  late RespaldoDriveRepository repo;
+  int llamadas = 0;
+
+  @override
+  Future<bool> hacer() async {
+    llamadas++;
+    final estado = _derecha(await repo.estado('u-1'));
+    return estado is DriveConectada;
+  }
+}
 
 const _otra = CuentaGoogle(id: 'g-200', email: 'ana.casa@gmail.com');
 const _tercera = CuentaGoogle(id: 'g-300', email: 'ana.trabajo@gmail.com');
@@ -390,6 +404,54 @@ void main() {
         }),
       );
       expect(await a.repo.franjaOcultaEl('u-1'), isNull);
+    });
+  });
+
+  group('El primer respaldo no corre dentro de la cola del repositorio (bloqueo mutuo)', () {
+    test('conectar con un primer respaldo que lee el estado del repositorio termina', () async {
+      final lector = _PrimerQueLeeElRepo();
+      final b = RespaldoDriveArmado(primerRespaldo: lector, ahora: () => ahora);
+      lector.repo = b.repo;
+
+      final conexion = _derecha(await b.repo.conectar('u-1').timeout(const Duration(seconds: 5)));
+
+      expect(conexion.estado, isA<DriveConectada>());
+      expect(conexion.primerRespaldoHecho, isTrue);
+      expect(lector.llamadas, 1);
+      // La cola no quedó trabada: otra operación del repositorio responde.
+      expect(
+        _derecha(await b.repo.estado('u-1').timeout(const Duration(seconds: 5))),
+        isA<DriveConectada>(),
+      );
+    });
+
+    test('Seguir con la cuenta nueva con el mismo primer respaldo tampoco se traba', () async {
+      final lector = _PrimerQueLeeElRepo();
+      final b = RespaldoDriveArmado(primerRespaldo: lector, ahora: () => ahora);
+      lector.repo = b.repo;
+      await b.repo.conectar('u-1').timeout(const Duration(seconds: 5));
+      b.google.cuenta = _otra;
+      await b.repo.conectar('u-1').timeout(const Duration(seconds: 5));
+
+      final conexion = _derecha(
+        await b.repo.confirmarCuentaNueva('u-1').timeout(const Duration(seconds: 5)),
+      );
+
+      expect(conexion.primerRespaldoHecho, isTrue);
+      expect(lector.llamadas, 2);
+    });
+
+    test('un segundo conectar mientras corre el primer respaldo no queda esperándolo', () async {
+      final lector = _PrimerQueLeeElRepo();
+      final b = RespaldoDriveArmado(primerRespaldo: lector, ahora: () => ahora);
+      lector.repo = b.repo;
+
+      final dos = await Future.wait([
+        b.repo.conectar('u-1'),
+        b.repo.conectar('u-1'),
+      ]).timeout(const Duration(seconds: 5));
+
+      expect(dos.map(_derecha).map((c) => c.estado), everyElement(isA<DriveConectada>()));
     });
   });
 }
