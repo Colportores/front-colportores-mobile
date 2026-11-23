@@ -3,6 +3,7 @@
 // texto dados.
 import 'dart:async';
 
+import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/deuda_con_la_casa.dart';
@@ -10,6 +11,7 @@ import 'package:colportores_mobile/features/cuenta/domain/repositories/deuda_con
 import 'package:colportores_mobile/features/cuenta/presentation/pages/deuda_casa_page.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/cuenta_providers.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/deuda_casa_providers.dart';
+import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -80,41 +82,57 @@ final deudaDelCanvas = deuda(
   ],
 );
 
-/// Un repositorio que el test maneja: cada `leer` queda esperando hasta que el test lo conteste.
+/// Un repositorio que el test maneja: cada `leer` queda esperando hasta que el test lo conteste, salvo la
+/// primera si hay [guardada] (lo que ya había bajado con la sincronización: se lee enseguida, como la base
+/// local). La deuda se cuenta en el teléfono y leerla no llama al servidor (#671): «sin conexión» no es una
+/// falla de la lectura sino la conexión del teléfono ([montarDeuda], `conexion`).
 final class RepositorioDeDeudaControlable implements DeudaConLaCasaRepository {
   RepositorioDeDeudaControlable({this.guardada});
 
-  /// Lo que tiene guardado el teléfono; `null` = nada.
+  /// Lo que ya había bajado el teléfono; `null` = todavía nada.
   LecturaDeLaDeuda? guardada;
 
-  /// Cuántas veces se le preguntó al servidor.
+  /// Cuántas veces se leyó.
   var lecturas = 0;
 
-  final _pedidos = <Completer<Either<Failure, LecturaDeLaDeuda>>>[];
+  final _pedidos = <Completer<Either<Failure, LecturaDeLaDeuda?>>>[];
+  final _cambios = StreamController<void>.broadcast();
+  var _primera = true;
 
-  /// Cuántos pedidos al servidor siguen sin contestar.
+  /// Cuántas lecturas siguen sin contestar.
   int get pendientes => _pedidos.where((c) => !c.isCompleted).length;
 
   @override
-  Future<LecturaDeLaDeuda?> ultimaGuardada(String colportorId) async => guardada;
+  Stream<void> get cambios => _cambios.stream;
 
   @override
-  Future<Either<Failure, LecturaDeLaDeuda>> leer(String colportorId) {
+  Future<Either<Failure, LecturaDeLaDeuda?>> leer(String colportorId) {
     lecturas++;
-    final c = Completer<Either<Failure, LecturaDeLaDeuda>>();
+    final c = Completer<Either<Failure, LecturaDeLaDeuda?>>();
     _pedidos.add(c);
+    if (_primera && guardada != null) c.complete(Right(guardada));
+    _primera = false;
     return c.future;
   }
 
-  /// El servidor contesta el último pedido; lo guardado pasa a ser eso.
+  /// La última lectura pendiente cuenta [l]; lo bajado pasa a ser eso.
   void responder(LecturaDeLaDeuda l) {
     guardada = l;
     _pedidos.lastWhere((c) => !c.isCompleted).complete(Right(l));
   }
 
-  /// El último pedido falla.
+  /// La última lectura pendiente dice que todavía no se sincronizó nunca.
+  void sinSincronizar() => _pedidos.lastWhere((c) => !c.isCompleted).complete(const Right(null));
+
+  /// La última lectura pendiente falla (la base no se pudo leer).
   void fallar([Failure falla = const FailureDeudaNoDisponible()]) =>
       _pedidos.lastWhere((c) => !c.isCompleted).complete(Left(falla));
+
+  /// La sincronización trajo algo que cambia la deuda: lo bajado pasa a ser [l] y se avisa.
+  void sincronizo(LecturaDeLaDeuda l) {
+    guardada = l;
+    _cambios.add(null);
+  }
 }
 
 /// Los overrides que dejan a la deuda manejada por [repo] y al reloj en [ahoraDeLaDeuda].
@@ -123,19 +141,64 @@ List<Override> overridesDeDeuda(DeudaConLaCasaRepository repo) => [
   relojCuentaProvider.overrideWithValue(() => ahoraDeLaDeuda),
 ];
 
+/// Una conexión que el test cambia mientras la pantalla está abierta.
+final class MonitorQueCambia implements MonitorConectividad {
+  MonitorQueCambia([this._actual = TipoConexion.wifi]);
+
+  TipoConexion _actual;
+  final _cambios = StreamController<TipoConexion>.broadcast();
+
+  void cambiar(TipoConexion tipo) {
+    _actual = tipo;
+    _cambios.add(tipo);
+  }
+
+  @override
+  Future<TipoConexion> actual() async => _actual;
+
+  @override
+  Stream<TipoConexion> get cambios => _cambios.stream;
+}
+
+/// Vuelve a leer la deuda, como al volver a la pestaña o con «Reintentar» (por [colportorId]): deja una
+/// lectura pendiente en el repositorio del test.
+Future<void> releerDeuda(WidgetTester tester, {String colportorId = 'col-1'}) async {
+  final contenedor = ProviderScope.containerOf(tester.element(find.byType(MaterialApp).first));
+  unawaited(contenedor.read(deudaConLaCasaProvider(colportorId).notifier).actualizar());
+  await tester.pump();
+}
+
+/// Una conexión fija del teléfono.
+final class ConexionFija implements MonitorConectividad {
+  const ConexionFija(this.tipo);
+
+  final TipoConexion tipo;
+
+  @override
+  Future<TipoConexion> actual() async => tipo;
+
+  @override
+  Stream<TipoConexion> get cambios => const Stream.empty();
+}
+
 /// Monta [DeudaCasaPage] sola, a [tamano] y con el texto a [escala].
 Future<void> montarDeuda(
   WidgetTester tester,
   RepositorioDeDeudaControlable repo, {
   Size tamano = const Size(390, 844),
   double escala = 1,
+  TipoConexion conexion = TipoConexion.wifi,
+  MonitorConectividad? monitor,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: overridesDeDeuda(repo),
+      overrides: [
+        ...overridesDeDeuda(repo),
+        monitorConectividadProvider.overrideWithValue(monitor ?? ConexionFija(conexion)),
+      ],
       child: MaterialApp(
         theme: temaClaro(),
         builder: (context, child) => MediaQuery(
@@ -146,7 +209,7 @@ Future<void> montarDeuda(
       ),
     ),
   );
-  // El primer cuadro, lo guardado, el pedido al servidor y lo que cambió, pintado.
+  // El primer cuadro, la lectura de lo bajado y lo que cambió, pintado.
   await tester.pump();
   await tester.pump();
   await tester.pump();

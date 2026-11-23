@@ -44,6 +44,7 @@ import 'generated/schema_v35.dart' as v35;
 import 'generated/schema_v36.dart' as v36;
 import 'generated/schema_v37.dart' as v37;
 import 'generated/schema_v38.dart' as v38;
+import 'generated/schema_v39.dart' as v39;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
@@ -2439,6 +2440,72 @@ void main() {
         final anulado = await nuevo.select(nuevo.cobranza).getSingle();
         expect(anulado.anuladoAt, 5);
         expect(anulado.motivoAnulacion, 'Otro');
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 38, cuando migra a la 39, se conserva todo, aparecen las cuatro '
+      'réplicas de la deuda vacías y se quita `deuda_casa_cache` (#671)', () async {
+    // #671: la deuda con la casa editora baja con la sincronización. Se crean `cuenta_colportor`,
+    // `cuenta_deuda_historial`, `pedido_casa_editora` y `pedido_item`, vacías (las llena el pull), y se
+    // quita `deuda_casa_cache`, la última respuesta de la RPC. Un depósito, la cola y los watermarks no se
+    // tocan: lo que esperaba subir sigue esperando (convenciones §9).
+    const job = v38.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'deposito',
+      op: 'insert',
+      payload: '{"id":"d-1"}',
+      rowPk: 'd-1',
+      createdAt: 1758700000000,
+      state: 'PENDING',
+      code: '',
+      message: '',
+    );
+    const watermark = v38.SyncWatermarkData(scope: 'mirror', watermark: 'w-1');
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 38,
+      newVersion: 39,
+      createOld: v38.DatabaseAtV38.new,
+      createNew: v39.DatabaseAtV39.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.syncQueue, job)
+          ..insert(viejo.syncWatermark, watermark);
+      },
+      validateItems: (nuevo) async {
+        final jobs = await nuevo.select(nuevo.syncQueue).get();
+        expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+        final marcas = await nuevo.select(nuevo.syncWatermark).get();
+        expect(marcas.map((w) => w.toJson()), [watermark.toJson()]);
+
+        expect(await nuevo.select(nuevo.cuentaColportor).get(), isEmpty);
+        expect(await nuevo.select(nuevo.cuentaDeudaHistorial).get(), isEmpty);
+        expect(await nuevo.select(nuevo.pedidoCasaEditora).get(), isEmpty);
+        expect(await nuevo.select(nuevo.pedidoItem).get(), isEmpty);
+
+        await nuevo.customStatement(
+          'INSERT INTO cuenta_colportor (id, usuario_id, deuda_total, created_at, updated_at) '
+          "VALUES ('cu-1', 'col-1', -500, 1, 1)",
+        );
+        final cuenta = await nuevo.select(nuevo.cuentaColportor).getSingle();
+        expect(cuenta.deudaTotal, -500, reason: 'la deuda puede quedar a favor');
+        expect(cuenta.syncVersion, 0);
+
+        await nuevo.customStatement(
+          'INSERT INTO pedido_casa_editora (id, colportor_id, fecha_pedido, estado, created_at, updated_at) '
+          "VALUES ('pe-1', 'col-1', 1, 'AUTORIZADO', 1, 1)",
+        );
+        final pedido = await nuevo.select(nuevo.pedidoCasaEditora).getSingle();
+        expect(pedido.montoAutorizado, isNull, reason: 'null = todavía no se decidió');
+        expect(pedido.origen, 'COLPORTOR');
+
+        final tablas =
+            (await nuevo.customSelect("SELECT name FROM sqlite_master WHERE type = 'table'").get())
+                .map((f) => f.read<String>('name'));
+        expect(tablas, isNot(contains('deuda_casa_cache')));
       },
     );
   });

@@ -333,11 +333,11 @@ class _HojaConQuienState extends ConsumerState<HojaConQuien> {
     setState(() => _abriendoAlta = true);
     Persona? nueva;
     try {
-      nueva = await AltaPersonaPage.abrir(
+      nueva = (await AltaPersonaPage.abrir(
         context,
         espacioId: widget.espacioId,
         colportorId: widget.colportorId,
-      );
+      ))?.persona;
     } finally {
       if (mounted) setState(() => _abriendoAlta = false);
     }
