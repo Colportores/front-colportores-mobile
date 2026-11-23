@@ -352,9 +352,6 @@ void main() {
         expect(repo.recibidos, hasLength(1), reason: 'el caso de uso rechazó un texto que cabe');
         expect(textoDe('detalle_cobro_estado'), 'Anulado · Otro');
       },
-      // skip: QA #168: el campo «Otro» cuenta puntos de código y AnularCobroUseCase cuenta UTF-16:
-      // de 101 a 200 emoji se escriben y la anulación falla sin salida.
-      skip: !_hallazgos,
     );
 
     testWidgets('después de un error, lo tipeado en «Otro» no se pierde y el reintento lo manda', (
@@ -632,9 +629,6 @@ void main() {
         expect(find.textContaining(r'vuelve a $ 600 '), findsOneWidget);
         expect(find.textContaining(r'vuelve a $ 1.000 '), findsNothing);
       },
-      // skip: QA #168: la hoja 30B-04 calcula min(saldo + cobro, total) e ignora las devoluciones
-      // (FormatoAnulacion.saldoSinElCobro): dice $ 1.000 y el saldo real es $ 600.
-      skip: !_hallazgos,
     );
   });
 
