@@ -42,15 +42,7 @@ void main() {
 
   Future<void> producto(String id, String nombre) => db
       .into(db.productos)
-      .insert(
-        ProductosCompanion.insert(
-          id: id,
-          nombre: nombre,
-          tipo: 'LIBRO',
-          createdAt: t0,
-          updatedAt: t0,
-        ),
-      );
+      .insert(ProductosCompanion.insert(id: id, nombre: nombre, createdAt: t0, updatedAt: t0));
 
   Future<void> venta(
     String id, {

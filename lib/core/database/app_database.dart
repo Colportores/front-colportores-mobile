@@ -193,10 +193,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 39: `campania.alquiler_monto` (lo que cobra la campaña de alquiler) y `deposito.anulado_at` (el
   ///   pago de alquiler devuelto), que bajan por el pull: de ahí sale el saldo de «Mi alquiler»
   ///   (backend-supabase 0114 y 0167, HU-CTA-007, #389).
+  /// - 40: `producto` pierde `tipo` (backend-supabase 0198, #233: el servidor ya no tiene la columna;
+  ///   la categoría la reemplaza desde la 27) (#735).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 39;
+  static const int versionEsquema = 40;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -552,6 +554,13 @@ class AppDatabase extends _$AppDatabase {
     from38To39: (m, esquema) async {
       await m.addColumn(esquema.campania, esquema.campania.alquilerMonto);
       await m.addColumn(esquema.deposito, esquema.deposito.anuladoAt);
+    },
+    // Saca `tipo` de `producto` (backend-supabase 0198): SQLite no borra una columna `NOT NULL` sin
+    // recrear la tabla, y `alterTable` la recrea copiando cada columna que sigue. Ningún producto del
+    // catálogo se pierde ni cambia (su `categoria`, su `sync_version` y sus precios quedan igual, y el
+    // pull no los vuelve a bajar). La tabla no tiene índices propios ni nada que apunte a ella.
+    from39To40: (m, esquema) async {
+      await m.alterTable(TableMigration(esquema.producto));
     },
   );
 }
