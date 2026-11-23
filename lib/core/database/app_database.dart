@@ -188,10 +188,12 @@ class AppDatabase extends _$AppDatabase {
   /// - 37: `sync_fuera_del_area`, la marca del motor de las casas que salieron del área del colportor
   ///   (contrato-sync-engine §2.1): el pull de `ubicacion`, `espacio` y `house_status` (I2, #181); y
   ///   `pais`, la réplica del catálogo de países que el contrato lista como `pull` (P1 de #181).
+  /// - 38: `cobranza` suma `anulado_at` y `motivo_anulacion`, la marca de anulado que sube con el cobro
+  ///   (backend-supabase 0072, HU-COB-006, #422).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 37;
+  static const int versionEsquema = 38;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -532,6 +534,12 @@ class AppDatabase extends _$AppDatabase {
     from36To37: (m, esquema) async {
       await m.createTable(esquema.syncFueraDelArea);
       await m.createTable(esquema.pais);
+    },
+    // Suma a `cobranza` la marca de anulado y su motivo, vacíos: ningún cobro que ya estaba cambia (todos
+    // quedan vigentes) ni se vuelve a encolar al migrar.
+    from37To38: (m, esquema) async {
+      await m.addColumn(esquema.cobranza, esquema.cobranza.anuladoAt);
+      await m.addColumn(esquema.cobranza, esquema.cobranza.motivoAnulacion);
     },
   );
 }
