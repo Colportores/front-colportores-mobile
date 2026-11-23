@@ -31,7 +31,7 @@ import '../../helpers/qa_vista31_devolucion_161_arnes.dart';
 import '../../helpers/venta_falsos.dart';
 import '../../helpers/venta_ui_falsos.dart';
 
-String _m(int centavos) => FormatoVenta.monto(centavos);
+String _m(int centavos) => FormatoVenta.montoSinQuiebre(centavos);
 
 const _textoSaldada = 'Esta venta ya está saldada: el cliente pagó todo lo que se queda comprando';
 

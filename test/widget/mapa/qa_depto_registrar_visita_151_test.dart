@@ -317,7 +317,7 @@ void main() {
     );
   });
 
-  group('hallazgos', () {
+  group('hallazgos arreglados', () {
     testWidgets(
       'el texto de «Registrar visita» usa la letra de la app (Inter) como el resto de los botones',
       (tester) async {
@@ -330,9 +330,6 @@ void main() {
               'styleFrom(textStyle:) pisa el estilo del tema entero y deja al botón sin la fuente',
         );
       },
-      // skip: QA #151 — «Registrar visita» pisa `textStyle` del tema y pierde `fontFamily: Inter`
-      // (cae a la letra del sistema, como pasó con «Deshacer» en #473). `QA_HALLAZGOS=true` lo corre.
-      skip: !const bool.fromEnvironment('QA_HALLAZGOS'),
     );
   });
 

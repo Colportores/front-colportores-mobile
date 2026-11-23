@@ -3,7 +3,6 @@
 //   - el lector de pantalla (tarjeta, interruptor, hora acordada);
 //   - casos límite: lectura que llega tarde (con otro tipo, con la estricta, con un guardado en curso),
 //     falla a mitad del guardado con la sugerencia, muchas entrevistas, día cambiado en la estricta;
-//   - hallazgos con `skip` (`--dart-define=QA_HALLAZGOS=true` los corre).
 // Las capturas solo con `--dart-define=QA_CAPTURAS=true` (`.dart_tool/qa_capturas/513_*.png`).
 import 'dart:async';
 
@@ -369,9 +368,7 @@ void main() {
     });
   });
 
-  group('hallazgos', () {
-    // skip: issue #513 — a 360×640 con texto 2,0 la tarjeta SUGERIDA/FECHA parte «Miércoles» en
-    // «Miércol/es» (el «Cambiar» y el ícono le dejan ~112 dp a la columna del día).
+  group('hallazgos arreglados (#626)', () {
     for (final estricta in [false, true]) {
       testWidgets('con texto 2,0 en 360×640, ninguna palabra del día se parte en la tarjeta '
           '${estricta ? 'FECHA' : 'SUGERIDA'}', (tester) async {
@@ -398,7 +395,7 @@ void main() {
           await tester.pump();
         }
         expect(partidas, isEmpty, reason: 'palabras partidas: $partidas');
-      }, skip: !conHallazgos513);
+      });
     }
     // P5 (decisión 03/11): si la lectura de las entrevistas cercanas falla, deja un log sin PII.
     testWidgets(
@@ -420,8 +417,6 @@ void main() {
       },
     );
 
-    // skip: issue #513 — con la estricta, «Cambiar la hora» de la hoja «Esa hora ya pasó» abre la hoja
-    // «Día», que no tiene la hora: la acción promete algo que la hoja no hace.
     testWidgets(
       'dada la estricta con la hora pasada, cuando se toca «Cambiar la hora», entonces se puede cambiar la hora',
       (tester) async {
@@ -432,7 +427,6 @@ void main() {
             find.byType(TimePickerDialog).evaluate().isNotEmpty;
         expect(puedeCambiarLaHora, isTrue);
       },
-      skip: !conHallazgos513,
     );
   });
 }

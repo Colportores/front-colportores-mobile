@@ -91,7 +91,11 @@ class RotuloDeSeccion extends StatelessWidget {
               style: TextButton.styleFrom(
                 minimumSize: const Size(48, 48),
                 foregroundColor: ColoresAlta.azul,
-                textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                textStyle: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               child: Text(accion!, textAlign: TextAlign.end),
             ),
@@ -289,7 +293,7 @@ class _Enlace extends StatelessWidget {
         minimumSize: const Size(48, 48),
         padding: const EdgeInsets.symmetric(horizontal: 10),
         foregroundColor: ColoresAlta.azul,
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w600),
       ),
       child: Text(texto),
     );
@@ -310,6 +314,9 @@ class TarjetaCuenta extends StatelessWidget {
       (TextosFicha.pagado, FormatoBajaPersona.monto(cuenta.pagadoCentavos), false),
       (TextosFicha.saldo, FormatoBajaPersona.monto(cuenta.saldoCentavos), true),
     ];
+    // Con el texto grande (200 %) el rótulo y el valor no entran uno al lado del otro: el rótulo se
+    // partía a la mitad («Comprad/o», QA #403 y #141). Pasan a dos renglones, el valor debajo.
+    final grande = MediaQuery.textScalerOf(context).scale(14) > 20;
     return KeyedSubtree(
       key: ClavesFicha.cuenta,
       child: _Cuadro(
@@ -319,34 +326,26 @@ class TarjetaCuenta extends StatelessWidget {
               MergeSemantics(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          rotulo,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: fuerte ? ColoresAlta.tinta : ColoresAlta.gris,
-                            fontWeight: fuerte ? FontWeight.w600 : FontWeight.w400,
-                          ),
+                  child: grande
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _RotuloDeLaCuenta(rotulo: rotulo, fuerte: fuerte),
+                            _ValorDeLaCuenta(valor: valor, fuerte: fuerte),
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _RotuloDeLaCuenta(rotulo: rotulo, fuerte: fuerte),
+                            ),
+                            const SizedBox(width: 12),
+                            Flexible(
+                              child: _ValorDeLaCuenta(valor: valor, fuerte: fuerte),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Flexible(
-                        child: Text(
-                          valor,
-                          textAlign: TextAlign.end,
-                          style: TextStyle(
-                            fontFamily: 'JetBrainsMono',
-                            fontSize: 14,
-                            fontWeight: fuerte ? FontWeight.w700 : FontWeight.w500,
-                            color: ColoresAlta.tinta,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
           ],
@@ -354,6 +353,42 @@ class TarjetaCuenta extends StatelessWidget {
       ),
     );
   }
+}
+
+class _RotuloDeLaCuenta extends StatelessWidget {
+  const _RotuloDeLaCuenta({required this.rotulo, required this.fuerte});
+
+  final String rotulo;
+  final bool fuerte;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    rotulo,
+    style: TextStyle(
+      fontSize: 14,
+      color: fuerte ? ColoresAlta.tinta : ColoresAlta.gris,
+      fontWeight: fuerte ? FontWeight.w600 : FontWeight.w400,
+    ),
+  );
+}
+
+class _ValorDeLaCuenta extends StatelessWidget {
+  const _ValorDeLaCuenta({required this.valor, required this.fuerte});
+
+  final String valor;
+  final bool fuerte;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    valor,
+    textAlign: TextAlign.end,
+    style: TextStyle(
+      fontFamily: 'JetBrainsMono',
+      fontSize: 14,
+      fontWeight: fuerte ? FontWeight.w700 : FontWeight.w500,
+      color: ColoresAlta.tinta,
+    ),
+  );
 }
 
 /// Las acciones rápidas bajo la cuenta (32B·01, HU-VEN-005): «+ Agendar cobranza» y «Registrar entrega»,

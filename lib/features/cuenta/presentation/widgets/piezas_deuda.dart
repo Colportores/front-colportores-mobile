@@ -306,9 +306,16 @@ class SinDeudaConLaCasa extends StatelessWidget {
 
 /// Lo que aclara la pantalla cuando los saldos de los pedidos no dan el total.
 class NotaDeLaDeuda extends StatelessWidget {
-  const NotaDeLaDeuda({super.key, required this.texto});
+  const NotaDeLaDeuda({
+    super.key,
+    required this.texto,
+    this.claveDelTexto = const Key('deuda_nota'),
+  });
 
   final String texto;
+
+  /// La clave del texto; cada nota de la pantalla lleva la suya.
+  final Key claveDelTexto;
 
   @override
   Widget build(BuildContext context) {
@@ -318,7 +325,7 @@ class NotaDeLaDeuda extends StatelessWidget {
         container: true,
         child: Text(
           texto,
-          key: const Key('deuda_nota'),
+          key: claveDelTexto,
           style: const TextStyle(
             fontFamily: 'Inter',
             fontSize: 13,

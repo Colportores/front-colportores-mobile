@@ -55,11 +55,35 @@ final class DriveSinEspacio extends DriveConCuenta {
   const DriveSinEspacio({required super.email, required super.cuentaId});
 }
 
+/// Se conectó una cuenta de Google distinta de la que tenía el respaldo (16E·01) y la persona todavía
+/// no eligió con cuál seguir. El respaldo está **frenado** hasta que elija: ni la de ahora ni la
+/// anterior reciben nada (`respaldaAhora` es `false`). Nada se borra: el respaldo anterior sigue en
+/// su cuenta.
+final class DriveCuentaPorConfirmar extends DriveConCuenta {
+  const DriveCuentaPorConfirmar({
+    required super.email,
+    required super.cuentaId,
+    required this.anteriorEmail,
+    required this.anteriorCuentaId,
+  });
+
+  /// Correo de la cuenta de Google que tenía el respaldo antes. Solo para mostrarlo.
+  final String anteriorEmail;
+
+  /// Identificador de esa cuenta: «Volver a la cuenta anterior» solo vale si Google devuelve esta.
+  final String anteriorCuentaId;
+
+  @override
+  List<Object?> get props => [email, cuentaId, anteriorEmail, anteriorCuentaId];
+}
+
 /// Lo que devuelve una conexión lograda.
 final class ConexionDrive extends Equatable {
   const ConexionDrive({required this.estado, required this.primerRespaldoHecho});
 
-  final DriveConectada estado;
+  /// [DriveConectada], o [DriveCuentaPorConfirmar] si Google devolvió otra cuenta que la del respaldo
+  /// anterior (16E·01): en ese caso no se hizo el primer respaldo.
+  final DriveConCuenta estado;
 
   /// Si ya se hizo el primer respaldo en el momento (16D·04: «Hicimos el primer respaldo en tu
   /// Drive»). `false` cuando todavía no hay quién lo haga o falló: la conexión vale igual y el

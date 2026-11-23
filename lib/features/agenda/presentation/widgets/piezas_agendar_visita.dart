@@ -337,6 +337,14 @@ class TarjetaFechaAgendar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final gris = theme.extension<ColoresColportaje>()?.gris ?? ColoresAlta.gris;
+    final grande = MediaQuery.textScalerOf(context).scale(14) / 14 >= 1.5;
+    final cambiar = Text(
+      TextosAgendarVisita.cambiar,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        color: alTocar == null ? gris : ColoresAlta.azul,
+        fontWeight: FontWeight.w600,
+      ),
+    );
     return Semantics(
       button: true,
       label: TextosAgendarVisita.lectorTarjetaFecha(etiqueta, titulo, detalle),
@@ -391,17 +399,13 @@ class TarjetaFechaAgendar extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(detalle!, style: theme.textTheme.bodySmall?.copyWith(color: gris)),
                         ],
+                        // Con el texto grande «Cambiar» no le quita ancho al día: baja debajo
+                        // («Miércoles» se partía en «Miércol/es», QA #513).
+                        if (grande) ...[const SizedBox(height: 4), cambiar],
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    TextosAgendarVisita.cambiar,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: alTocar == null ? gris : ColoresAlta.azul,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  if (!grande) ...[const SizedBox(width: 8), cambiar],
                 ],
               ),
             ),
@@ -579,7 +583,10 @@ class _HojaDiaYHoraState extends State<HojaDiaYHora> {
     final total = _minutos + delta;
     final saltoDeDia = total >= dia ? 1 : (total < 0 ? -1 : 0);
     final nuevoDia = DateTime(_dia.year, _dia.month, _dia.day + saltoDeDia);
-    if (nuevoDia.isBefore(_hoy)) return;
+    // Solo se frena el salto hacia atrás a un día de antes de hoy. Con el día de la hoja ya vencido (la
+    // página quedó abierta de un día para otro) «+» y «−» siguen moviendo la hora dentro de ese día:
+    // frenarlos del todo los dejaba muertos sin decir por qué (QA #538).
+    if (saltoDeDia < 0 && nuevoDia.isBefore(_hoy)) return;
     setState(() {
       _dia = nuevoDia;
       _minutos = ((total % dia) + dia) % dia;

@@ -38,15 +38,7 @@ void main() {
     for (final (id, nombre) in [('pro-1', 'Nuestros Hijos'), ('pro-2', 'Salud y Hogar')]) {
       await db
           .into(db.productos)
-          .insert(
-            ProductosCompanion.insert(
-              id: id,
-              nombre: nombre,
-              tipo: 'LIBRO',
-              createdAt: t0,
-              updatedAt: t0,
-            ),
-          );
+          .insert(ProductosCompanion.insert(id: id, nombre: nombre, createdAt: t0, updatedAt: t0));
     }
     await db
         .into(db.ventas)

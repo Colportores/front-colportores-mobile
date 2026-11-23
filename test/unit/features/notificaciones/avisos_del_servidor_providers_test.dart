@@ -17,8 +17,14 @@ import 'package:flutter_test/flutter_test.dart';
   AvisosDelServidorEnMemoria servidor,
   PreferenciasRecordatoriosRepositoryEnMemoria telefono,
 })
-_armar({AvisosDelServidor? avisos, bool recordatoriosActivados = true}) {
-  final servidor = AvisosDelServidorEnMemoria(avisos: avisos ?? const AvisosDelServidor());
+_armar({
+  AvisosDelServidor? avisos,
+  bool recordatoriosActivados = true,
+  bool miraPreferencias = false,
+  Completer<void>? lecturaDemorada,
+}) {
+  final servidor = AvisosDelServidorEnMemoria(avisos: avisos ?? const AvisosDelServidor())
+    ..lecturaDemorada = lecturaDemorada;
   final telefono = PreferenciasRecordatoriosRepositoryEnMemoria(
     preferencias: PreferenciasRecordatorios(activados: recordatoriosActivados),
   );
@@ -31,6 +37,8 @@ _armar({AvisosDelServidor? avisos, bool recordatoriosActivados = true}) {
   addTearDown(c.dispose);
   // La pantalla lo mira: sin oyente el `autoDispose` lo soltaría.
   c.listen(avisosDelServidorProvider, (_, _) {});
+  // La pantalla también mira las preferencias del teléfono (sin oyente se sueltan).
+  if (miraPreferencias) c.listen(preferenciasRecordatoriosProvider, (_, _) {});
   return (c: c, servidor: servidor, telefono: telefono);
 }
 
@@ -290,6 +298,92 @@ void main() {
       );
       expect(t.servidor.avisos.agenda, isFalse);
     });
+
+    test(
+      'cambiarRecordatoriosDeAgenda guarda en el teléfono y corrige la copia del servidor',
+      () async {
+        final t = _armar(miraPreferencias: true);
+        await t.c.read(preferenciasRecordatoriosProvider.future);
+        await _listo(t.c);
+
+        await t.c
+            .read(avisosDelServidorProvider.notifier)
+            .cambiarRecordatoriosDeAgenda(activados: false);
+
+        expect(t.telefono.preferencias.activados, isFalse);
+        expect(t.servidor.avisos.agenda, isFalse);
+      },
+    );
+
+    test(
+      'si la pantalla se cierra mientras el teléfono guarda, la copia se corrige igual',
+      () async {
+        final servidor = AvisosDelServidorEnMemoria();
+        final telefono = PreferenciasRecordatoriosRepositoryEnMemoria();
+        final c = ProviderContainer(
+          overrides: [
+            avisosDelServidorRepositoryProvider.overrideWithValue(servidor),
+            preferenciasRecordatoriosRepositoryProvider.overrideWithValue(telefono),
+          ],
+        );
+        addTearDown(c.dispose);
+        final pantalla = c.listen(avisosDelServidorProvider, (_, _) {});
+        await _listo(c);
+        // La pantalla también mira las preferencias del teléfono.
+        final preferencias = c.listen(preferenciasRecordatoriosProvider, (_, _) {});
+        await c.read(preferenciasRecordatoriosProvider.future);
+        final demora = Completer<void>();
+        telefono.guardadoDemorado = demora;
+
+        final terminado = c
+            .read(avisosDelServidorProvider.notifier)
+            .cambiarRecordatoriosDeAgenda(activados: false);
+        await _esperar();
+        // Sale de la pantalla: nadie mira nada.
+        pantalla.close();
+        preferencias.close();
+        await _esperar();
+        telefono.guardadoDemorado = null;
+        demora.complete();
+        await terminado;
+
+        expect(telefono.preferencias.activados, isFalse);
+        expect(servidor.avisos.agenda, isFalse);
+      },
+    );
+
+    test('si el teléfono no puede guardar, la copia queda con lo que el teléfono tiene', () async {
+      final t = _armar(miraPreferencias: true);
+      await t.c.read(preferenciasRecordatoriosProvider.future);
+      await _listo(t.c);
+      t.telefono.fallaAlGuardar = true;
+
+      await t.c
+          .read(avisosDelServidorProvider.notifier)
+          .cambiarRecordatoriosDeAgenda(activados: false);
+
+      expect(t.telefono.preferencias.activados, isTrue);
+      expect(t.servidor.avisos.agenda, isTrue);
+    });
+
+    test(
+      'antes de haber leído el servidor no hay copia que corregir: al leerlo se alinea',
+      () async {
+        final lectura = Completer<void>();
+        final t = _armar(miraPreferencias: true, lecturaDemorada: lectura);
+        await t.c.read(preferenciasRecordatoriosProvider.future);
+        final n = t.c.read(avisosDelServidorProvider.notifier);
+
+        await n.cambiarRecordatoriosDeAgenda(activados: false);
+        expect(t.telefono.preferencias.activados, isFalse);
+        expect(t.servidor.guardados, isEmpty);
+
+        lectura.complete();
+        await _listo(t.c);
+        await _esperar();
+        expect(t.servidor.avisos.agenda, isFalse);
+      },
+    );
 
     test('sin conexión no se le dice nada a la colportora y queda para la próxima vez', () async {
       final t = _armar();

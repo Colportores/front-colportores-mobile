@@ -97,6 +97,9 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
               ),
             ),
           );
+        case DriveQuedoEnOtraCuenta(:final estado):
+          // Google devolvió otra cuenta que la del respaldo anterior (16E·01).
+          await _elegirCuentaDrive(estado);
         case DriveNoQuedoConectado():
           avisoCancelado.mostrar();
         case DriveOcupado() || null:
@@ -105,6 +108,21 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     } finally {
       _abriendoHojaDrive = false;
     }
+  }
+
+  /// La hoja «Esta no es la cuenta de tu respaldo» (16E·01 a 16E·04) y lo que avisa al volver. Quien la
+  /// llama ya tiene tomada su guarda de «abriendo una hoja»: un segundo toque no abre otra.
+  Future<void> _elegirCuentaDrive(DriveCuentaPorConfirmar cuenta) async {
+    final salida = await mostrarHojaOtraCuentaDrive(context, cuenta: cuenta);
+    if (!mounted) return;
+    // Cerró la hoja sin elegir: la fila queda pendiente y tocarla la vuelve a abrir. Si desconectó,
+    // la fila ya dice «Sin conectar».
+    final aviso = avisoDeOtraCuenta(salida);
+    if (aviso == null) return;
+    final mensajero = ScaffoldMessenger.of(context)..clearSnackBars();
+    recordarAviso(
+      mensajero.showSnackBar(SnackBar(key: Key(aviso.clave), content: Text(aviso.texto))),
+    );
   }
 
   /// «Recuperar mi respaldo» (#610, «Recup. luego»; vista 16, 16G, #691): vuelve a abrir el
@@ -138,6 +156,10 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
       }
       if (!mounted) return;
       switch (drive) {
+        case DriveCuentaPorConfirmar():
+          // Antes de traer un respaldo hay que elegir de qué cuenta es: el respaldo está frenado.
+          await _elegirCuentaDrive(drive);
+          return;
         case DriveConCuenta(:final email):
           final empezar = await mostrarHojaRecuperarRespaldo(context, cuentaDrive: email);
           if (empezar != true || !mounted) return;
@@ -175,12 +197,18 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     );
   }
 
-  /// Tocar la fila con Drive conectado: la hoja para desconectar.
-  Future<void> _desconectarDrive() async {
+  /// Tocar la fila con Drive conectado: la hoja para desconectar. Con otra cuenta por confirmar
+  /// (16E·01), la hoja para elegir con cuál seguir.
+  Future<void> _verCuentaDrive() async {
     if (_abriendoHojaDrive) return;
     _abriendoHojaDrive = true;
     try {
-      await mostrarHojaDesconectarDrive(context);
+      final estado = ref.read(estadoRespaldoDriveProvider).value;
+      if (estado is DriveCuentaPorConfirmar) {
+        await _elegirCuentaDrive(estado);
+      } else {
+        await mostrarHojaDesconectarDrive(context);
+      }
     } finally {
       _abriendoHojaDrive = false;
     }
@@ -474,7 +502,7 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                         ultimoRespaldo: ultimoRespaldo,
                         ahora: DateTime.now(),
                         alConectar: () => unawaited(_conectarDrive()),
-                        alVerCuenta: () => unawaited(_desconectarDrive()),
+                        alVerCuenta: () => unawaited(_verCuentaDrive()),
                         alReintentar: () =>
                             unawaited(ref.read(estadoRespaldoDriveProvider.notifier).recargar()),
                       ),
