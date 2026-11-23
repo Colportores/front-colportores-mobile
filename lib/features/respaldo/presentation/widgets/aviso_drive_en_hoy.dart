@@ -9,7 +9,9 @@ import 'aviso_drive.dart';
 
 /// La franja del Drive en Hoy (HU-SYNC-004, vista 16, 16F·01 a 16F·04, #550): avisa que el respaldo
 /// dejó de hacerse porque Google ya no da el permiso (16F·01) o porque el Drive está lleno (16F·02),
-/// y lleva a Configuración, donde se resuelve (16D·06 y 16D·10).
+/// y lleva a Configuración, donde se resuelve (16D·06 y 16D·10). Con otra cuenta de Google por
+/// confirmar (16E) el respaldo está frenado hasta que elija: la franja lo dice y «Elegir cuenta» abre
+/// la hoja (decisión del 23/11, R7).
 ///
 /// Dura lo que dure el problema. Se puede ocultar hasta mañana (16F·04): mientras tanto el engranaje
 /// de Hoy lleva la marca roja y la fila «Cuenta Drive» sigue en rojo. Sin problema, o con la franja
@@ -17,10 +19,18 @@ import 'aviso_drive.dart';
 ///
 /// Es un aviso más de la franja de Hoy (vista 25): va primero, porque avisa de datos sin copia.
 class AvisoDriveEnHoy extends ConsumerStatefulWidget {
-  const AvisoDriveEnHoy({super.key, required this.alAbrirConfiguracion});
+  const AvisoDriveEnHoy({
+    super.key,
+    required this.alAbrirConfiguracion,
+    required this.alElegirCuenta,
+  });
 
   /// «Reconectar en Configuración» y «Ver en Configuración».
   final VoidCallback alAbrirConfiguracion;
+
+  /// «Elegir cuenta» (otra cuenta de Google por confirmar): abre la misma hoja que la fila «Cuenta
+  /// Drive» de Configuración.
+  final VoidCallback alElegirCuenta;
 
   @override
   ConsumerState<AvisoDriveEnHoy> createState() => _AvisoDriveEnHoyState();
@@ -59,16 +69,24 @@ class _AvisoDriveEnHoyState extends ConsumerState<AvisoDriveEnHoy> {
   Widget build(BuildContext context) {
     final problema = leerFranjaDriveEnHoy(ref).franja;
     if (problema == null) return const SizedBox.shrink();
-    final (clase, texto, accion) = switch (problema) {
+    final (clase, texto, accion, alAccionar) = switch (problema) {
       ProblemaDeRespaldoEnHoy.permisoRevocado => (
         ClaseAvisoDrive.error,
         TextosRespaldoDrive.franjaRevocada,
         TextosRespaldoDrive.franjaReconectarEnConfiguracion,
+        widget.alAbrirConfiguracion,
       ),
       ProblemaDeRespaldoEnHoy.sinEspacio => (
         ClaseAvisoDrive.advertencia,
         TextosRespaldoDrive.franjaDriveLleno,
         TextosRespaldoDrive.franjaVerEnConfiguracion,
+        widget.alAbrirConfiguracion,
+      ),
+      ProblemaDeRespaldoEnHoy.cuentaPorConfirmar => (
+        ClaseAvisoDrive.advertencia,
+        TextosRespaldoDrive.franjaFrenada,
+        TextosRespaldoDrive.franjaElegirCuenta,
+        widget.alElegirCuenta,
       ),
     };
     return Padding(
@@ -78,7 +96,7 @@ class _AvisoDriveEnHoyState extends ConsumerState<AvisoDriveEnHoy> {
         clase: clase,
         texto: texto,
         accion: accion,
-        alAccionar: widget.alAbrirConfiguracion,
+        alAccionar: alAccionar,
         accionSecundaria: TextosRespaldoDrive.ocultarHastaManiana,
         alAccionarSecundaria: _ocultando ? null : () => unawaited(_ocultar()),
       ),

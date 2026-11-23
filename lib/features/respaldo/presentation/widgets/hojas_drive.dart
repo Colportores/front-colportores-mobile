@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -65,8 +67,31 @@ final class SiguioConLaCuentaNueva extends ResultadoOtraCuentaDrive {
   final bool primerRespaldoHecho;
 }
 
+/// Desconectó el Drive desde la hoja (decisión del 23/11, R6): no queda cuenta por confirmar.
+final class DesconectoElDrive extends ResultadoOtraCuentaDrive {
+  const DesconectoElDrive();
+}
+
+/// Lo que se le avisa a la persona tras la hoja de otra cuenta, con la clave del aviso; `null` si no
+/// hay nada que avisar (cerró sin elegir, o desconectó: la fila «Cuenta Drive» ya lo dice).
+({String clave, String texto})? avisoDeOtraCuenta(ResultadoOtraCuentaDrive? salida) =>
+    switch (salida) {
+      VolvioALaCuentaAnterior(:final correo) => (
+        clave: 'configuracion_drive_volvio',
+        texto: TextosRespaldoDrive.volvioALaAnterior(correo),
+      ),
+      SiguioConLaCuentaNueva(:final primerRespaldoHecho) => (
+        clave: 'configuracion_drive_conectado',
+        texto: primerRespaldoHecho
+            ? TextosRespaldoDrive.exitoConPrimerRespaldo
+            : TextosRespaldoDrive.exitoSinPrimerRespaldo,
+      ),
+      DesconectoElDrive() || null => null,
+    };
+
 /// Abre la hoja «Esta no es la cuenta de tu respaldo» (16E·01 a 16E·04). Devuelve con qué cuenta
-/// quedó la persona, o `null` si la cerró sin elegir: el respaldo sigue frenado y la fila lo dice.
+/// quedó la persona, [DesconectoElDrive] si desconectó, o `null` si la cerró sin elegir: el respaldo
+/// sigue frenado y la fila lo dice.
 Future<ResultadoOtraCuentaDrive?> mostrarHojaOtraCuentaDrive(
   BuildContext context, {
   required DriveCuentaPorConfirmar cuenta,
@@ -314,6 +339,9 @@ class _HojaOtraCuentaDriveState extends ConsumerState<HojaOtraCuentaDrive> {
   /// La cuenta de ahora: cambia si, al volver, la persona elige otra distinta de la anterior.
   late DriveCuentaPorConfirmar _cuenta = widget.cuenta;
 
+  /// Se está abriendo la hoja de desconectar: corta el segundo toque.
+  bool _abriendoDesconexion = false;
+
   /// El aviso de que algo falló, con su mensaje; `null` si no hay falla. El de sin conexión del
   /// teléfono no pasa por acá (sale de [conexionProvider]).
   String? _error;
@@ -353,6 +381,21 @@ class _HojaOtraCuentaDriveState extends ConsumerState<HojaOtraCuentaDrive> {
         break;
     }
     setState(() => _trabajando = null);
+  }
+
+  /// «Desconectar Drive» (decisión del 23/11, R6): abre la hoja de desconectar de siempre, con sus
+  /// textos y sin borrar ningún respaldo. Si desconectó, la hoja se cierra: ya no hay cuenta por
+  /// confirmar.
+  Future<void> _desconectar() async {
+    if (_trabajando != null || _abriendoDesconexion) return;
+    _abriendoDesconexion = true;
+    try {
+      final desconecto = await mostrarHojaDesconectarDrive(context);
+      if (!mounted || desconecto != true) return;
+      Navigator.of(context).pop(const DesconectoElDrive());
+    } finally {
+      _abriendoDesconexion = false;
+    }
   }
 
   Future<void> _seguir() async {
@@ -473,6 +516,14 @@ class _HojaOtraCuentaDriveState extends ConsumerState<HojaOtraCuentaDrive> {
                           _error = null;
                           _errorDeRed = false;
                         }),
+                ),
+                // Lo raro va como opción a mano pero secundaria (R6): salir sin elegir ninguna de las
+                // dos cuentas, dejando el Drive desconectado hasta decidir.
+                TextButton(
+                  key: const Key('drive_otra_cuenta_desconectar'),
+                  style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  onPressed: trabajando ? null : () => unawaited(_desconectar()),
+                  child: const Text(TextosRespaldoDrive.desconectarDrive),
                 ),
               ] else ...[
                 _BotonHoja(

@@ -434,6 +434,128 @@ void main() {
     });
   });
 
+  group('Desconectar Drive desde la hoja (decisión R6 del 23/11)', () {
+    Finder desconectar() => find.byKey(const Key('drive_otra_cuenta_desconectar'));
+    Finder hojaDesconectar() => find.byKey(const Key('drive_hoja_desconectar'));
+
+    prueba('la hoja suma «Desconectar Drive» como botón secundario, debajo de las dos salidas', (
+      tester,
+    ) async {
+      await _montar(tester, drive, antes: _porConfirmar(drive));
+      await _tocarFila(tester);
+
+      expect(_dentro(_hojaOtra, 'Desconectar Drive'), findsOneWidget);
+      expect(
+        tester.getTopLeft(desconectar()).dy,
+        greaterThan(tester.getTopLeft(_seguir).dy),
+        reason: 'va debajo de las dos salidas',
+      );
+      expect(tester.getSize(desconectar()).height, greaterThanOrEqualTo(48));
+    });
+
+    prueba('abre la hoja de desconectar de siempre; desconectar deja el Drive sin conectar', (
+      tester,
+    ) async {
+      final c = await _montar(tester, drive, antes: _porConfirmar(drive));
+      final desconexiones = drive.google.desconexiones;
+      await _tocarFila(tester);
+      await _tocar(tester, desconectar());
+
+      expect(hojaDesconectar(), findsOneWidget);
+      expect(find.text('¿Desconectar Google Drive?'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('drive_desconectar')));
+      await tester.pumpAndSettle();
+
+      expect(hojaDesconectar(), findsNothing);
+      expect(_hojaOtra, findsNothing);
+      expect(c.read(estadoRespaldoDriveProvider).value, isA<DriveSinConectar>());
+      expect(drive.google.desconexiones, desconexiones + 1);
+      expect(find.text('Sin conectar · tus datos no tienen respaldo'), findsOneWidget);
+      expect(find.text('Todavía sin respaldo en esta cuenta'), findsNothing);
+      expect(_snackVolvio, findsNothing);
+      expect(_snackConectado, findsNothing);
+    });
+
+    prueba('«Cancelar» en la hoja de desconectar deja la de otra cuenta como estaba', (
+      tester,
+    ) async {
+      final c = await _montar(tester, drive, antes: _porConfirmar(drive));
+      await _tocarFila(tester);
+      await _tocar(tester, desconectar());
+      await _tocar(tester, find.byKey(const Key('drive_desconectar_cancelar')));
+
+      expect(hojaDesconectar(), findsNothing);
+      expect(_hojaOtra, findsOneWidget);
+      expect(c.read(estadoRespaldoDriveProvider).value, isA<DriveCuentaPorConfirmar>());
+    });
+
+    prueba(
+      'si no se pudo desconectar, avisa, la hoja de otra cuenta sigue y no queda nada trabado',
+      (tester) async {
+        final c = await _montar(tester, drive, antes: _porConfirmar(drive));
+        await _tocarFila(tester);
+        await _tocar(tester, desconectar());
+
+        drive.almacen.alBorrar = true;
+        await _tocar(tester, find.byKey(const Key('drive_desconectar')));
+
+        expect(find.byKey(const Key('drive_hoja_error_desconectar')), findsOneWidget);
+        expect(c.read(estadoRespaldoDriveProvider).value, isA<DriveCuentaPorConfirmar>());
+
+        drive.almacen.alBorrar = false;
+        await _tocar(tester, find.byKey(const Key('drive_desconectar')));
+        expect(_hojaOtra, findsNothing);
+        expect(c.read(estadoRespaldoDriveProvider).value, isA<DriveSinConectar>());
+      },
+    );
+
+    prueba('doble toque en «Desconectar Drive»: una sola hoja de desconectar', (tester) async {
+      await _montar(tester, drive, antes: _porConfirmar(drive));
+      await _tocarFila(tester);
+
+      await tester.ensureVisible(desconectar());
+      await tester.pump();
+      await tester.tap(desconectar());
+      await tester.tap(desconectar(), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(hojaDesconectar(), findsOneWidget);
+    });
+
+    prueba('sin conexión también se puede desconectar (no hace falta red)', (tester) async {
+      await _montar(tester, drive, conexion: TipoConexion.sinConexion, antes: _porConfirmar(drive));
+      await _tocarFila(tester);
+
+      expect(tester.widget<TextButton>(desconectar()).onPressed, isNotNull);
+    });
+
+    prueba('mientras Google está abierto, «Desconectar Drive» espera como las otras salidas', (
+      tester,
+    ) async {
+      await _montar(tester, drive, antes: _porConfirmar(drive));
+      final compuerta = Completer<void>();
+      drive.google.compuertaConectar = compuerta;
+      drive.google.cuenta = cuentaDeAna;
+      await _tocarFila(tester);
+      await tester.tap(_volver);
+      await tester.pump();
+
+      expect(tester.widget<TextButton>(desconectar()).onPressed, isNull);
+
+      compuerta.complete();
+      await tester.pumpAndSettle();
+    });
+
+    prueba('en la confirmación de «Seguir» no está: ahí solo hay dos salidas', (tester) async {
+      await _montar(tester, drive, antes: _porConfirmar(drive));
+      await _tocarFila(tester);
+      await _tocar(tester, _seguir);
+
+      expect(desconectar(), findsNothing);
+    });
+  });
+
   group('Casos límite', () {
     prueba('doble toque en «Volver a la cuenta anterior»: Google se abre una sola vez', (
       tester,

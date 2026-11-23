@@ -267,7 +267,11 @@ final ultimoRespaldoDriveProvider = StreamProvider.autoDispose<DateTime?>((ref) 
 final conectadaDesdeDriveProvider = FutureProvider.autoDispose<DateTime?>((ref) async {
   final usuarioId = ref.watch(sesionProvider.select((s) => s.value?.usuarioId));
   if (usuarioId == null) return null;
-  ref.watch(estadoRespaldoDriveProvider.select((estado) => estado.value is DriveConectada));
+  ref.watch(
+    estadoRespaldoDriveProvider.select(
+      (estado) => estado.value is DriveConectada || estado.value is DriveCuentaPorConfirmar,
+    ),
+  );
   return ref.watch(respaldoDriveRepositoryProvider).conectadaDesde(usuarioId);
 }, retry: _sinReintentos);
 
@@ -337,14 +341,16 @@ class FranjaDriveOcultaNotifier extends AsyncNotifier<DateTime?> {
 }
 
 /// Qué le pasa al respaldo que Hoy tiene que avisar (16F·01 y 16F·02): se perdió el permiso o el
-/// Drive está lleno.
-enum ProblemaDeRespaldoEnHoy { permisoRevocado, sinEspacio }
+/// Drive está lleno; o, con otra cuenta de Google por confirmar (16E), el respaldo está frenado hasta
+/// que elija (decisión del 23/11, R7).
+enum ProblemaDeRespaldoEnHoy { permisoRevocado, sinEspacio, cuentaPorConfirmar }
 
 /// El problema del respaldo que Hoy tiene que avisar, o `null` si no hay ninguno (conectado, sin
-/// conectar, con otra cuenta por confirmar, o todavía leyendo).
+/// conectar, o todavía leyendo).
 ProblemaDeRespaldoEnHoy? problemaDeRespaldo(EstadoRespaldoDrive? estado) => switch (estado) {
   DrivePermisoRevocado() => ProblemaDeRespaldoEnHoy.permisoRevocado,
   DriveSinEspacio() => ProblemaDeRespaldoEnHoy.sinEspacio,
+  DriveCuentaPorConfirmar() => ProblemaDeRespaldoEnHoy.cuentaPorConfirmar,
   _ => null,
 };
 

@@ -117,6 +117,15 @@ abstract final class TextosRespaldoDrive {
   static const franjaVerEnConfiguracion = 'Ver en Configuración';
   static const franjaOculta = 'Te lo recordamos mañana. Lo ves en Configuración.';
 
+  /// La franja de Hoy con otra cuenta por confirmar: el respaldo está frenado hasta que elija
+  /// (decisión del 23/11, R7, #739).
+  static const franjaFrenada = 'Tu respaldo está frenado: elegí con qué cuenta de Google seguir.';
+  static const franjaElegirCuenta = 'Elegir cuenta';
+
+  /// El botón de la hoja de otra cuenta para dejar el Drive desconectado hasta decidir (decisión del
+  /// 23/11, R6, #739).
+  static const desconectarDrive = 'Desconectar Drive';
+
   /// Cómo se cierra la franja (el canvas solo dibuja el resultado, 16F·04): propuesta.
   static const ocultarHastaManiana = 'Ocultar hasta mañana';
 

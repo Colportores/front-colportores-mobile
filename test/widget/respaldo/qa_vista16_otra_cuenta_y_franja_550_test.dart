@@ -269,14 +269,19 @@ void main() {
       expect(primero.llamadas, 1, reason: 'una sola copia');
     });
 
-    testWidgets('con otra cuenta por confirmar Hoy no muestra la franja ni la marca (respaldo '
-        'frenado sin aviso: pendiente P1 del implementador)', (tester) async {
+    testWidgets('con otra cuenta por confirmar Hoy avisa que el respaldo está frenado (decisión '
+        'R7 del 23/11)', (tester) async {
       await armarEstado550(tester, Estado550.filaPendiente);
-      await tester.tap(find.byKey(const Key('configuracion_atras')));
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
 
       expect(franjaRevocada, findsNothing);
       expect(franjaLlena, findsNothing);
+      expect(find.byKey(const Key('aviso_drive_en_hoy_cuentaPorConfirmar')), findsOneWidget);
+      expect(
+        find.text('Tu respaldo está frenado: elegí con qué cuenta de Google seguir.'),
+        findsOneWidget,
+      );
       expect(marcaEngranaje, findsNothing);
     });
 
@@ -284,13 +289,13 @@ void main() {
         '(la HU: «Revocar autorización es siempre posible desde Configuración»)', (tester) async {
       await armarEstado550(tester, Estado550.hoja01);
 
-      // La hoja ofrece volver o seguir; ninguna ofrece desconectar, y la fila ya no abre la hoja de
-      // «¿Desconectar Google Drive?».
-      final haySalida =
-          find.text('Desconectar').evaluate().isNotEmpty ||
-          find.text('Desconectar Google Drive').evaluate().isNotEmpty;
-      expect(haySalida, isTrue);
-    }, skip: !_qaHallazgos);
+      // La hoja suma «Desconectar Drive» (decisión R6 del 23/11): abre la hoja de desconectar.
+      final boton = find.byKey(const Key('drive_otra_cuenta_desconectar'));
+      expect(boton, findsOneWidget);
+      await tester.tap(boton);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('drive_hoja_desconectar')), findsOneWidget);
+    });
   });
 
   group('Privacidad', () {

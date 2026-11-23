@@ -21,10 +21,12 @@ import '../../../mapa/presentation/providers/ubicacion_colportor_provider.dart';
 import '../../../mapa/presentation/widgets/hoja_ubicacion.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones_apagadas.dart';
 import '../../../notificaciones/presentation/widgets/campana_notificaciones.dart';
+import '../../../respaldo/domain/entities/estado_respaldo_drive.dart';
 import '../../../respaldo/presentation/providers/respaldo_drive_providers.dart';
 import '../../../respaldo/presentation/textos_respaldo_drive.dart';
 import '../../../respaldo/presentation/widgets/aviso_drive_en_hoy.dart';
 import '../../../respaldo/presentation/widgets/aviso_sin_respaldo.dart';
+import '../../../respaldo/presentation/widgets/hojas_drive.dart';
 import '../../../tiles/presentation/widgets/hoja_sugerencia_mapa.dart';
 import '../../../ventas/presentation/formato_entrega_diferida.dart' show TextosEntregaDiferida;
 import '../../../ventas/presentation/pages/elegir_persona_para_vender_page.dart';
@@ -169,6 +171,27 @@ class _InicioPageState extends ConsumerState<InicioPage> {
     }
   }
 
+  /// Evita abrir dos veces la hoja de otra cuenta con dos toques seguidos en «Elegir cuenta».
+  var _abriendoOtraCuenta = false;
+
+  /// «Elegir cuenta» de la franja del Drive (otra cuenta de Google por confirmar): la misma hoja que
+  /// la fila «Cuenta Drive» de Configuración, y lo que avisa al volver.
+  Future<void> _elegirCuentaDrive() async {
+    final estado = ref.read(estadoRespaldoDriveProvider).value;
+    if (_abriendoOtraCuenta || estado is! DriveCuentaPorConfirmar) return;
+    _abriendoOtraCuenta = true;
+    try {
+      final salida = await mostrarHojaOtraCuentaDrive(context, cuenta: estado);
+      final aviso = avisoDeOtraCuenta(salida);
+      if (!mounted || aviso == null) return;
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(key: Key(aviso.clave), content: Text(aviso.texto)));
+    } finally {
+      _abriendoOtraCuenta = false;
+    }
+  }
+
   /// Evita abrir dos veces Configuración con dos toques seguidos (el engranaje y la franja del Drive).
   var _abriendoConfiguracion = false;
 
@@ -239,7 +262,10 @@ class _InicioPageState extends ConsumerState<InicioPage> {
               // El respaldo en Drive dejó de hacerse (16F·01 a 16F·04, #550): va primero porque avisa
               // de datos sin copia. Solo en Hoy; con el teclado abierto gana el campo.
               if (actual == PestanaInicio.hoy)
-                _AvisoDriveEnHoy(alAbrirConfiguracion: () => unawaited(_abrirConfiguracion())),
+                _AvisoDriveEnHoy(
+                  alAbrirConfiguracion: () => unawaited(_abrirConfiguracion()),
+                  alElegirCuenta: () => unawaited(_elegirCuentaDrive()),
+                ),
               // El aviso de zona (HU-CAM-006, #251) va arriba de la pestaña, en cualquiera de ellas.
               _AvisosDeZona(colportorId: widget.sesion.usuarioId),
               // Más de 7 días sin un respaldo exitoso (HU-SYNC-005): sin nada que avisar no ocupa
@@ -373,14 +399,18 @@ class _AvisoNotificaciones extends StatelessWidget {
 /// La franja del Drive de Hoy (16F, #550). Con el teclado abierto gana el campo que se escribe, como
 /// con los demás avisos: se oculta y vuelve al cerrarlo.
 class _AvisoDriveEnHoy extends StatelessWidget {
-  const _AvisoDriveEnHoy({required this.alAbrirConfiguracion});
+  const _AvisoDriveEnHoy({required this.alAbrirConfiguracion, required this.alElegirCuenta});
 
   final VoidCallback alAbrirConfiguracion;
+  final VoidCallback alElegirCuenta;
 
   @override
   Widget build(BuildContext context) {
     if (_EstadoTeclado.abiertoEn(context)) return const SizedBox.shrink();
-    return AvisoDriveEnHoy(alAbrirConfiguracion: alAbrirConfiguracion);
+    return AvisoDriveEnHoy(
+      alAbrirConfiguracion: alAbrirConfiguracion,
+      alElegirCuenta: alElegirCuenta,
+    );
   }
 }
 

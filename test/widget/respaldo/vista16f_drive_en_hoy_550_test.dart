@@ -9,6 +9,8 @@ import 'package:colportores_mobile/features/auth/presentation/providers/auth_pro
 import 'package:colportores_mobile/features/auth/presentation/providers/db_local_providers.dart';
 import 'package:colportores_mobile/features/auth/presentation/providers/sesion_notifier.dart';
 import 'package:colportores_mobile/features/notificaciones/domain/repositories/permiso_notificaciones_repository.dart';
+import 'package:colportores_mobile/features/respaldo/data/services/servicio_google.dart'
+    show CuentaGoogle;
 import 'package:colportores_mobile/features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -191,6 +193,117 @@ void main() {
       await tester.tap(_accion);
       await tester.pumpAndSettle();
       expect(find.text('Tu Drive está lleno · el respaldo no se guardó'), findsOneWidget);
+    });
+  });
+
+  group('Otra cuenta de Google por confirmar (decisión R7 del 23/11)', () {
+    Future<void> porConfirmar(RespaldoDriveArmado a, String u) async {
+      await a.repo.conectar(u);
+      a.google.cuenta = const CuentaGoogle(id: 'g-200', email: 'ana.casa@gmail.com');
+      await a.repo.conectar(u);
+    }
+
+    final franja = find.byKey(const Key('aviso_drive_en_hoy_cuentaPorConfirmar'));
+    final hojaOtra = find.byKey(const Key('drive_hoja_otra_cuenta'));
+
+    prueba('el respaldo frenado se avisa también en Hoy, con «Elegir cuenta»', (tester) async {
+      await montar(tester, problema: porConfirmar);
+
+      expect(franja, findsOneWidget);
+      expect(
+        find.text('Tu respaldo está frenado: elegí con qué cuenta de Google seguir.'),
+        findsOneWidget,
+      );
+      expect(find.descendant(of: franja, matching: find.text('Elegir cuenta')), findsOneWidget);
+      expect(
+        find.descendant(of: franja, matching: find.text('Ocultar hasta mañana')),
+        findsOneWidget,
+      );
+      expect(_marca, findsNothing);
+    });
+
+    prueba('«Elegir cuenta» abre la misma hoja de otra cuenta; doble toque, una sola', (
+      tester,
+    ) async {
+      await montar(tester, problema: porConfirmar);
+
+      await tester.tap(_accion);
+      await tester.tap(_accion, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(hojaOtra, findsOneWidget);
+      expect(find.text('Esta no es la cuenta de tu respaldo'), findsOneWidget);
+    });
+
+    prueba('cerrar la hoja sin elegir deja la franja; volver a la anterior la saca de Hoy', (
+      tester,
+    ) async {
+      await montar(tester, problema: porConfirmar);
+      await tester.tap(_accion);
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(hojaOtra, findsNothing);
+      expect(franja, findsOneWidget);
+
+      drive.google.cuenta = cuentaDeAna;
+      await tester.tap(_accion);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('drive_otra_cuenta_volver')));
+      await tester.pumpAndSettle();
+
+      expect(franja, findsNothing);
+      expect(find.text('Listo. Tu respaldo sigue en ana.gomez@gmail.com.'), findsOneWidget);
+    });
+
+    prueba('seguir con la cuenta nueva la saca de Hoy', (tester) async {
+      await montar(tester, problema: porConfirmar);
+      await tester.tap(_accion);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('drive_otra_cuenta_seguir')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('drive_otra_cuenta_confirmar_seguir')));
+      await tester.pumpAndSettle();
+
+      expect(franja, findsNothing);
+    });
+
+    prueba('desconectar el Drive desde la hoja la saca de Hoy', (tester) async {
+      await montar(tester, problema: porConfirmar);
+      await tester.tap(_accion);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('drive_otra_cuenta_desconectar')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('drive_desconectar')));
+      await tester.pumpAndSettle();
+
+      expect(franja, findsNothing);
+      expect(hojaOtra, findsNothing);
+    });
+
+    prueba('«Ocultar hasta mañana»: se va, el engranaje lleva la marca y sale mañana', (
+      tester,
+    ) async {
+      await montar(tester, problema: porConfirmar);
+      await tester.tap(_ocultar);
+      await tester.pumpAndSettle();
+
+      expect(franja, findsNothing);
+      expect(_marca, findsOneWidget);
+
+      ahora = DateTime(2026, 11, 21, 7, 5);
+      volverALaApp(tester);
+      await tester.pumpAndSettle();
+      expect(franja, findsOneWidget);
+    });
+
+    prueba('con la letra al 200 % en 360×640 los botones se alcanzan', (tester) async {
+      await montar(tester, problema: porConfirmar, pantalla: const Size(360, 640), escalaTexto: 2);
+
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(_accion);
+      await tester.pump();
+      expect(tester.getSize(_accion).height, greaterThanOrEqualTo(48));
     });
   });
 

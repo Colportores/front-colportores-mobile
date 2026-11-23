@@ -57,6 +57,9 @@ class _AvisoSinRespaldoState extends ConsumerState<AvisoSinRespaldo> {
       detalle = switch (resultado) {
         RespaldoOmitido(motivo: MotivoOmision.sinConexion) =>
           TextosRespaldoDrive.reintentoSinConexion,
+        // Con otra cuenta por confirmar el respaldo está frenado: no es cuestión de reintentar, y se
+        // dice qué hacer (decisión del 23/11, R7).
+        RespaldoOmitido(motivo: MotivoOmision.sinDrive) => TextosRespaldoDrive.franjaFrenada,
         RespaldoFallido() => TextosRespaldoDrive.reintentoFallido,
         _ => null,
       };
@@ -90,8 +93,11 @@ class _AvisoSinRespaldoState extends ConsumerState<AvisoSinRespaldo> {
 
   @override
   Widget build(BuildContext context) {
+    // Cuenta también con otra cuenta por confirmar: un respaldo frenado es una copia que no se hace.
     final conectada = ref.watch(
-      estadoRespaldoDriveProvider.select((estado) => estado.value is DriveConectada),
+      estadoRespaldoDriveProvider.select(
+        (estado) => estado.value is DriveConectada || estado.value is DriveCuentaPorConfirmar,
+      ),
     );
     final ultimoLeido = ref.watch(ultimoRespaldoDriveProvider);
     // Contar desde la conexión solo cuando ya se sabe que no hubo ningún respaldo: mientras el último

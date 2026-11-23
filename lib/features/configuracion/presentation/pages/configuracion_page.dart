@@ -113,28 +113,13 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
   Future<void> _elegirCuentaDrive(DriveCuentaPorConfirmar cuenta) async {
     final salida = await mostrarHojaOtraCuentaDrive(context, cuenta: cuenta);
     if (!mounted) return;
-    final texto = switch (salida) {
-      VolvioALaCuentaAnterior(:final correo) => TextosRespaldoDrive.volvioALaAnterior(correo),
-      SiguioConLaCuentaNueva(:final primerRespaldoHecho) =>
-        primerRespaldoHecho
-            ? TextosRespaldoDrive.exitoConPrimerRespaldo
-            : TextosRespaldoDrive.exitoSinPrimerRespaldo,
-      // Cerró la hoja sin elegir: la fila queda pendiente y tocarla la vuelve a abrir.
-      null => null,
-    };
-    if (texto == null) return;
+    // Cerró la hoja sin elegir: la fila queda pendiente y tocarla la vuelve a abrir. Si desconectó,
+    // la fila ya dice «Sin conectar».
+    final aviso = avisoDeOtraCuenta(salida);
+    if (aviso == null) return;
     final mensajero = ScaffoldMessenger.of(context)..clearSnackBars();
     recordarAviso(
-      mensajero.showSnackBar(
-        SnackBar(
-          key: Key(
-            salida is VolvioALaCuentaAnterior
-                ? 'configuracion_drive_volvio'
-                : 'configuracion_drive_conectado',
-          ),
-          content: Text(texto),
-        ),
-      ),
+      mensajero.showSnackBar(SnackBar(key: Key(aviso.clave), content: Text(aviso.texto))),
     );
   }
 

@@ -197,16 +197,29 @@ void main() {
       expect((await hoy(c)).franja, ProblemaDeRespaldoEnHoy.sinEspacio);
     });
 
-    test('sin problema (conectada, sin conectar, por confirmar) no hay franja ni marca', () async {
+    test('sin problema (conectada, sin conectar) no hay franja ni marca', () async {
       final c = armar();
       await leer(c);
       expect(await hoy(c), (franja: null, marca: false), reason: 'sin conectar');
       await notifier(c).conectar();
       expect(await hoy(c), (franja: null, marca: false), reason: 'conectada');
-      a.google.cuenta = _otra;
-      await notifier(c).conectar();
-      expect(await hoy(c), (franja: null, marca: false), reason: 'por confirmar');
     });
+
+    test(
+      'con otra cuenta por confirmar el respaldo está frenado: la franja sale (R7, 23/11)',
+      () async {
+        final c = armar();
+        await leer(c);
+        await notifier(c).conectar();
+        a.google.cuenta = _otra;
+        await notifier(c).conectar();
+
+        expect(await hoy(c), (franja: ProblemaDeRespaldoEnHoy.cuentaPorConfirmar, marca: false));
+
+        await c.read(franjaDriveOcultaProvider.notifier).ocultar();
+        expect(await hoy(c), (franja: null, marca: true));
+      },
+    );
 
     test('mientras todavía lee si estaba oculta, no dibuja nada (sin parpadeo)', () {
       final lectura = franjaDriveEnHoy(
