@@ -118,6 +118,33 @@ class AvisosDelServidorNotifier extends AsyncNotifier<EstadoAvisosDelServidor> {
 
   Future<bool> cambiarHoraAgenda(HoraDelAviso hora) => _pedir((a) => a.copyWith(horaAgenda: hora));
 
+  /// Prende o apaga «Recordatorios de agenda» en el teléfono y le dice al servidor cómo quedó.
+  ///
+  /// La copia del servidor se corrige desde acá y no desde la pantalla: si la persona sale mientras el
+  /// teléfono todavía guarda, el notificador se mantiene vivo hasta terminar y el servidor no queda con
+  /// una copia vieja (y mandando «Mañana tenés visitas» con los recordatorios apagados). En silencio:
+  /// no hay aviso nuevo, porque la persona no tiene nada que hacer. Sin haber leído el servidor no
+  /// hay copia que corregir: al leerlo, [build] la alinea.
+  Future<void> cambiarRecordatoriosDeAgenda({required bool activados}) async {
+    final vivo = ref.keepAlive();
+    try {
+      // Se arranca antes de cualquier espera: así el guardado ya empezó mientras la pantalla estaba.
+      final guardado = ref
+          .read(preferenciasRecordatoriosProvider.notifier)
+          .cambiarActivados(activados: activados);
+      await guardado;
+      if (state.value == null) return;
+      // Lo que quedó de verdad en el teléfono (otro cambio pudo volver a prender mientras tanto, o el
+      // guardado pudo fallar): el teléfono manda.
+      final local = await ref.read(preferenciasRecordatoriosRepositoryProvider).leer();
+      await sincronizarAgenda(activados: local.activados);
+    } on Object {
+      // Sin leer el teléfono no hay nada que alinear: se verá la próxima vez que se abra la pantalla.
+    } finally {
+      vivo.close();
+    }
+  }
+
   /// Le dice al servidor cómo quedó «Recordatorios de agenda» en el teléfono. En silencio: si no se
   /// puede, queda para la próxima vez (ver el comentario de la clase). Sin haber leído el servidor no
   /// hace nada.
