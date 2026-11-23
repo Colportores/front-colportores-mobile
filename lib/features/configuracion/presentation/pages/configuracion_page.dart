@@ -24,6 +24,8 @@ import '../../../respaldo/presentation/textos_respaldo_drive.dart';
 import '../../../respaldo/presentation/widgets/hoja_recuperar_respaldo.dart';
 import '../../../respaldo/presentation/widgets/hojas_drive.dart';
 import '../../../respaldo/presentation/widgets/seccion_respaldo_drive.dart';
+import '../../../sincronizacion/presentation/pages/sincronizacion_page.dart';
+import '../../../sincronizacion/presentation/textos_sincronizacion.dart';
 import '../../../tiles/presentation/pages/mapas_offline_page.dart';
 import '../../../tiles/presentation/providers/resumen_mapas_providers.dart';
 import '../../../tiles/presentation/textos_mapas_offline.dart';
@@ -516,6 +518,29 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                           ],
                         ),
                       ],
+                      const SizedBox(height: 24),
+                      // Estado de la sincronización, «Actualizar ahora» y modo ahorro de datos
+                      // (HU-SYNC-007 y HU-SYNC-008, vista 25).
+                      const _TituloSeccion(TextosSincronizacion.seccionConfiguracion),
+                      const SizedBox(height: 8),
+                      _Tarjeta(
+                        children: [
+                          ListTile(
+                            key: const Key('configuracion_sincronizacion'),
+                            minVerticalPadding: 12,
+                            // Con el texto al 200 % en 360 dp «Sincronización» no entra entre el ícono
+                            // y la flecha con el hueco de siempre: se achica el hueco en vez de
+                            // partir la palabra (mismo hallazgo que QA #153, menor 1).
+                            horizontalTitleGap: 8,
+                            leading: const Icon(Icons.sync),
+                            title: const Text(TextosSincronizacion.filaConfiguracion),
+                            subtitle: const Text(TextosSincronizacion.filaConfiguracionDetalle),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () =>
+                                unawaited(Navigator.of(context).push(SincronizacionPage.ruta())),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 24),
                       const _TituloSeccion('Privacidad y datos'),
                       const SizedBox(height: 8),

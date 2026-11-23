@@ -26,6 +26,7 @@ import 'core/notificaciones/push_remotas_firebase.dart';
 import 'core/secure_storage/almacen_seguro_keystore.dart';
 import 'core/secure_storage/archivo_envoltorio_dek.dart';
 import 'core/secure_storage/secure_storage_providers.dart';
+import 'core/sync/modo_ahorro_providers.dart';
 import 'core/sync/sync_providers.dart';
 import 'features/agenda/data/recordatorios/motor_de_avisos_plugin.dart';
 import 'features/agenda/data/recordatorios/recordatorios_locales.dart';
@@ -84,6 +85,7 @@ import 'features/respaldo/domain/services/programador_respaldo_nocturno.dart';
 import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
+import 'features/sincronizacion/data/repositories/modo_ahorro_repository_impl.dart';
 import 'features/tickets/data/services/almacen_de_fotos_en_disco.dart';
 import 'features/tickets/data/services/capturador_image_picker.dart';
 import 'features/tickets/data/services/compresor_flutter_image_compress.dart';
@@ -147,6 +149,9 @@ Future<void> main() async {
   // El sobre del sync (contrato-sync-engine §5.3): el id de la instalación sale del almacén seguro,
   // que es asincrónico, y el transporte lo necesita sincrónico.
   final sobreSync = await sobreDeEstaInstalacion(almacenSeguro);
+  // El modo ahorro de datos (HU-SYNC-008): el motor lo necesita al armarse, no después.
+  final modoAhorroGuardado = ModoAhorroRepositoryImpl(almacenSeguro);
+  final modoAhorroInicial = await modoAhorroGuardado.leer();
 
   final conectividad = MonitorConectividadPlus();
   ComposicionTiles? tiles;
@@ -231,6 +236,8 @@ Future<void> main() async {
         // escritura se cruza al canal nativo.
         almacenSeguroProvider.overrideWithValue(almacenSeguro),
         sobreSyncProvider.overrideWithValue(sobreSync),
+        modoAhorroRepositoryProvider.overrideWithValue(modoAhorroGuardado),
+        modoAhorroInicialProvider.overrideWithValue(modoAhorroInicial),
         relojSesionProvider.overrideWithValue(relojSesion),
         // Solo el correo de la última cuenta, para «Sesión vencida» tras un arranque en frío.
         ultimoCorreoRepositoryProvider.overrideWithValue(UltimoCorreoRepositoryImpl(almacenSeguro)),
