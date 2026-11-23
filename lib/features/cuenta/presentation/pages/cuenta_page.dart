@@ -17,9 +17,11 @@ import '../../domain/entities/resumen_de_cuenta.dart';
 import '../providers/cuenta_providers.dart';
 import '../providers/deuda_casa_providers.dart';
 import '../textos_cuenta.dart';
+import '../widgets/piezas_alquiler.dart';
 import '../widgets/piezas_cuenta.dart';
 import '../widgets/piezas_mi_plata.dart';
 import '../widgets/tarjeta_de_deuda.dart';
+import 'alquiler_page.dart';
 import 'mi_plata_page.dart';
 
 /// La pestaña «Cuenta» (vista 33A, HU-CTA-001): las cifras de la plata del colportor con cuánto
@@ -79,6 +81,19 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       await RegistrarDepositoPage.abrir(context, colportorId: widget.colportorId);
     } finally {
       _abriendoDeposito = false;
+    }
+  }
+
+  /// Ya se está abriendo «Mi alquiler».
+  var _abriendoAlquiler = false;
+
+  Future<void> _abrirAlquiler() async {
+    if (_abriendoAlquiler) return;
+    _abriendoAlquiler = true;
+    try {
+      await AlquilerPage.abrir(context, colportorId: widget.colportorId);
+    } finally {
+      _abriendoAlquiler = false;
     }
   }
 
@@ -217,6 +232,13 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                     ),
                   ],
                 ),
+                // La línea de enlaces (33A·01): sin alquiler en ninguna campaña no hay línea (HU-CTA-007).
+                if (ref.watch(alquilerDelColportorProvider(widget.colportorId)).asData?.value
+                    case final alquiler? when alquiler.hayAlquiler)
+                  FilaDeAlquilerEnCuenta(
+                    alquiler: alquiler,
+                    alAbrir: () => unawaited(_abrirAlquiler()),
+                  ),
               ],
             ),
           ),

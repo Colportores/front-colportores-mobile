@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
@@ -40,6 +41,14 @@ final class DriveQuedoConectado extends ResultadoConexionDrive {
   const DriveQuedoConectado({required this.primerRespaldoHecho});
 
   final bool primerRespaldoHecho;
+}
+
+/// Se conectó, pero con **otra** cuenta de Google que la del respaldo anterior (16E·01): el respaldo
+/// queda frenado hasta que la persona elija con cuál seguir. [estado] trae las dos cuentas.
+final class DriveQuedoEnOtraCuenta extends ResultadoConexionDrive {
+  const DriveQuedoEnOtraCuenta(this.estado);
+
+  final DriveCuentaPorConfirmar estado;
 }
 
 /// No quedó conectado, con la causa para que la hoja diga qué hacer.
@@ -100,6 +109,13 @@ class EstadoRespaldoDriveNotifier extends AsyncNotifier<EstadoRespaldoDrive> {
   Future<EstadoRespaldoDrive> build() {
     _usuarioId = ref.watch(sesionProvider.select((s) => s.value?.usuarioId));
     ref.watch(respaldoDriveRepositoryProvider);
+    // Un cambio de estado borra el día en que se ocultó la franja de Hoy (16F·04): se vuelve a leer.
+    // Es un aviso, no una dependencia: ver [franjaDriveOcultaProvider].
+    listenSelf((anterior, nuevo) {
+      if (anterior?.value != nuevo.value && nuevo.hasValue) {
+        ref.invalidate(franjaDriveOcultaProvider);
+      }
+    });
     return _leer();
   }
 
@@ -148,10 +164,35 @@ class EstadoRespaldoDriveNotifier extends AsyncNotifier<EstadoRespaldoDrive> {
     _generacion++;
     try {
       final resultado = await _repo.conectar(usuarioId, conPrimerRespaldo: conPrimerRespaldo);
-      return resultado.fold(DriveNoQuedoConectado.new, (conexion) {
-        if (ref.mounted && _usuarioId == usuarioId) state = AsyncData(conexion.estado);
-        return DriveQuedoConectado(primerRespaldoHecho: conexion.primerRespaldoHecho);
-      });
+      return resultado.fold(DriveNoQuedoConectado.new, _alConectar(usuarioId));
+    } on Object {
+      return const DriveNoQuedoConectado(FailureDriveNoConectado());
+    } finally {
+      _enCurso = false;
+      _generacion++;
+    }
+  }
+
+  /// Lo que hace una conexión lograda: deja el estado nuevo y dice cómo quedó.
+  ResultadoConexionDrive Function(ConexionDrive) _alConectar(String usuarioId) => (conexion) {
+    if (ref.mounted && _usuarioId == usuarioId) state = AsyncData(conexion.estado);
+    return switch (conexion.estado) {
+      final DriveCuentaPorConfirmar otra => DriveQuedoEnOtraCuenta(otra),
+      _ => DriveQuedoConectado(primerRespaldoHecho: conexion.primerRespaldoHecho),
+    };
+  };
+
+  /// «Seguir con la cuenta nueva» (16E·01 y 16E·02): la cuenta por confirmar pasa a ser la del
+  /// respaldo y se intenta el primer respaldo en ella. Una sola operación a la vez: la segunda
+  /// llamada devuelve [DriveOcupado]. Nunca lanza.
+  Future<ResultadoConexionDrive> confirmarCuentaNueva() async {
+    final usuarioId = _usuarioId;
+    if (_enCurso || usuarioId == null) return const DriveOcupado();
+    _enCurso = true;
+    _generacion++;
+    try {
+      final resultado = await _repo.confirmarCuentaNueva(usuarioId);
+      return resultado.fold(DriveNoQuedoConectado.new, _alConectar(usuarioId));
     } on Object {
       return const DriveNoQuedoConectado(FailureDriveNoConectado());
     } finally {
@@ -226,7 +267,11 @@ final ultimoRespaldoDriveProvider = StreamProvider.autoDispose<DateTime?>((ref) 
 final conectadaDesdeDriveProvider = FutureProvider.autoDispose<DateTime?>((ref) async {
   final usuarioId = ref.watch(sesionProvider.select((s) => s.value?.usuarioId));
   if (usuarioId == null) return null;
-  ref.watch(estadoRespaldoDriveProvider.select((estado) => estado.value is DriveConectada));
+  ref.watch(
+    estadoRespaldoDriveProvider.select(
+      (estado) => estado.value is DriveConectada || estado.value is DriveCuentaPorConfirmar,
+    ),
+  );
   return ref.watch(respaldoDriveRepositoryProvider).conectadaDesde(usuarioId);
 }, retry: _sinReintentos);
 
@@ -244,4 +289,112 @@ class AvisoDriveCancelado extends Notifier<bool> {
   void mostrar() => state = true;
 
   void ocultar() => state = false;
+}
+
+/// La hora de ahora, para saber si la franja del Drive de Hoy sigue oculta (es «hasta mañana»).
+final relojRespaldoDriveProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
+/// El día en que se ocultó la franja del Drive de Hoy (16F·04, a las 00:00 de la hora del teléfono), o
+/// `null` si no está oculta.
+///
+/// Es un provider aparte y **nadie depende de él con otro provider**: lo miran los widgets de Hoy
+/// directamente, junto con [estadoRespaldoDriveProvider] (una cadena de providers que se reconstruye
+/// al volver a una pantalla durante su `build` la rechaza Riverpod; ver [conectadaDesdeDriveProvider]).
+/// El estado del respaldo le avisa cuando cambia (conectar, perder el permiso, quedarse sin espacio,
+/// guardar un respaldo): el repositorio ya borró el día y acá se vuelve a leer.
+final franjaDriveOcultaProvider = AsyncNotifierProvider<FranjaDriveOcultaNotifier, DateTime?>(
+  FranjaDriveOcultaNotifier.new,
+  retry: _sinReintentos,
+);
+
+class FranjaDriveOcultaNotifier extends AsyncNotifier<DateTime?> {
+  /// Hay un «Ocultar» en curso. Es un campo y no solo el estado: corta el segundo toque aunque llegue
+  /// antes de que se vuelva a dibujar.
+  bool _enCurso = false;
+
+  @override
+  Future<DateTime?> build() async {
+    final usuarioId = ref.watch(sesionProvider.select((s) => s.value?.usuarioId));
+    if (usuarioId == null) return null;
+    return ref.watch(respaldoDriveRepositoryProvider).franjaOcultaEl(usuarioId);
+  }
+
+  /// Oculta la franja hasta mañana. Devuelve `true` si quedó anotado; con `false` la franja sigue a
+  /// la vista (no se pudo anotar, o ya había un «Ocultar» en curso): nada queda trabado.
+  Future<bool> ocultar() async {
+    final usuarioId = ref.read(sesionProvider).value?.usuarioId;
+    if (_enCurso || usuarioId == null) return false;
+    _enCurso = true;
+    try {
+      final repo = ref.read(respaldoDriveRepositoryProvider);
+      final anotado = (await repo.ocultarFranja(usuarioId)).isRight();
+      if (!anotado) return false;
+      final dia = await repo.franjaOcultaEl(usuarioId);
+      if (ref.mounted) state = AsyncData(dia);
+      return dia != null;
+    } on Object {
+      return false;
+    } finally {
+      _enCurso = false;
+    }
+  }
+}
+
+/// Qué le pasa al respaldo que Hoy tiene que avisar (16F·01 y 16F·02): se perdió el permiso o el
+/// Drive está lleno; o, con otra cuenta de Google por confirmar (16E), el respaldo está frenado hasta
+/// que elija (decisión del 23/11, R7).
+enum ProblemaDeRespaldoEnHoy { permisoRevocado, sinEspacio, cuentaPorConfirmar }
+
+/// El problema del respaldo que Hoy tiene que avisar, o `null` si no hay ninguno (conectado, sin
+/// conectar, o todavía leyendo).
+ProblemaDeRespaldoEnHoy? problemaDeRespaldo(EstadoRespaldoDrive? estado) => switch (estado) {
+  DrivePermisoRevocado() => ProblemaDeRespaldoEnHoy.permisoRevocado,
+  DriveSinEspacio() => ProblemaDeRespaldoEnHoy.sinEspacio,
+  DriveCuentaPorConfirmar() => ProblemaDeRespaldoEnHoy.cuentaPorConfirmar,
+  _ => null,
+};
+
+/// Lo que Hoy dibuja del respaldo en Drive: la [franja] (16F·01 y 16F·02), o `null` si no hay problema
+/// o la persona la ocultó por hoy; y la [marca] roja del engranaje, que sale justo cuando hay problema
+/// y la franja está oculta (16F·04).
+///
+/// Mientras todavía se lee si estaba oculta no se dibuja ninguna de las dos: el problema aparece al
+/// leer, sin parpadeo. Con el estado de otro día, la franja vuelve (es «hasta mañana»).
+({ProblemaDeRespaldoEnHoy? franja, bool marca}) franjaDriveEnHoy({
+  required EstadoRespaldoDrive? estado,
+  required AsyncValue<DateTime?> oculta,
+  required DateTime ahora,
+}) {
+  final problema = problemaDeRespaldo(estado);
+  if (problema == null || !oculta.hasValue) return (franja: null, marca: false);
+  final dia = oculta.value;
+  final ocultaHoy = dia != null && dia == DateTime(ahora.year, ahora.month, ahora.day);
+  return ocultaHoy ? (franja: null, marca: true) : (franja: problema, marca: false);
+}
+
+/// Lo mismo que [franjaDriveEnHoy], leído de los providers desde un widget de Hoy.
+({ProblemaDeRespaldoEnHoy? franja, bool marca}) leerFranjaDriveEnHoy(WidgetRef ref) {
+  // Al volver al frente se vuelve a mirar contra el día de ahora (16F·04).
+  ref.watch(franjaDriveAlVolverProvider);
+  return franjaDriveEnHoy(
+    estado: ref.watch(estadoRespaldoDriveProvider.select((estado) => estado.value)),
+    oculta: ref.watch(franjaDriveOcultaProvider),
+    ahora: ref.read(relojRespaldoDriveProvider)(),
+  );
+}
+
+/// Cuántas veces volvió la app al frente. Hoy lo mira para volver a leer si la franja oculta «hasta
+/// mañana» ya es de otro día: quien la ocultó anoche y abre la app por la mañana la ve de nuevo sin
+/// reiniciarla.
+final franjaDriveAlVolverProvider = NotifierProvider<FranjaDriveAlVolver, int>(
+  FranjaDriveAlVolver.new,
+);
+
+class FranjaDriveAlVolver extends Notifier<int> {
+  @override
+  int build() {
+    final ciclo = AppLifecycleListener(onResume: () => state++);
+    ref.onDispose(ciclo.dispose);
+    return 0;
+  }
 }

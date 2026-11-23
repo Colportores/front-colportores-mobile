@@ -2519,16 +2519,6 @@
             "dsl_features": []
           },
           {
-            "name": "tipo",
-            "getter_name": "tipo",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
             "name": "es_bonificable",
             "getter_name": "esBonificable",
             "moor_type": "bool",
@@ -3782,8 +3772,8 @@
             "dsl_features": []
           },
           {
-            "name": "limite_deuda",
-            "getter_name": "limiteDeuda",
+            "name": "alquiler_monto",
+            "getter_name": "alquilerMonto",
             "moor_type": "int",
             "nullable": true,
             "customConstraints": null,
@@ -4942,6 +4932,20 @@
             "dsl_features": []
           },
           {
+            "name": "anulado_at",
+            "getter_name": "anuladoAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
             "name": "created_at",
             "getter_name": "createdAt",
             "moor_type": "int",
@@ -5375,12 +5379,12 @@
       "references": [],
       "type": "table",
       "data": {
-        "name": "cuenta_colportor",
+        "name": "deuda_casa_cache",
         "was_declared_in_moor": false,
         "columns": [
           {
-            "name": "id",
-            "getter_name": "id",
+            "name": "colportor_id",
+            "getter_name": "colportorId",
             "moor_type": "string",
             "nullable": false,
             "customConstraints": null,
@@ -5389,8 +5393,8 @@
             "dsl_features": []
           },
           {
-            "name": "usuario_id",
-            "getter_name": "usuarioId",
+            "name": "respuesta",
+            "getter_name": "respuesta",
             "moor_type": "string",
             "nullable": false,
             "customConstraints": null,
@@ -5399,82 +5403,8 @@
             "dsl_features": []
           },
           {
-            "name": "deuda_total",
-            "getter_name": "deudaTotal",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "dinero_depositado",
-            "getter_name": "dineroDepositado",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "dinero_en_mano",
-            "getter_name": "dineroEnMano",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "dinero_por_cobrar",
-            "getter_name": "dineroPorCobrar",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deuda_alquiler",
-            "getter_name": "deudaAlquiler",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "alquiler_trasladado",
-            "getter_name": "alquilerTrasladado",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "actualizado_en",
-            "getter_name": "actualizadoEn",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
+            "name": "leida_en",
+            "getter_name": "leidaEn",
             "moor_type": "int",
             "nullable": false,
             "customConstraints": null,
@@ -5485,569 +5415,18 @@
               "dart_expr": "const FechaUtcConverter()",
               "dart_type_name": "DateTime"
             }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
           }
         ],
         "is_virtual": false,
         "without_rowid": false,
         "constraints": [],
         "explicit_pk": [
-          "id"
+          "colportor_id"
         ]
       }
     },
     {
       "id": 40,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "cuenta_deuda_historial",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "usuario_id",
-            "getter_name": "usuarioId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deuda",
-            "getter_name": "deuda",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "desde",
-            "getter_name": "desde",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 41,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "pedido_casa_editora",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "colportor_id",
-            "getter_name": "colportorId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "coordinador_id",
-            "getter_name": "coordinadorId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "fecha_pedido",
-            "getter_name": "fechaPedido",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "estado",
-            "getter_name": "estado",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "monto_total",
-            "getter_name": "montoTotal",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "origen",
-            "getter_name": "origen",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('\\'COLPORTOR\\'')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "excede_limite",
-            "getter_name": "excedeLimite",
-            "moor_type": "bool",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "CHECK (\"excede_limite\" IN (0, 1))",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "CHECK (\"excede_limite\" IN (0, 1))"
-            },
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "monto_autorizado",
-            "getter_name": "montoAutorizado",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "decidido_por",
-            "getter_name": "decididoPor",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "decidido_en",
-            "getter_name": "decididoEn",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "motivo_rechazo",
-            "getter_name": "motivoRechazo",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "numero",
-            "getter_name": "numero",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 42,
-      "references": [],
-      "type": "table",
-      "data": {
-        "name": "pedido_item",
-        "was_declared_in_moor": false,
-        "columns": [
-          {
-            "name": "id",
-            "getter_name": "id",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "pedido_id",
-            "getter_name": "pedidoId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "producto_id",
-            "getter_name": "productoId",
-            "moor_type": "string",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "cantidad",
-            "getter_name": "cantidad",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "precio_unitario",
-            "getter_name": "precioUnitario",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "cantidad_recibida",
-            "getter_name": "cantidadRecibida",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "colportor_id",
-            "getter_name": "colportorId",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "cantidad_autorizada",
-            "getter_name": "cantidadAutorizada",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "created_at",
-            "getter_name": "createdAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "updated_at",
-            "getter_name": "updatedAt",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "created_by",
-            "getter_name": "createdBy",
-            "moor_type": "string",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "deleted_at",
-            "getter_name": "deletedAt",
-            "moor_type": "int",
-            "nullable": true,
-            "customConstraints": null,
-            "default_dart": null,
-            "default_client_dart": null,
-            "dsl_features": [],
-            "type_converter": {
-              "dart_expr": "const FechaUtcConverter()",
-              "dart_type_name": "DateTime"
-            }
-          },
-          {
-            "name": "sync_version",
-            "getter_name": "syncVersion",
-            "moor_type": "int",
-            "nullable": false,
-            "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          }
-        ],
-        "is_virtual": false,
-        "without_rowid": false,
-        "constraints": [],
-        "explicit_pk": [
-          "id"
-        ]
-      }
-    },
-    {
-      "id": 43,
       "references": [],
       "type": "table",
       "data": {
@@ -6154,7 +5533,7 @@
       }
     },
     {
-      "id": 44,
+      "id": 41,
       "references": [],
       "type": "table",
       "data": {
@@ -6206,7 +5585,7 @@
       }
     },
     {
-      "id": 45,
+      "id": 42,
       "references": [
         0
       ],
@@ -6229,7 +5608,7 @@
       }
     },
     {
-      "id": 46,
+      "id": 43,
       "references": [
         1
       ],
@@ -6252,7 +5631,7 @@
       }
     },
     {
-      "id": 47,
+      "id": 44,
       "references": [
         2
       ],
@@ -6271,7 +5650,7 @@
       }
     },
     {
-      "id": 48,
+      "id": 45,
       "references": [
         4
       ],
@@ -6290,7 +5669,7 @@
       }
     },
     {
-      "id": 49,
+      "id": 46,
       "references": [
         5
       ],
@@ -6309,7 +5688,7 @@
       }
     },
     {
-      "id": 50,
+      "id": 47,
       "references": [
         6
       ],
@@ -6332,7 +5711,7 @@
       }
     },
     {
-      "id": 51,
+      "id": 48,
       "references": [
         8
       ],
@@ -6355,7 +5734,7 @@
       }
     },
     {
-      "id": 52,
+      "id": 49,
       "references": [
         9
       ],
@@ -6382,7 +5761,7 @@
       }
     },
     {
-      "id": 53,
+      "id": 50,
       "references": [
         9
       ],
@@ -6405,7 +5784,7 @@
       }
     },
     {
-      "id": 54,
+      "id": 51,
       "references": [
         9
       ],
@@ -6428,7 +5807,7 @@
       }
     },
     {
-      "id": 55,
+      "id": 52,
       "references": [
         13
       ],
@@ -6447,7 +5826,7 @@
       }
     },
     {
-      "id": 56,
+      "id": 53,
       "references": [
         13
       ],
@@ -6466,7 +5845,7 @@
       }
     },
     {
-      "id": 57,
+      "id": 54,
       "references": [
         14
       ],
@@ -6489,7 +5868,7 @@
       }
     },
     {
-      "id": 58,
+      "id": 55,
       "references": [
         15
       ],
@@ -6512,7 +5891,7 @@
       }
     },
     {
-      "id": 59,
+      "id": 56,
       "references": [
         15
       ],
@@ -6531,7 +5910,7 @@
       }
     },
     {
-      "id": 60,
+      "id": 57,
       "references": [
         15
       ],
@@ -6550,7 +5929,7 @@
       }
     },
     {
-      "id": 61,
+      "id": 58,
       "references": [
         15
       ],
@@ -6569,7 +5948,7 @@
       }
     },
     {
-      "id": 62,
+      "id": 59,
       "references": [
         16
       ],
@@ -6592,7 +5971,7 @@
       }
     },
     {
-      "id": 63,
+      "id": 60,
       "references": [
         16
       ],
@@ -6611,7 +5990,7 @@
       }
     },
     {
-      "id": 64,
+      "id": 61,
       "references": [
         16
       ],
@@ -6630,7 +6009,7 @@
       }
     },
     {
-      "id": 65,
+      "id": 62,
       "references": [
         17
       ],
@@ -6649,7 +6028,7 @@
       }
     },
     {
-      "id": 66,
+      "id": 63,
       "references": [
         19
       ],
@@ -6668,7 +6047,7 @@
       }
     },
     {
-      "id": 67,
+      "id": 64,
       "references": [
         22
       ],
@@ -6687,7 +6066,7 @@
       }
     },
     {
-      "id": 68,
+      "id": 65,
       "references": [
         23
       ],
@@ -6706,7 +6085,7 @@
       }
     },
     {
-      "id": 69,
+      "id": 66,
       "references": [
         23
       ],
@@ -6725,7 +6104,7 @@
       }
     },
     {
-      "id": 70,
+      "id": 67,
       "references": [
         23
       ],
@@ -6744,7 +6123,7 @@
       }
     },
     {
-      "id": 71,
+      "id": 68,
       "references": [
         24
       ],
@@ -6763,7 +6142,7 @@
       }
     },
     {
-      "id": 72,
+      "id": 69,
       "references": [
         24
       ],
@@ -6782,7 +6161,7 @@
       }
     },
     {
-      "id": 73,
+      "id": 70,
       "references": [
         26
       ],
@@ -6801,7 +6180,7 @@
       }
     },
     {
-      "id": 74,
+      "id": 71,
       "references": [
         30
       ],
@@ -6820,7 +6199,7 @@
       }
     },
     {
-      "id": 75,
+      "id": 72,
       "references": [
         31
       ],
@@ -6843,7 +6222,7 @@
       }
     },
     {
-      "id": 76,
+      "id": 73,
       "references": [
         31
       ],
@@ -6862,7 +6241,7 @@
       }
     },
     {
-      "id": 77,
+      "id": 74,
       "references": [
         32
       ],
@@ -6881,7 +6260,7 @@
       }
     },
     {
-      "id": 78,
+      "id": 75,
       "references": [
         33
       ],
@@ -6900,7 +6279,7 @@
       }
     },
     {
-      "id": 79,
+      "id": 76,
       "references": [
         34
       ],
@@ -6919,7 +6298,7 @@
       }
     },
     {
-      "id": 80,
+      "id": 77,
       "references": [
         35
       ],
@@ -6938,7 +6317,7 @@
       }
     },
     {
-      "id": 81,
+      "id": 78,
       "references": [
         36
       ],
@@ -6951,86 +6330,6 @@
         "columns": [
           {
             "column": "ticket_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 82,
-      "references": [
-        39
-      ],
-      "type": "index",
-      "data": {
-        "on": 39,
-        "name": "cuenta_colportor_usuario_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "usuario_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 83,
-      "references": [
-        40
-      ],
-      "type": "index",
-      "data": {
-        "on": 40,
-        "name": "cuenta_deuda_historial_usuario_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "usuario_id",
-            "order_by": null
-          },
-          {
-            "column": "desde",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 84,
-      "references": [
-        41
-      ],
-      "type": "index",
-      "data": {
-        "on": 41,
-        "name": "pedido_casa_editora_colportor_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "colportor_id",
-            "order_by": null
-          }
-        ]
-      }
-    },
-    {
-      "id": 85,
-      "references": [
-        42
-      ],
-      "type": "index",
-      "data": {
-        "on": 42,
-        "name": "pedido_item_pedido_idx",
-        "sql": null,
-        "unique": false,
-        "columns": [
-          {
-            "column": "pedido_id",
             "order_by": null
           }
         ]
@@ -7223,7 +6522,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"producto\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"descripcion\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"es_bonificable\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_bonificable\" IN (0, 1)), \"es_misionero\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_misionero\" IN (0, 1)), \"precio_base_compra\" INTEGER NULL, \"casa_editora\" TEXT NULL, \"imagen_url\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, \"codigo_editor\" TEXT NULL, \"categoria\" TEXT NULL, PRIMARY KEY (\"id\"), CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"producto\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"descripcion\" TEXT NULL, \"es_bonificable\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_bonificable\" IN (0, 1)), \"es_misionero\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_misionero\" IN (0, 1)), \"precio_base_compra\" INTEGER NULL, \"casa_editora\" TEXT NULL, \"imagen_url\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, \"codigo_editor\" TEXT NULL, \"categoria\" TEXT NULL, PRIMARY KEY (\"id\"), CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0));"
         }
       ]
     },
@@ -7304,7 +6603,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"campania\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"fecha_inicio\" TEXT NOT NULL, \"fecha_fin\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"limite_deuda\" INTEGER NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"campania\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"fecha_inicio\" TEXT NOT NULL, \"fecha_fin\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"alquiler_monto\" INTEGER NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
         }
       ]
     },
@@ -7367,7 +6666,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"deposito\" (\"id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"fecha\" INTEGER NOT NULL, \"destino\" TEXT NOT NULL, \"concepto\" TEXT NOT NULL, \"campania_id\" TEXT NULL, \"ticket_id\" TEXT NULL, \"validado_en\" INTEGER NULL, \"validado_por\" TEXT NULL, \"rechazado_en\" INTEGER NULL, \"motivo_rechazo\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (destino IN ('BANCO', 'OFICINA', 'RETIRO_COORDINADOR')), CHECK (concepto IN ('CASA_EDITORA', 'ALQUILER')), CHECK (destino <> 'RETIRO_COORDINADOR' OR ticket_id IS NULL), CHECK (destino = 'RETIRO_COORDINADOR' OR ticket_id IS NOT NULL), CHECK (concepto <> 'ALQUILER' OR campania_id IS NOT NULL));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"deposito\" (\"id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"fecha\" INTEGER NOT NULL, \"destino\" TEXT NOT NULL, \"concepto\" TEXT NOT NULL, \"campania_id\" TEXT NULL, \"ticket_id\" TEXT NULL, \"validado_en\" INTEGER NULL, \"validado_por\" TEXT NULL, \"rechazado_en\" INTEGER NULL, \"motivo_rechazo\" TEXT NULL, \"anulado_at\" INTEGER NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (destino IN ('BANCO', 'OFICINA', 'RETIRO_COORDINADOR')), CHECK (concepto IN ('CASA_EDITORA', 'ALQUILER')), CHECK (destino <> 'RETIRO_COORDINADOR' OR ticket_id IS NULL), CHECK (destino = 'RETIRO_COORDINADOR' OR ticket_id IS NOT NULL), CHECK (concepto <> 'ALQUILER' OR campania_id IS NOT NULL));"
         }
       ]
     },
@@ -7390,38 +6689,11 @@
       ]
     },
     {
-      "name": "cuenta_colportor",
+      "name": "deuda_casa_cache",
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"cuenta_colportor\" (\"id\" TEXT NOT NULL, \"usuario_id\" TEXT NOT NULL, \"deuda_total\" INTEGER NOT NULL DEFAULT 0, \"dinero_depositado\" INTEGER NOT NULL DEFAULT 0, \"dinero_en_mano\" INTEGER NOT NULL DEFAULT 0, \"dinero_por_cobrar\" INTEGER NOT NULL DEFAULT 0, \"deuda_alquiler\" INTEGER NOT NULL DEFAULT 0, \"alquiler_trasladado\" INTEGER NOT NULL DEFAULT 0, \"actualizado_en\" INTEGER NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
-        }
-      ]
-    },
-    {
-      "name": "cuenta_deuda_historial",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"cuenta_deuda_historial\" (\"id\" TEXT NOT NULL, \"usuario_id\" TEXT NOT NULL, \"deuda\" INTEGER NOT NULL, \"desde\" INTEGER NOT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
-        }
-      ]
-    },
-    {
-      "name": "pedido_casa_editora",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"pedido_casa_editora\" (\"id\" TEXT NOT NULL, \"colportor_id\" TEXT NOT NULL, \"coordinador_id\" TEXT NULL, \"fecha_pedido\" INTEGER NOT NULL, \"estado\" TEXT NOT NULL, \"monto_total\" INTEGER NOT NULL DEFAULT 0, \"origen\" TEXT NOT NULL DEFAULT 'COLPORTOR', \"excede_limite\" INTEGER NOT NULL DEFAULT 0 CHECK (\"excede_limite\" IN (0, 1)), \"monto_autorizado\" INTEGER NULL, \"decidido_por\" TEXT NULL, \"decidido_en\" INTEGER NULL, \"motivo_rechazo\" TEXT NULL, \"numero\" INTEGER NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
-        }
-      ]
-    },
-    {
-      "name": "pedido_item",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"pedido_item\" (\"id\" TEXT NOT NULL, \"pedido_id\" TEXT NOT NULL, \"producto_id\" TEXT NOT NULL, \"cantidad\" INTEGER NOT NULL, \"precio_unitario\" INTEGER NULL, \"cantidad_recibida\" INTEGER NULL, \"colportor_id\" TEXT NULL, \"cantidad_autorizada\" INTEGER NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"deuda_casa_cache\" (\"colportor_id\" TEXT NOT NULL, \"respuesta\" TEXT NOT NULL, \"leida_en\" INTEGER NOT NULL, PRIMARY KEY (\"colportor_id\"));"
         }
       ]
     },
@@ -7773,42 +7045,6 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE INDEX deposito_ticket_idx ON deposito (ticket_id)"
-        }
-      ]
-    },
-    {
-      "name": "cuenta_colportor_usuario_idx",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE INDEX cuenta_colportor_usuario_idx ON cuenta_colportor (usuario_id)"
-        }
-      ]
-    },
-    {
-      "name": "cuenta_deuda_historial_usuario_idx",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE INDEX cuenta_deuda_historial_usuario_idx ON cuenta_deuda_historial (usuario_id, desde)"
-        }
-      ]
-    },
-    {
-      "name": "pedido_casa_editora_colportor_idx",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE INDEX pedido_casa_editora_colportor_idx ON pedido_casa_editora (colportor_id)"
-        }
-      ]
-    },
-    {
-      "name": "pedido_item_pedido_idx",
-      "sql": [
-        {
-          "dialect": "sqlite",
-          "sql": "CREATE INDEX pedido_item_pedido_idx ON pedido_item (pedido_id)"
         }
       ]
     }

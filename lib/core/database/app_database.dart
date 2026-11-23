@@ -196,19 +196,24 @@ class AppDatabase extends _$AppDatabase {
   ///   `pais`, la réplica del catálogo de países que el contrato lista como `pull` (P1 de #181).
   /// - 38: `cobranza` suma `anulado_at` y `motivo_anulacion`, la marca de anulado que sube con el cobro
   ///   (backend-supabase 0072, HU-COB-006, #422).
-  /// - 39: la deuda con la casa editora baja con la sincronización (decisión de Cristian, 05/11;
+  /// - 39: `campania.alquiler_monto` (lo que cobra la campaña de alquiler) y `deposito.anulado_at` (el
+  ///   pago de alquiler devuelto), que bajan por el pull: de ahí sale el saldo de «Mi alquiler»
+  ///   (backend-supabase 0114 y 0167, HU-CTA-007, #389).
+  /// - 40: `producto` pierde `tipo` (backend-supabase 0198, #233: el servidor ya no tiene la columna;
+  ///   la categoría la reemplaza desde la 27) (#735).
+  /// - 41: la deuda con la casa editora baja con la sincronización (decisión de Cristian, 05/11;
   ///   backend-supabase 0179, #254; HU-CTA-002, #671): `cuenta_colportor` y `cuenta_deuda_historial`,
   ///   réplicas de solo lectura, y `pedido_casa_editora` y `pedido_item`, que el contrato declara `push` con
   ///   pull de lo propio (0124) y por ahora solo reciben lo que baja; con ellas el teléfono calcula la deuda,
   ///   el saldo por pedido y la variación semanal sin llamar al servidor. `deuda_casa_cache`, la última
   ///   respuesta de la RPC, se quita: ya nadie la llena (se vuelve a calcular de lo que baja).
-  /// - 40: `campania` suma `limite_deuda`, el límite de deuda de la campaña en centavos (backend-supabase 0120,
+  /// - 42: `campania` suma `limite_deuda`, el límite de deuda de la campaña en centavos (backend-supabase 0120,
   ///   «Límite ped.» del 25/10), para que el pedido a la casa editora avise sin conexión cuando lo pasa
   ///   (HU-STK-009, #387). Vacía hasta que el pull trae la campaña de nuevo: sin límite no hay aviso.
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 40;
+  static const int versionEsquema = 42;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -556,11 +561,31 @@ class AppDatabase extends _$AppDatabase {
       await m.addColumn(esquema.cobranza, esquema.cobranza.anuladoAt);
       await m.addColumn(esquema.cobranza, esquema.cobranza.motivoAnulacion);
     },
+    // Suma `campania.alquiler_monto` y `deposito.anulado_at`, vacías: ninguna campaña ni depósito que ya
+    // estaba cambia ni se encola al migrar. Hasta que el pull las traiga, una campaña sin monto se lee
+    // como «no cobra alquiler» (ante la duda no se inventa una deuda) y ningún depósito está anulado. El
+    // servidor sube la versión de la fila al cambiar el monto o devolver el pago, así que el próximo
+    // pull las completa (agregar la columna no mueve el cursor del delta, como en el esquema 18).
+    from38To39: (m, esquema) async {
+      await m.addColumn(esquema.campania, esquema.campania.alquilerMonto);
+      await m.addColumn(esquema.deposito, esquema.deposito.anuladoAt);
+    },
+    // Saca `tipo` de `producto` (backend-supabase 0198): SQLite no borra una columna `NOT NULL` sin
+    // recrear la tabla, y `alterTable` la recrea copiando cada columna que sigue. Ningún producto del
+    // catálogo se pierde ni cambia (su `categoria`, su `sync_version` y sus precios quedan igual, y el
+    // pull no los vuelve a bajar). La tabla no tiene índices propios ni nada que apunte a ella.
+    from39To40: (m, esquema) async {
+      await m.alterTable(TableMigration(esquema.producto));
+    },
     // Crea las cuatro réplicas de la deuda con la casa editora, vacías (las llena el pull, entero la primera
     // vez), y quita `deuda_casa_cache`: era la última respuesta de la RPC, que ya no se llama, y la deuda
     // vuelve a calcularse de lo que baja (los datos son simulados hasta diciembre: no se migra nada). Nada
-    // de lo guardado por la colportora cambia ni se encola al migrar.
-    from38To39: (m, esquema) async {
+    // de lo guardado por la colportora cambia ni se encola al migrar. Borra la fecha de la última bajada de
+    // `sync_meta` (igual que `from15To16`): la instalación ya bajó alguna vez, pero estas réplicas todavía
+    // no, y «hubo una bajada y no hay cuenta» no es «no hay deuda» sino «todavía no sé»: sin esto, hasta
+    // la primera sincronización la tarjeta diría «$ 0». Los watermarks no se tocan: el servidor baja
+    // desde cero las entidades que el teléfono nunca bajó.
+    from40To41: (m, esquema) async {
       await m.createTable(esquema.cuentaColportor);
       await m.createIndex(esquema.cuentaColportorUsuarioIdx);
       await m.createTable(esquema.cuentaDeudaHistorial);
@@ -570,11 +595,12 @@ class AppDatabase extends _$AppDatabase {
       await m.createTable(esquema.pedidoItem);
       await m.createIndex(esquema.pedidoItemPedidoIdx);
       await m.deleteTable('deuda_casa_cache');
+      await m.database.customStatement("DELETE FROM sync_meta WHERE clave = 'last_pull_at'");
     },
     // Suma `limite_deuda` a `campania`, vacía: ninguna campaña que ya estaba cambia. Cada una recibe su
     // límite cuando el servidor la vuelve a mandar (agregar la columna no mueve el cursor del delta). Nada
     // de lo guardado por la colportora cambia ni se encola al migrar.
-    from39To40: (m, esquema) async {
+    from41To42: (m, esquema) async {
       await m.addColumn(esquema.campania, esquema.campania.limiteDeuda);
     },
   );

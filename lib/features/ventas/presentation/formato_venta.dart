@@ -135,6 +135,10 @@ abstract final class FormatoVenta {
   /// «$ 8.900», o «$ 8.900,50».
   static String monto(int centavos) => FormatoPrecios.monto(centavos);
 
+  /// Igual que [monto] pero con espacio sin quiebre entre «$» y el número: en una columna angosta
+  /// el monto no se parte en dos renglones («$» arriba y «4.500» abajo, QA #161).
+  static String montoSinQuiebre(int centavos) => monto(centavos).replaceFirst(r'$ ', '\$\u00A0');
+
   /// Lo que la colportora escribió en «Monto de la venta» en centavos, o `null` si no es un monto:
   /// acepta «8500», «8.500», «$ 8.500» y «8.500,50» (punto de miles, coma decimal, hasta dos
   /// decimales); nada de negativos.

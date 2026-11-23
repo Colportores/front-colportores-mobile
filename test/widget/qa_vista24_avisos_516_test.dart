@@ -88,7 +88,7 @@ void main() {
         await tester.pumpAndSettle();
         await elegirHora736(tester, 21, 0);
 
-        expect(find.text(textoErrorHora736), findsOneWidget);
+        expect(find.text(textoErrorHoraAgenda736), findsOneWidget);
         expect(
           tester.widget<Text>(horaAgendaValor736).data,
           '20:00',

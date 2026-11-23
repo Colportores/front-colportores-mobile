@@ -231,14 +231,20 @@ class TarjetaDeCifra extends StatelessWidget {
 /// de cuándo es; en mano y por cobrar salen del teléfono y están al día. Aspecto neutro (borde gris y
 /// «✕»), el mismo de los otros avisos de sin conexión.
 class AvisoSinConexionCuenta extends StatelessWidget {
-  const AvisoSinConexionCuenta({super.key, required this.texto});
+  const AvisoSinConexionCuenta({super.key, required this.texto, this.alReintentar});
 
   final String texto;
 
+  /// Si viene, el aviso lleva «Reintentar» (33B cuando todavía no bajó nada: no es un error, pero se
+  /// puede volver a pedir).
+  final VoidCallback? alReintentar;
+
   @override
   Widget build(BuildContext context) {
+    // Región viva: «Sin conexión…» se anuncia al lector cuando aparece, como el error de 33A·05 (QA #596).
     return Semantics(
       container: true,
+      liveRegion: true,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
@@ -270,10 +276,35 @@ class AvisoSinConexionCuenta extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                texto,
-                key: const Key('cuenta_aviso_sin_conexion'),
-                style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, height: 1.45),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    texto,
+                    key: const Key('cuenta_aviso_sin_conexion'),
+                    style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, height: 1.45),
+                  ),
+                  if (alReintentar != null)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        key: const Key('cuenta_reintentar'),
+                        onPressed: alReintentar,
+                        style: TextButton.styleFrom(
+                          foregroundColor: ColoresCuenta.azul,
+                          minimumSize: const Size(48, 48),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          textStyle: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        child: const Text(TextosCuenta.reintentar),
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
@@ -305,6 +336,9 @@ class EsqueletoCuenta extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // La tarjeta de la deuda (33A·01) va primero, como en la pantalla: son 4 bloques.
+              KeyedSubtree(key: const Key('cuenta_esqueleto_deuda'), child: bloque()),
+              const SizedBox(height: 8),
               for (final tipo in TipoDeCifra.values) ...[
                 KeyedSubtree(key: Key('cuenta_esqueleto_${tipo.name}'), child: bloque()),
                 const SizedBox(height: 8),

@@ -399,7 +399,7 @@ void main() {
       },
     );
 
-    // skip: issue #441 — el esqueleto de Mi Cuenta tiene 3 bloques y el canvas 33A·03 dibuja 4.
+    // El esqueleto de Mi Cuenta (33A·03) tiene un bloque por tarjeta: la deuda y las tres cifras (#671).
     testWidgets(
       '33A·03: el esqueleto de Mi Cuenta tiene un bloque por cada una de las 4 tarjetas',
       (tester) async {
@@ -411,9 +411,6 @@ void main() {
         );
         expect(bloques, findsNWidgets(4));
       },
-      // QA #441: el esqueleto de Mi Cuenta (33A·03) tiene 3 bloques y el canvas dibuja 4 (falta el
-      // de la deuda).
-      skip: true,
     );
 
     // Decisión §2 (QA P1, 04/11): sin conexión y sin nada guardado, 33B dice que hace falta conexión.

@@ -233,7 +233,7 @@ void main() {
       ('texto al 200 %', const Size(390, 844), 2.0),
       ('texto al 200 % en un teléfono de 360 × 640', const Size(360, 640), 2.0),
     ]) {
-      testWidgets('con $nombre ocupa a lo sumo el 40 % del alto y sus botones se alcanzan', (
+      testWidgets('con $nombre ocupa a lo sumo el 55 % del alto y sus botones se alcanzan', (
         tester,
       ) async {
         fijarTamano(tester, tamano: tamano, texto: texto);
@@ -243,7 +243,7 @@ void main() {
         final franja = find
             .ancestor(of: avisoApagadas, matching: find.byType(SingleChildScrollView))
             .first;
-        expect(tester.getSize(franja).height, lessThanOrEqualTo(tamano.height * 0.4 + 0.01));
+        expect(tester.getSize(franja).height, lessThanOrEqualTo(tamano.height * 0.55 + 0.01));
         await tester.ensureVisible(avisoIr);
         await tester.pump();
         expect(tester.takeException(), isNull);

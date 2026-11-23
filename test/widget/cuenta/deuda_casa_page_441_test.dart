@@ -204,6 +204,9 @@ void main() {
         expect(find.textContaining('Necesitás conexión'), findsNothing);
         expect(find.text('No pudimos traer tus pedidos.'), findsNothing);
         expect(find.text('Reintentar'), findsOneWidget);
+        // No es un error: el aviso es el neutro de 33A·02 (gris), no el recuadro rojo de 33B·03.
+        expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsOneWidget);
+        expect(find.byKey(const Key('cuenta_error_texto')), findsNothing);
         expect(find.text(r'$ 0'), findsNothing);
         expect(find.text('No le debés nada a la casa editora'), findsNothing);
       },

@@ -66,7 +66,6 @@ void main() {
         ProductosCompanion.insert(
           id: id,
           nombre: nombre,
-          tipo: 'LIBRO',
           createdAt: t0,
           updatedAt: t0,
           deletedAt: Value(baja ? t0 : null),
