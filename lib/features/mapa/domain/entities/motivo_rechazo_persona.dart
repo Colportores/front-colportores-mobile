@@ -1,4 +1,5 @@
-/// Por qué la persistencia rechazó dar de alta una persona en un espacio (HU-UBI-008).
+/// Por qué la persistencia rechazó dar de alta una persona en un espacio (HU-UBI-008) o modificarla
+/// (HU-UBI-010).
 ///
 /// Los decide la capa `data` dentro de la transacción (donde puede leer el estado real de la DB) y el
 /// repositorio los traduce a un `FailureValidacion` con el [campo] y el [mensaje] de acá. Los
@@ -11,12 +12,16 @@ enum MotivoRechazoPersona {
     'La ubicación está dada de baja: reactivala para agregar clientes a sus espacios.',
   ),
 
-  /// La baja y la reactivación de una persona (HU-UBI-011).
+  /// Al modificar (HU-UBI-010) o dar de baja o reactivar (HU-UBI-011): la persona se borró del
+  /// teléfono entre abrir la pantalla y confirmar.
   personaInexistente('persona', 'La persona ya no está en tu teléfono. Volvé atrás.'),
+
+  /// Al modificar (HU-UBI-010) o dar de baja o reactivar (HU-UBI-011): la persona está dada de baja,
+  /// o ninguno de sus espacios sigue activo (32B·04 y 32B·08): se ve, pero no se cambia.
   personaSoloLectura(
     'persona',
-    'Su espacio está dado de baja: solo lectura. Reactivá el espacio para dar de baja o reactivar a '
-        'sus clientes.',
+    'Su espacio está dado de baja: solo lectura. Reactivá el espacio para modificar, dar de baja o '
+        'reactivar a sus clientes.',
   );
 
   const MotivoRechazoPersona(this.campo, this.mensaje);
