@@ -4,19 +4,28 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../data/repositories/uniones_deshechas_repository_impl.dart';
 import '../../data/services/servicio_sincronizacion_motor.dart';
 import '../../domain/entities/estado_sincronizacion.dart';
+import '../../domain/repositories/uniones_deshechas_repository.dart';
 import '../../domain/services/servicio_sincronizacion.dart';
 
 /// El motor de sync visto desde la pantalla de sincronización (vista 25). Sin motor (la DB local
 /// está cerrada) la pantalla dice que no pudo revisar el estado.
 final servicioSincronizacionProvider = Provider<ServicioSincronizacion>((ref) {
   final motor = ref.watch(motorSyncProvider);
-  return motor == null
-      ? const ServicioSincronizacionSinMotor()
-      : ServicioSincronizacionMotor(motor);
+  if (motor == null) return const ServicioSincronizacionSinMotor();
+  return ServicioSincronizacionMotor(motor, ref.watch(unionesDeshechasProvider));
+});
+
+/// Qué trabajos rechazados son de una unión de duplicados ya deshecha en el teléfono: «Reintentar» no
+/// los vuelve a mandar (decisión del 10/11, #688 P1). Sin DB local, no hay uniones que cuidar.
+final unionesDeshechasProvider = Provider<UnionesDeshechasRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  return db == null ? const SinUnionesDeshechas() : UnionesDeshechasRepositoryImpl(db);
 });
 
 /// La hora de ahora, para decir «hace 3 min». Los tests la fijan.

@@ -1,15 +1,17 @@
 import 'package:sync_engine/sync_engine.dart';
 
 import '../../domain/entities/estado_sincronizacion.dart';
+import '../../domain/repositories/uniones_deshechas_repository.dart';
 import '../../domain/services/servicio_sincronizacion.dart';
 
 /// [ServicioSincronizacion] sobre el motor de sync (`SyncEngine`, contrato §3): traduce su estado y
 /// sus operaciones rechazadas a lo que muestra la vista 25, y no deja que sus tipos lleguen a la
 /// pantalla.
 final class ServicioSincronizacionMotor implements ServicioSincronizacion {
-  const ServicioSincronizacionMotor(this._motor);
+  const ServicioSincronizacionMotor(this._motor, [this._uniones = const SinUnionesDeshechas()]);
 
   final SyncEngine _motor;
+  final UnionesDeshechasRepository _uniones;
 
   @override
   Future<EstadoSincronizacion> estado() async => _traducir(await _motor.statusNow());
@@ -80,11 +82,26 @@ final class ServicioSincronizacionMotor implements ServicioSincronizacion {
     ];
   }
 
+  /// Una unión de duplicados que el teléfono ya deshizo sigue rechazada y a la vista, pero no vuelve a
+  /// la cola: el servidor uniría lo que el teléfono separó (decisión del 10/11, #688 P1). Por eso no se
+  /// usa `requeueAllInvalid`, que reencola todo, y la cuenta que se devuelve es la de las reencoladas.
   @override
   Future<int> reintentarFallidas({String? id}) async {
-    if (id == null) return _motor.requeueAllInvalid();
-    await _motor.requeue(id);
-    return 1;
+    final deshechas = await _uniones.trabajos();
+    if (id != null) {
+      if (deshechas.contains(id)) return 0;
+      await _motor.requeue(id);
+      return 1;
+    }
+    final rechazadas = (await _motor.statusNow()).invalid;
+    if (rechazadas == 0) return 0;
+    var reencoladas = 0;
+    for (final f in await _motor.failedOperations(limit: rechazadas)) {
+      if (deshechas.contains(f.jobId)) continue;
+      await _motor.requeue(f.jobId);
+      reencoladas++;
+    }
+    return reencoladas;
   }
 
   @override

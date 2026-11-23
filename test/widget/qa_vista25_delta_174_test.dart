@@ -5,11 +5,12 @@
 // - Las hojas 25-07 y 25-09 con la barra de gestos del sistema (ad7b2cf, `mostrarHojaInferior`):
 //   sus botones quedan sobre la barra, sin overflow y con las guías de accesibilidad.
 // - Decisión del 10/11 sobre «Reintentar» y la unión de duplicados ya deshecha (#688, P1): la
-//   operación rechazada no se vuelve a mandar. Va con `skip` (hallazgo).
+//   operación rechazada no se vuelve a mandar.
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/pages/configuracion_page.dart';
 import 'package:colportores_mobile/features/sincronizacion/data/services/servicio_sincronizacion_motor.dart';
 import 'package:colportores_mobile/features/sincronizacion/domain/entities/estado_sincronizacion.dart';
+import 'package:colportores_mobile/features/sincronizacion/domain/repositories/uniones_deshechas_repository.dart';
 import 'package:colportores_mobile/features/sincronizacion/presentation/textos_sincronizacion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -73,6 +74,16 @@ void _barraDeGestos(WidgetTester tester, {double alto = 48}) {
   tester.view.viewPadding = FakeViewPadding(bottom: alto);
   addTearDown(tester.view.resetPadding);
   addTearDown(tester.view.resetViewPadding);
+}
+
+/// Las uniones que el teléfono ya deshizo, dichas por el id de su trabajo.
+class _UnionesDeshechasFalsas implements UnionesDeshechasRepository {
+  const _UnionesDeshechasFalsas(this._ids);
+
+  final Set<String> _ids;
+
+  @override
+  Future<Set<String>> trabajos() async => _ids;
 }
 
 /// Un hallazgo que se corre con `--dart-define=QA_HALLAZGOS=true`.
@@ -212,7 +223,12 @@ void main() {
       await motor.stage('venta', Op.insert, const {'id': 'v-1'}, clientOpId: 'op-venta');
       await motor.syncNow();
       addTearDown(motor.dispose);
-      return (motor: motor, servicio: ServicioSincronizacionMotor(motor));
+      // El teléfono ya separó el par: la unión de `op-union` está `DESHECHA`.
+      final union = (await motor.failedOperations()).firstWhere((o) => o.entity == 'ubicacion');
+      return (
+        motor: motor,
+        servicio: ServicioSincronizacionMotor(motor, _UnionesDeshechasFalsas({union.jobId})),
+      );
     }
 
     test('dado una unión rechazada y una venta rechazada, ambas salen en la lista, la unión como '
@@ -224,25 +240,19 @@ void main() {
       expect((await b.motor.statusNow()).invalid, 2);
     });
 
-    test(
-      'dado una unión rechazada cuyo par el teléfono ya separó, cuando toco «Reintentar» en esa '
-      'operación, no vuelve a la cola de envío',
-      () async {
-        final b = await armar();
-        final union = (await b.servicio.operacionesFallidas()).firstWhere(
-          (o) => o.tabla == 'ubicacion',
-        );
+    test('dado una unión rechazada cuyo par el teléfono ya separó, cuando toco «Reintentar» en esa '
+        'operación, no vuelve a la cola de envío', () async {
+      final b = await armar();
+      final union = (await b.servicio.operacionesFallidas()).firstWhere(
+        (o) => o.tabla == 'ubicacion',
+      );
 
-        await b.servicio.reintentarFallidas(id: union.id);
+      await b.servicio.reintentarFallidas(id: union.id);
 
-        final estado = await b.motor.statusNow();
-        expect(estado.pending, 0, reason: 'la unión deshecha no se reencola');
-        expect(estado.invalid, 2, reason: 'sigue visible en la lista');
-      },
-      // skip: QA #174 — «Reintentar» reencola la unión de duplicados que el teléfono ya deshizo
-      // (decisión del 10/11, #688 P1: «en #489 antes de su merge»).
-      skip: !_conHallazgos,
-    );
+      final estado = await b.motor.statusNow();
+      expect(estado.pending, 0, reason: 'la unión deshecha no se reencola');
+      expect(estado.invalid, 2, reason: 'sigue visible en la lista');
+    });
 
     test(
       'dado una unión rechazada ya deshecha y una venta rechazada, cuando toco «Reintentar las N», '
@@ -257,9 +267,6 @@ void main() {
         expect(estado.pending, 1);
         expect(estado.invalid, 1, reason: 'la unión sigue rechazada y visible');
       },
-      // skip: QA #174 — «Reintentar las N» reencola también la unión de duplicados deshecha
-      // (decisión del 10/11, #688 P1: «en #489 antes de su merge»).
-      skip: !_conHallazgos,
     );
   });
 }
