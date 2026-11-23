@@ -134,6 +134,12 @@ final class TicketsEnMemoria implements TicketRepository {
     return Right(nuevo);
   }
 
+  /// El ticket deja de verse (fila borrada): la lectura vuelve con `null`.
+  void desaparecer() {
+    actual = null;
+    _cambios.add(null);
+  }
+
   void _poner(TicketRegistrado nuevo) {
     actual = nuevo;
     _cambios.add(nuevo);

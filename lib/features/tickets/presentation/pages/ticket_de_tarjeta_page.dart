@@ -818,9 +818,18 @@ class _TicketDeTarjetaPageState extends ConsumerState<TicketDeTarjetaPage> {
       ),
       data: (registrado) {
         if (registrado == null) {
+          // Sin salida no se queda nadie: el ticket ya está guardado y la cola corre sola.
           return _marco(
             cabecera: _cabecera(TextosTicket.enColaTitulo, atras: false),
-            hijos: const [CargandoDelTicket(texto: TextosTicket.cargandoElTicket)],
+            hijos: const [
+              CargandoDelTicket(texto: TextosTicket.cargandoElTicket),
+              AvisoDeVenta(
+                key: Key('ticket_sigue_en_segundo_plano'),
+                error: false,
+                texto: TextosTicket.seguimosEnSegundoPlano,
+              ),
+            ],
+            cta: _botonListo(),
           );
         }
         return switch (_envioDe(registrado, sinRed: sinRed)) {
@@ -853,13 +862,32 @@ class _TicketDeTarjetaPageState extends ConsumerState<TicketDeTarjetaPage> {
     final foto = _foto;
     return _marco(
       cabecera: _cabecera(TextosTicket.subiendoTitulo, atras: false),
-      hijos: [if (foto != null) FotoDelTicket(bytes: foto.bytes)],
-      cta: const BotonDeVenta(
-        key: Key('ticket_subiendo'),
-        texto: TextosTicket.subiendo,
-        textoOcupado: TextosTicket.subiendo,
-        ocupado: true,
-        alPresionar: null,
+      hijos: [
+        if (foto != null) FotoDelTicket(bytes: foto.bytes),
+        const SizedBox(height: 12),
+        const AvisoDeVenta(
+          key: Key('ticket_sigue_en_segundo_plano'),
+          error: false,
+          texto: TextosTicket.seguimosEnSegundoPlano,
+        ),
+      ],
+      // Con red inalcanzable o el envío trabado la subida puede tardar: «Listo» es la salida
+      // (el ticket y la copia ya están guardados y la cola sigue con la pantalla cerrada).
+      cta: _acciones(
+        const BotonDeVenta(
+          key: Key('ticket_subiendo'),
+          texto: TextosTicket.subiendo,
+          textoOcupado: TextosTicket.subiendo,
+          ocupado: true,
+          alPresionar: null,
+        ),
+        [
+          BotonSecundarioDeTicket(
+            key: const Key('ticket_listo'),
+            texto: TextosTicket.listo,
+            alPresionar: () => _cerrar(ResultadoDelFlujoDeTicket.cargado),
+          ),
+        ],
       ),
     );
   }

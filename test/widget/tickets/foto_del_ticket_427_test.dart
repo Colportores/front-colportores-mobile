@@ -617,6 +617,34 @@ void main() {
       expect(elBotonPrincipal(tester).onPressed, isNull);
     });
 
+    testWidgets('si la subida se demora, «Listo» deja salir y el ticket sigue en la cola', (
+      tester,
+    ) async {
+      final a = await montarTicket(tester);
+      await enviarElTicket(tester);
+
+      expect(
+        find.text('Seguimos subiéndolo en segundo plano. Podés cerrar esta pantalla.'),
+        findsOneWidget,
+      );
+      await tocarTicket(tester, find.byKey(const Key('ticket_listo')));
+
+      expect(a.resultados, [ResultadoDelFlujoDeTicket.cargado]);
+      expect(a.repo.recibidos, hasLength(1));
+    });
+
+    testWidgets('si el ticket ya no se lee (fila borrada), «Listo» deja salir', (tester) async {
+      final a = await montarTicket(tester);
+      await enviarElTicket(tester);
+
+      a.repo.desaparecer();
+      await asentarAgendar(tester);
+
+      expect(find.text('Cargando el ticket'), findsOneWidget);
+      await tocarTicket(tester, find.byKey(const Key('ticket_listo')));
+      expect(a.resultados, [ResultadoDelFlujoDeTicket.cargado]);
+    });
+
     testWidgets('al terminar de subir pasa solo a «Ticket subido»', (tester) async {
       final a = await montarTicket(tester);
       await enviarElTicket(tester);
@@ -919,7 +947,7 @@ void main() {
 
       expect(
         find.text(
-          'El servidor no aceptó esta foto y no se va a reintentar. Avisale a tu coordinador.',
+          'No pudimos subir la foto de este ticket. Avisale a tu coordinadora: cuando lo rechace, lo cargás de nuevo.',
         ),
         findsOneWidget,
       );

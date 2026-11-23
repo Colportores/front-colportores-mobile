@@ -97,7 +97,9 @@ abstract final class TextosTicket {
   static const loRevisaAdministracion = 'Lo revisa Administración';
   static const rechazadaTitulo = 'No se pudo subir';
   static const rechazada =
-      'El servidor no aceptó esta foto y no se va a reintentar. Avisale a tu coordinador.';
+      'No pudimos subir la foto de este ticket. Avisale a tu coordinadora: cuando lo rechace, lo cargás de nuevo.';
+  static const seguimosEnSegundoPlano =
+      'Seguimos subiéndolo en segundo plano. Podés cerrar esta pantalla.';
   static const cargandoElTicket = 'Cargando el ticket';
   static const volver = 'Volver';
   static const cerrar = 'Cerrar';
