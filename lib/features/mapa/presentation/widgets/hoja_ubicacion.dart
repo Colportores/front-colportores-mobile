@@ -138,7 +138,16 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final contexto = _claveAviso.currentContext;
       if (mounted && contexto != null) {
-        unawaited(Scrollable.ensureVisible(contexto, duration: Duration.zero));
+        // Solo si no se ve (`keepVisibleAtStart`): con la alineación por defecto siempre se corría la
+        // lista hasta dejar el aviso en el borde de arriba, y la dirección, la cuenta y la «✕», primer
+        // hijo de la lista, salían de la vista aunque el aviso ya se viera entero (QA #211).
+        unawaited(
+          Scrollable.ensureVisible(
+            contexto,
+            duration: Duration.zero,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+          ),
+        );
       }
     });
   }
@@ -285,6 +294,9 @@ class _HojaUbicacionState extends ConsumerState<HojaUbicacion> {
               onPressed: _abriendo ? null : () => unawaited(_editar(u)),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(48, 48),
+                // El tema del botón con borde no tiene relleno horizontal (está pensado para botones de
+                // ancho completo): sin él el texto toca el borde (QA #211). El mismo 24 que «+ Departamento».
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                 foregroundColor: ColoresAlta.azul,
                 side: const BorderSide(color: ColoresAlta.grisBorde, width: 1.5),
               ),

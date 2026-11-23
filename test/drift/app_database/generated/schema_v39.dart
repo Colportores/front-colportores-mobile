@@ -9801,6 +9801,14 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<String> tipo = GeneratedColumn<String>(
+    'tipo',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
   late final GeneratedColumn<int> esBonificable = GeneratedColumn<int>(
     'es_bonificable',
     aliasedName,
@@ -9905,6 +9913,7 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
     id,
     nombre,
     descripcion,
+    tipo,
     esBonificable,
     esMisionero,
     precioBaseCompra,
@@ -9941,6 +9950,10 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
         DriftSqlType.string,
         data['${effectivePrefix}descripcion'],
       ),
+      tipo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tipo'],
+      )!,
       esBonificable: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}es_bonificable'],
@@ -10010,6 +10023,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
   final String id;
   final String nombre;
   final String? descripcion;
+  final String tipo;
   final int esBonificable;
   final int esMisionero;
   final int? precioBaseCompra;
@@ -10026,6 +10040,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     required this.id,
     required this.nombre,
     this.descripcion,
+    required this.tipo,
     required this.esBonificable,
     required this.esMisionero,
     this.precioBaseCompra,
@@ -10047,6 +10062,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     if (!nullToAbsent || descripcion != null) {
       map['descripcion'] = Variable<String>(descripcion);
     }
+    map['tipo'] = Variable<String>(tipo);
     map['es_bonificable'] = Variable<int>(esBonificable);
     map['es_misionero'] = Variable<int>(esMisionero);
     if (!nullToAbsent || precioBaseCompra != null) {
@@ -10083,6 +10099,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       descripcion: descripcion == null && nullToAbsent
           ? const Value.absent()
           : Value(descripcion),
+      tipo: Value(tipo),
       esBonificable: Value(esBonificable),
       esMisionero: Value(esMisionero),
       precioBaseCompra: precioBaseCompra == null && nullToAbsent
@@ -10121,6 +10138,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       id: serializer.fromJson<String>(json['id']),
       nombre: serializer.fromJson<String>(json['nombre']),
       descripcion: serializer.fromJson<String?>(json['descripcion']),
+      tipo: serializer.fromJson<String>(json['tipo']),
       esBonificable: serializer.fromJson<int>(json['esBonificable']),
       esMisionero: serializer.fromJson<int>(json['esMisionero']),
       precioBaseCompra: serializer.fromJson<int?>(json['precioBaseCompra']),
@@ -10142,6 +10160,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       'id': serializer.toJson<String>(id),
       'nombre': serializer.toJson<String>(nombre),
       'descripcion': serializer.toJson<String?>(descripcion),
+      'tipo': serializer.toJson<String>(tipo),
       'esBonificable': serializer.toJson<int>(esBonificable),
       'esMisionero': serializer.toJson<int>(esMisionero),
       'precioBaseCompra': serializer.toJson<int?>(precioBaseCompra),
@@ -10161,6 +10180,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     String? id,
     String? nombre,
     Value<String?> descripcion = const Value.absent(),
+    String? tipo,
     int? esBonificable,
     int? esMisionero,
     Value<int?> precioBaseCompra = const Value.absent(),
@@ -10177,6 +10197,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     id: id ?? this.id,
     nombre: nombre ?? this.nombre,
     descripcion: descripcion.present ? descripcion.value : this.descripcion,
+    tipo: tipo ?? this.tipo,
     esBonificable: esBonificable ?? this.esBonificable,
     esMisionero: esMisionero ?? this.esMisionero,
     precioBaseCompra: precioBaseCompra.present
@@ -10199,6 +10220,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       descripcion: data.descripcion.present
           ? data.descripcion.value
           : this.descripcion,
+      tipo: data.tipo.present ? data.tipo.value : this.tipo,
       esBonificable: data.esBonificable.present
           ? data.esBonificable.value
           : this.esBonificable,
@@ -10232,6 +10254,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
           ..write('id: $id, ')
           ..write('nombre: $nombre, ')
           ..write('descripcion: $descripcion, ')
+          ..write('tipo: $tipo, ')
           ..write('esBonificable: $esBonificable, ')
           ..write('esMisionero: $esMisionero, ')
           ..write('precioBaseCompra: $precioBaseCompra, ')
@@ -10253,6 +10276,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     id,
     nombre,
     descripcion,
+    tipo,
     esBonificable,
     esMisionero,
     precioBaseCompra,
@@ -10273,6 +10297,7 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
           other.id == this.id &&
           other.nombre == this.nombre &&
           other.descripcion == this.descripcion &&
+          other.tipo == this.tipo &&
           other.esBonificable == this.esBonificable &&
           other.esMisionero == this.esMisionero &&
           other.precioBaseCompra == this.precioBaseCompra &&
@@ -10291,6 +10316,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
   final Value<String> id;
   final Value<String> nombre;
   final Value<String?> descripcion;
+  final Value<String> tipo;
   final Value<int> esBonificable;
   final Value<int> esMisionero;
   final Value<int?> precioBaseCompra;
@@ -10308,6 +10334,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     this.id = const Value.absent(),
     this.nombre = const Value.absent(),
     this.descripcion = const Value.absent(),
+    this.tipo = const Value.absent(),
     this.esBonificable = const Value.absent(),
     this.esMisionero = const Value.absent(),
     this.precioBaseCompra = const Value.absent(),
@@ -10326,6 +10353,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     required String id,
     required String nombre,
     this.descripcion = const Value.absent(),
+    required String tipo,
     this.esBonificable = const Value.absent(),
     this.esMisionero = const Value.absent(),
     this.precioBaseCompra = const Value.absent(),
@@ -10341,12 +10369,14 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        nombre = Value(nombre),
+       tipo = Value(tipo),
        createdAt = Value(createdAt),
        updatedAt = Value(updatedAt);
   static Insertable<ProductoData> custom({
     Expression<String>? id,
     Expression<String>? nombre,
     Expression<String>? descripcion,
+    Expression<String>? tipo,
     Expression<int>? esBonificable,
     Expression<int>? esMisionero,
     Expression<int>? precioBaseCompra,
@@ -10365,6 +10395,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
       if (id != null) 'id': id,
       if (nombre != null) 'nombre': nombre,
       if (descripcion != null) 'descripcion': descripcion,
+      if (tipo != null) 'tipo': tipo,
       if (esBonificable != null) 'es_bonificable': esBonificable,
       if (esMisionero != null) 'es_misionero': esMisionero,
       if (precioBaseCompra != null) 'precio_base_compra': precioBaseCompra,
@@ -10385,6 +10416,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     Value<String>? id,
     Value<String>? nombre,
     Value<String?>? descripcion,
+    Value<String>? tipo,
     Value<int>? esBonificable,
     Value<int>? esMisionero,
     Value<int?>? precioBaseCompra,
@@ -10403,6 +10435,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
       id: id ?? this.id,
       nombre: nombre ?? this.nombre,
       descripcion: descripcion ?? this.descripcion,
+      tipo: tipo ?? this.tipo,
       esBonificable: esBonificable ?? this.esBonificable,
       esMisionero: esMisionero ?? this.esMisionero,
       precioBaseCompra: precioBaseCompra ?? this.precioBaseCompra,
@@ -10430,6 +10463,9 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     }
     if (descripcion.present) {
       map['descripcion'] = Variable<String>(descripcion.value);
+    }
+    if (tipo.present) {
+      map['tipo'] = Variable<String>(tipo.value);
     }
     if (esBonificable.present) {
       map['es_bonificable'] = Variable<int>(esBonificable.value);
@@ -10479,6 +10515,7 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
           ..write('id: $id, ')
           ..write('nombre: $nombre, ')
           ..write('descripcion: $descripcion, ')
+          ..write('tipo: $tipo, ')
           ..write('esBonificable: $esBonificable, ')
           ..write('esMisionero: $esMisionero, ')
           ..write('precioBaseCompra: $precioBaseCompra, ')
@@ -14574,6 +14611,14 @@ class Campania extends Table with TableInfo<Campania, CampaniaData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<int> alquilerMonto = GeneratedColumn<int>(
+    'alquiler_monto',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
     'deleted_at',
     aliasedName,
@@ -14600,6 +14645,7 @@ class Campania extends Table with TableInfo<Campania, CampaniaData> {
     createdAt,
     updatedAt,
     createdBy,
+    alquilerMonto,
     deletedAt,
     syncVersion,
   ];
@@ -14642,6 +14688,10 @@ class Campania extends Table with TableInfo<Campania, CampaniaData> {
         DriftSqlType.string,
         data['${effectivePrefix}created_by'],
       ),
+      alquilerMonto: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}alquiler_monto'],
+      ),
       deletedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}deleted_at'],
@@ -14672,6 +14722,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
+  final int? alquilerMonto;
   final int? deletedAt;
   final int syncVersion;
   const CampaniaData({
@@ -14682,6 +14733,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
+    this.alquilerMonto,
     this.deletedAt,
     required this.syncVersion,
   });
@@ -14698,6 +14750,9 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
     map['updated_at'] = Variable<int>(updatedAt);
     if (!nullToAbsent || createdBy != null) {
       map['created_by'] = Variable<String>(createdBy);
+    }
+    if (!nullToAbsent || alquilerMonto != null) {
+      map['alquiler_monto'] = Variable<int>(alquilerMonto);
     }
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<int>(deletedAt);
@@ -14719,6 +14774,9 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
       createdBy: createdBy == null && nullToAbsent
           ? const Value.absent()
           : Value(createdBy),
+      alquilerMonto: alquilerMonto == null && nullToAbsent
+          ? const Value.absent()
+          : Value(alquilerMonto),
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(deletedAt),
@@ -14739,6 +14797,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
+      alquilerMonto: serializer.fromJson<int?>(json['alquilerMonto']),
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       syncVersion: serializer.fromJson<int>(json['syncVersion']),
     );
@@ -14754,6 +14813,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
+      'alquilerMonto': serializer.toJson<int?>(alquilerMonto),
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'syncVersion': serializer.toJson<int>(syncVersion),
     };
@@ -14767,6 +14827,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
+    Value<int?> alquilerMonto = const Value.absent(),
     Value<int?> deletedAt = const Value.absent(),
     int? syncVersion,
   }) => CampaniaData(
@@ -14777,6 +14838,9 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    alquilerMonto: alquilerMonto.present
+        ? alquilerMonto.value
+        : this.alquilerMonto,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     syncVersion: syncVersion ?? this.syncVersion,
   );
@@ -14791,6 +14855,9 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      alquilerMonto: data.alquilerMonto.present
+          ? data.alquilerMonto.value
+          : this.alquilerMonto,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       syncVersion: data.syncVersion.present
           ? data.syncVersion.value
@@ -14808,6 +14875,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
+          ..write('alquilerMonto: $alquilerMonto, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('syncVersion: $syncVersion')
           ..write(')'))
@@ -14823,6 +14891,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
     createdAt,
     updatedAt,
     createdBy,
+    alquilerMonto,
     deletedAt,
     syncVersion,
   );
@@ -14837,6 +14906,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
+          other.alquilerMonto == this.alquilerMonto &&
           other.deletedAt == this.deletedAt &&
           other.syncVersion == this.syncVersion);
 }
@@ -14849,6 +14919,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
+  final Value<int?> alquilerMonto;
   final Value<int?> deletedAt;
   final Value<int> syncVersion;
   final Value<int> rowid;
@@ -14860,6 +14931,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
+    this.alquilerMonto = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.syncVersion = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -14872,6 +14944,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
+    this.alquilerMonto = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.syncVersion = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -14888,6 +14961,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
+    Expression<int>? alquilerMonto,
     Expression<int>? deletedAt,
     Expression<int>? syncVersion,
     Expression<int>? rowid,
@@ -14900,6 +14974,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
+      if (alquilerMonto != null) 'alquiler_monto': alquilerMonto,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (syncVersion != null) 'sync_version': syncVersion,
       if (rowid != null) 'rowid': rowid,
@@ -14914,6 +14989,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
+    Value<int?>? alquilerMonto,
     Value<int?>? deletedAt,
     Value<int>? syncVersion,
     Value<int>? rowid,
@@ -14926,6 +15002,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
+      alquilerMonto: alquilerMonto ?? this.alquilerMonto,
       deletedAt: deletedAt ?? this.deletedAt,
       syncVersion: syncVersion ?? this.syncVersion,
       rowid: rowid ?? this.rowid,
@@ -14956,6 +15033,9 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
     if (createdBy.present) {
       map['created_by'] = Variable<String>(createdBy.value);
     }
+    if (alquilerMonto.present) {
+      map['alquiler_monto'] = Variable<int>(alquilerMonto.value);
+    }
     if (deletedAt.present) {
       map['deleted_at'] = Variable<int>(deletedAt.value);
     }
@@ -14978,6 +15058,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
+          ..write('alquilerMonto: $alquilerMonto, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('syncVersion: $syncVersion, ')
           ..write('rowid: $rowid')
@@ -18852,6 +18933,14 @@ class Deposito extends Table with TableInfo<Deposito, DepositoData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<int> anuladoAt = GeneratedColumn<int>(
+    'anulado_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
     'created_at',
     aliasedName,
@@ -18906,6 +18995,7 @@ class Deposito extends Table with TableInfo<Deposito, DepositoData> {
     validadoPor,
     rechazadoEn,
     motivoRechazo,
+    anuladoAt,
     createdAt,
     updatedAt,
     createdBy,
@@ -18967,6 +19057,10 @@ class Deposito extends Table with TableInfo<Deposito, DepositoData> {
         DriftSqlType.string,
         data['${effectivePrefix}motivo_rechazo'],
       ),
+      anuladoAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}anulado_at'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -19021,6 +19115,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
   final String? validadoPor;
   final int? rechazadoEn;
   final String? motivoRechazo;
+  final int? anuladoAt;
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
@@ -19038,6 +19133,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     this.validadoPor,
     this.rechazadoEn,
     this.motivoRechazo,
+    this.anuladoAt,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
@@ -19069,6 +19165,9 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     }
     if (!nullToAbsent || motivoRechazo != null) {
       map['motivo_rechazo'] = Variable<String>(motivoRechazo);
+    }
+    if (!nullToAbsent || anuladoAt != null) {
+      map['anulado_at'] = Variable<int>(anuladoAt);
     }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -19107,6 +19206,9 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
       motivoRechazo: motivoRechazo == null && nullToAbsent
           ? const Value.absent()
           : Value(motivoRechazo),
+      anuladoAt: anuladoAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(anuladoAt),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       createdBy: createdBy == null && nullToAbsent
@@ -19136,6 +19238,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
       validadoPor: serializer.fromJson<String?>(json['validadoPor']),
       rechazadoEn: serializer.fromJson<int?>(json['rechazadoEn']),
       motivoRechazo: serializer.fromJson<String?>(json['motivoRechazo']),
+      anuladoAt: serializer.fromJson<int?>(json['anuladoAt']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
@@ -19158,6 +19261,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
       'validadoPor': serializer.toJson<String?>(validadoPor),
       'rechazadoEn': serializer.toJson<int?>(rechazadoEn),
       'motivoRechazo': serializer.toJson<String?>(motivoRechazo),
+      'anuladoAt': serializer.toJson<int?>(anuladoAt),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
@@ -19178,6 +19282,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     Value<String?> validadoPor = const Value.absent(),
     Value<int?> rechazadoEn = const Value.absent(),
     Value<String?> motivoRechazo = const Value.absent(),
+    Value<int?> anuladoAt = const Value.absent(),
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
@@ -19197,6 +19302,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     motivoRechazo: motivoRechazo.present
         ? motivoRechazo.value
         : this.motivoRechazo,
+    anuladoAt: anuladoAt.present ? anuladoAt.value : this.anuladoAt,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
@@ -19226,6 +19332,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
       motivoRechazo: data.motivoRechazo.present
           ? data.motivoRechazo.value
           : this.motivoRechazo,
+      anuladoAt: data.anuladoAt.present ? data.anuladoAt.value : this.anuladoAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
@@ -19250,6 +19357,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
           ..write('validadoPor: $validadoPor, ')
           ..write('rechazadoEn: $rechazadoEn, ')
           ..write('motivoRechazo: $motivoRechazo, ')
+          ..write('anuladoAt: $anuladoAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -19272,6 +19380,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     validadoPor,
     rechazadoEn,
     motivoRechazo,
+    anuladoAt,
     createdAt,
     updatedAt,
     createdBy,
@@ -19293,6 +19402,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
           other.validadoPor == this.validadoPor &&
           other.rechazadoEn == this.rechazadoEn &&
           other.motivoRechazo == this.motivoRechazo &&
+          other.anuladoAt == this.anuladoAt &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
@@ -19312,6 +19422,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
   final Value<String?> validadoPor;
   final Value<int?> rechazadoEn;
   final Value<String?> motivoRechazo;
+  final Value<int?> anuladoAt;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
@@ -19330,6 +19441,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     this.validadoPor = const Value.absent(),
     this.rechazadoEn = const Value.absent(),
     this.motivoRechazo = const Value.absent(),
+    this.anuladoAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
@@ -19349,6 +19461,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     this.validadoPor = const Value.absent(),
     this.rechazadoEn = const Value.absent(),
     this.motivoRechazo = const Value.absent(),
+    this.anuladoAt = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
@@ -19374,6 +19487,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     Expression<String>? validadoPor,
     Expression<int>? rechazadoEn,
     Expression<String>? motivoRechazo,
+    Expression<int>? anuladoAt,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
@@ -19393,6 +19507,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
       if (validadoPor != null) 'validado_por': validadoPor,
       if (rechazadoEn != null) 'rechazado_en': rechazadoEn,
       if (motivoRechazo != null) 'motivo_rechazo': motivoRechazo,
+      if (anuladoAt != null) 'anulado_at': anuladoAt,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
@@ -19414,6 +19529,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     Value<String?>? validadoPor,
     Value<int?>? rechazadoEn,
     Value<String?>? motivoRechazo,
+    Value<int?>? anuladoAt,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
@@ -19433,6 +19549,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
       validadoPor: validadoPor ?? this.validadoPor,
       rechazadoEn: rechazadoEn ?? this.rechazadoEn,
       motivoRechazo: motivoRechazo ?? this.motivoRechazo,
+      anuladoAt: anuladoAt ?? this.anuladoAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
@@ -19478,6 +19595,9 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     if (motivoRechazo.present) {
       map['motivo_rechazo'] = Variable<String>(motivoRechazo.value);
     }
+    if (anuladoAt.present) {
+      map['anulado_at'] = Variable<int>(anuladoAt.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -19513,6 +19633,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
           ..write('validadoPor: $validadoPor, ')
           ..write('rechazadoEn: $rechazadoEn, ')
           ..write('motivoRechazo: $motivoRechazo, ')
+          ..write('anuladoAt: $anuladoAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')

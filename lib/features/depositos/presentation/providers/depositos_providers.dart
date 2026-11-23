@@ -12,6 +12,7 @@ import '../../data/datasources/campania_del_alquiler_drift.dart';
 import '../../data/datasources/deposito_local_data_source_drift.dart';
 import '../../data/datasources/tickets_de_deposito_sin_subir_drift.dart';
 import '../../data/repositories/deposito_repository_impl.dart';
+import '../../domain/entities/campania_para_el_pago.dart';
 import '../../domain/repositories/deposito_repository.dart';
 import '../../domain/usecases/registrar_deposito_con_ticket_use_case.dart';
 import '../../domain/usecases/registrar_deposito_use_case.dart';
@@ -66,17 +67,17 @@ final registrarDepositoConTicketUseCaseProvider = Provider<RegistrarDepositoConT
   ),
 );
 
-/// La campaña en curso del colportor, a la que paga el alquiler; `null` si no está inscripto en
-/// ninguna en curso (o no hay DB): el alquiler no se puede registrar.
-final campaniaDelAlquilerProvider = FutureProvider.autoDispose.family<String?, String>((
-  ref,
-  colportorId,
-) {
-  final db = ref.watch(dbLocalProvider);
-  if (db == null) return null;
-  final hoy = ReglasDeVenta.diaDeMontevideo(ref.watch(relojDepositoProvider)().toUtc());
-  return CampaniaDelAlquilerDrift(db).leer(colportorId, hoy);
-});
+/// Las campañas en curso del colportor a las que puede pagar el alquiler, la más reciente primero
+/// (HU-CTA-007, decisión «Alq. campaña»): con una, el depósito la pone sola; con dos, el colportor
+/// elige. Vacía si no está inscripto en ninguna en curso (o no hay DB): el alquiler no se puede
+/// registrar desde acá.
+final campaniasParaElAlquilerProvider = FutureProvider.autoDispose
+    .family<List<CampaniaParaElPago>, String>((ref, colportorId) {
+      final db = ref.watch(dbLocalProvider);
+      if (db == null) return const <CampaniaParaElPago>[];
+      final hoy = ReglasDeVenta.diaDeMontevideo(ref.watch(relojDepositoProvider)().toUtc());
+      return CampaniaDelAlquilerDrift(db).enCurso(colportorId, hoy);
+    });
 
 /// Cuántos tickets de depósito no pudieron subir su foto (vista 38A-08): pendientes después de un
 /// intento fallido. Sin DB, ninguno.

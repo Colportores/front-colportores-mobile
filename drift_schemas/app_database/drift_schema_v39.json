@@ -2519,6 +2519,16 @@
             "dsl_features": []
           },
           {
+            "name": "tipo",
+            "getter_name": "tipo",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
             "name": "es_bonificable",
             "getter_name": "esBonificable",
             "moor_type": "bool",
@@ -3772,6 +3782,16 @@
             "dsl_features": []
           },
           {
+            "name": "alquiler_monto",
+            "getter_name": "alquilerMonto",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
             "name": "deleted_at",
             "getter_name": "deletedAt",
             "moor_type": "int",
@@ -4920,6 +4940,20 @@
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
+          },
+          {
+            "name": "anulado_at",
+            "getter_name": "anuladoAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
           },
           {
             "name": "created_at",
@@ -6498,7 +6532,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"producto\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"descripcion\" TEXT NULL, \"es_bonificable\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_bonificable\" IN (0, 1)), \"es_misionero\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_misionero\" IN (0, 1)), \"precio_base_compra\" INTEGER NULL, \"casa_editora\" TEXT NULL, \"imagen_url\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, \"codigo_editor\" TEXT NULL, \"categoria\" TEXT NULL, PRIMARY KEY (\"id\"), CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"producto\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"descripcion\" TEXT NULL, \"tipo\" TEXT NOT NULL, \"es_bonificable\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_bonificable\" IN (0, 1)), \"es_misionero\" INTEGER NOT NULL DEFAULT 0 CHECK (\"es_misionero\" IN (0, 1)), \"precio_base_compra\" INTEGER NULL, \"casa_editora\" TEXT NULL, \"imagen_url\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, \"codigo_editor\" TEXT NULL, \"categoria\" TEXT NULL, PRIMARY KEY (\"id\"), CHECK (precio_base_compra IS NULL OR precio_base_compra >= 0));"
         }
       ]
     },
@@ -6579,7 +6613,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"campania\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"fecha_inicio\" TEXT NOT NULL, \"fecha_fin\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"campania\" (\"id\" TEXT NOT NULL, \"nombre\" TEXT NOT NULL, \"fecha_inicio\" TEXT NOT NULL, \"fecha_fin\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"alquiler_monto\" INTEGER NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
         }
       ]
     },
@@ -6642,7 +6676,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"deposito\" (\"id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"fecha\" INTEGER NOT NULL, \"destino\" TEXT NOT NULL, \"concepto\" TEXT NOT NULL, \"campania_id\" TEXT NULL, \"ticket_id\" TEXT NULL, \"validado_en\" INTEGER NULL, \"validado_por\" TEXT NULL, \"rechazado_en\" INTEGER NULL, \"motivo_rechazo\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (destino IN ('BANCO', 'OFICINA', 'RETIRO_COORDINADOR')), CHECK (concepto IN ('CASA_EDITORA', 'ALQUILER')), CHECK (destino <> 'RETIRO_COORDINADOR' OR ticket_id IS NULL), CHECK (destino = 'RETIRO_COORDINADOR' OR ticket_id IS NOT NULL), CHECK (concepto <> 'ALQUILER' OR campania_id IS NOT NULL));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"deposito\" (\"id\" TEXT NOT NULL, \"monto\" INTEGER NOT NULL, \"fecha\" INTEGER NOT NULL, \"destino\" TEXT NOT NULL, \"concepto\" TEXT NOT NULL, \"campania_id\" TEXT NULL, \"ticket_id\" TEXT NULL, \"validado_en\" INTEGER NULL, \"validado_por\" TEXT NULL, \"rechazado_en\" INTEGER NULL, \"motivo_rechazo\" TEXT NULL, \"anulado_at\" INTEGER NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (monto > 0), CHECK (destino IN ('BANCO', 'OFICINA', 'RETIRO_COORDINADOR')), CHECK (concepto IN ('CASA_EDITORA', 'ALQUILER')), CHECK (destino <> 'RETIRO_COORDINADOR' OR ticket_id IS NULL), CHECK (destino = 'RETIRO_COORDINADOR' OR ticket_id IS NOT NULL), CHECK (concepto <> 'ALQUILER' OR campania_id IS NOT NULL));"
         }
       ]
     },

@@ -1121,6 +1121,14 @@ final class FailureCuentaNoDisponible extends Failure {
     : super(mensaje: 'No pudimos calcular tu cuenta.', codigo: 'CUENTA_NO_DISPONIBLE');
 }
 
+/// No se pudo armar «Mi alquiler» (HU-CTA-007, vista 38C): la base local no se pudo leer. Es **otra
+/// cosa** que «tu campaña no cobra alquiler»: nadie muestra eso ante esta falla. Se puede reintentar.
+/// El canvas no dibuja el error de 38C; el texto sigue el de 33B·03 («para confirmar», mapa §2).
+final class FailureAlquilerNoDisponible extends Failure {
+  const FailureAlquilerNoDisponible()
+    : super(mensaje: 'No pudimos traer tu alquiler.', codigo: 'ALQUILER_NO_DISPONIBLE');
+}
+
 /// El cobro no se pudo guardar en el teléfono (28·08). No se registró nada: se puede reintentar. El
 /// texto es el del canvas.
 final class FailureCobroNoGuardado extends Failure {
