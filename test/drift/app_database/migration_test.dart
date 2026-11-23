@@ -44,6 +44,7 @@ import 'generated/schema_v35.dart' as v35;
 import 'generated/schema_v36.dart' as v36;
 import 'generated/schema_v37.dart' as v37;
 import 'generated/schema_v38.dart' as v38;
+import 'generated/schema_v39.dart' as v39;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
@@ -2442,4 +2443,66 @@ void main() {
       },
     );
   });
+
+  test(
+    'dado una campaña y un depósito guardados en la versión 38, cuando migra a la 39, no se pierde '
+    'nada, la campaña queda sin monto de alquiler, el depósito sin anular y no se encola nada',
+    () async {
+      // HU-CTA-007 (#389): `campania.alquiler_monto` y `deposito.anulado_at`, que bajan por el pull.
+      const campania = v38.CampaniaData(
+        id: 'c-1',
+        nombre: 'Primavera 2026',
+        fechaInicio: '2026-09-01',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 3,
+      );
+      const deposito = v38.DepositoData(
+        id: 'd-1',
+        monto: 600000,
+        fecha: 1,
+        destino: 'RETIRO_COORDINADOR',
+        concepto: 'ALQUILER',
+        campaniaId: 'c-1',
+        validadoEn: 5,
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 38,
+        newVersion: 39,
+        createOld: v38.DatabaseAtV38.new,
+        createNew: v39.DatabaseAtV39.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch
+            ..insert(viejo.campania, campania)
+            ..insert(viejo.deposito, deposito);
+        },
+        validateItems: (nuevo) async {
+          final campanias = await nuevo.select(nuevo.campania).get();
+          expect(campanias.map((c) => c.id), ['c-1']);
+          expect(campanias.single.nombre, 'Primavera 2026');
+          expect(campanias.single.syncVersion, 3);
+          expect(campanias.single.alquilerMonto, isNull);
+          final depositos = await nuevo.select(nuevo.deposito).get();
+          expect(depositos.map((d) => d.id), ['d-1']);
+          expect(depositos.single.monto, 600000);
+          expect(depositos.single.validadoEn, 5);
+          expect(depositos.single.anuladoAt, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // Las columnas aceptan el monto del alquiler y la marca de anulado.
+          await nuevo.customStatement(
+            'UPDATE campania SET alquiler_monto = 1850000 WHERE id = \'c-1\'',
+          );
+          await nuevo.customStatement('UPDATE deposito SET anulado_at = 9 WHERE id = \'d-1\'');
+          expect((await nuevo.select(nuevo.campania).getSingle()).alquilerMonto, 1850000);
+          expect((await nuevo.select(nuevo.deposito).getSingle()).anuladoAt, 9);
+        },
+      );
+    },
+  );
 }

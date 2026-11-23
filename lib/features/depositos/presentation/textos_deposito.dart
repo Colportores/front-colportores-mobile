@@ -59,6 +59,15 @@ abstract final class TextosDeposito {
       'No estás inscripto en una campaña en curso, y el alquiler se paga a tu campaña. Si es de una '
       'campaña que ya terminó, avisale a tu coordinador.';
 
+  /// Dos o más campañas en curso: el colportor elige a cuál paga el alquiler (decisión «Alq. campaña»,
+  /// 25/10). Textos para confirmar (mapa §2: el canvas dibuja el concepto, no la campaña).
+  static const campania = 'CAMPAÑA';
+  static const campaniaEtiqueta = 'Campaña a la que paga el alquiler';
+  static const faltaLaCampania = 'Elegí la campaña a la que corresponde el alquiler.';
+
+  /// Desde «Mi alquiler»: la campaña ya viene decidida.
+  static String pagaElAlquilerDe(String campania) => 'Paga el alquiler de $campania.';
+
   /// El título del calendario de la fecha.
   static const cuandoDepositaste = '¿Cuándo depositaste?';
 
