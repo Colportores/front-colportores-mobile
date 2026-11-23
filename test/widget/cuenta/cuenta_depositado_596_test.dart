@@ -185,8 +185,9 @@ void main() {
       }
       expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
       expect(find.text('›'), findsNWidgets(4));
-      // Más «Registrar depósito» de ACCIONES (HU-CTA-004, #443).
-      expect(find.byType(InkWell), findsNWidgets(5));
+      // Más «Registrar depósito» de ACCIONES (HU-CTA-004, #443) y las dos de transferencias (HU-STK-005,
+      // #512).
+      expect(find.byType(InkWell), findsNWidgets(7));
     });
   });
 
