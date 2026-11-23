@@ -108,6 +108,39 @@ void main() {
         expect(estado.ultimaActualizacion, isNotNull);
       });
 
+      test(
+        'should not say the last send went out on mobile data when it went out on Wi-Fi',
+        () async {
+          await _stage(b.motor, 'venta', 'v-1');
+
+          await b.servicio.actualizarAhora();
+          final estado = await b.servicio.estado();
+
+          expect(estado.ultimoEnvio, isNotNull);
+          expect(estado.ultimoEnvioPorDatos, isFalse);
+        },
+      );
+
+      test('should say the last send went out on mobile data when the motor knows it', () async {
+        b.red.goMobile();
+        await _stage(b.motor, 'venta', 'v-1');
+
+        await b.servicio.actualizarAhora();
+        final estado = await b.servicio.estado();
+
+        expect(estado.ultimoEnvio, isNotNull);
+        expect(estado.ultimoEnvioPorDatos, isTrue);
+      });
+
+      test('should say nothing about the network before any send', () async {
+        b.red.goMobile();
+
+        final estado = await b.servicio.estado();
+
+        expect(estado.ultimoEnvio, isNull);
+        expect(estado.ultimoEnvioPorDatos, isFalse);
+      });
+
       test('should emit the new state through cambios while someone listens', () async {
         final vistos = <EstadoSincronizacion>[];
         final escucha = b.servicio.cambios.listen(vistos.add);

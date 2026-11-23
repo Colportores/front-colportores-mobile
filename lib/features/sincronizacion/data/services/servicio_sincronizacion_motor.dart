@@ -24,6 +24,7 @@ final class ServicioSincronizacionMotor implements ServicioSincronizacion {
     invalidas: s.invalid,
     conflictos: s.blocked + s.waiting,
     ultimoEnvio: s.lastPushAt,
+    ultimoEnvioPorDatos: s.lastPushAt != null && s.lastPushNetwork == SyncNetwork.mobile,
     ultimaActualizacion: s.lastPullAt,
     ultimoRespaldo: s.lastBackupAt,
     actualizacionEnEspera: s.pullPausedReason != null,

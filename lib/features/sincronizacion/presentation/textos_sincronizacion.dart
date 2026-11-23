@@ -77,6 +77,9 @@ abstract final class TextosSincronizacion {
   /// app, decisión del 26/10 en #182): no se dice «nunca» si no se sabe.
   static const todaviaNoHubo = 'Todavía no hubo';
   static const esperaWifi = 'espera Wi-Fi';
+
+  /// Canvas 25-08: el último envío salió por datos móviles. Solo se dice cuando el motor lo sabe.
+  static const porDatos = 'por datos';
   static const destinoRespaldo = 'Google Drive';
 
   // --- Los avisos ---

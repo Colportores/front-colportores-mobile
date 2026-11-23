@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../../core/sync/modo_ahorro_providers.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../../respaldo/presentation/providers/respaldo_drive_providers.dart';
+import '../../../respaldo/presentation/textos_respaldo_drive.dart';
+import '../../../respaldo/presentation/widgets/hojas_drive.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart';
 import '../../domain/entities/estado_sincronizacion.dart';
 import '../formato_sincronizacion.dart';
@@ -36,6 +39,9 @@ class _SincronizacionPageState extends ConsumerState<SincronizacionPage> {
 
   /// Mientras hay una hoja abierta: un segundo toque no abre otra encima.
   bool _hojaAbierta = false;
+
+  /// Mientras está abierta la hoja de conectar el Drive (25-11): un segundo toque no abre otra.
+  bool _abriendoHojaDrive = false;
 
   /// Hace que «hace 3 min» siga siendo cierto con la pantalla abierta.
   Timer? _reloj;
@@ -84,6 +90,45 @@ class _SincronizacionPageState extends ConsumerState<SincronizacionPage> {
     if (reintentar == true && mounted) await _actualizar(idFallida: operacion.id);
   }
 
+  /// «Conectar Google Drive» del aviso 25-11: abre la misma hoja que el «Conectar» de la fila «Cuenta
+  /// Drive» de Configuración (vista 16) y avisa cómo salió, igual que ella. Un segundo toque, mientras
+  /// la hoja está abierta, no abre otra.
+  Future<void> _conectarDrive() async {
+    if (_abriendoHojaDrive) return;
+    _abriendoHojaDrive = true;
+    try {
+      final resultado = await mostrarHojaConectarDrive(context);
+      if (!mounted) return;
+      switch (resultado) {
+        case DriveQuedoConectado(:final primerRespaldoHecho):
+          _avisarDrive(
+            'sincronizacion_drive_conectado',
+            primerRespaldoHecho
+                ? TextosRespaldoDrive.exitoConPrimerRespaldo
+                : TextosRespaldoDrive.exitoSinPrimerRespaldo,
+          );
+        case DriveQuedoEnOtraCuenta(:final estado):
+          // Google devolvió otra cuenta que la del respaldo anterior (16E·01).
+          final salida = await mostrarHojaOtraCuentaDrive(context, cuenta: estado);
+          if (!mounted) return;
+          final aviso = avisoDeOtraCuenta(salida);
+          if (aviso != null) _avisarDrive(aviso.clave, aviso.texto);
+        case DriveNoQuedoConectado():
+          _avisarDrive('sincronizacion_drive_cancelado', TextosRespaldoDrive.avisoCancelado);
+        case DriveOcupado() || null:
+          break;
+      }
+    } finally {
+      _abriendoHojaDrive = false;
+    }
+  }
+
+  void _avisarDrive(String clave, String texto) {
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(key: Key(clave), content: Text(texto)));
+  }
+
   Future<void> _cambiarModoAhorro({required bool activo}) async {
     if (_guardandoAhorro) return;
     setState(() {
@@ -124,7 +169,6 @@ class _SincronizacionPageState extends ConsumerState<SincronizacionPage> {
     final ahorro = ref.watch(modoAhorroProvider);
     final conexion = ref.watch(conexionProvider).value;
     final respaldoConfigurado = ref.watch(respaldoConfiguradoProvider);
-    final conectarDrive = ref.watch(conectarDriveProvider);
     final ahora = ref.watch(ahoraSincronizacionProvider)();
     ref.listen(actualizacionProvider, (anterior, actual) {
       if (actual is Actualizado && actual != anterior) _avisarListo(actual.resultado);
@@ -193,7 +237,7 @@ class _SincronizacionPageState extends ConsumerState<SincronizacionPage> {
         ahorro: ahorro,
         conDatos: conDatos,
         respaldoConfigurado: respaldoConfigurado,
-        alConectarDrive: conectarDrive,
+        alConectarDrive: () => unawaited(_conectarDrive()),
         alVerDetalle: (operacion) => unawaited(_verDetalle(operacion)),
       );
     }
@@ -339,7 +383,7 @@ class _Estado extends ConsumerWidget {
   final bool ahorro;
   final bool conDatos;
   final bool respaldoConfigurado;
-  final VoidCallback? alConectarDrive;
+  final VoidCallback alConectarDrive;
   final ValueChanged<OperacionFallida> alVerDetalle;
 
   Widget _tarjeta() {
@@ -418,6 +462,8 @@ class _Estado extends ConsumerWidget {
         rotulo: TextosSincronizacion.filaUltimoEnvio,
         valor: envio == null
             ? TextosSincronizacion.todaviaNoHubo
+            : estado.ultimoEnvioPorDatos
+            ? '${FormatoSincronizacion.hace(envio, ahora)} · ${TextosSincronizacion.porDatos}'
             : FormatoSincronizacion.hace(envio, ahora),
         clave: const Key('sincronizacion_ultimo_envio'),
       ),
@@ -506,7 +552,7 @@ class _Estado extends ConsumerWidget {
             tono: TonoAvisoSincronizacion.advertencia,
             texto: TextosSincronizacion.sinRespaldo,
             textoKey: const Key('sincronizacion_aviso_sin_respaldo'),
-            textoAccion: alConectarDrive == null ? null : TextosSincronizacion.conectarDrive,
+            textoAccion: TextosSincronizacion.conectarDrive,
             accionKey: const Key('sincronizacion_conectar_drive'),
             alAccionar: alConectarDrive,
           ),

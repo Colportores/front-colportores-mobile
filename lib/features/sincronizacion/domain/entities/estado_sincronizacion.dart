@@ -8,6 +8,7 @@ final class EstadoSincronizacion extends Equatable {
     this.invalidas = 0,
     this.conflictos = 0,
     this.ultimoEnvio,
+    this.ultimoEnvioPorDatos = false,
     this.ultimaActualizacion,
     this.ultimoRespaldo,
     this.actualizacionEnEspera = false,
@@ -30,6 +31,11 @@ final class EstadoSincronizacion extends Equatable {
   /// Cuándo confirmó el servidor la última escritura de la persona; `null` si el teléfono no lo sabe
   /// (todavía no subió nada que el motor recuerde).
   final DateTime? ultimoEnvio;
+
+  /// El último envío salió por datos móviles (canvas 25-08: «hace 1 min · por datos»). Solo es `true`
+  /// cuando el motor lo sabe (#486): sin el dato, o con un envío por Wi-Fi, es `false` y la fila no
+  /// dice nada de la red. Nunca se inventa.
+  final bool ultimoEnvioPorDatos;
 
   /// Cuándo bajaron por última vez los cambios del coordinador; `null` si el teléfono no lo sabe.
   final DateTime? ultimaActualizacion;
@@ -55,6 +61,7 @@ final class EstadoSincronizacion extends Equatable {
     invalidas,
     conflictos,
     ultimoEnvio,
+    ultimoEnvioPorDatos,
     ultimaActualizacion,
     ultimoRespaldo,
     actualizacionEnEspera,

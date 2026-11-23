@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'package:colportores_mobile/features/sincronizacion/domain/entities/estado_sincronizacion.dart';
 import 'package:colportores_mobile/features/sincronizacion/presentation/pages/sincronizacion_page.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
@@ -403,6 +404,46 @@ void main() {
       expect(avisoAhorro, findsNothing);
     });
 
+    testWidgets(
+      'should say "por datos" when the motor knows the last send went out on mobile data',
+      (tester) async {
+        final t = TelefonoSync(
+          estado: EstadoSincronizacion(
+            ultimoEnvio: DateTime(2026, 10, 26, 14, 34),
+            ultimoEnvioPorDatos: true,
+          ),
+          modoAhorro: true,
+          conexion: TipoConexion.datosMoviles,
+        );
+        await abrirSincronizacion(tester, t);
+
+        expect(
+          textoDe(find.byKey(const Key('sincronizacion_ultimo_envio'))),
+          'hace 1 min · por datos',
+        );
+      },
+    );
+
+    testWidgets('should say nothing about the network when it was Wi-Fi or it is not known', (
+      tester,
+    ) async {
+      final t = TelefonoSync(
+        estado: EstadoSincronizacion(ultimoEnvio: DateTime(2026, 10, 26, 14, 34)),
+        modoAhorro: true,
+        conexion: TipoConexion.datosMoviles,
+      );
+      await abrirSincronizacion(tester, t);
+
+      expect(textoDe(find.byKey(const Key('sincronizacion_ultimo_envio'))), 'hace 1 min');
+    });
+
+    testWidgets('should not add "por datos" when there was no send at all', (tester) async {
+      final t = TelefonoSync(estado: const EstadoSincronizacion(ultimoEnvioPorDatos: true));
+      await abrirSincronizacion(tester, t);
+
+      expect(textoDe(find.byKey(const Key('sincronizacion_ultimo_envio'))), 'Todavía no hubo');
+    });
+
     testWidgets('should mark the update as waiting for Wi-Fi', (tester) async {
       final t = TelefonoSync(
         estado: EstadoSincronizacion(
@@ -627,25 +668,80 @@ void main() {
       expect(textoDe(find.byKey(const Key('sincronizacion_ultimo_respaldo'))), 'nunca');
     });
 
-    testWidgets('should not offer a button that leads nowhere while Drive is missing', (
+    testWidgets('should offer "Conectar Google Drive" and open the Drive sheet', (tester) async {
+      await abrirSincronizacion(tester, TelefonoSync());
+
+      expect(find.text('Conectar Google Drive'), findsOneWidget);
+      await tocar(tester, conectarDriveBoton);
+
+      expect(hojaConectarDrive, findsOneWidget);
+    });
+
+    testWidgets('should open a single sheet with a double tap on "Conectar Google Drive"', (
       tester,
     ) async {
       await abrirSincronizacion(tester, TelefonoSync());
+      await tester.ensureVisible(conectarDriveBoton);
 
-      expect(conectarDriveBoton, findsNothing);
+      await tester.tap(conectarDriveBoton);
+      await tester.tap(conectarDriveBoton, warnIfMissed: false);
+      await asentar(tester);
+
+      expect(hojaConectarDrive, findsOneWidget);
     });
 
-    testWidgets('should offer "Conectar Google Drive" when there is somewhere to go', (
+    testWidgets('should say it did not connect when the person closes the Google screen', (
       tester,
     ) async {
-      var toques = 0;
-      final t = TelefonoSync(conectarDrive: () => toques++);
+      final t = TelefonoSync();
       await abrirSincronizacion(tester, t);
+      await tocar(tester, conectarDriveBoton);
+
+      await tocar(tester, find.byKey(const Key('drive_conectar')));
+
+      expect(hojaConectarDrive, findsNothing);
+      expect(find.byKey(const Key('sincronizacion_drive_cancelado')), findsOneWidget);
+      expect(find.textContaining('No conectamos tu Drive'), findsOneWidget);
+      expect(t.conexionesDeDrive, hasLength(1));
+    });
+
+    testWidgets('should confirm when the Drive got connected', (tester) async {
+      final t = TelefonoSync(
+        resultadoDeConectarDrive: const DriveQuedoConectado(primerRespaldoHecho: false),
+      );
+      await abrirSincronizacion(tester, t);
+      await tocar(tester, conectarDriveBoton);
+
+      await tocar(tester, find.byKey(const Key('drive_conectar')));
+
+      expect(hojaConectarDrive, findsNothing);
+      expect(find.byKey(const Key('sincronizacion_drive_conectado')), findsOneWidget);
+      expect(find.textContaining('Backup configurado'), findsOneWidget);
+    });
+
+    testWidgets('should do nothing more when the person closes the sheet with "Ahora no"', (
+      tester,
+    ) async {
+      final t = TelefonoSync();
+      await abrirSincronizacion(tester, t);
+      await tocar(tester, conectarDriveBoton);
+
+      await tocar(tester, find.byKey(const Key('drive_ahora_no')));
+
+      expect(hojaConectarDrive, findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(t.conexionesDeDrive, isEmpty);
+      expect(avisoSinRespaldo, findsOneWidget);
+    });
+
+    testWidgets('should be able to open the sheet again after closing it', (tester) async {
+      await abrirSincronizacion(tester, TelefonoSync());
+      await tocar(tester, conectarDriveBoton);
+      await tocar(tester, find.byKey(const Key('drive_ahora_no')));
 
       await tocar(tester, conectarDriveBoton);
 
-      expect(find.text('Conectar Google Drive'), findsOneWidget);
-      expect(toques, 1);
+      expect(hojaConectarDrive, findsOneWidget);
     });
 
     testWidgets('should not warn when a backup is configured', (tester) async {

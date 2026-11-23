@@ -4,8 +4,11 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
+import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/sync/modo_ahorro_providers.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/respaldo/domain/entities/estado_respaldo_drive.dart';
+import 'package:colportores_mobile/features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'package:colportores_mobile/features/sincronizacion/data/repositories/modo_ahorro_repository_impl.dart';
 import 'package:colportores_mobile/features/sincronizacion/domain/entities/estado_sincronizacion.dart';
 import 'package:colportores_mobile/features/sincronizacion/domain/services/servicio_sincronizacion.dart';
@@ -134,7 +137,7 @@ final class TelefonoSync {
     TipoConexion conexion = TipoConexion.wifi,
     bool modoAhorro = false,
     this.respaldoConfigurado = false,
-    this.conectarDrive,
+    this.resultadoDeConectarDrive = const DriveNoQuedoConectado(FailureDriveCancelado()),
     DateTime? ahora,
   }) : servicio = ServicioSincronizacionFalso(actual: estado, fallidas: fallidas),
        red = ConexionFalsa(conexion),
@@ -145,7 +148,10 @@ final class TelefonoSync {
   final ConexionFalsa red;
   final ModoAhorroRepositoryEnMemoria guardado;
   final bool respaldoConfigurado;
-  final VoidCallback? conectarDrive;
+
+  /// Lo que contesta el Drive cuando la persona toca «Conectar con Google» en la hoja del aviso 25-11.
+  final ResultadoConexionDrive resultadoDeConectarDrive;
+  final conexionesDeDrive = <ResultadoConexionDrive>[];
   final DateTime ahora;
 
   List<Override> get overrides => [
@@ -155,8 +161,27 @@ final class TelefonoSync {
     modoAhorroInicialProvider.overrideWithValue(guardado.activo),
     ahoraSincronizacionProvider.overrideWithValue(() => ahora),
     respaldoConfiguradoProvider.overrideWithValue(respaldoConfigurado),
-    conectarDriveProvider.overrideWithValue(conectarDrive),
+    estadoRespaldoDriveProvider.overrideWith(
+      () => _DriveFalso(resultadoDeConectarDrive, conexionesDeDrive),
+    ),
   ];
+}
+
+/// El Drive de la persona: sin conectar, y «Conectar con Google» devuelve [_resultado].
+final class _DriveFalso extends EstadoRespaldoDriveNotifier {
+  _DriveFalso(this._resultado, this._conexiones);
+
+  final ResultadoConexionDrive _resultado;
+  final List<ResultadoConexionDrive> _conexiones;
+
+  @override
+  Future<EstadoRespaldoDrive> build() async => const DriveSinConectar();
+
+  @override
+  Future<ResultadoConexionDrive> conectar({bool conPrimerRespaldo = true}) async {
+    _conexiones.add(_resultado);
+    return _resultado;
+  }
 }
 
 /// Una operación rechazada de ejemplo: «Venta del 22/10».
@@ -216,6 +241,7 @@ final avisoError = find.byKey(const Key('sincronizacion_aviso_error'));
 final avisoAhorro = find.byKey(const Key('sincronizacion_aviso_ahorro'));
 final avisoSinRespaldo = find.byKey(const Key('sincronizacion_aviso_sin_respaldo'));
 final conectarDriveBoton = find.byKey(const Key('sincronizacion_conectar_drive'));
+final hojaConectarDrive = find.byKey(const Key('drive_hoja_conectar'));
 final toastListo = find.byKey(const Key('sincronizacion_listo'));
 final hojaDatos = find.byKey(const Key('sincronizacion_hoja_datos'));
 final hojaDetalle = find.byKey(const Key('sincronizacion_hoja_detalle'));

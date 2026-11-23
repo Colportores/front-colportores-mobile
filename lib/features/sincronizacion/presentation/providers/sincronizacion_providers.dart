@@ -1,12 +1,13 @@
 import 'dart:async';
 
 import 'package:equatable/equatable.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../../respaldo/domain/entities/estado_respaldo_drive.dart';
+import '../../../respaldo/presentation/providers/respaldo_drive_providers.dart';
 import '../../data/repositories/uniones_deshechas_repository_impl.dart';
 import '../../data/services/servicio_sincronizacion_motor.dart';
 import '../../domain/entities/estado_sincronizacion.dart';
@@ -31,15 +32,19 @@ final unionesDeshechasProvider = Provider<UnionesDeshechasRepository>((ref) {
 /// La hora de ahora, para decir «hace 3 min». Los tests la fijan.
 final ahoraSincronizacionProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
-/// Si el teléfono ya tiene respaldo configurado (Google Drive, HU-SYNC-004) o no. Hasta que llegue la
-/// autorización de Drive (#184) y el respaldo (#185) no hay respaldo posible: la pantalla lo dice
-/// («nunca») en vez de ocultarlo.
-final respaldoConfiguradoProvider = Provider<bool>((ref) => false);
-
-/// A dónde lleva «Conectar Google Drive» de la fila de respaldo (la fila «Cuenta Drive» de
-/// Configuración, HU-SYNC-004). `null` mientras esa pantalla no exista: el aviso no ofrece un botón
-/// que no lleva a ningún lado.
-final conectarDriveProvider = Provider<VoidCallback?>((ref) => null);
+/// Si el teléfono ya tiene el respaldo en Google Drive configurado (HU-SYNC-004, #184) o no: lee el
+/// estado de la fila «Cuenta Drive» de Configuración. Sin conectar, o con el permiso quitado
+/// (los respaldos están frenados hasta reconectar), la pantalla lo dice («nunca» y el aviso 25-11) en
+/// vez de ocultarlo. Mientras no se sabe (se está leyendo, o el almacén no se dejó leer) no afirma
+/// nada: no avisa de un respaldo que falta sin haberlo mirado.
+final respaldoConfiguradoProvider = Provider<bool>((ref) {
+  final estado = ref.watch(estadoRespaldoDriveProvider).value;
+  return switch (estado) {
+    null => true,
+    DriveSinConectar() || DrivePermisoRevocado() => false,
+    DriveConectada() || DriveSinEspacio() || DriveCuentaPorConfirmar() => true,
+  };
+});
 
 /// Sin reintento automático: si no se puede leer el estado, la pantalla ofrece «Reintentar».
 Duration? _sinReintentos(int intento, Object error) => null;
