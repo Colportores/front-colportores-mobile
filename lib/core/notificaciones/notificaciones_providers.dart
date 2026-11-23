@@ -30,3 +30,11 @@ final pushRemotasProvider = Provider<PushRemotas>((ref) => PushRemotasEnMemoria(
 final permisoAlarmasExactasProvider = Provider<PermisoAlarmasExactas>(
   (ref) => PermisoAlarmasExactasEnMemoria(),
 );
+
+/// Lo que se hace antes de cerrar la sesión para que el servidor deje de mandarle avisos a este
+/// teléfono (HU-NOT-001, «Token FCM»: «al cerrar sesión se manda vacío»). Tiene que correr con la sesión
+/// todavía válida. Nunca lanza y tarda poco.
+///
+/// El default no hace nada: lo usan los tests y la app sin Supabase. `main.dart` lo reemplaza con
+/// `retirarTokenPush`.
+final retiroTokenPushProvider = Provider<Future<void> Function()>((ref) => () async {});

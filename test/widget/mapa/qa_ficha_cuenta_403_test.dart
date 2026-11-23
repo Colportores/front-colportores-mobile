@@ -34,7 +34,6 @@ import 'ficha_persona_arnes.dart';
 const _tamanos = [Size(360, 640), Size(412, 915)];
 const _escalas = [1.0, 2.0];
 const _nbsp = '\u00A0';
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 var _fuentes = false;
 Future<void> _cargarFuentes(WidgetTester tester) async {
@@ -501,8 +500,6 @@ void main() {
       }
     }
 
-    // skip: QA #403 — «Comprado» se parte en «Comprad/o» a 360×640 al 200 %: el rótulo (`Expanded`) y el
-    // valor (`Flexible`) de `TarjetaCuenta` tienen el mismo `flex` y se reparten el ancho a mitades.
     testWidgets('QA #403: los rótulos de la cuenta no se parten a 360×640 al 200 %', (
       tester,
     ) async {
@@ -514,7 +511,7 @@ void main() {
         expect(parrafo.size.height, lessThan(28 * 1.6), reason: '«$rotulo» en un solo renglón');
       }
       await cerrar(tester);
-    }, skip: !_conHallazgos);
+    });
 
     testWidgets('con lector: la cuenta se lee fila por fila, con su rótulo y su valor', (
       tester,

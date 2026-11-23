@@ -12,8 +12,10 @@ import 'aviso_notificaciones.dart';
 /// y no vuelve a salir en esta instalación. Se va solo si las activa (en los ajustes del teléfono o
 /// desde Configuración).
 ///
-/// Sin nada que mostrar no ocupa lugar. Con muchos renglones (texto al 200 %) ocupa a lo sumo el 40 %
-/// del alto y se desplaza: el contenido de Hoy nunca queda tapado del todo.
+/// Sin nada que mostrar no ocupa lugar. Ocupa a lo sumo el 40 % del alto y, si tiene más, se desplaza:
+/// el contenido de Hoy nunca queda tapado del todo. Con el texto al 130 % o más el tope sube al 55 %,
+/// que es lo que hace falta para que «Ir a configuración» se vea sin desplazar el aviso a 360×640 al
+/// 200 % (QA #413).
 class AvisoNotificacionesApagadas extends ConsumerStatefulWidget {
   const AvisoNotificacionesApagadas({super.key});
 
@@ -41,8 +43,11 @@ class _AvisoNotificacionesApagadasState extends ConsumerState<AvisoNotificacione
       notificacionesProvider.select((estado) => estado.value?.mostrarAviso ?? false),
     );
     if (!mostrar) return const SizedBox.shrink();
+    final textoGrande = MediaQuery.textScalerOf(context).scale(14) / 14 >= 1.3;
     return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.4),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * (textoGrande ? 0.55 : 0.4),
+      ),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
         child: AvisoNotificaciones(

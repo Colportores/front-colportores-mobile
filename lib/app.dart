@@ -40,6 +40,7 @@ import 'features/notificaciones/presentation/providers/conciliacion_recordatorio
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/push_remotas_providers.dart';
 import 'features/notificaciones/presentation/providers/recordatorios_por_baja_providers.dart';
+import 'features/notificaciones/presentation/providers/registro_token_push_providers.dart';
 import 'features/notificaciones/presentation/widgets/aviso_push_en_app.dart';
 import 'features/respaldo/presentation/pages/recuperacion_page.dart';
 import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
@@ -371,6 +372,9 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.watch(conciliacionRecordatoriosProvider);
     // HU-NOT-003: las push remotas se guardan en el historial y, con la app al frente, se avisan.
     ref.watch(escuchaPushRemotasProvider);
+    // HU-NOT-001 («Token FCM»): con el permiso dado, el token del teléfono sube al servidor y se
+    // vuelve a subir si el sistema lo cambia.
+    ref.watch(mantenerTokenPushProvider);
     // HU-NOT-002 («Aviso exacto»): el permiso «Alarmas y recordatorios» se lee al abrir y al volver a la
     // app, y si cambió se reprograman los recordatorios (exactos o no).
     ref.watch(reprogramacionPorAlarmasProvider);

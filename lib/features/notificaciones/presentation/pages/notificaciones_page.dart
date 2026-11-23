@@ -210,10 +210,19 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
     AsyncValue<EstadoAlarmasExactas> alarmas,
     AsyncValue<EstadoPreferenciasRecordatorios> preferencias,
   ) {
-    if (alarmas.value != EstadoAlarmasExactas.apagadas) return const [];
+    // Sin el aviso a la vista, el «No pudimos abrir los ajustes» de un intento viejo se descarta: si
+    // el aviso vuelve, no reaparece sin que la persona toque «Abrir ajustes» de nuevo (QA #510). No es
+    // un cambio que redibuje: ese texto cuelga del aviso y hoy no se ve.
+    if (alarmas.value != EstadoAlarmasExactas.apagadas) {
+      _alarmasNoAbren = false;
+      return const [];
+    }
     // Con «Recordatorios de agenda» apagados no hay recordatorios que lleguen tarde (decidido el
     // 03/11, mapa §2): el aviso vuelve apenas se prenden.
-    if (preferencias.value?.preferencias.activados == false) return const [];
+    if (preferencias.value?.preferencias.activados == false) {
+      _alarmasNoAbren = false;
+      return const [];
+    }
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>() ?? ColoresColportaje.unica;
     return [

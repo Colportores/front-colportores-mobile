@@ -6,11 +6,15 @@ abstract final class ColoresAvisoDeshacer {
   static const texto = Colors.white;
   static const tilde = Color(0xFF9FD3AE);
   static const accion = Color(0xFFB9D3F2);
+
+  /// El «!» de un aviso que dice que algo no se pudo (sobre [fondo], ~8:1).
+  static const falla = Color(0xFFF4A6A0);
 }
 
 /// Claves del aviso, para los tests.
 abstract final class ClavesAvisoDeshacer {
   static const tilde = Key('aviso_deshacer_tilde');
+  static const marcaDeFalla = Key('aviso_deshacer_falla');
   static const texto = Key('aviso_deshacer_texto');
   static const deshacer = Key('aviso_deshacer_accion');
   static const cerrar = Key('aviso_deshacer_cerrar');
@@ -55,7 +59,7 @@ void mostrarAvisoConDeshacer(
   final mensaje = Text(
     texto,
     key: ClavesAvisoDeshacer.texto,
-    style: const TextStyle(fontSize: 13.5, color: ColoresAvisoDeshacer.texto),
+    style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, color: ColoresAvisoDeshacer.texto),
   );
   final contenido = textoGrande
       // Con el texto grande el «✓» no le quita ancho al mensaje (sumaría un renglón y el aviso
@@ -116,6 +120,7 @@ class AvisoDeshacerEnHoja extends StatelessWidget {
     this.alDeshacer,
     this.alCerrar,
     this.etiquetaCerrar = 'Cerrar el aviso',
+    this.esFalla = false,
   });
 
   final String texto;
@@ -127,6 +132,9 @@ class AvisoDeshacerEnHoja extends StatelessWidget {
   /// Muestra la «✕» que lo cierra. `null`: no se puede cerrar a mano (se cierra solo).
   final VoidCallback? alCerrar;
   final String etiquetaCerrar;
+
+  /// El aviso dice que algo no se pudo: lleva el «!» de falla y no el «✓» de «hecho».
+  final bool esFalla;
 
   @override
   Widget build(BuildContext context) {
@@ -141,19 +149,23 @@ class AvisoDeshacerEnHoja extends StatelessWidget {
               disabledForegroundColor: ColoresAvisoDeshacer.accion.withValues(alpha: 0.6),
               minimumSize: const Size(48, 48),
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              textStyle: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             child: Text(etiquetaDeshacer!),
           );
-    const tilde = ExcludeSemantics(
+    final tilde = ExcludeSemantics(
       child: Text(
-        '✓',
-        key: ClavesAvisoDeshacer.tilde,
+        esFalla ? '!' : '✓',
+        key: esFalla ? ClavesAvisoDeshacer.marcaDeFalla : ClavesAvisoDeshacer.tilde,
         style: TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w700,
           height: 1.3,
-          color: ColoresAvisoDeshacer.tilde,
+          color: esFalla ? ColoresAvisoDeshacer.falla : ColoresAvisoDeshacer.tilde,
         ),
       ),
     );
@@ -162,7 +174,11 @@ class AvisoDeshacerEnHoja extends StatelessWidget {
       child: Text(
         texto,
         key: ClavesAvisoDeshacer.texto,
-        style: const TextStyle(fontSize: 13.5, color: ColoresAvisoDeshacer.texto),
+        style: const TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 13.5,
+          color: ColoresAvisoDeshacer.texto,
+        ),
       ),
     );
     final cerrar = alCerrar == null
