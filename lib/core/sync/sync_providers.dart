@@ -130,6 +130,7 @@ final motorSyncProvider = Provider<SyncEngine?>((ref) {
     transporte: ref.watch(transporteSyncProvider),
     conectividad: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
     realtime: ref.watch(realtimeSyncProvider),
+    recalcularCasasAlBajarCobros: true,
   );
   // El modo ahorro de datos (HU-SYNC-008): el motor arranca con lo guardado (el primer ciclo ya
   // puede bajar por datos móviles) y sigue cada cambio de la pantalla de sincronización.
