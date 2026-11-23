@@ -63,6 +63,11 @@ abstract interface class TicketRepository {
   /// si no, [FailureTicketCopiaSinSubir] (borrarla perdería el ticket).
   Future<Either<Failure, Unit>> borrarCopiaLocal(String ticketId);
 
+  /// El ticket [ticketId] con su copia local, ahora y cada vez que cambia (la fila llegó al servidor,
+  /// la foto subió, falló un intento, se borró la copia). `null` si no existe. La pantalla de la
+  /// vista 29 C lo mira para saber si está «subiendo», «subido», «en cola» o con error.
+  Stream<TicketRegistrado?> observarTicket(String ticketId);
+
   /// Los ids de los cobros cuyo ticket todavía no subió su foto: el cobro con «ticket pendiente»
   /// (HU-COB-007, «Sin red»). Se calcula de los tickets, no es una columna.
   Stream<Set<String>> cobrosConTicketPendiente();
