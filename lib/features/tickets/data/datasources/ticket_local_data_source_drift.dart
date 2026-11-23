@@ -154,6 +154,16 @@ final class TicketLocalDataSourceDrift {
       ),
   ];
 
+  /// Ver [TicketRepository.observarTicket].
+  Stream<TicketConFoto?> observarTicket(String ticketId) {
+    final tickets = _db.tickets;
+    final fotos = _db.ticketFotosLocales;
+    final consulta = _db.select(tickets).join([
+      innerJoin(fotos, fotos.ticketId.equalsExp(tickets.id)),
+    ])..where(tickets.id.equals(ticketId) & tickets.deletedAt.isNull());
+    return consulta.watch().map((filas) => _aLista(filas).firstOrNull);
+  }
+
   /// La ruta del archivo de la copia local; `null` si no hay ticket, no hay copia o se borró.
   Future<String?> rutaLocalDe(String ticketId) async {
     final fila = await (_db.select(

@@ -28,8 +28,10 @@ abstract interface class HistorialNotificacionesRepository {
   /// Marca [id] como leída en [ahora]. Si ya estaba leída o no existe, no escribe nada.
   Future<Either<Failure, Unit>> marcarLeida(String id, {required DateTime ahora});
 
-  /// Marca como leídas todas las que siguen sin leer.
-  Future<Either<Failure, Unit>> marcarTodasLeidas({required DateTime ahora});
+  /// Marca como leídas las que siguen sin leer. Con [ids], solo esos avisos: los que la persona
+  /// tenía a la vista con un filtro puesto; lo que llegó después, o lo que el filtro ocultaba, queda
+  /// como estaba. Sin [ids], todos.
+  Future<Either<Failure, Unit>> marcarTodasLeidas({required DateTime ahora, Set<String>? ids});
 
   /// Borra el historial. Con [ids], solo esos avisos: los que la persona tenía a la vista al
   /// confirmar; lo que llegó después (con el menú o la confirmación abiertos) sobrevive, aunque su

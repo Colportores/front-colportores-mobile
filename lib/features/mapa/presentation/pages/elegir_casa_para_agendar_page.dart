@@ -30,8 +30,9 @@ abstract final class ClavesElegirCasaParaAgendar {
 ///
 /// - Una casa dada de baja no se elige (no admite visitas): la lista ya no deja tocarla como casa, su
 ///   fila lleva a «Reactivar» (vista 09·03).
-/// - Un edificio no se elige todavía (el depto se elige antes, #452): avisa lo mismo que «+ Agendar» de
-///   la hoja de la casa.
+/// - Un edificio, o un negocio con más de un espacio, no se elige acá: la cita es de un depto, y el
+///   depto se elige en su hoja (vista 39, C·09). El aviso dice cómo seguir. Un negocio con un solo
+///   espacio va con ese.
 /// - Un segundo toque mientras se resuelve el primero no hace nada.
 class ElegirCasaParaAgendarPage extends StatelessWidget {
   const ElegirCasaParaAgendarPage({super.key, required this.colportorId});
@@ -102,6 +103,11 @@ class _SelectorDeCasaState extends ConsumerState<_SelectorDeCasa> {
       final espacios = lectura.fold((_) => null, (todos) => todos);
       if (espacios == null) {
         _avisar(TextosAgenda.noPudimosAbrir);
+        return;
+      }
+      // Con más de un espacio la app no elige por ella (regla R6, 25/10): el depto lo elige quien agenda.
+      if (espacios.length > 1) {
+        _avisar(TextosRegistrarVisita.edificioSinDeptoParaAgendar);
         return;
       }
       if (espacios.isEmpty) {

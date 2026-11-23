@@ -229,7 +229,7 @@ final class UbicacionCambioException implements Exception {
   String toString() => 'UbicacionCambioException';
 }
 
-/// Se quiso reducir una ubicación a un solo espacio (de `EDIFICIO` a `CASA` o `NEGOCIO`, o de
+/// Se quiso reducir una ubicación a un solo espacio (de `EDIFICIO` a `CASA`, o de
 /// `NEGOCIO` a `CASA`) teniendo [cantidad] espacios activos (dos o más, S17); el repositorio la
 /// traduce a `FailureUbicacionConEspacios`.
 final class UbicacionConEspaciosException implements Exception {

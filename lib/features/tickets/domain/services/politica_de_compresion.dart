@@ -48,6 +48,22 @@ final class PoliticaDeCompresion {
     PasoDeCompresion(ladoMaximo: 1280, calidad: 70),
   ];
 
+  /// Vuelve a comprimir [original] un paso más arriba en la escalera que [actual] («Probar con más
+  /// calidad», cuando el colportor dice que no se lee). Devuelve `null` si [actual] ya es el de más
+  /// calidad, si no se puede leer la imagen o si el resultado no entra en 2 MiB.
+  Future<FotoComprimida?> conMasCalidad(Uint8List original, FotoComprimida actual) async {
+    final i = actual.indiceDelPaso - 1;
+    if (i < 0 || i >= escalera.length) return null;
+    final paso = escalera[i];
+    final bytes = await _compresor.comprimirComoJpeg(
+      original,
+      ladoMaximo: paso.ladoMaximo,
+      calidad: paso.calidad,
+    );
+    if (bytes == null || !ReglasDeTicket.fotoValida(bytes.length)) return null;
+    return FotoComprimida(bytes: bytes, paso: paso, indiceDelPaso: i);
+  }
+
   /// Comprime [original] a partir del paso [desdeElPaso] de la [escalera] (0 = el de más calidad).
   /// Devuelve `null` si no se puede leer como imagen o si ni así entra en 2 MiB.
   Future<FotoComprimida?> comprimir(Uint8List original, {int desdeElPaso = 0}) async {

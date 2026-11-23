@@ -284,6 +284,15 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
       fechaPrevista: entrega.pendiente ? entrega.fecha : null,
     ));
   });
+
+  /// Un cobro del historial: el detalle del cobro (vista 30 B). Al volver, la ficha ya se actualizó sola
+  /// (lee de la base).
+  Future<void> _verElCobro(String cobranzaId) => _unaAlaVez(() async {
+    final ver = ref.read(verCobroDesdeLaFichaProvider);
+    if (ver == null) return;
+    await ver(cobranzaId);
+  });
+
   Future<void> _darDeBaja(FichaDePersona ficha) => _unaAlaVez(() async {
     if (frenaPorCuentaRestringida(context, ref)) return;
     await mostrarHojaBajaPersona(context, persona: ficha.persona);
@@ -530,6 +539,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     final ficha = lectura.asData?.value;
     final ahora = ref.watch(relojPersonaProvider)();
     final editar = ref.watch(editarPersonaDesdeLaFichaProvider);
+    final verCobro = ref.watch(verCobroDesdeLaFichaProvider);
 
     final Widget cuerpo;
     if (lectura.hasError && ficha == null) {
@@ -592,6 +602,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
         alReactivarPersona: () => _reactivarPersona(ficha),
         alReactivarDepto: () => _reactivarDepto(ficha),
         seccionCobranza: _seccionCobranza(ficha),
+        alVerElCobro: verCobro == null ? null : (id) => unawaited(_verElCobro(id)),
       );
     }
 
@@ -793,6 +804,7 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     required this.alReactivarPersona,
     required this.alReactivarDepto,
     required this.seccionCobranza,
+    this.alVerElCobro,
   });
 
   /// «COBRANZA» (22A): dónde se le cobra, al final de la ficha.
@@ -837,6 +849,9 @@ class _CuerpoDeLaFicha extends StatelessWidget {
   final VoidCallback alRegistrarEntrega;
   final VoidCallback alReactivarPersona;
   final VoidCallback alReactivarDepto;
+
+  /// Abre el detalle del cobro tocado del historial; `null` = sin destino.
+  final ValueChanged<String>? alVerElCobro;
 
   @override
   Widget build(BuildContext context) {
@@ -981,6 +996,8 @@ class _CuerpoDeLaFicha extends StatelessWidget {
                     ahora: ahora,
                     alTocar: m is VentaEnFicha && alDevolver != null
                         ? () => alDevolver!(m.id)
+                        : m is CobroEnFicha && alVerElCobro != null
+                        ? () => alVerElCobro!(m.id)
                         : null,
                     // «Entregar» solo con destino y sin solo lectura (32B·04 y 32B·08: no se registra
                     // nada); la entrega pendiente que no se puede entregar queda como tarjeta sin toque.
