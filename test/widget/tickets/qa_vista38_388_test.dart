@@ -306,4 +306,45 @@ void main() {
       skip: !_verHallazgos,
     );
   });
+
+  group('Pago de alquiler devuelto (decisión del 23/11)', () {
+    testWidgets(
+      'Dado que el coordinador me devolvió un pago de alquiler validado, cuando abro «Mis tickets», '
+      'entonces la fila dice «Devuelto» (no «Validado») y el detalle dice que no suma a mi cuenta',
+      (tester) async {
+        final armado = await llegarA388(tester, Estado388.listaConDevuelto);
+        await tester.scrollUntilVisible(
+          fila('dv'),
+          100,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const Key('tickets_lista')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+
+        expect(_enFila('dv', 'Devuelto'), findsOneWidget);
+        expect(_enFila('dv', 'Validado'), findsNothing);
+        final devuelto = historialCon([itemDePrueba('dv', estado: EstadoDelItem.devuelto)]);
+        expect(
+          devuelto.porValidar,
+          0,
+          reason: '«N por validar» de Mi Cuenta no cuenta un pago devuelto',
+        );
+        await soltar388(tester, armado);
+      },
+    );
+
+    testWidgets('el detalle del devuelto explica qué pasó, sin «Cargar de nuevo» ni «Validado»', (
+      tester,
+    ) async {
+      final armado = await llegarA388(tester, Estado388.detalleDevuelto);
+
+      expect(_texto('Tu coordinador te devolvió el pago. No suma a tu cuenta.'), findsOneWidget);
+      expect(_texto('Cargar de nuevo'), findsNothing);
+      expect(_texto('Validado'), findsNothing);
+      await soltar388(tester, armado);
+    });
+  });
 }

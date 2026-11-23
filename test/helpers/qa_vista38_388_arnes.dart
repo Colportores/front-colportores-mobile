@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:colportores_mobile/features/depositos/domain/entities/deposito.dart';
 import 'package:colportores_mobile/features/tickets/domain/entities/item_del_historial.dart';
 import 'package:colportores_mobile/features/tickets/domain/services/visor_de_fotos.dart';
 import 'package:colportores_mobile/features/tickets/presentation/providers/tickets_providers.dart';
@@ -88,6 +89,8 @@ enum Estado388 {
   fotoRechazada,
   fotoCargando,
   cuentaConLaFila,
+  listaConDevuelto,
+  detalleDevuelto,
 }
 
 const _motivoLargo =
@@ -98,6 +101,15 @@ final _hoy = hoyDelHistorial;
 
 ItemDelHistorial _fotoDeNube(String id, {bool subida = true}) =>
     itemDePrueba(id, fotoSubida: subida, hayCopiaLocal: false);
+
+/// Un pago de alquiler que el coordinador validó y después devolvió (`anulado_at`, #388 23/11).
+ItemDelHistorial _devuelto() => itemDePrueba(
+  'dv',
+  fecha: DateTime.utc(2026, 10, 12, 15),
+  pesos: 3000,
+  concepto: ConceptoDeDeposito.alquiler,
+  estado: EstadoDelItem.devuelto,
+);
 
 /// Lo que el estado necesita para armar el historial, la pantalla del arnés y el visor.
 ({HistorialControlable repo, ArnesDeDeposito arnes, VisorDeFotosDeTicket visor, String? abrirFila})
@@ -217,6 +229,11 @@ _receta(Estado388 e) {
       visor = VisorLento388();
       repo = HistorialControlable(inicial: historialCon([_fotoDeNube('d1')]));
       abrir = 'd1';
+    case Estado388.listaConDevuelto:
+      repo = HistorialControlable(inicial: historialCon([...filasDelCanvas(), _devuelto()]));
+    case Estado388.detalleDevuelto:
+      repo = HistorialControlable(inicial: historialCon([_devuelto()]));
+      abrir = 'dv';
   }
   return (repo: repo, arnes: arnes, visor: visor, abrirFila: abrir);
 }
