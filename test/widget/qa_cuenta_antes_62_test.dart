@@ -314,4 +314,52 @@ void main() {
       expect(terminadas, 1);
     });
   });
+
+  group('ronda 2: el aviso al tocar «Iniciar jornada» siempre queda a la vista', () {
+    for (final (nombre, ancho, alto, escala) in tamanos) {
+      for (final enInicio in [false, true]) {
+        testWidgets('${enInicio ? '«Inicio»' : '«Hoy»'} · $nombre: aviso entero en pantalla o '
+            'la vista llega al aviso fijo, sin apilar avisos', (tester) async {
+          final m = Mundo(campanias: [porEmpezar()]);
+          if (enInicio) {
+            await montarInicio(tester, m, ancho: ancho, alto: alto, escala: escala);
+          } else {
+            await montarHoy(tester, m, ancho: ancho, alto: alto, escala: escala);
+          }
+          await tocarIniciar(tester);
+          expect(tester.takeException(), isNull);
+
+          if (snack.evaluate().isNotEmpty) {
+            final r = tester.getRect(snack);
+            expect(r.top, greaterThanOrEqualTo(0));
+            expect(
+              r.bottom,
+              lessThanOrEqualTo(alto + 0.5),
+              reason: 'el aviso se sale de la pantalla',
+            );
+            expect(r.left, greaterThanOrEqualTo(0));
+            expect(r.right, lessThanOrEqualTo(ancho + 0.5));
+          } else {
+            final r = tester.getRect(avisoFijo);
+            expect(
+              r.top,
+              greaterThanOrEqualTo(0),
+              reason: 'el aviso fijo quedó arriba, fuera de vista',
+            );
+            expect(r.top, lessThan(alto));
+          }
+          expect(m.jornadas.jornadas, isEmpty, reason: 'no se inició la jornada');
+
+          // Un segundo toque (si el aviso de abajo no lo tapa) no deja el botón trabado ni apila avisos.
+          await tester.ensureVisible(iniciar);
+          await tester.tap(iniciar, warnIfMissed: false);
+          await asentar(tester);
+          await tester.pump(const Duration(milliseconds: 400));
+          expect(tester.takeException(), isNull);
+          expect(snack.evaluate().length, lessThanOrEqualTo(1));
+          expect(m.jornadas.jornadas, isEmpty);
+        });
+      }
+    }
+  });
 }
