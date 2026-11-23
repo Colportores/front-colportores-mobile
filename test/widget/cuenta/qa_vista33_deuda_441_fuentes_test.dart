@@ -6,6 +6,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/pages/deuda_casa_page.dart';
 import 'package:flutter/material.dart';
@@ -28,13 +29,16 @@ void main() {
             'reales${_capturar ? ' (y captura)' : ''}', (tester) async {
           await cargarFuentesReales(tester);
           final raiz = GlobalKey();
-          await repoEnEstado(tester, estado, (repo) async {
+          await repoEnEstado(tester, estado, (repo, conexion) async {
             tester.view.physicalSize = t.value;
             tester.view.devicePixelRatio = 1;
             addTearDown(tester.view.reset);
             await tester.pumpWidget(
               ProviderScope(
-                overrides: overridesDeDeuda(repo),
+                overrides: [
+                  ...overridesDeDeuda(repo),
+                  monitorConectividadProvider.overrideWithValue(ConexionFija(conexion)),
+                ],
                 child: RepaintBoundary(
                   key: raiz,
                   child: MaterialApp(

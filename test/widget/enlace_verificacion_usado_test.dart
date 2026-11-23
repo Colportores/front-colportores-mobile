@@ -36,6 +36,7 @@ Future<AuthRemoteDataSourceEnMemoria> _remotoPendiente({bool confirmada = false}
     cedula: '12345678',
     email: _correo,
     password: _clave,
+    terminosVersion: 'v1',
   );
   if (confirmada) remote.confirmarEmail(_correo);
   return remote;

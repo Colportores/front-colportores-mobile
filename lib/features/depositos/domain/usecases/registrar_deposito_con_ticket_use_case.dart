@@ -26,6 +26,7 @@ final class RegistrarDepositoConTicketParams extends Equatable {
     this.foto,
     this.tipoDeImagen = TipoDeImagen.jpeg,
     this.referencia,
+    this.tarjetaTipo,
   });
 
   /// El id del depósito y el de su ticket: los genera la pantalla al registrar y los repite en los
@@ -54,6 +55,9 @@ final class RegistrarDepositoConTicketParams extends Equatable {
   /// El número de operación del ticket (la «referencia» de HU-CTA-004), opcional.
   final String? referencia;
 
+  /// Crédito o débito si el depósito se hizo con tarjeta (38A-01, «Tarjeta»); `null` = «No».
+  final TipoDeTarjeta? tarjetaTipo;
+
   @override
   List<Object?> get props => [
     depositoId,
@@ -67,6 +71,7 @@ final class RegistrarDepositoConTicketParams extends Equatable {
     foto,
     tipoDeImagen,
     referencia,
+    tarjetaTipo,
   ];
 }
 
@@ -146,6 +151,7 @@ final class RegistrarDepositoConTicketUseCase
               tipoDeImagen: params.tipoDeImagen,
               fecha: fecha,
               numeroAutorizacion: params.referencia,
+              tarjetaTipo: params.tarjetaTipo,
             ),
           );
           switch (ticket) {

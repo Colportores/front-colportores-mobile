@@ -46,6 +46,7 @@ final class _RemoteQueLanzaExcepcionGenerica
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) async {
     throw Exception('boom');
   }
@@ -112,6 +113,7 @@ final class _RemoteConSesionRecordada
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) => throw UnimplementedError();
 
   @override
@@ -153,6 +155,7 @@ final class _RemoteQueLanzaEnRegistrar
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) async => throw excepcion;
 
   @override
@@ -214,12 +217,14 @@ final class _RemoteConTokenRenovado with RemotoSinSesionDeslizante implements Au
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) => interno.registrar(
     nombre: nombre,
     apellido: apellido,
     cedula: cedula,
     email: email,
     password: password,
+    terminosVersion: terminosVersion,
   );
 
   @override
@@ -267,6 +272,7 @@ final class _RemoteQueFallaAlRenovar
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) => throw UnimplementedError();
 
   @override
@@ -454,6 +460,7 @@ void main() {
           cedula: '12345678',
           email: 'bruno@example.com',
           password: 'Secreto123',
+          terminosVersion: 'v1',
         );
 
         expect(resultado.isRight(), isTrue);
@@ -482,6 +489,7 @@ void main() {
           cedula: '12345678',
           email: 'bruno@example.com',
           password: 'Secreto123',
+          terminosVersion: 'v1',
         );
 
         final resultado = await repository.iniciarSesion(
@@ -501,6 +509,7 @@ void main() {
           cedula: '12345678',
           email: 'ana@example.com',
           password: 'OtraSecreta1',
+          terminosVersion: 'v1',
         );
 
         expect(resultado, const Left<Failure, ResultadoRegistro>(FailureEmailYaRegistrado()));
@@ -518,6 +527,7 @@ void main() {
           cedula: '12345678',
           email: 'bruno@example.com',
           password: 'Secreto123',
+          terminosVersion: 'v1',
         );
 
         expect(resultado, const Left<Failure, ResultadoRegistro>(FailureSinConexion()));
@@ -542,6 +552,7 @@ void main() {
           cedula: '12345678',
           email: 'bruno@example.com',
           password: 'Secreto123',
+          terminosVersion: 'v1',
         );
 
         expect(resultado.isRight(), isTrue);
@@ -569,6 +580,7 @@ void main() {
           cedula: '12345678',
           email: 'bruno@example.com',
           password: 'Secreto123',
+          terminosVersion: 'v1',
         );
 
         final antes = await repositoryPendiente.iniciarSesion(
@@ -601,6 +613,7 @@ void main() {
           cedula: '12345678',
           email: 'bruno@example.com',
           password: 'debil',
+          terminosVersion: 'v1',
         );
 
         expect(
@@ -628,6 +641,7 @@ void main() {
             cedula: '12345678',
             email: 'bruno@example.com',
             password: 'Aa1${'x' * 80}',
+            terminosVersion: 'v1',
           );
 
           expect(
@@ -654,6 +668,7 @@ void main() {
           cedula: '12345678',
           email: 'bruno@example.com',
           password: 'Secreto123',
+          terminosVersion: 'v1',
         );
 
         expect(resultado.isLeft(), isTrue);
@@ -679,6 +694,7 @@ void main() {
           cedula: '12345678',
           email: 'bruno@example.com',
           password: 'Secreto123',
+          terminosVersion: 'v1',
         );
 
         expect(resultado, const Left<Failure, ResultadoRegistro>(FailureServidor(status: 503)));
@@ -1017,6 +1033,7 @@ void main() {
         cedula: '12345678',
         email: 'lucia@gmial.com',
         password: 'Secreto123',
+        terminosVersion: 'v1',
       );
 
       expect(resultado, const Left<Failure, ResultadoRegistro>(aviso));

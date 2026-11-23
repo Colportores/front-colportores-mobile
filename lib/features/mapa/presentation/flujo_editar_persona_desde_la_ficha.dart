@@ -63,9 +63,9 @@ abstract final class FlujoEditarPersonaDesdeLaFicha {
       mensajero,
       mediaQuery: mediaQuery,
       texto: baja is PersonaBajaRealizada
-          ? TextosPersonas.guardada(nueva.nombre)
+          ? TextosPersonas.guardada(nueva.persona.nombre)
           : TextosPersonas.nuevaGuardadaSinLaBaja(
-              nueva: nueva.nombre,
+              nueva: nueva.persona.nombre,
               original: FormatoBajaPersona.nombreDePila(resultado.original),
             ),
     );

@@ -90,8 +90,16 @@ class PersonaRepositorioFalso implements PersonaRepository {
     return Right(persona);
   }
 
+  /// Si es `true`, [observarDelEspacio] falla (la lectura del espacio no anda) y cuenta el intento.
+  var fallaAlObservar = false;
+  var lecturasFallidasDelEspacio = 0;
+
   @override
   Stream<List<PersonaDelEspacio>> observarDelEspacio(String espacioId) async* {
+    if (fallaAlObservar) {
+      lecturasFallidasDelEspacio++;
+      throw StateError('no se pudo leer el espacio');
+    }
     bool activaDeEsteEspacio(PersonaDelEspacio g) =>
         g.vinculo.espacioId == espacioId && !g.persona.estaBorrada;
     yield List.unmodifiable(_guardadas.where(activaDeEsteEspacio));

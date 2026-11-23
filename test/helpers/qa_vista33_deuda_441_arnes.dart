@@ -5,7 +5,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
-import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/deuda_con_la_casa.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/resumen_de_cuenta.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
@@ -25,16 +24,16 @@ final class QaConexion implements MonitorConectividad {
   Stream<TipoConexion> get cambios => const Stream.empty();
 }
 
-/// Los estados de 33B que se recorren en la matriz. Cada uno deja al repositorio como lo dejaría el
-/// servidor en ese caso.
+/// Los estados de 33B que se recorren en la matriz. Cada uno deja al repositorio como lo dejaría lo que
+/// bajó con la sincronización en ese caso (la deuda se cuenta en el teléfono, #671).
 enum EstadoQa33B {
   conDeuda,
   sinDeuda,
   error,
-  errorSinConexion,
+  sinSincronizarNunca,
   cargando,
   sinConexionConGuardada,
-  servidorCaidoConGuardada,
+  baseFallaConGuardada,
   aFavor,
   saldosNoDanElTotal,
   hostil,
@@ -62,19 +61,23 @@ DeudaConLaCasa deudaHostil() => deuda(
   ],
 );
 
-/// Arma el repositorio de [estado] y lo deja en ese estado, ya pintado.
+/// Arma el repositorio de [estado] y lo deja en ese estado, ya pintado. [montar] recibe el repositorio y
+/// la conexión del teléfono que pide el estado (sin conexión solo en [EstadoQa33B.sinConexionConGuardada]).
 Future<RepositorioDeDeudaControlable> repoEnEstado(
   WidgetTester tester,
   EstadoQa33B estado,
-  Future<void> Function(RepositorioDeDeudaControlable repo) montar,
+  Future<void> Function(RepositorioDeDeudaControlable repo, TipoConexion conexion) montar,
 ) async {
   final ayer = DateTime(2026, 11, 3, 21);
   final repo = switch (estado) {
-    EstadoQa33B.sinConexionConGuardada || EstadoQa33B.servidorCaidoConGuardada =>
+    EstadoQa33B.sinConexionConGuardada || EstadoQa33B.baseFallaConGuardada =>
       RepositorioDeDeudaControlable(guardada: lectura(deudaDelCanvas, leidaEn: ayer)),
     _ => RepositorioDeDeudaControlable(),
   };
-  await montar(repo);
+  await montar(
+    repo,
+    estado == EstadoQa33B.sinConexionConGuardada ? TipoConexion.sinConexion : TipoConexion.wifi,
+  );
   Future<void> asentar() async {
     await tester.pump();
     await tester.pump();
@@ -92,13 +95,15 @@ Future<RepositorioDeDeudaControlable> repoEnEstado(
     case EstadoQa33B.error:
       repo.fallar();
       await asentar();
-    case EstadoQa33B.errorSinConexion:
-      repo.fallar(const FailureDeudaSinConexion());
+    case EstadoQa33B.sinSincronizarNunca:
+      repo.sinSincronizar();
       await asentar();
     case EstadoQa33B.sinConexionConGuardada:
-      repo.fallar(const FailureDeudaSinConexion());
+      // Ya se leyó lo bajado; la conexión del teléfono (sin red) pone el aviso con su hora.
       await asentar();
-    case EstadoQa33B.servidorCaidoConGuardada:
+    case EstadoQa33B.baseFallaConGuardada:
+      // Al volver a leer lo bajado, la base falla: queda lo último con su aviso y «Reintentar».
+      await releerDeuda(tester);
       repo.fallar();
       await asentar();
     case EstadoQa33B.aFavor:
@@ -177,9 +182,9 @@ Future<RepositorioDeDeudaControlable> montarCuentaEnEstado(
     case EstadoQa33A.sinDeuda:
       repo.responder(lectura(deuda(total: 0)));
     case EstadoQa33A.sinNadaLeido:
-      repo.fallar(const FailureDeudaSinConexion());
+      repo.sinSincronizar();
     case EstadoQa33A.sinConexion:
-      repo.fallar(const FailureDeudaSinConexion());
+      break;
   }
   await tester.pump();
   await tester.pump();

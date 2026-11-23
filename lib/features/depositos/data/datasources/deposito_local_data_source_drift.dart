@@ -46,7 +46,7 @@ final class DepositoLocalDataSourceDrift {
     if (existente != null) {
       // Un segundo toque o un reintento con el mismo id: no se escribe nada y la respuesta dice lo
       // mismo que la primera.
-      return DepositoRegistrado(deposito: _aDeposito(existente), yaEstaba: true);
+      return DepositoRegistrado(deposito: aDeposito(existente), yaEstaba: true);
     }
 
     final ticketId = deposito.ticketId;
@@ -80,7 +80,7 @@ final class DepositoLocalDataSourceDrift {
             ..where((d) => d.deletedAt.isNull())
             ..orderBy([(d) => OrderingTerm.desc(d.fecha), (d) => OrderingTerm.desc(d.id)]))
           .watch()
-          .map((filas) => [for (final fila in filas) _aDeposito(fila)]);
+          .map((filas) => [for (final fila in filas) aDeposito(fila)]);
 
   /// Ver [DepositoRepository.totales].
   Future<TotalesDeDepositos> totales() => TotalesDeDepositosDrift(_db).leer();
@@ -92,10 +92,10 @@ final class DepositoLocalDataSourceDrift {
               ..where((d) => d.deletedAt.isNull())
               ..orderBy([(d) => OrderingTerm.desc(d.fecha), (d) => OrderingTerm.desc(d.id)]))
             .get();
-    return [for (final fila in filas) _aDeposito(fila)];
+    return [for (final fila in filas) aDeposito(fila)];
   }
 
-  static Deposito _aDeposito(DepositoFila fila) => Deposito(
+  static Deposito aDeposito(DepositoFila fila) => Deposito(
     id: fila.id,
     montoCentavos: fila.monto,
     fecha: fila.fecha,
@@ -107,6 +107,7 @@ final class DepositoLocalDataSourceDrift {
     validadoPor: fila.validadoPor,
     rechazadoEn: fila.rechazadoEn,
     motivoRechazo: fila.motivoRechazo,
+    anuladoAt: fila.anuladoAt,
     auditoria: Auditoria(
       createdAt: fila.createdAt,
       updatedAt: fila.updatedAt,

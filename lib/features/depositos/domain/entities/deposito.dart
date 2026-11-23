@@ -62,10 +62,12 @@ class Deposito extends Equatable {
     this.validadoPor,
     DateTime? rechazadoEn,
     this.motivoRechazo,
+    DateTime? anuladoAt,
     required this.auditoria,
   }) : fecha = instanteMs(fecha),
        validadoEn = validadoEn == null ? null : instanteMs(validadoEn),
-       rechazadoEn = rechazadoEn == null ? null : instanteMs(rechazadoEn);
+       rechazadoEn = rechazadoEn == null ? null : instanteMs(rechazadoEn),
+       anuladoAt = anuladoAt == null ? null : instanteMs(anuladoAt);
 
   final String id;
 
@@ -96,6 +98,11 @@ class Deposito extends Equatable {
 
   /// Por qué lo rechazó, con las palabras del coordinador. Texto libre: nunca va a un log.
   final String? motivoRechazo;
+
+  /// Cuándo le devolvió el coordinador la plata de un pago de alquiler ya validado (UTC); `null` si no
+  /// se devolvió (`anulado_at`, 0167). Lo pone el servidor. Un depósito anulado no suma a nada: es
+  /// historia.
+  final DateTime? anuladoAt;
 
   final Auditoria auditoria;
 
@@ -129,6 +136,7 @@ class Deposito extends Equatable {
     validadoPor,
     rechazadoEn,
     motivoRechazo,
+    anuladoAt,
     auditoria,
   ];
 }

@@ -47,6 +47,7 @@ import 'generated/schema_v38.dart' as v38;
 import 'generated/schema_v39.dart' as v39;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v40.dart' as v40;
+import 'generated/schema_v41.dart' as v41;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
@@ -2598,4 +2599,79 @@ void main() {
       );
     },
   );
+
+  test('dado lo guardado en la versión 40, cuando migra a la 41, se conserva todo, aparecen las cuatro '
+      'réplicas de la deuda vacías y se quita `deuda_casa_cache` (#671)', () async {
+    // #671: la deuda con la casa editora baja con la sincronización. Se crean `cuenta_colportor`,
+    // `cuenta_deuda_historial`, `pedido_casa_editora` y `pedido_item`, vacías (las llena el pull), y se
+    // quita `deuda_casa_cache`, la última respuesta de la RPC. Un depósito, la cola y los watermarks no se
+    // tocan: lo que esperaba subir sigue esperando (convenciones §9).
+    const job = v40.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'deposito',
+      op: 'insert',
+      payload: '{"id":"d-1"}',
+      rowPk: 'd-1',
+      createdAt: 1758700000000,
+      state: 'PENDING',
+      code: '',
+      message: '',
+    );
+    const watermark = v40.SyncWatermarkData(scope: 'mirror', watermark: 'w-1');
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 40,
+      newVersion: 41,
+      createOld: v40.DatabaseAtV40.new,
+      createNew: v41.DatabaseAtV41.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.syncQueue, job)
+          ..insert(viejo.syncWatermark, watermark)
+          ..insertAll(viejo.syncMeta, [
+            const v40.SyncMetaData(clave: 'last_pull_at', valor: '2026-11-20T12:00:00.000Z'),
+            const v40.SyncMetaData(clave: 'last_backup_at', valor: '2026-11-19T12:00:00.000Z'),
+          ]);
+      },
+      validateItems: (nuevo) async {
+        final jobs = await nuevo.select(nuevo.syncQueue).get();
+        expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+        final marcas = await nuevo.select(nuevo.syncWatermark).get();
+        expect(marcas.map((w) => w.toJson()), [watermark.toJson()]);
+
+        // La fecha de la última bajada se borra (las réplicas de la deuda todavía no bajaron: sin esto la
+        // tarjeta diría «$ 0» en vez de «todavía no sé»); lo demás de `sync_meta` queda.
+        final meta = await nuevo.select(nuevo.syncMeta).get();
+        expect(meta.map((f) => f.clave), ['last_backup_at']);
+
+        expect(await nuevo.select(nuevo.cuentaColportor).get(), isEmpty);
+        expect(await nuevo.select(nuevo.cuentaDeudaHistorial).get(), isEmpty);
+        expect(await nuevo.select(nuevo.pedidoCasaEditora).get(), isEmpty);
+        expect(await nuevo.select(nuevo.pedidoItem).get(), isEmpty);
+
+        await nuevo.customStatement(
+          'INSERT INTO cuenta_colportor (id, usuario_id, deuda_total, created_at, updated_at) '
+          "VALUES ('cu-1', 'col-1', -500, 1, 1)",
+        );
+        final cuenta = await nuevo.select(nuevo.cuentaColportor).getSingle();
+        expect(cuenta.deudaTotal, -500, reason: 'la deuda puede quedar a favor');
+        expect(cuenta.syncVersion, 0);
+
+        await nuevo.customStatement(
+          'INSERT INTO pedido_casa_editora (id, colportor_id, fecha_pedido, estado, created_at, updated_at) '
+          "VALUES ('pe-1', 'col-1', 1, 'AUTORIZADO', 1, 1)",
+        );
+        final pedido = await nuevo.select(nuevo.pedidoCasaEditora).getSingle();
+        expect(pedido.montoAutorizado, isNull, reason: 'null = todavía no se decidió');
+        expect(pedido.origen, 'COLPORTOR');
+
+        final tablas =
+            (await nuevo.customSelect("SELECT name FROM sqlite_master WHERE type = 'table'").get())
+                .map((f) => f.read<String>('name'));
+        expect(tablas, isNot(contains('deuda_casa_cache')));
+      },
+    );
+  });
 }

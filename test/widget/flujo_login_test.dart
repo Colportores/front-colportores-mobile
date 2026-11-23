@@ -34,6 +34,7 @@ final class _RemoteQueLanzaAlIniciar
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) => throw UnimplementedError();
 
   @override

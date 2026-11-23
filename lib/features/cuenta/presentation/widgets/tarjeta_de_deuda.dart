@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/conectividad/conectividad_providers.dart';
+import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../pages/deuda_casa_page.dart';
 import '../providers/deuda_casa_providers.dart';
 import '../textos_deuda.dart';
 import 'piezas_cuenta.dart';
 
-/// La tarjeta «Deuda con la casa editora» de Mi Cuenta (33A·01): el total que dijo el servidor por
-/// última vez y un toque que abre el detalle por pedido (33B).
+/// La tarjeta «Deuda con la casa editora» de Mi Cuenta (33A·01): el total que el teléfono cuenta con lo que
+/// bajó con la sincronización y un toque que abre el detalle por pedido (33B).
 ///
 /// Debajo del total va cuánto cambió contra la semana pasada, con la deuda de hace 7 días que registra
-/// el servidor (33A·01: «▼ $ 2.100 contra la semana pasada»; sin ese dato, «Sin datos de la semana
+/// el servidor y baja con la sincronización (33A·01: «▼ $ 2.100 contra la semana pasada»; sin ese dato, «Sin datos de la semana
 /// anterior»).
 ///
-/// Si todavía no llegó nada (primera vez) no se dibuja una cifra: solo el rótulo, y una línea gris que
+/// Si todavía no bajó nada (primera vez) no se dibuja una cifra: solo el rótulo, y una línea gris que
 /// dice por qué (decisión del orquestador, 04/11, por el mapa: estados que no se saben): leyendo, el
-/// bloque gris de 33A·03; sin conexión, que hace falta; con la red y una falla, que no se pudo. El
-/// toque lleva al detalle, que lo explica y ofrece «Reintentar».
+/// bloque gris de 33A·03; sin sincronizar nunca, que hace falta conexión (o, con conexión, que los datos
+/// se están bajando); si no se pudo leer, que no se pudo. El toque lleva al detalle, que lo explica y
+/// ofrece «Reintentar».
 class TarjetaDeDeuda extends ConsumerStatefulWidget {
   const TarjetaDeDeuda({super.key, required this.colportorId});
 
@@ -45,7 +48,8 @@ class _TarjetaDeDeudaState extends ConsumerState<TarjetaDeDeuda> {
   Widget build(BuildContext context) {
     final estado = ref.watch(deudaConLaCasaProvider(widget.colportorId));
     final deuda = estado.lectura?.deuda;
-    final sinLectura = deuda == null ? _lineaSinLectura(estado) : null;
+    final sinRed = ref.watch(conexionProvider).value == TipoConexion.sinConexion;
+    final sinLectura = deuda == null ? _lineaSinLectura(estado, sinRed: sinRed) : null;
     final aFavor = deuda?.aFavor ?? false;
     final monto = deuda == null ? null : FormatoDeuda.total(deuda);
     final String etiqueta;
@@ -158,11 +162,11 @@ class _TarjetaDeDeudaState extends ConsumerState<TarjetaDeDeuda> {
 
   /// La línea gris de la tarjeta sin lectura, o `null` si no hay nada que decir (no se está pidiendo
   /// ni falló: no pasa en la práctica, pero entonces queda solo el rótulo, como antes).
-  static _LineaSinLectura? _lineaSinLectura(EstadoDeLaDeuda estado) {
+  static _LineaSinLectura? _lineaSinLectura(EstadoDeLaDeuda estado, {required bool sinRed}) {
     final fallo = estado.fallo;
     if (fallo != null) {
       final texto = fallo == FalloDeLaDeuda.sinConexion
-          ? TextosDeuda.necesitasConexion
+          ? TextosDeuda.sinNadaBajado(sinConexion: sinRed)
           : TextosDeuda.tarjetaNoDisponible;
       return _LineaSinLectura(
         hablado: texto,
