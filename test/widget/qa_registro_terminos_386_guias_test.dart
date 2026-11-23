@@ -42,6 +42,26 @@ void main() {
           semantica.dispose();
         },
       );
+
+      testWidgets(
+        'tamaño de toque, etiquetas y contraste con el aviso «no pudimos abrir» y su «Copiar» '
+        '($nombreTam, texto ${escala}x)',
+        (tester) async {
+          final semantica = tester.ensureSemantics();
+          abridor.resultado = false;
+          await montar386(tester, tamanio: tam, abridor: abridor, monitor: monitor, escala: escala);
+          await tocarEnlace386(tester);
+          expect(find.text('Copiar'), findsOneWidget);
+          await tester.drag(find.byType(Scrollable).first, const Offset(0, 5000));
+          await tester.pump();
+
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(textContrastGuideline));
+          semantica.dispose();
+        },
+      );
     }
   }
 }

@@ -22,6 +22,26 @@ import '../helpers/qa_registro_terminos_386_arnes.dart';
 const _tamanios = <(String, Size)>[('360x640', Size(360, 640)), ('412x915', Size(412, 915))];
 const _escalas = <double>[1, 2];
 
+/// Portapapeles de prueba: devuelve lo que la app va copiando.
+List<String> _simularPortapapeles(WidgetTester tester) {
+  final copiados = <String>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (
+    call,
+  ) async {
+    if (call.method == 'Clipboard.setData') {
+      copiados.add((call.arguments as Map<Object?, Object?>)['text']! as String);
+    }
+    return null;
+  });
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    ),
+  );
+  return copiados;
+}
+
 void main() {
   late AbridorFalso386 abridor;
   late MonitorFalso386 monitor;
@@ -85,47 +105,97 @@ void main() {
   });
 
   group('Decisión del agente de decisiones (23/11): aviso cuando no se puede abrir', () {
-    testWidgets(
-      'el aviso dice qué pasó y dónde leerlos, con la dirección de la v1',
-      (tester) async {
-        abridor.resultado = false;
-        await montar386(tester, tamanio: const Size(412, 915), abridor: abridor, monitor: monitor);
+    testWidgets('el aviso dice qué pasó y dónde leerlos, con la dirección de la v1', (
+      tester,
+    ) async {
+      abridor.resultado = false;
+      await montar386(tester, tamanio: const Size(412, 915), abridor: abridor, monitor: monitor);
 
-        await tocarEnlace386(tester);
+      await tocarEnlace386(tester);
 
-        expect(find.text(avisoDecidido386), findsOneWidget);
-      },
-      skip:
-          true, // skip: QA #386: el aviso sigue con el texto propuesto «…Probá de nuevo en unos minutos.»; la decisión del 23/11 fijó «…Podés leerlos en colportores.github.io/terminos/v1»
-    );
+      expect(find.text(avisoDecidido386), findsOneWidget);
+    });
 
-    testWidgets(
-      'la dirección del aviso se puede seleccionar y copiar',
-      (tester) async {
-        abridor.resultado = false;
-        await montar386(tester, tamanio: const Size(412, 915), abridor: abridor, monitor: monitor);
+    testWidgets('la dirección del aviso se puede seleccionar y copiar', (tester) async {
+      abridor.resultado = false;
+      await montar386(tester, tamanio: const Size(412, 915), abridor: abridor, monitor: monitor);
 
-        await tocarEnlace386(tester);
+      await tocarEnlace386(tester);
 
-        final seleccionable = find.descendant(
-          of: find.byType(SnackBar),
-          matching: find.byWidgetPredicate(
-            (w) => w is SelectableText || w is SelectionArea || w is SelectionContainer,
-          ),
+      final seleccionable = find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.byWidgetPredicate(
+          (w) => w is SelectableText || w is SelectionArea || w is SelectionContainer,
+        ),
+      );
+      expect(seleccionable, findsWidgets);
+    });
+
+    test('la constante del aviso coincide con la decisión', () {
+      expect(TerminosDeUso.avisoNoSeAbrio, avisoDecidido386);
+    });
+  });
+
+  group('Aviso «Copiar» de la dirección', () {
+    testWidgets('«Copiar» deja la dirección completa en el portapapeles y confirma', (
+      tester,
+    ) async {
+      final copiados = _simularPortapapeles(tester);
+      abridor.resultado = false;
+      await montar386(tester, tamanio: const Size(412, 915), abridor: abridor, monitor: monitor);
+      await tocarEnlace386(tester);
+
+      await tester.tap(find.text('Copiar'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(copiados, ['https://colportores.github.io/terminos/v1/']);
+      expect(find.text('Dirección copiada.'), findsOneWidget);
+      expect(find.text(avisoDecidido386), findsNothing);
+    });
+
+    testWidgets('el aviso dura lo suficiente para leerlo y copiar (más de 4 s)', (tester) async {
+      abridor.resultado = false;
+      await montar386(tester, tamanio: const Size(412, 915), abridor: abridor, monitor: monitor);
+      await tocarEnlace386(tester);
+
+      await tester.pump(const Duration(seconds: 6));
+
+      expect(find.text(avisoDecidido386, findRichText: true), findsOneWidget);
+    });
+
+    for (final (nombreTam, tam) in _tamanios) {
+      for (final escala in _escalas) {
+        testWidgets(
+          '«Copiar» y el texto quedan enteros y tocables ($nombreTam, texto ${escala}x)',
+          (tester) async {
+            _simularPortapapeles(tester);
+            abridor.resultado = false;
+            await montar386(
+              tester,
+              tamanio: tam,
+              abridor: abridor,
+              monitor: monitor,
+              escala: escala,
+            );
+            await tocarEnlace386(tester);
+
+            expect(find.text('Copiar'), findsOneWidget);
+            final boton = tester.getRect(find.text('Copiar'));
+            final pantalla = Offset.zero & tam;
+            expect(
+              pantalla.contains(boton.topLeft) && pantalla.contains(boton.bottomRight),
+              isTrue,
+            );
+            expect(tester.takeException(), isNull);
+            await tester.tap(find.text('Copiar'));
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 400));
+            expect(find.text('Dirección copiada.'), findsOneWidget);
+          },
         );
-        expect(seleccionable, findsWidgets);
-      },
-      skip:
-          true, // skip: QA #386: la decisión del 23/11 pide la dirección «seleccionable»; el aviso es un Text plano en un SnackBar de 4 s
-    );
-
-    test(
-      'la constante del aviso coincide con la decisión',
-      () {
-        expect(TerminosDeUso.avisoNoSeAbrio, avisoDecidido386);
-      },
-      skip: 'QA #386: TerminosDeUso.avisoNoSeAbrio conserva el texto propuesto, no el decidido',
-    );
+      }
+    }
   });
 
   group('Lo tipeado y la casilla no se pierden al tocar el enlace', () {
