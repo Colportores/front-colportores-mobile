@@ -79,6 +79,7 @@ class RegistrarDepositoPage extends ConsumerStatefulWidget {
 
   /// Se abrió desde «Mis tickets»: el éxito no ofrece «Ver mis tickets», que ya está debajo.
   final bool desdeMisTickets;
+
   /// Para qué es el dinero al abrir: «Mi alquiler» lo abre en [ConceptoDeDeposito.alquiler].
   final ConceptoDeDeposito concepto;
 
@@ -131,6 +132,7 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
 
   /// Crédito o débito; `null` = «No» (38A-01, «Tarjeta»).
   TipoDeTarjeta? _tarjeta;
+
   /// La campaña que el colportor eligió entre las suyas en curso (solo si está en dos o más); `null` =
   /// todavía no eligió.
   String? _campaniaElegida;
