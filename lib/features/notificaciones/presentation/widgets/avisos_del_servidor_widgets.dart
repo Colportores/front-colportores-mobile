@@ -9,7 +9,7 @@ import 'preferencias_recordatorios_widgets.dart';
 import 'renglon_con_par_al_final.dart';
 
 /// Escala de texto máxima dentro del selector de hora del sistema (alto fijo del diálogo de Material).
-const double _escalaMaximaDelSelectorDeHora = 1.5;
+const double _escalaMaximaDelSelectorDeHora = 1.3;
 
 /// Abre el selector de hora del sistema (24 h) en [actual] y devuelve la hora elegida, o `null` si se
 /// cerró sin elegir.
