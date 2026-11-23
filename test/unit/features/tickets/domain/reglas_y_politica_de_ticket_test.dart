@@ -43,6 +43,9 @@ void main() {
       expect(ReglasDeTicket.textoValido('a' * 40), isTrue);
       expect(ReglasDeTicket.textoValido('a' * 41), isFalse);
       expect(ReglasDeTicket.textoValido(null), isTrue);
+      // Puntos de código, no unidades UTF-16: 40 emoji entran, 41 no.
+      expect(ReglasDeTicket.textoValido('😀' * 40), isTrue);
+      expect(ReglasDeTicket.textoValido('😀' * 41), isFalse);
     });
 
     test('avisa si el monto del ticket no coincide con el del cobro (no bloquea)', () {

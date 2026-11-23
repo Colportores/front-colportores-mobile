@@ -18,9 +18,6 @@ import '../../helpers/qa_vista29c_427_arnes.dart';
 import '../../helpers/ticket_tarjeta_arnes.dart';
 import '../../helpers/tickets_falsos.dart';
 
-/// Con `QA_HALLAZGOS=true` se corren también los tests de los hallazgos (los que llevan `skip`).
-const _conHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 Future<void> _guias(WidgetTester tester) async {
   await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
   await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
@@ -186,7 +183,7 @@ void main() {
     });
 
     testWidgets(
-      'QA #427 hallazgo H2: una autorización de 21 emoji (42 unidades UTF-16 > 40) entra en el campo '
+      'QA #427 hallazgo H1: una autorización de 21 emoji (42 unidades UTF-16 > 40) entra en el campo '
       'pero el caso de uso la rechaza y la pantalla queda sin salida',
       (tester) async {
         final a = await llevarAlEstado427(tester, Estado427.datos);
@@ -199,7 +196,6 @@ void main() {
         expect(a.repo.recibidos, hasLength(1), reason: 'el caso de uso la dejó pasar');
         expect(find.byKey(const Key('ticket_error')), findsNothing);
       },
-      skip: !_conHallazgos,
     );
   });
 
