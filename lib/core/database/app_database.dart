@@ -577,7 +577,11 @@ class AppDatabase extends _$AppDatabase {
     // Crea las cuatro réplicas de la deuda con la casa editora, vacías (las llena el pull, entero la primera
     // vez), y quita `deuda_casa_cache`: era la última respuesta de la RPC, que ya no se llama, y la deuda
     // vuelve a calcularse de lo que baja (los datos son simulados hasta diciembre: no se migra nada). Nada
-    // de lo guardado por la colportora cambia ni se encola al migrar.
+    // de lo guardado por la colportora cambia ni se encola al migrar. Borra la fecha de la última bajada de
+    // `sync_meta` (igual que `from15To16`): la instalación ya bajó alguna vez, pero estas réplicas todavía
+    // no, y «hubo una bajada y no hay cuenta» no es «no hay deuda» sino «todavía no sé»: sin esto, hasta
+    // la primera sincronización la tarjeta diría «$ 0». Los watermarks no se tocan: el servidor baja
+    // desde cero las entidades que el teléfono nunca bajó.
     from40To41: (m, esquema) async {
       await m.createTable(esquema.cuentaColportor);
       await m.createIndex(esquema.cuentaColportorUsuarioIdx);
@@ -588,6 +592,7 @@ class AppDatabase extends _$AppDatabase {
       await m.createTable(esquema.pedidoItem);
       await m.createIndex(esquema.pedidoItemPedidoIdx);
       await m.deleteTable('deuda_casa_cache');
+      await m.database.customStatement("DELETE FROM sync_meta WHERE clave = 'last_pull_at'");
     },
   );
 }

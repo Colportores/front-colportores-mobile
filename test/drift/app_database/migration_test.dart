@@ -2629,13 +2629,22 @@ void main() {
       createItems: (batch, viejo) {
         batch
           ..insert(viejo.syncQueue, job)
-          ..insert(viejo.syncWatermark, watermark);
+          ..insert(viejo.syncWatermark, watermark)
+          ..insertAll(viejo.syncMeta, [
+            const v40.SyncMetaData(clave: 'last_pull_at', valor: '2026-11-20T12:00:00.000Z'),
+            const v40.SyncMetaData(clave: 'last_backup_at', valor: '2026-11-19T12:00:00.000Z'),
+          ]);
       },
       validateItems: (nuevo) async {
         final jobs = await nuevo.select(nuevo.syncQueue).get();
         expect(jobs.map((q) => q.toJson()), [job.toJson()]);
         final marcas = await nuevo.select(nuevo.syncWatermark).get();
         expect(marcas.map((w) => w.toJson()), [watermark.toJson()]);
+
+        // La fecha de la última bajada se borra (las réplicas de la deuda todavía no bajaron: sin esto la
+        // tarjeta diría «$ 0» en vez de «todavía no sé»); lo demás de `sync_meta` queda.
+        final meta = await nuevo.select(nuevo.syncMeta).get();
+        expect(meta.map((f) => f.clave), ['last_backup_at']);
 
         expect(await nuevo.select(nuevo.cuentaColportor).get(), isEmpty);
         expect(await nuevo.select(nuevo.cuentaDeudaHistorial).get(), isEmpty);
