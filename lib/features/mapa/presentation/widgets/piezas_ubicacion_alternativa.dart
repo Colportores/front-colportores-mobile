@@ -128,7 +128,9 @@ class TarjetaAlternativa extends StatelessWidget {
           style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w600,
-            color: ColoresAlta.tinta,
+            // Dada de baja: más apagada que la vigente, pero a color pleno (no con Opacity): el texto
+            // chico y el botón «Quitar» tienen que seguir en 4,5:1 (WCAG 1.4.3).
+            color: atenuada ? ColoresAlta.gris : ColoresAlta.tinta,
             decoration: tachada ? TextDecoration.lineThrough : null,
           ),
         ),
@@ -154,7 +156,11 @@ class TarjetaAlternativa extends StatelessWidget {
         height: 36,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: destacada ? ColoresAlta.azul : ColoresAlta.grisFondo,
+          color: atenuada
+              ? ColoresAlta.gris
+              : destacada
+              ? ColoresAlta.azul
+              : ColoresAlta.grisFondo,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
@@ -162,7 +168,7 @@ class TarjetaAlternativa extends StatelessWidget {
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w700,
-            color: destacada ? Colors.white : ColoresAlta.tinta,
+            color: destacada || atenuada ? Colors.white : ColoresAlta.tinta,
           ),
         ),
       ),
@@ -200,13 +206,19 @@ class TarjetaAlternativa extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 72),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: atenuada ? ColoresAlta.grisFondo.withValues(alpha: .35) : Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: destacada ? ColoresAlta.azul : ColoresAlta.grisBorde),
+        border: Border.all(
+          color: atenuada
+              ? ColoresAlta.grisBorde
+              : destacada
+              ? ColoresAlta.azul
+              : ColoresAlta.grisBorde,
+        ),
       ),
       child: contenido,
     );
-    final atenuacion = atenuada ? Opacity(opacity: .6, child: tarjeta) : tarjeta;
+    final atenuacion = tarjeta;
     if (alTocar == null) return atenuacion;
     return Semantics(
       button: true,

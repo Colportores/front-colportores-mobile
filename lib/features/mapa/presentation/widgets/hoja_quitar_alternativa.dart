@@ -69,6 +69,7 @@ class HojaQuitarAlternativa extends ConsumerStatefulWidget {
 class _HojaQuitarAlternativaState extends ConsumerState<HojaQuitarAlternativa> {
   var _quitando = false;
   String? _falla;
+  final _claveDelAviso = GlobalKey();
 
   Future<void> _quitar() async {
     if (_quitando) return;
@@ -97,6 +98,21 @@ class _HojaQuitarAlternativaState extends ConsumerState<HojaQuitarAlternativa> {
       _falla = mensajeDeFallaDePersona(
         falla ?? const FailureInesperado(),
         TextosUbicacionAlternativa.noPudimosQuitar(widget.nombre),
+      );
+    });
+    // Con texto grande el aviso queda abajo de la parte que se ve: se lo trae a la vista, que si no
+    // «Quitar» vuelve a quedar habilitado sin que se sepa por qué.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final contexto = _claveDelAviso.currentContext;
+      if (!mounted || contexto == null) return;
+      unawaited(
+        Scrollable.ensureVisible(
+          contexto,
+          alignment: 1,
+          duration: MediaQuery.disableAnimationsOf(contexto)
+              ? Duration.zero
+              : const Duration(milliseconds: 150),
+        ),
       );
     });
   }
@@ -158,8 +174,11 @@ class _HojaQuitarAlternativaState extends ConsumerState<HojaQuitarAlternativa> {
                       if (_falla != null) ...[
                         const SizedBox(height: 12),
                         KeyedSubtree(
-                          key: ClavesAlternativa.hojaQuitarError,
-                          child: AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: _falla!),
+                          key: _claveDelAviso,
+                          child: KeyedSubtree(
+                            key: ClavesAlternativa.hojaQuitarError,
+                            child: AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: _falla!),
+                          ),
                         ),
                       ],
                     ],

@@ -55,9 +55,6 @@ Future<double> _contraste(WidgetTester tester, Rect texto) async {
   return (claro + 0.05) / (oscuro + 0.05);
 }
 
-/// `--dart-define=QA_HALLAZGOS=true` corre los tests de hallazgos (los que llevan `skip`).
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
 void main() {
   const tamano = Size(412, 915);
 
@@ -81,31 +78,19 @@ void main() {
     }
   });
 
-  group('tarjeta dada de baja (22A·08): el 60 % de opacidad del canvas', () {
+  group('tarjeta dada de baja (22A·08): apagada, pero a color pleno', () {
     final deBaja = find.byKey(ClavesAlternativa.deBaja);
     final estado = UbicacionAlternativaDeBaja('ub-2', ubicacion: italiaDeBaja145);
 
-    // «Quitar» es un botón activo; «DADA DE BAJA» y el detalle son información. Los tres quedan en
-    // ~3:1 (rojo y gris al 60 % sobre blanco), bajo el 4,5:1 de AA.
-    group(
-      'texto a 4,5:1',
-      skip: _hallazgos
-          ? false
-          : 'QA #145: la tarjeta dada de baja pinta rótulo, tipo y «Quitar» al 60 % de opacidad: '
-                '~3:1, bajo AA (1.4.3)',
-      () {
-        for (final texto in ['DADA DE BAJA', 'Quitar', 'Negocio']) {
-          testWidgets('«$texto» tiene al menos 4,5:1', (tester) async {
-            await montar(tester, estado);
-            final ratio = await _contraste(tester, tester.getRect(textoEn(deBaja, texto)));
-            expect(
-              ratio,
-              greaterThanOrEqualTo(4.5),
-              reason: '$texto: ${ratio.toStringAsFixed(2)}:1',
-            );
-          });
-        }
-      },
-    );
+    // «Quitar» es un botón activo; «DADA DE BAJA» y el detalle son información: los tres a 4,5:1 (AA).
+    group('texto a 4,5:1', () {
+      for (final texto in ['DADA DE BAJA', 'Quitar', 'Negocio']) {
+        testWidgets('«$texto» tiene al menos 4,5:1', (tester) async {
+          await montar(tester, estado);
+          final ratio = await _contraste(tester, tester.getRect(textoEn(deBaja, texto)));
+          expect(ratio, greaterThanOrEqualTo(4.5), reason: '$texto: ${ratio.toStringAsFixed(2)}:1');
+        });
+      }
+    });
   });
 }

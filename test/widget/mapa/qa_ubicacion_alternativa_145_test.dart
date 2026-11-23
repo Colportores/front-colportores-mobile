@@ -421,23 +421,15 @@ void main() {
       });
     }
 
-    group(
-      'hoja de quitar con falla con texto 2,0',
-      skip: _hallazgos
-          ? false
-          : 'QA #145: la hoja «¿Quitar …?» con texto 2,0 deja el aviso «No pudimos quitar» fuera de '
-                'la parte que se ve (a 412×915 baja a 1021 con la zona terminando en 768; a 360×640 '
-                'solo asoma la primera línea)',
-      () {
-        for (final tamano in [const Size(412, 915), const Size(360, 640)]) {
-          testWidgets('el aviso rojo se ve entero sin desplazar a ${tamano.width.toInt()}×'
-              '${tamano.height.toInt()}', (tester) async {
-            await abrirHojaConFalla(tester, tamano, 2.0);
-            avisoEntero(tester);
-          });
-        }
-      },
-    );
+    group('hoja de quitar con falla con texto 2,0', () {
+      for (final tamano in [const Size(412, 915), const Size(360, 640)]) {
+        testWidgets('el aviso rojo se ve entero sin desplazar a ${tamano.width.toInt()}×'
+            '${tamano.height.toInt()}', (tester) async {
+          await abrirHojaConFalla(tester, tamano, 2.0);
+          avisoEntero(tester);
+        });
+      }
+    });
 
     group(
       'tipografía de los botones de texto',
