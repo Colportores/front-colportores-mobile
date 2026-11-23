@@ -199,7 +199,8 @@ enum Estado550 {
   hoy01('16F·01 Hoy permiso revocado'),
   hoy02('16F·02 Hoy Drive lleno'),
   hoy03('16F·03 Hoy con otros avisos'),
-  hoy04('16F·04 Hoy oculta hasta mañana');
+  hoy04('16F·04 Hoy oculta hasta mañana'),
+  hoy05('R7 Hoy con otra cuenta por confirmar');
 
   const Estado550(this.rotulo);
   final String rotulo;
@@ -226,7 +227,8 @@ Future<Mundo550> armarEstado550(
   TipoConexion? conexion;
   Telefono? telefono;
   switch (estado) {
-    case Estado550.filaPendiente ||
+    case Estado550.hoy05 ||
+        Estado550.filaPendiente ||
         Estado550.hoja01 ||
         Estado550.hoja02 ||
         Estado550.hojaError ||
@@ -262,7 +264,7 @@ Future<Mundo550> armarEstado550(
     ultimo: () => DateTime(2026, 10, 20, 3, 10),
   );
   switch (estado) {
-    case Estado550.hoy01 || Estado550.hoy02 || Estado550.hoy03:
+    case Estado550.hoy01 || Estado550.hoy02 || Estado550.hoy03 || Estado550.hoy05:
       break;
     case Estado550.hoy04:
       await tocar550(tester, botonOcultar);

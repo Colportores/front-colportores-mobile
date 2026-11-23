@@ -298,6 +298,73 @@ void main() {
     });
   });
 
+  group('Delta c05d8d2: franja con otra cuenta por confirmar y «Desconectar Drive»', () {
+    final desconectar = find.byKey(const Key('drive_otra_cuenta_desconectar'));
+    final franjaFrenada = find.byKey(const Key('aviso_drive_en_hoy_cuentaPorConfirmar'));
+
+    testWidgets('la franja dice «Tu respaldo está frenado…» y «Elegir cuenta» abre la hoja', (
+      tester,
+    ) async {
+      await armarEstado550(tester, Estado550.hoy05);
+
+      expect(
+        _en(franjaFrenada, 'Tu respaldo está frenado: elegí con qué cuenta de Google seguir.'),
+        findsOneWidget,
+      );
+      await tocar550(tester, find.descendant(of: franjaFrenada, matching: botonAccionFranja));
+      expect(hojaOtra, findsOneWidget);
+    });
+
+    testWidgets('la franja frenada se oculta hasta mañana, el engranaje lleva la marca', (
+      tester,
+    ) async {
+      await armarEstado550(tester, Estado550.hoy05);
+
+      await tocar550(tester, botonOcultar);
+
+      expect(franjaFrenada, findsNothing);
+      expect(marcaEngranaje, findsOneWidget);
+    });
+
+    testWidgets('«Desconectar Drive» y «Cancelar»: la hoja de otra cuenta sigue abierta', (
+      tester,
+    ) async {
+      await armarEstado550(tester, Estado550.hoja01);
+
+      await tocar550(tester, desconectar);
+      expect(find.byKey(const Key('drive_hoja_desconectar')), findsOneWidget);
+      await tocar550(tester, find.byKey(const Key('drive_desconectar_cancelar')));
+
+      expect(hojaOtra, findsOneWidget);
+      expect(tester.widget<FilledButton>(botonVolver).onPressed, isNotNull);
+    });
+
+    testWidgets('desconectar: se cierran las dos hojas, la fila queda sin conectar y Hoy limpia', (
+      tester,
+    ) async {
+      final mundo = await armarEstado550(tester, Estado550.hoja01);
+
+      await tocar550(tester, desconectar);
+      await tocar550(tester, find.byKey(const Key('drive_desconectar')));
+
+      expect(hojaOtra, findsNothing);
+      expect(find.byKey(const Key('drive_hoja_desconectar')), findsNothing);
+      expect(mundo.container.read(estadoRespaldoDriveProvider).value, isA<DriveSinConectar>());
+      expect(mundo.drive.google.desconexiones, 1);
+    });
+
+    testWidgets('doble toque en «Desconectar Drive»: una sola hoja de desconectar', (tester) async {
+      await armarEstado550(tester, Estado550.hoja01);
+
+      await tester.ensureVisible(desconectar);
+      await tester.tap(desconectar);
+      await tester.tap(desconectar, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('drive_hoja_desconectar')), findsOneWidget);
+    });
+  });
+
   group('Privacidad', () {
     test('toString de las cuentas y de los resultados no deja el correo en un log', () {
       const otra = DriveCuentaPorConfirmar(
