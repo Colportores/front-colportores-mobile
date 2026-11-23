@@ -8,7 +8,8 @@ import 'hora_del_servidor.dart';
 ///
 /// No anota la de un push donde algún job volvió con `CS003` (lote demasiado grande, sin partir): en
 /// ese caso `SupabaseRpcTransport` arma el resultado él mismo con el reloj del equipo, no con el del
-/// servidor. Si anotar falla no se nota: el motor ve el mismo resultado o la misma falla de siempre.
+/// servidor. Tampoco anota la de una respuesta sin `server_time`, o con uno ilegible: el motor la
+/// rellena con el reloj del equipo ([PushResult.serverTimeEsDelServidor]). Si anotar falla no se nota: el motor ve el mismo resultado o la misma falla de siempre.
 final class TransporteQueAnotaLaHora implements SyncTransport {
   const TransporteQueAnotaLaHora(this._interno, this._hora);
 
@@ -19,14 +20,16 @@ final class TransporteQueAnotaLaHora implements SyncTransport {
   Future<PushResult> push(PushBatch batch) async {
     final resultado = await _interno.push(batch);
     final armadoPorElCliente = resultado.results.any((r) => r.code == kRpcLoteDemasiadoGrande);
-    if (!armadoPorElCliente) await _anotar(resultado.serverTime);
+    if (!armadoPorElCliente && resultado.serverTimeEsDelServidor) {
+      await _anotar(resultado.serverTime);
+    }
     return resultado;
   }
 
   @override
   Future<PullDelta> pull({required List<String> entities, String? watermark, int? limit}) async {
     final delta = await _interno.pull(entities: entities, watermark: watermark, limit: limit);
-    await _anotar(delta.serverTime);
+    if (delta.serverTimeEsDelServidor) await _anotar(delta.serverTime);
     return delta;
   }
 

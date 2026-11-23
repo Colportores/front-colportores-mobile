@@ -227,7 +227,7 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
       if (venta.montoTotalCentavos > 0)
         DatoDeDevolucion(
           TextosDevolucion.saldoNuevo,
-          FormatoVenta.monto(cuenta.saldoNuevoCentavos),
+          FormatoVenta.montoSinQuiebre(cuenta.saldoNuevoCentavos),
           fuerte: true,
         ),
     ];
@@ -589,16 +589,16 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
               datos: [
                 DatoDeDevolucion(
                   TextosDevolucion.seQuedaCon,
-                  FormatoVenta.monto(cuenta.seQuedaConCentavos),
+                  FormatoVenta.montoSinQuiebre(cuenta.seQuedaConCentavos),
                 ),
                 if (cuenta.yaPagoCentavos > 0)
                   DatoDeDevolucion(
                     TextosDevolucion.yaPago,
-                    FormatoVenta.monto(cuenta.yaPagoCentavos),
+                    FormatoVenta.montoSinQuiebre(cuenta.yaPagoCentavos),
                   ),
                 DatoDeDevolucion(
                   TextosDevolucion.saldoNuevo,
-                  FormatoVenta.monto(cuenta.saldoNuevoCentavos),
+                  FormatoVenta.montoSinQuiebre(cuenta.saldoNuevoCentavos),
                   fuerte: true,
                 ),
               ],
@@ -650,11 +650,11 @@ class _DevolucionPageState extends ConsumerState<DevolucionPage> {
             datos: [
               DatoDeDevolucion(
                 TextosDevolucion.totalDeLaVenta,
-                FormatoVenta.monto(registrada.totalCentavos),
+                FormatoVenta.montoSinQuiebre(registrada.totalCentavos),
               ),
               DatoDeDevolucion(
                 TextosDevolucion.saldo,
-                FormatoVenta.monto(registrada.saldoCentavos),
+                FormatoVenta.montoSinQuiebre(registrada.saldoCentavos),
               ),
             ],
           ),

@@ -24,6 +24,7 @@ import '../secure_storage/secure_storage_providers.dart';
 import 'armado_del_motor.dart';
 import 'encolador_sync.dart';
 import 'hora_del_servidor.dart';
+import 'modo_ahorro_providers.dart';
 import 'purga_de_la_cola.dart';
 import 'transporte_que_anota_la_hora.dart';
 
@@ -130,6 +131,10 @@ final motorSyncProvider = Provider<SyncEngine?>((ref) {
     conectividad: ConectividadDelMotor(ref.watch(monitorConectividadProvider)),
     realtime: ref.watch(realtimeSyncProvider),
   );
+  // El modo ahorro de datos (HU-SYNC-008): el motor arranca con lo guardado (el primer ciclo ya
+  // puede bajar por datos móviles) y sigue cada cambio de la pantalla de sincronización.
+  motor.setDataSaver(ref.read(modoAhorroProvider));
+  ref.listen(modoAhorroProvider, (_, activo) => motor.setDataSaver(activo));
   // Al tirarse el motor (cerrar sesión, o la raíz entera al «Recuperar mi respaldo») el ciclo en curso
   // sigue usando la DB: el cierre queda anotado y `CierreDeLaRaiz.alTirar` lo espera antes de cerrarla.
   final cierre = ref.read(cierreDeLaRaizProvider);

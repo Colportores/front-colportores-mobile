@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
-import '../providers/cuenta_providers.dart' show relojCuentaProvider;
+import '../providers/cuenta_providers.dart' show alquilerDelColportorProvider, relojCuentaProvider;
 import '../providers/deuda_casa_providers.dart';
+import '../textos_alquiler.dart';
 import '../textos_deuda.dart';
 import '../widgets/piezas_cuenta.dart';
 import '../widgets/piezas_deuda.dart';
@@ -104,6 +105,20 @@ class DeudaCasaPage extends ConsumerWidget {
         ],
         if (deuda.saldosNoDanElTotal)
           const SliverToBoxAdapter(child: NotaDeLaDeuda(texto: TextosDeuda.saldosNoDanElTotal)),
+        // Lo pagado de más del alquiler bajó esta deuda (decisión «Alquiler fav», 28/10, HU-CTA-007): la
+        // pantalla dice de dónde viene ese descuento.
+        if (ref
+                .watch(alquilerDelColportorProvider(colportorId))
+                .asData
+                ?.value
+                .pagadoDeMasCentavos
+            case final deMas? when deMas > 0)
+          SliverToBoxAdapter(
+            child: NotaDeLaDeuda(
+              claveDelTexto: const Key('deuda_nota_alquiler'),
+              texto: TextosAlquiler.descontadoPorAlquiler(deMas),
+            ),
+          ),
       ];
     }
 

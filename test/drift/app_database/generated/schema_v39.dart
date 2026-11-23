@@ -14611,6 +14611,14 @@ class Campania extends Table with TableInfo<Campania, CampaniaData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<int> alquilerMonto = GeneratedColumn<int>(
+    'alquiler_monto',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
     'deleted_at',
     aliasedName,
@@ -14637,6 +14645,7 @@ class Campania extends Table with TableInfo<Campania, CampaniaData> {
     createdAt,
     updatedAt,
     createdBy,
+    alquilerMonto,
     deletedAt,
     syncVersion,
   ];
@@ -14679,6 +14688,10 @@ class Campania extends Table with TableInfo<Campania, CampaniaData> {
         DriftSqlType.string,
         data['${effectivePrefix}created_by'],
       ),
+      alquilerMonto: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}alquiler_monto'],
+      ),
       deletedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}deleted_at'],
@@ -14709,6 +14722,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
+  final int? alquilerMonto;
   final int? deletedAt;
   final int syncVersion;
   const CampaniaData({
@@ -14719,6 +14733,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
+    this.alquilerMonto,
     this.deletedAt,
     required this.syncVersion,
   });
@@ -14735,6 +14750,9 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
     map['updated_at'] = Variable<int>(updatedAt);
     if (!nullToAbsent || createdBy != null) {
       map['created_by'] = Variable<String>(createdBy);
+    }
+    if (!nullToAbsent || alquilerMonto != null) {
+      map['alquiler_monto'] = Variable<int>(alquilerMonto);
     }
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<int>(deletedAt);
@@ -14756,6 +14774,9 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
       createdBy: createdBy == null && nullToAbsent
           ? const Value.absent()
           : Value(createdBy),
+      alquilerMonto: alquilerMonto == null && nullToAbsent
+          ? const Value.absent()
+          : Value(alquilerMonto),
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(deletedAt),
@@ -14776,6 +14797,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
+      alquilerMonto: serializer.fromJson<int?>(json['alquilerMonto']),
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       syncVersion: serializer.fromJson<int>(json['syncVersion']),
     );
@@ -14791,6 +14813,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
+      'alquilerMonto': serializer.toJson<int?>(alquilerMonto),
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'syncVersion': serializer.toJson<int>(syncVersion),
     };
@@ -14804,6 +14827,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
+    Value<int?> alquilerMonto = const Value.absent(),
     Value<int?> deletedAt = const Value.absent(),
     int? syncVersion,
   }) => CampaniaData(
@@ -14814,6 +14838,9 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    alquilerMonto: alquilerMonto.present
+        ? alquilerMonto.value
+        : this.alquilerMonto,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     syncVersion: syncVersion ?? this.syncVersion,
   );
@@ -14828,6 +14855,9 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      alquilerMonto: data.alquilerMonto.present
+          ? data.alquilerMonto.value
+          : this.alquilerMonto,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       syncVersion: data.syncVersion.present
           ? data.syncVersion.value
@@ -14845,6 +14875,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
+          ..write('alquilerMonto: $alquilerMonto, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('syncVersion: $syncVersion')
           ..write(')'))
@@ -14860,6 +14891,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
     createdAt,
     updatedAt,
     createdBy,
+    alquilerMonto,
     deletedAt,
     syncVersion,
   );
@@ -14874,6 +14906,7 @@ class CampaniaData extends DataClass implements Insertable<CampaniaData> {
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
+          other.alquilerMonto == this.alquilerMonto &&
           other.deletedAt == this.deletedAt &&
           other.syncVersion == this.syncVersion);
 }
@@ -14886,6 +14919,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
+  final Value<int?> alquilerMonto;
   final Value<int?> deletedAt;
   final Value<int> syncVersion;
   final Value<int> rowid;
@@ -14897,6 +14931,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
+    this.alquilerMonto = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.syncVersion = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -14909,6 +14944,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
+    this.alquilerMonto = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.syncVersion = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -14925,6 +14961,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
+    Expression<int>? alquilerMonto,
     Expression<int>? deletedAt,
     Expression<int>? syncVersion,
     Expression<int>? rowid,
@@ -14937,6 +14974,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
+      if (alquilerMonto != null) 'alquiler_monto': alquilerMonto,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (syncVersion != null) 'sync_version': syncVersion,
       if (rowid != null) 'rowid': rowid,
@@ -14951,6 +14989,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
+    Value<int?>? alquilerMonto,
     Value<int?>? deletedAt,
     Value<int>? syncVersion,
     Value<int>? rowid,
@@ -14963,6 +15002,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
+      alquilerMonto: alquilerMonto ?? this.alquilerMonto,
       deletedAt: deletedAt ?? this.deletedAt,
       syncVersion: syncVersion ?? this.syncVersion,
       rowid: rowid ?? this.rowid,
@@ -14993,6 +15033,9 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
     if (createdBy.present) {
       map['created_by'] = Variable<String>(createdBy.value);
     }
+    if (alquilerMonto.present) {
+      map['alquiler_monto'] = Variable<int>(alquilerMonto.value);
+    }
     if (deletedAt.present) {
       map['deleted_at'] = Variable<int>(deletedAt.value);
     }
@@ -15015,6 +15058,7 @@ class CampaniaCompanion extends UpdateCompanion<CampaniaData> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
+          ..write('alquilerMonto: $alquilerMonto, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('syncVersion: $syncVersion, ')
           ..write('rowid: $rowid')
@@ -18889,6 +18933,14 @@ class Deposito extends Table with TableInfo<Deposito, DepositoData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<int> anuladoAt = GeneratedColumn<int>(
+    'anulado_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
     'created_at',
     aliasedName,
@@ -18943,6 +18995,7 @@ class Deposito extends Table with TableInfo<Deposito, DepositoData> {
     validadoPor,
     rechazadoEn,
     motivoRechazo,
+    anuladoAt,
     createdAt,
     updatedAt,
     createdBy,
@@ -19004,6 +19057,10 @@ class Deposito extends Table with TableInfo<Deposito, DepositoData> {
         DriftSqlType.string,
         data['${effectivePrefix}motivo_rechazo'],
       ),
+      anuladoAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}anulado_at'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -19058,6 +19115,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
   final String? validadoPor;
   final int? rechazadoEn;
   final String? motivoRechazo;
+  final int? anuladoAt;
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
@@ -19075,6 +19133,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     this.validadoPor,
     this.rechazadoEn,
     this.motivoRechazo,
+    this.anuladoAt,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
@@ -19106,6 +19165,9 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     }
     if (!nullToAbsent || motivoRechazo != null) {
       map['motivo_rechazo'] = Variable<String>(motivoRechazo);
+    }
+    if (!nullToAbsent || anuladoAt != null) {
+      map['anulado_at'] = Variable<int>(anuladoAt);
     }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -19144,6 +19206,9 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
       motivoRechazo: motivoRechazo == null && nullToAbsent
           ? const Value.absent()
           : Value(motivoRechazo),
+      anuladoAt: anuladoAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(anuladoAt),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       createdBy: createdBy == null && nullToAbsent
@@ -19173,6 +19238,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
       validadoPor: serializer.fromJson<String?>(json['validadoPor']),
       rechazadoEn: serializer.fromJson<int?>(json['rechazadoEn']),
       motivoRechazo: serializer.fromJson<String?>(json['motivoRechazo']),
+      anuladoAt: serializer.fromJson<int?>(json['anuladoAt']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
@@ -19195,6 +19261,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
       'validadoPor': serializer.toJson<String?>(validadoPor),
       'rechazadoEn': serializer.toJson<int?>(rechazadoEn),
       'motivoRechazo': serializer.toJson<String?>(motivoRechazo),
+      'anuladoAt': serializer.toJson<int?>(anuladoAt),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
@@ -19215,6 +19282,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     Value<String?> validadoPor = const Value.absent(),
     Value<int?> rechazadoEn = const Value.absent(),
     Value<String?> motivoRechazo = const Value.absent(),
+    Value<int?> anuladoAt = const Value.absent(),
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
@@ -19234,6 +19302,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     motivoRechazo: motivoRechazo.present
         ? motivoRechazo.value
         : this.motivoRechazo,
+    anuladoAt: anuladoAt.present ? anuladoAt.value : this.anuladoAt,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
@@ -19263,6 +19332,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
       motivoRechazo: data.motivoRechazo.present
           ? data.motivoRechazo.value
           : this.motivoRechazo,
+      anuladoAt: data.anuladoAt.present ? data.anuladoAt.value : this.anuladoAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
@@ -19287,6 +19357,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
           ..write('validadoPor: $validadoPor, ')
           ..write('rechazadoEn: $rechazadoEn, ')
           ..write('motivoRechazo: $motivoRechazo, ')
+          ..write('anuladoAt: $anuladoAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -19309,6 +19380,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
     validadoPor,
     rechazadoEn,
     motivoRechazo,
+    anuladoAt,
     createdAt,
     updatedAt,
     createdBy,
@@ -19330,6 +19402,7 @@ class DepositoData extends DataClass implements Insertable<DepositoData> {
           other.validadoPor == this.validadoPor &&
           other.rechazadoEn == this.rechazadoEn &&
           other.motivoRechazo == this.motivoRechazo &&
+          other.anuladoAt == this.anuladoAt &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
@@ -19349,6 +19422,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
   final Value<String?> validadoPor;
   final Value<int?> rechazadoEn;
   final Value<String?> motivoRechazo;
+  final Value<int?> anuladoAt;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
@@ -19367,6 +19441,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     this.validadoPor = const Value.absent(),
     this.rechazadoEn = const Value.absent(),
     this.motivoRechazo = const Value.absent(),
+    this.anuladoAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
@@ -19386,6 +19461,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     this.validadoPor = const Value.absent(),
     this.rechazadoEn = const Value.absent(),
     this.motivoRechazo = const Value.absent(),
+    this.anuladoAt = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
@@ -19411,6 +19487,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     Expression<String>? validadoPor,
     Expression<int>? rechazadoEn,
     Expression<String>? motivoRechazo,
+    Expression<int>? anuladoAt,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
@@ -19430,6 +19507,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
       if (validadoPor != null) 'validado_por': validadoPor,
       if (rechazadoEn != null) 'rechazado_en': rechazadoEn,
       if (motivoRechazo != null) 'motivo_rechazo': motivoRechazo,
+      if (anuladoAt != null) 'anulado_at': anuladoAt,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
@@ -19451,6 +19529,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     Value<String?>? validadoPor,
     Value<int?>? rechazadoEn,
     Value<String?>? motivoRechazo,
+    Value<int?>? anuladoAt,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
@@ -19470,6 +19549,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
       validadoPor: validadoPor ?? this.validadoPor,
       rechazadoEn: rechazadoEn ?? this.rechazadoEn,
       motivoRechazo: motivoRechazo ?? this.motivoRechazo,
+      anuladoAt: anuladoAt ?? this.anuladoAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
@@ -19515,6 +19595,9 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
     if (motivoRechazo.present) {
       map['motivo_rechazo'] = Variable<String>(motivoRechazo.value);
     }
+    if (anuladoAt.present) {
+      map['anulado_at'] = Variable<int>(anuladoAt.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -19550,6 +19633,7 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
           ..write('validadoPor: $validadoPor, ')
           ..write('rechazadoEn: $rechazadoEn, ')
           ..write('motivoRechazo: $motivoRechazo, ')
+          ..write('anuladoAt: $anuladoAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -20947,1170 +21031,12 @@ class TicketFotoLocalCompanion extends UpdateCompanion<TicketFotoLocalData> {
   }
 }
 
-class CuentaColportor extends Table
-    with TableInfo<CuentaColportor, CuentaColportorData> {
+class DeudaCasaCache extends Table
+    with TableInfo<DeudaCasaCache, DeudaCasaCacheData> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  CuentaColportor(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> usuarioId = GeneratedColumn<String>(
-    'usuario_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> deudaTotal = GeneratedColumn<int>(
-    'deuda_total',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<int> dineroDepositado = GeneratedColumn<int>(
-    'dinero_depositado',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<int> dineroEnMano = GeneratedColumn<int>(
-    'dinero_en_mano',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<int> dineroPorCobrar = GeneratedColumn<int>(
-    'dinero_por_cobrar',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<int> deudaAlquiler = GeneratedColumn<int>(
-    'deuda_alquiler',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<int> alquilerTrasladado = GeneratedColumn<int>(
-    'alquiler_trasladado',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<int> actualizadoEn = GeneratedColumn<int>(
-    'actualizado_en',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
-    'created_by',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
-    'deleted_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
-    'sync_version',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    usuarioId,
-    deudaTotal,
-    dineroDepositado,
-    dineroEnMano,
-    dineroPorCobrar,
-    deudaAlquiler,
-    alquilerTrasladado,
-    actualizadoEn,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'cuenta_colportor';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  CuentaColportorData map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return CuentaColportorData(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}id'],
-      )!,
-      usuarioId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}usuario_id'],
-      )!,
-      deudaTotal: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}deuda_total'],
-      )!,
-      dineroDepositado: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}dinero_depositado'],
-      )!,
-      dineroEnMano: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}dinero_en_mano'],
-      )!,
-      dineroPorCobrar: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}dinero_por_cobrar'],
-      )!,
-      deudaAlquiler: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}deuda_alquiler'],
-      )!,
-      alquilerTrasladado: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}alquiler_trasladado'],
-      )!,
-      actualizadoEn: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}actualizado_en'],
-      ),
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}created_at'],
-      )!,
-      updatedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}updated_at'],
-      )!,
-      createdBy: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}created_by'],
-      ),
-      deletedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}deleted_at'],
-      ),
-      syncVersion: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}sync_version'],
-      )!,
-    );
-  }
-
-  @override
-  CuentaColportor createAlias(String alias) {
-    return CuentaColportor(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const ['PRIMARY KEY(id)'];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class CuentaColportorData extends DataClass
-    implements Insertable<CuentaColportorData> {
-  final String id;
-  final String usuarioId;
-  final int deudaTotal;
-  final int dineroDepositado;
-  final int dineroEnMano;
-  final int dineroPorCobrar;
-  final int deudaAlquiler;
-  final int alquilerTrasladado;
-  final int? actualizadoEn;
-  final int createdAt;
-  final int updatedAt;
-  final String? createdBy;
-  final int? deletedAt;
-  final int syncVersion;
-  const CuentaColportorData({
-    required this.id,
-    required this.usuarioId,
-    required this.deudaTotal,
-    required this.dineroDepositado,
-    required this.dineroEnMano,
-    required this.dineroPorCobrar,
-    required this.deudaAlquiler,
-    required this.alquilerTrasladado,
-    this.actualizadoEn,
-    required this.createdAt,
-    required this.updatedAt,
-    this.createdBy,
-    this.deletedAt,
-    required this.syncVersion,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
-    map['usuario_id'] = Variable<String>(usuarioId);
-    map['deuda_total'] = Variable<int>(deudaTotal);
-    map['dinero_depositado'] = Variable<int>(dineroDepositado);
-    map['dinero_en_mano'] = Variable<int>(dineroEnMano);
-    map['dinero_por_cobrar'] = Variable<int>(dineroPorCobrar);
-    map['deuda_alquiler'] = Variable<int>(deudaAlquiler);
-    map['alquiler_trasladado'] = Variable<int>(alquilerTrasladado);
-    if (!nullToAbsent || actualizadoEn != null) {
-      map['actualizado_en'] = Variable<int>(actualizadoEn);
-    }
-    map['created_at'] = Variable<int>(createdAt);
-    map['updated_at'] = Variable<int>(updatedAt);
-    if (!nullToAbsent || createdBy != null) {
-      map['created_by'] = Variable<String>(createdBy);
-    }
-    if (!nullToAbsent || deletedAt != null) {
-      map['deleted_at'] = Variable<int>(deletedAt);
-    }
-    map['sync_version'] = Variable<int>(syncVersion);
-    return map;
-  }
-
-  CuentaColportorCompanion toCompanion(bool nullToAbsent) {
-    return CuentaColportorCompanion(
-      id: Value(id),
-      usuarioId: Value(usuarioId),
-      deudaTotal: Value(deudaTotal),
-      dineroDepositado: Value(dineroDepositado),
-      dineroEnMano: Value(dineroEnMano),
-      dineroPorCobrar: Value(dineroPorCobrar),
-      deudaAlquiler: Value(deudaAlquiler),
-      alquilerTrasladado: Value(alquilerTrasladado),
-      actualizadoEn: actualizadoEn == null && nullToAbsent
-          ? const Value.absent()
-          : Value(actualizadoEn),
-      createdAt: Value(createdAt),
-      updatedAt: Value(updatedAt),
-      createdBy: createdBy == null && nullToAbsent
-          ? const Value.absent()
-          : Value(createdBy),
-      deletedAt: deletedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(deletedAt),
-      syncVersion: Value(syncVersion),
-    );
-  }
-
-  factory CuentaColportorData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return CuentaColportorData(
-      id: serializer.fromJson<String>(json['id']),
-      usuarioId: serializer.fromJson<String>(json['usuarioId']),
-      deudaTotal: serializer.fromJson<int>(json['deudaTotal']),
-      dineroDepositado: serializer.fromJson<int>(json['dineroDepositado']),
-      dineroEnMano: serializer.fromJson<int>(json['dineroEnMano']),
-      dineroPorCobrar: serializer.fromJson<int>(json['dineroPorCobrar']),
-      deudaAlquiler: serializer.fromJson<int>(json['deudaAlquiler']),
-      alquilerTrasladado: serializer.fromJson<int>(json['alquilerTrasladado']),
-      actualizadoEn: serializer.fromJson<int?>(json['actualizadoEn']),
-      createdAt: serializer.fromJson<int>(json['createdAt']),
-      updatedAt: serializer.fromJson<int>(json['updatedAt']),
-      createdBy: serializer.fromJson<String?>(json['createdBy']),
-      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
-      syncVersion: serializer.fromJson<int>(json['syncVersion']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
-      'usuarioId': serializer.toJson<String>(usuarioId),
-      'deudaTotal': serializer.toJson<int>(deudaTotal),
-      'dineroDepositado': serializer.toJson<int>(dineroDepositado),
-      'dineroEnMano': serializer.toJson<int>(dineroEnMano),
-      'dineroPorCobrar': serializer.toJson<int>(dineroPorCobrar),
-      'deudaAlquiler': serializer.toJson<int>(deudaAlquiler),
-      'alquilerTrasladado': serializer.toJson<int>(alquilerTrasladado),
-      'actualizadoEn': serializer.toJson<int?>(actualizadoEn),
-      'createdAt': serializer.toJson<int>(createdAt),
-      'updatedAt': serializer.toJson<int>(updatedAt),
-      'createdBy': serializer.toJson<String?>(createdBy),
-      'deletedAt': serializer.toJson<int?>(deletedAt),
-      'syncVersion': serializer.toJson<int>(syncVersion),
-    };
-  }
-
-  CuentaColportorData copyWith({
-    String? id,
-    String? usuarioId,
-    int? deudaTotal,
-    int? dineroDepositado,
-    int? dineroEnMano,
-    int? dineroPorCobrar,
-    int? deudaAlquiler,
-    int? alquilerTrasladado,
-    Value<int?> actualizadoEn = const Value.absent(),
-    int? createdAt,
-    int? updatedAt,
-    Value<String?> createdBy = const Value.absent(),
-    Value<int?> deletedAt = const Value.absent(),
-    int? syncVersion,
-  }) => CuentaColportorData(
-    id: id ?? this.id,
-    usuarioId: usuarioId ?? this.usuarioId,
-    deudaTotal: deudaTotal ?? this.deudaTotal,
-    dineroDepositado: dineroDepositado ?? this.dineroDepositado,
-    dineroEnMano: dineroEnMano ?? this.dineroEnMano,
-    dineroPorCobrar: dineroPorCobrar ?? this.dineroPorCobrar,
-    deudaAlquiler: deudaAlquiler ?? this.deudaAlquiler,
-    alquilerTrasladado: alquilerTrasladado ?? this.alquilerTrasladado,
-    actualizadoEn: actualizadoEn.present
-        ? actualizadoEn.value
-        : this.actualizadoEn,
-    createdAt: createdAt ?? this.createdAt,
-    updatedAt: updatedAt ?? this.updatedAt,
-    createdBy: createdBy.present ? createdBy.value : this.createdBy,
-    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
-    syncVersion: syncVersion ?? this.syncVersion,
-  );
-  CuentaColportorData copyWithCompanion(CuentaColportorCompanion data) {
-    return CuentaColportorData(
-      id: data.id.present ? data.id.value : this.id,
-      usuarioId: data.usuarioId.present ? data.usuarioId.value : this.usuarioId,
-      deudaTotal: data.deudaTotal.present
-          ? data.deudaTotal.value
-          : this.deudaTotal,
-      dineroDepositado: data.dineroDepositado.present
-          ? data.dineroDepositado.value
-          : this.dineroDepositado,
-      dineroEnMano: data.dineroEnMano.present
-          ? data.dineroEnMano.value
-          : this.dineroEnMano,
-      dineroPorCobrar: data.dineroPorCobrar.present
-          ? data.dineroPorCobrar.value
-          : this.dineroPorCobrar,
-      deudaAlquiler: data.deudaAlquiler.present
-          ? data.deudaAlquiler.value
-          : this.deudaAlquiler,
-      alquilerTrasladado: data.alquilerTrasladado.present
-          ? data.alquilerTrasladado.value
-          : this.alquilerTrasladado,
-      actualizadoEn: data.actualizadoEn.present
-          ? data.actualizadoEn.value
-          : this.actualizadoEn,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
-      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
-      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
-      syncVersion: data.syncVersion.present
-          ? data.syncVersion.value
-          : this.syncVersion,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('CuentaColportorData(')
-          ..write('id: $id, ')
-          ..write('usuarioId: $usuarioId, ')
-          ..write('deudaTotal: $deudaTotal, ')
-          ..write('dineroDepositado: $dineroDepositado, ')
-          ..write('dineroEnMano: $dineroEnMano, ')
-          ..write('dineroPorCobrar: $dineroPorCobrar, ')
-          ..write('deudaAlquiler: $deudaAlquiler, ')
-          ..write('alquilerTrasladado: $alquilerTrasladado, ')
-          ..write('actualizadoEn: $actualizadoEn, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    id,
-    usuarioId,
-    deudaTotal,
-    dineroDepositado,
-    dineroEnMano,
-    dineroPorCobrar,
-    deudaAlquiler,
-    alquilerTrasladado,
-    actualizadoEn,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is CuentaColportorData &&
-          other.id == this.id &&
-          other.usuarioId == this.usuarioId &&
-          other.deudaTotal == this.deudaTotal &&
-          other.dineroDepositado == this.dineroDepositado &&
-          other.dineroEnMano == this.dineroEnMano &&
-          other.dineroPorCobrar == this.dineroPorCobrar &&
-          other.deudaAlquiler == this.deudaAlquiler &&
-          other.alquilerTrasladado == this.alquilerTrasladado &&
-          other.actualizadoEn == this.actualizadoEn &&
-          other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt &&
-          other.createdBy == this.createdBy &&
-          other.deletedAt == this.deletedAt &&
-          other.syncVersion == this.syncVersion);
-}
-
-class CuentaColportorCompanion extends UpdateCompanion<CuentaColportorData> {
-  final Value<String> id;
-  final Value<String> usuarioId;
-  final Value<int> deudaTotal;
-  final Value<int> dineroDepositado;
-  final Value<int> dineroEnMano;
-  final Value<int> dineroPorCobrar;
-  final Value<int> deudaAlquiler;
-  final Value<int> alquilerTrasladado;
-  final Value<int?> actualizadoEn;
-  final Value<int> createdAt;
-  final Value<int> updatedAt;
-  final Value<String?> createdBy;
-  final Value<int?> deletedAt;
-  final Value<int> syncVersion;
-  final Value<int> rowid;
-  const CuentaColportorCompanion({
-    this.id = const Value.absent(),
-    this.usuarioId = const Value.absent(),
-    this.deudaTotal = const Value.absent(),
-    this.dineroDepositado = const Value.absent(),
-    this.dineroEnMano = const Value.absent(),
-    this.dineroPorCobrar = const Value.absent(),
-    this.deudaAlquiler = const Value.absent(),
-    this.alquilerTrasladado = const Value.absent(),
-    this.actualizadoEn = const Value.absent(),
-    this.createdAt = const Value.absent(),
-    this.updatedAt = const Value.absent(),
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  CuentaColportorCompanion.insert({
-    required String id,
-    required String usuarioId,
-    this.deudaTotal = const Value.absent(),
-    this.dineroDepositado = const Value.absent(),
-    this.dineroEnMano = const Value.absent(),
-    this.dineroPorCobrar = const Value.absent(),
-    this.deudaAlquiler = const Value.absent(),
-    this.alquilerTrasladado = const Value.absent(),
-    this.actualizadoEn = const Value.absent(),
-    required int createdAt,
-    required int updatedAt,
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       usuarioId = Value(usuarioId),
-       createdAt = Value(createdAt),
-       updatedAt = Value(updatedAt);
-  static Insertable<CuentaColportorData> custom({
-    Expression<String>? id,
-    Expression<String>? usuarioId,
-    Expression<int>? deudaTotal,
-    Expression<int>? dineroDepositado,
-    Expression<int>? dineroEnMano,
-    Expression<int>? dineroPorCobrar,
-    Expression<int>? deudaAlquiler,
-    Expression<int>? alquilerTrasladado,
-    Expression<int>? actualizadoEn,
-    Expression<int>? createdAt,
-    Expression<int>? updatedAt,
-    Expression<String>? createdBy,
-    Expression<int>? deletedAt,
-    Expression<int>? syncVersion,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (usuarioId != null) 'usuario_id': usuarioId,
-      if (deudaTotal != null) 'deuda_total': deudaTotal,
-      if (dineroDepositado != null) 'dinero_depositado': dineroDepositado,
-      if (dineroEnMano != null) 'dinero_en_mano': dineroEnMano,
-      if (dineroPorCobrar != null) 'dinero_por_cobrar': dineroPorCobrar,
-      if (deudaAlquiler != null) 'deuda_alquiler': deudaAlquiler,
-      if (alquilerTrasladado != null) 'alquiler_trasladado': alquilerTrasladado,
-      if (actualizadoEn != null) 'actualizado_en': actualizadoEn,
-      if (createdAt != null) 'created_at': createdAt,
-      if (updatedAt != null) 'updated_at': updatedAt,
-      if (createdBy != null) 'created_by': createdBy,
-      if (deletedAt != null) 'deleted_at': deletedAt,
-      if (syncVersion != null) 'sync_version': syncVersion,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  CuentaColportorCompanion copyWith({
-    Value<String>? id,
-    Value<String>? usuarioId,
-    Value<int>? deudaTotal,
-    Value<int>? dineroDepositado,
-    Value<int>? dineroEnMano,
-    Value<int>? dineroPorCobrar,
-    Value<int>? deudaAlquiler,
-    Value<int>? alquilerTrasladado,
-    Value<int?>? actualizadoEn,
-    Value<int>? createdAt,
-    Value<int>? updatedAt,
-    Value<String?>? createdBy,
-    Value<int?>? deletedAt,
-    Value<int>? syncVersion,
-    Value<int>? rowid,
-  }) {
-    return CuentaColportorCompanion(
-      id: id ?? this.id,
-      usuarioId: usuarioId ?? this.usuarioId,
-      deudaTotal: deudaTotal ?? this.deudaTotal,
-      dineroDepositado: dineroDepositado ?? this.dineroDepositado,
-      dineroEnMano: dineroEnMano ?? this.dineroEnMano,
-      dineroPorCobrar: dineroPorCobrar ?? this.dineroPorCobrar,
-      deudaAlquiler: deudaAlquiler ?? this.deudaAlquiler,
-      alquilerTrasladado: alquilerTrasladado ?? this.alquilerTrasladado,
-      actualizadoEn: actualizadoEn ?? this.actualizadoEn,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      createdBy: createdBy ?? this.createdBy,
-      deletedAt: deletedAt ?? this.deletedAt,
-      syncVersion: syncVersion ?? this.syncVersion,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
-    }
-    if (usuarioId.present) {
-      map['usuario_id'] = Variable<String>(usuarioId.value);
-    }
-    if (deudaTotal.present) {
-      map['deuda_total'] = Variable<int>(deudaTotal.value);
-    }
-    if (dineroDepositado.present) {
-      map['dinero_depositado'] = Variable<int>(dineroDepositado.value);
-    }
-    if (dineroEnMano.present) {
-      map['dinero_en_mano'] = Variable<int>(dineroEnMano.value);
-    }
-    if (dineroPorCobrar.present) {
-      map['dinero_por_cobrar'] = Variable<int>(dineroPorCobrar.value);
-    }
-    if (deudaAlquiler.present) {
-      map['deuda_alquiler'] = Variable<int>(deudaAlquiler.value);
-    }
-    if (alquilerTrasladado.present) {
-      map['alquiler_trasladado'] = Variable<int>(alquilerTrasladado.value);
-    }
-    if (actualizadoEn.present) {
-      map['actualizado_en'] = Variable<int>(actualizadoEn.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<int>(createdAt.value);
-    }
-    if (updatedAt.present) {
-      map['updated_at'] = Variable<int>(updatedAt.value);
-    }
-    if (createdBy.present) {
-      map['created_by'] = Variable<String>(createdBy.value);
-    }
-    if (deletedAt.present) {
-      map['deleted_at'] = Variable<int>(deletedAt.value);
-    }
-    if (syncVersion.present) {
-      map['sync_version'] = Variable<int>(syncVersion.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('CuentaColportorCompanion(')
-          ..write('id: $id, ')
-          ..write('usuarioId: $usuarioId, ')
-          ..write('deudaTotal: $deudaTotal, ')
-          ..write('dineroDepositado: $dineroDepositado, ')
-          ..write('dineroEnMano: $dineroEnMano, ')
-          ..write('dineroPorCobrar: $dineroPorCobrar, ')
-          ..write('deudaAlquiler: $deudaAlquiler, ')
-          ..write('alquilerTrasladado: $alquilerTrasladado, ')
-          ..write('actualizadoEn: $actualizadoEn, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class CuentaDeudaHistorial extends Table
-    with TableInfo<CuentaDeudaHistorial, CuentaDeudaHistorialData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  CuentaDeudaHistorial(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> usuarioId = GeneratedColumn<String>(
-    'usuario_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> deuda = GeneratedColumn<int>(
-    'deuda',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> desde = GeneratedColumn<int>(
-    'desde',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
-    'created_by',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
-    'deleted_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
-    'sync_version',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    usuarioId,
-    deuda,
-    desde,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'cuenta_deuda_historial';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  CuentaDeudaHistorialData map(
-    Map<String, dynamic> data, {
-    String? tablePrefix,
-  }) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return CuentaDeudaHistorialData(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}id'],
-      )!,
-      usuarioId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}usuario_id'],
-      )!,
-      deuda: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}deuda'],
-      )!,
-      desde: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}desde'],
-      )!,
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}created_at'],
-      )!,
-      updatedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}updated_at'],
-      )!,
-      createdBy: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}created_by'],
-      ),
-      deletedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}deleted_at'],
-      ),
-      syncVersion: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}sync_version'],
-      )!,
-    );
-  }
-
-  @override
-  CuentaDeudaHistorial createAlias(String alias) {
-    return CuentaDeudaHistorial(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const ['PRIMARY KEY(id)'];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class CuentaDeudaHistorialData extends DataClass
-    implements Insertable<CuentaDeudaHistorialData> {
-  final String id;
-  final String usuarioId;
-  final int deuda;
-  final int desde;
-  final int createdAt;
-  final int updatedAt;
-  final String? createdBy;
-  final int? deletedAt;
-  final int syncVersion;
-  const CuentaDeudaHistorialData({
-    required this.id,
-    required this.usuarioId,
-    required this.deuda,
-    required this.desde,
-    required this.createdAt,
-    required this.updatedAt,
-    this.createdBy,
-    this.deletedAt,
-    required this.syncVersion,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
-    map['usuario_id'] = Variable<String>(usuarioId);
-    map['deuda'] = Variable<int>(deuda);
-    map['desde'] = Variable<int>(desde);
-    map['created_at'] = Variable<int>(createdAt);
-    map['updated_at'] = Variable<int>(updatedAt);
-    if (!nullToAbsent || createdBy != null) {
-      map['created_by'] = Variable<String>(createdBy);
-    }
-    if (!nullToAbsent || deletedAt != null) {
-      map['deleted_at'] = Variable<int>(deletedAt);
-    }
-    map['sync_version'] = Variable<int>(syncVersion);
-    return map;
-  }
-
-  CuentaDeudaHistorialCompanion toCompanion(bool nullToAbsent) {
-    return CuentaDeudaHistorialCompanion(
-      id: Value(id),
-      usuarioId: Value(usuarioId),
-      deuda: Value(deuda),
-      desde: Value(desde),
-      createdAt: Value(createdAt),
-      updatedAt: Value(updatedAt),
-      createdBy: createdBy == null && nullToAbsent
-          ? const Value.absent()
-          : Value(createdBy),
-      deletedAt: deletedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(deletedAt),
-      syncVersion: Value(syncVersion),
-    );
-  }
-
-  factory CuentaDeudaHistorialData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return CuentaDeudaHistorialData(
-      id: serializer.fromJson<String>(json['id']),
-      usuarioId: serializer.fromJson<String>(json['usuarioId']),
-      deuda: serializer.fromJson<int>(json['deuda']),
-      desde: serializer.fromJson<int>(json['desde']),
-      createdAt: serializer.fromJson<int>(json['createdAt']),
-      updatedAt: serializer.fromJson<int>(json['updatedAt']),
-      createdBy: serializer.fromJson<String?>(json['createdBy']),
-      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
-      syncVersion: serializer.fromJson<int>(json['syncVersion']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
-      'usuarioId': serializer.toJson<String>(usuarioId),
-      'deuda': serializer.toJson<int>(deuda),
-      'desde': serializer.toJson<int>(desde),
-      'createdAt': serializer.toJson<int>(createdAt),
-      'updatedAt': serializer.toJson<int>(updatedAt),
-      'createdBy': serializer.toJson<String?>(createdBy),
-      'deletedAt': serializer.toJson<int?>(deletedAt),
-      'syncVersion': serializer.toJson<int>(syncVersion),
-    };
-  }
-
-  CuentaDeudaHistorialData copyWith({
-    String? id,
-    String? usuarioId,
-    int? deuda,
-    int? desde,
-    int? createdAt,
-    int? updatedAt,
-    Value<String?> createdBy = const Value.absent(),
-    Value<int?> deletedAt = const Value.absent(),
-    int? syncVersion,
-  }) => CuentaDeudaHistorialData(
-    id: id ?? this.id,
-    usuarioId: usuarioId ?? this.usuarioId,
-    deuda: deuda ?? this.deuda,
-    desde: desde ?? this.desde,
-    createdAt: createdAt ?? this.createdAt,
-    updatedAt: updatedAt ?? this.updatedAt,
-    createdBy: createdBy.present ? createdBy.value : this.createdBy,
-    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
-    syncVersion: syncVersion ?? this.syncVersion,
-  );
-  CuentaDeudaHistorialData copyWithCompanion(
-    CuentaDeudaHistorialCompanion data,
-  ) {
-    return CuentaDeudaHistorialData(
-      id: data.id.present ? data.id.value : this.id,
-      usuarioId: data.usuarioId.present ? data.usuarioId.value : this.usuarioId,
-      deuda: data.deuda.present ? data.deuda.value : this.deuda,
-      desde: data.desde.present ? data.desde.value : this.desde,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
-      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
-      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
-      syncVersion: data.syncVersion.present
-          ? data.syncVersion.value
-          : this.syncVersion,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('CuentaDeudaHistorialData(')
-          ..write('id: $id, ')
-          ..write('usuarioId: $usuarioId, ')
-          ..write('deuda: $deuda, ')
-          ..write('desde: $desde, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    id,
-    usuarioId,
-    deuda,
-    desde,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is CuentaDeudaHistorialData &&
-          other.id == this.id &&
-          other.usuarioId == this.usuarioId &&
-          other.deuda == this.deuda &&
-          other.desde == this.desde &&
-          other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt &&
-          other.createdBy == this.createdBy &&
-          other.deletedAt == this.deletedAt &&
-          other.syncVersion == this.syncVersion);
-}
-
-class CuentaDeudaHistorialCompanion
-    extends UpdateCompanion<CuentaDeudaHistorialData> {
-  final Value<String> id;
-  final Value<String> usuarioId;
-  final Value<int> deuda;
-  final Value<int> desde;
-  final Value<int> createdAt;
-  final Value<int> updatedAt;
-  final Value<String?> createdBy;
-  final Value<int?> deletedAt;
-  final Value<int> syncVersion;
-  final Value<int> rowid;
-  const CuentaDeudaHistorialCompanion({
-    this.id = const Value.absent(),
-    this.usuarioId = const Value.absent(),
-    this.deuda = const Value.absent(),
-    this.desde = const Value.absent(),
-    this.createdAt = const Value.absent(),
-    this.updatedAt = const Value.absent(),
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  CuentaDeudaHistorialCompanion.insert({
-    required String id,
-    required String usuarioId,
-    required int deuda,
-    required int desde,
-    required int createdAt,
-    required int updatedAt,
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       usuarioId = Value(usuarioId),
-       deuda = Value(deuda),
-       desde = Value(desde),
-       createdAt = Value(createdAt),
-       updatedAt = Value(updatedAt);
-  static Insertable<CuentaDeudaHistorialData> custom({
-    Expression<String>? id,
-    Expression<String>? usuarioId,
-    Expression<int>? deuda,
-    Expression<int>? desde,
-    Expression<int>? createdAt,
-    Expression<int>? updatedAt,
-    Expression<String>? createdBy,
-    Expression<int>? deletedAt,
-    Expression<int>? syncVersion,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (usuarioId != null) 'usuario_id': usuarioId,
-      if (deuda != null) 'deuda': deuda,
-      if (desde != null) 'desde': desde,
-      if (createdAt != null) 'created_at': createdAt,
-      if (updatedAt != null) 'updated_at': updatedAt,
-      if (createdBy != null) 'created_by': createdBy,
-      if (deletedAt != null) 'deleted_at': deletedAt,
-      if (syncVersion != null) 'sync_version': syncVersion,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  CuentaDeudaHistorialCompanion copyWith({
-    Value<String>? id,
-    Value<String>? usuarioId,
-    Value<int>? deuda,
-    Value<int>? desde,
-    Value<int>? createdAt,
-    Value<int>? updatedAt,
-    Value<String?>? createdBy,
-    Value<int?>? deletedAt,
-    Value<int>? syncVersion,
-    Value<int>? rowid,
-  }) {
-    return CuentaDeudaHistorialCompanion(
-      id: id ?? this.id,
-      usuarioId: usuarioId ?? this.usuarioId,
-      deuda: deuda ?? this.deuda,
-      desde: desde ?? this.desde,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      createdBy: createdBy ?? this.createdBy,
-      deletedAt: deletedAt ?? this.deletedAt,
-      syncVersion: syncVersion ?? this.syncVersion,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
-    }
-    if (usuarioId.present) {
-      map['usuario_id'] = Variable<String>(usuarioId.value);
-    }
-    if (deuda.present) {
-      map['deuda'] = Variable<int>(deuda.value);
-    }
-    if (desde.present) {
-      map['desde'] = Variable<int>(desde.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<int>(createdAt.value);
-    }
-    if (updatedAt.present) {
-      map['updated_at'] = Variable<int>(updatedAt.value);
-    }
-    if (createdBy.present) {
-      map['created_by'] = Variable<String>(createdBy.value);
-    }
-    if (deletedAt.present) {
-      map['deleted_at'] = Variable<int>(deletedAt.value);
-    }
-    if (syncVersion.present) {
-      map['sync_version'] = Variable<int>(syncVersion.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('CuentaDeudaHistorialCompanion(')
-          ..write('id: $id, ')
-          ..write('usuarioId: $usuarioId, ')
-          ..write('deuda: $deuda, ')
-          ..write('desde: $desde, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class PedidoCasaEditora extends Table
-    with TableInfo<PedidoCasaEditora, PedidoCasaEditoraData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  PedidoCasaEditora(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
+  DeudaCasaCache(this.attachedDatabase, [this._alias]);
   late final GeneratedColumn<String> colportorId = GeneratedColumn<String>(
     'colportor_id',
     aliasedName,
@@ -22119,736 +21045,192 @@ class PedidoCasaEditora extends Table
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<String> coordinadorId = GeneratedColumn<String>(
-    'coordinador_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> fechaPedido = GeneratedColumn<int>(
-    'fecha_pedido',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> estado = GeneratedColumn<String>(
-    'estado',
+  late final GeneratedColumn<String> respuesta = GeneratedColumn<String>(
+    'respuesta',
     aliasedName,
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<int> montoTotal = GeneratedColumn<int>(
-    'monto_total',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<String> origen = GeneratedColumn<String>(
-    'origen',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT \'COLPORTOR\'',
-    defaultValue: const CustomExpression('\'COLPORTOR\''),
-  );
-  late final GeneratedColumn<int> excedeLimite = GeneratedColumn<int>(
-    'excede_limite',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0 CHECK (excede_limite IN (0, 1))',
-    defaultValue: const CustomExpression('0'),
-  );
-  late final GeneratedColumn<int> montoAutorizado = GeneratedColumn<int>(
-    'monto_autorizado',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> decididoPor = GeneratedColumn<String>(
-    'decidido_por',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> decididoEn = GeneratedColumn<int>(
-    'decidido_en',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> motivoRechazo = GeneratedColumn<String>(
-    'motivo_rechazo',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> numero = GeneratedColumn<int>(
-    'numero',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
-    'created_at',
+  late final GeneratedColumn<int> leidaEn = GeneratedColumn<int>(
+    'leida_en',
     aliasedName,
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
-    'created_by',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
-    'deleted_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
-    'sync_version',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
   );
   @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    colportorId,
-    coordinadorId,
-    fechaPedido,
-    estado,
-    montoTotal,
-    origen,
-    excedeLimite,
-    montoAutorizado,
-    decididoPor,
-    decididoEn,
-    motivoRechazo,
-    numero,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  ];
+  List<GeneratedColumn> get $columns => [colportorId, respuesta, leidaEn];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'pedido_casa_editora';
+  static const String $name = 'deuda_casa_cache';
   @override
-  Set<GeneratedColumn> get $primaryKey => {id};
+  Set<GeneratedColumn> get $primaryKey => {colportorId};
   @override
-  PedidoCasaEditoraData map(Map<String, dynamic> data, {String? tablePrefix}) {
+  DeudaCasaCacheData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return PedidoCasaEditoraData(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}id'],
-      )!,
+    return DeudaCasaCacheData(
       colportorId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}colportor_id'],
       )!,
-      coordinadorId: attachedDatabase.typeMapping.read(
+      respuesta: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}coordinador_id'],
-      ),
-      fechaPedido: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}fecha_pedido'],
+        data['${effectivePrefix}respuesta'],
       )!,
-      estado: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}estado'],
-      )!,
-      montoTotal: attachedDatabase.typeMapping.read(
+      leidaEn: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}monto_total'],
-      )!,
-      origen: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}origen'],
-      )!,
-      excedeLimite: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}excede_limite'],
-      )!,
-      montoAutorizado: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}monto_autorizado'],
-      ),
-      decididoPor: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}decidido_por'],
-      ),
-      decididoEn: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}decidido_en'],
-      ),
-      motivoRechazo: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}motivo_rechazo'],
-      ),
-      numero: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}numero'],
-      ),
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}created_at'],
-      )!,
-      updatedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}updated_at'],
-      )!,
-      createdBy: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}created_by'],
-      ),
-      deletedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}deleted_at'],
-      ),
-      syncVersion: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}sync_version'],
+        data['${effectivePrefix}leida_en'],
       )!,
     );
   }
 
   @override
-  PedidoCasaEditora createAlias(String alias) {
-    return PedidoCasaEditora(attachedDatabase, alias);
+  DeudaCasaCache createAlias(String alias) {
+    return DeudaCasaCache(attachedDatabase, alias);
   }
 
   @override
-  List<String> get customConstraints => const ['PRIMARY KEY(id)'];
+  List<String> get customConstraints => const ['PRIMARY KEY(colportor_id)'];
   @override
   bool get dontWriteConstraints => true;
 }
 
-class PedidoCasaEditoraData extends DataClass
-    implements Insertable<PedidoCasaEditoraData> {
-  final String id;
+class DeudaCasaCacheData extends DataClass
+    implements Insertable<DeudaCasaCacheData> {
   final String colportorId;
-  final String? coordinadorId;
-  final int fechaPedido;
-  final String estado;
-  final int montoTotal;
-  final String origen;
-  final int excedeLimite;
-  final int? montoAutorizado;
-  final String? decididoPor;
-  final int? decididoEn;
-  final String? motivoRechazo;
-  final int? numero;
-  final int createdAt;
-  final int updatedAt;
-  final String? createdBy;
-  final int? deletedAt;
-  final int syncVersion;
-  const PedidoCasaEditoraData({
-    required this.id,
+  final String respuesta;
+  final int leidaEn;
+  const DeudaCasaCacheData({
     required this.colportorId,
-    this.coordinadorId,
-    required this.fechaPedido,
-    required this.estado,
-    required this.montoTotal,
-    required this.origen,
-    required this.excedeLimite,
-    this.montoAutorizado,
-    this.decididoPor,
-    this.decididoEn,
-    this.motivoRechazo,
-    this.numero,
-    required this.createdAt,
-    required this.updatedAt,
-    this.createdBy,
-    this.deletedAt,
-    required this.syncVersion,
+    required this.respuesta,
+    required this.leidaEn,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
     map['colportor_id'] = Variable<String>(colportorId);
-    if (!nullToAbsent || coordinadorId != null) {
-      map['coordinador_id'] = Variable<String>(coordinadorId);
-    }
-    map['fecha_pedido'] = Variable<int>(fechaPedido);
-    map['estado'] = Variable<String>(estado);
-    map['monto_total'] = Variable<int>(montoTotal);
-    map['origen'] = Variable<String>(origen);
-    map['excede_limite'] = Variable<int>(excedeLimite);
-    if (!nullToAbsent || montoAutorizado != null) {
-      map['monto_autorizado'] = Variable<int>(montoAutorizado);
-    }
-    if (!nullToAbsent || decididoPor != null) {
-      map['decidido_por'] = Variable<String>(decididoPor);
-    }
-    if (!nullToAbsent || decididoEn != null) {
-      map['decidido_en'] = Variable<int>(decididoEn);
-    }
-    if (!nullToAbsent || motivoRechazo != null) {
-      map['motivo_rechazo'] = Variable<String>(motivoRechazo);
-    }
-    if (!nullToAbsent || numero != null) {
-      map['numero'] = Variable<int>(numero);
-    }
-    map['created_at'] = Variable<int>(createdAt);
-    map['updated_at'] = Variable<int>(updatedAt);
-    if (!nullToAbsent || createdBy != null) {
-      map['created_by'] = Variable<String>(createdBy);
-    }
-    if (!nullToAbsent || deletedAt != null) {
-      map['deleted_at'] = Variable<int>(deletedAt);
-    }
-    map['sync_version'] = Variable<int>(syncVersion);
+    map['respuesta'] = Variable<String>(respuesta);
+    map['leida_en'] = Variable<int>(leidaEn);
     return map;
   }
 
-  PedidoCasaEditoraCompanion toCompanion(bool nullToAbsent) {
-    return PedidoCasaEditoraCompanion(
-      id: Value(id),
+  DeudaCasaCacheCompanion toCompanion(bool nullToAbsent) {
+    return DeudaCasaCacheCompanion(
       colportorId: Value(colportorId),
-      coordinadorId: coordinadorId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(coordinadorId),
-      fechaPedido: Value(fechaPedido),
-      estado: Value(estado),
-      montoTotal: Value(montoTotal),
-      origen: Value(origen),
-      excedeLimite: Value(excedeLimite),
-      montoAutorizado: montoAutorizado == null && nullToAbsent
-          ? const Value.absent()
-          : Value(montoAutorizado),
-      decididoPor: decididoPor == null && nullToAbsent
-          ? const Value.absent()
-          : Value(decididoPor),
-      decididoEn: decididoEn == null && nullToAbsent
-          ? const Value.absent()
-          : Value(decididoEn),
-      motivoRechazo: motivoRechazo == null && nullToAbsent
-          ? const Value.absent()
-          : Value(motivoRechazo),
-      numero: numero == null && nullToAbsent
-          ? const Value.absent()
-          : Value(numero),
-      createdAt: Value(createdAt),
-      updatedAt: Value(updatedAt),
-      createdBy: createdBy == null && nullToAbsent
-          ? const Value.absent()
-          : Value(createdBy),
-      deletedAt: deletedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(deletedAt),
-      syncVersion: Value(syncVersion),
+      respuesta: Value(respuesta),
+      leidaEn: Value(leidaEn),
     );
   }
 
-  factory PedidoCasaEditoraData.fromJson(
+  factory DeudaCasaCacheData.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return PedidoCasaEditoraData(
-      id: serializer.fromJson<String>(json['id']),
+    return DeudaCasaCacheData(
       colportorId: serializer.fromJson<String>(json['colportorId']),
-      coordinadorId: serializer.fromJson<String?>(json['coordinadorId']),
-      fechaPedido: serializer.fromJson<int>(json['fechaPedido']),
-      estado: serializer.fromJson<String>(json['estado']),
-      montoTotal: serializer.fromJson<int>(json['montoTotal']),
-      origen: serializer.fromJson<String>(json['origen']),
-      excedeLimite: serializer.fromJson<int>(json['excedeLimite']),
-      montoAutorizado: serializer.fromJson<int?>(json['montoAutorizado']),
-      decididoPor: serializer.fromJson<String?>(json['decididoPor']),
-      decididoEn: serializer.fromJson<int?>(json['decididoEn']),
-      motivoRechazo: serializer.fromJson<String?>(json['motivoRechazo']),
-      numero: serializer.fromJson<int?>(json['numero']),
-      createdAt: serializer.fromJson<int>(json['createdAt']),
-      updatedAt: serializer.fromJson<int>(json['updatedAt']),
-      createdBy: serializer.fromJson<String?>(json['createdBy']),
-      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
-      syncVersion: serializer.fromJson<int>(json['syncVersion']),
+      respuesta: serializer.fromJson<String>(json['respuesta']),
+      leidaEn: serializer.fromJson<int>(json['leidaEn']),
     );
   }
   @override
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
       'colportorId': serializer.toJson<String>(colportorId),
-      'coordinadorId': serializer.toJson<String?>(coordinadorId),
-      'fechaPedido': serializer.toJson<int>(fechaPedido),
-      'estado': serializer.toJson<String>(estado),
-      'montoTotal': serializer.toJson<int>(montoTotal),
-      'origen': serializer.toJson<String>(origen),
-      'excedeLimite': serializer.toJson<int>(excedeLimite),
-      'montoAutorizado': serializer.toJson<int?>(montoAutorizado),
-      'decididoPor': serializer.toJson<String?>(decididoPor),
-      'decididoEn': serializer.toJson<int?>(decididoEn),
-      'motivoRechazo': serializer.toJson<String?>(motivoRechazo),
-      'numero': serializer.toJson<int?>(numero),
-      'createdAt': serializer.toJson<int>(createdAt),
-      'updatedAt': serializer.toJson<int>(updatedAt),
-      'createdBy': serializer.toJson<String?>(createdBy),
-      'deletedAt': serializer.toJson<int?>(deletedAt),
-      'syncVersion': serializer.toJson<int>(syncVersion),
+      'respuesta': serializer.toJson<String>(respuesta),
+      'leidaEn': serializer.toJson<int>(leidaEn),
     };
   }
 
-  PedidoCasaEditoraData copyWith({
-    String? id,
+  DeudaCasaCacheData copyWith({
     String? colportorId,
-    Value<String?> coordinadorId = const Value.absent(),
-    int? fechaPedido,
-    String? estado,
-    int? montoTotal,
-    String? origen,
-    int? excedeLimite,
-    Value<int?> montoAutorizado = const Value.absent(),
-    Value<String?> decididoPor = const Value.absent(),
-    Value<int?> decididoEn = const Value.absent(),
-    Value<String?> motivoRechazo = const Value.absent(),
-    Value<int?> numero = const Value.absent(),
-    int? createdAt,
-    int? updatedAt,
-    Value<String?> createdBy = const Value.absent(),
-    Value<int?> deletedAt = const Value.absent(),
-    int? syncVersion,
-  }) => PedidoCasaEditoraData(
-    id: id ?? this.id,
+    String? respuesta,
+    int? leidaEn,
+  }) => DeudaCasaCacheData(
     colportorId: colportorId ?? this.colportorId,
-    coordinadorId: coordinadorId.present
-        ? coordinadorId.value
-        : this.coordinadorId,
-    fechaPedido: fechaPedido ?? this.fechaPedido,
-    estado: estado ?? this.estado,
-    montoTotal: montoTotal ?? this.montoTotal,
-    origen: origen ?? this.origen,
-    excedeLimite: excedeLimite ?? this.excedeLimite,
-    montoAutorizado: montoAutorizado.present
-        ? montoAutorizado.value
-        : this.montoAutorizado,
-    decididoPor: decididoPor.present ? decididoPor.value : this.decididoPor,
-    decididoEn: decididoEn.present ? decididoEn.value : this.decididoEn,
-    motivoRechazo: motivoRechazo.present
-        ? motivoRechazo.value
-        : this.motivoRechazo,
-    numero: numero.present ? numero.value : this.numero,
-    createdAt: createdAt ?? this.createdAt,
-    updatedAt: updatedAt ?? this.updatedAt,
-    createdBy: createdBy.present ? createdBy.value : this.createdBy,
-    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
-    syncVersion: syncVersion ?? this.syncVersion,
+    respuesta: respuesta ?? this.respuesta,
+    leidaEn: leidaEn ?? this.leidaEn,
   );
-  PedidoCasaEditoraData copyWithCompanion(PedidoCasaEditoraCompanion data) {
-    return PedidoCasaEditoraData(
-      id: data.id.present ? data.id.value : this.id,
+  DeudaCasaCacheData copyWithCompanion(DeudaCasaCacheCompanion data) {
+    return DeudaCasaCacheData(
       colportorId: data.colportorId.present
           ? data.colportorId.value
           : this.colportorId,
-      coordinadorId: data.coordinadorId.present
-          ? data.coordinadorId.value
-          : this.coordinadorId,
-      fechaPedido: data.fechaPedido.present
-          ? data.fechaPedido.value
-          : this.fechaPedido,
-      estado: data.estado.present ? data.estado.value : this.estado,
-      montoTotal: data.montoTotal.present
-          ? data.montoTotal.value
-          : this.montoTotal,
-      origen: data.origen.present ? data.origen.value : this.origen,
-      excedeLimite: data.excedeLimite.present
-          ? data.excedeLimite.value
-          : this.excedeLimite,
-      montoAutorizado: data.montoAutorizado.present
-          ? data.montoAutorizado.value
-          : this.montoAutorizado,
-      decididoPor: data.decididoPor.present
-          ? data.decididoPor.value
-          : this.decididoPor,
-      decididoEn: data.decididoEn.present
-          ? data.decididoEn.value
-          : this.decididoEn,
-      motivoRechazo: data.motivoRechazo.present
-          ? data.motivoRechazo.value
-          : this.motivoRechazo,
-      numero: data.numero.present ? data.numero.value : this.numero,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
-      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
-      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
-      syncVersion: data.syncVersion.present
-          ? data.syncVersion.value
-          : this.syncVersion,
+      respuesta: data.respuesta.present ? data.respuesta.value : this.respuesta,
+      leidaEn: data.leidaEn.present ? data.leidaEn.value : this.leidaEn,
     );
   }
 
   @override
   String toString() {
-    return (StringBuffer('PedidoCasaEditoraData(')
-          ..write('id: $id, ')
+    return (StringBuffer('DeudaCasaCacheData(')
           ..write('colportorId: $colportorId, ')
-          ..write('coordinadorId: $coordinadorId, ')
-          ..write('fechaPedido: $fechaPedido, ')
-          ..write('estado: $estado, ')
-          ..write('montoTotal: $montoTotal, ')
-          ..write('origen: $origen, ')
-          ..write('excedeLimite: $excedeLimite, ')
-          ..write('montoAutorizado: $montoAutorizado, ')
-          ..write('decididoPor: $decididoPor, ')
-          ..write('decididoEn: $decididoEn, ')
-          ..write('motivoRechazo: $motivoRechazo, ')
-          ..write('numero: $numero, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion')
+          ..write('respuesta: $respuesta, ')
+          ..write('leidaEn: $leidaEn')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-    id,
-    colportorId,
-    coordinadorId,
-    fechaPedido,
-    estado,
-    montoTotal,
-    origen,
-    excedeLimite,
-    montoAutorizado,
-    decididoPor,
-    decididoEn,
-    motivoRechazo,
-    numero,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  );
+  int get hashCode => Object.hash(colportorId, respuesta, leidaEn);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is PedidoCasaEditoraData &&
-          other.id == this.id &&
+      (other is DeudaCasaCacheData &&
           other.colportorId == this.colportorId &&
-          other.coordinadorId == this.coordinadorId &&
-          other.fechaPedido == this.fechaPedido &&
-          other.estado == this.estado &&
-          other.montoTotal == this.montoTotal &&
-          other.origen == this.origen &&
-          other.excedeLimite == this.excedeLimite &&
-          other.montoAutorizado == this.montoAutorizado &&
-          other.decididoPor == this.decididoPor &&
-          other.decididoEn == this.decididoEn &&
-          other.motivoRechazo == this.motivoRechazo &&
-          other.numero == this.numero &&
-          other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt &&
-          other.createdBy == this.createdBy &&
-          other.deletedAt == this.deletedAt &&
-          other.syncVersion == this.syncVersion);
+          other.respuesta == this.respuesta &&
+          other.leidaEn == this.leidaEn);
 }
 
-class PedidoCasaEditoraCompanion
-    extends UpdateCompanion<PedidoCasaEditoraData> {
-  final Value<String> id;
+class DeudaCasaCacheCompanion extends UpdateCompanion<DeudaCasaCacheData> {
   final Value<String> colportorId;
-  final Value<String?> coordinadorId;
-  final Value<int> fechaPedido;
-  final Value<String> estado;
-  final Value<int> montoTotal;
-  final Value<String> origen;
-  final Value<int> excedeLimite;
-  final Value<int?> montoAutorizado;
-  final Value<String?> decididoPor;
-  final Value<int?> decididoEn;
-  final Value<String?> motivoRechazo;
-  final Value<int?> numero;
-  final Value<int> createdAt;
-  final Value<int> updatedAt;
-  final Value<String?> createdBy;
-  final Value<int?> deletedAt;
-  final Value<int> syncVersion;
+  final Value<String> respuesta;
+  final Value<int> leidaEn;
   final Value<int> rowid;
-  const PedidoCasaEditoraCompanion({
-    this.id = const Value.absent(),
+  const DeudaCasaCacheCompanion({
     this.colportorId = const Value.absent(),
-    this.coordinadorId = const Value.absent(),
-    this.fechaPedido = const Value.absent(),
-    this.estado = const Value.absent(),
-    this.montoTotal = const Value.absent(),
-    this.origen = const Value.absent(),
-    this.excedeLimite = const Value.absent(),
-    this.montoAutorizado = const Value.absent(),
-    this.decididoPor = const Value.absent(),
-    this.decididoEn = const Value.absent(),
-    this.motivoRechazo = const Value.absent(),
-    this.numero = const Value.absent(),
-    this.createdAt = const Value.absent(),
-    this.updatedAt = const Value.absent(),
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
+    this.respuesta = const Value.absent(),
+    this.leidaEn = const Value.absent(),
     this.rowid = const Value.absent(),
   });
-  PedidoCasaEditoraCompanion.insert({
-    required String id,
+  DeudaCasaCacheCompanion.insert({
     required String colportorId,
-    this.coordinadorId = const Value.absent(),
-    required int fechaPedido,
-    required String estado,
-    this.montoTotal = const Value.absent(),
-    this.origen = const Value.absent(),
-    this.excedeLimite = const Value.absent(),
-    this.montoAutorizado = const Value.absent(),
-    this.decididoPor = const Value.absent(),
-    this.decididoEn = const Value.absent(),
-    this.motivoRechazo = const Value.absent(),
-    this.numero = const Value.absent(),
-    required int createdAt,
-    required int updatedAt,
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
+    required String respuesta,
+    required int leidaEn,
     this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       colportorId = Value(colportorId),
-       fechaPedido = Value(fechaPedido),
-       estado = Value(estado),
-       createdAt = Value(createdAt),
-       updatedAt = Value(updatedAt);
-  static Insertable<PedidoCasaEditoraData> custom({
-    Expression<String>? id,
+  }) : colportorId = Value(colportorId),
+       respuesta = Value(respuesta),
+       leidaEn = Value(leidaEn);
+  static Insertable<DeudaCasaCacheData> custom({
     Expression<String>? colportorId,
-    Expression<String>? coordinadorId,
-    Expression<int>? fechaPedido,
-    Expression<String>? estado,
-    Expression<int>? montoTotal,
-    Expression<String>? origen,
-    Expression<int>? excedeLimite,
-    Expression<int>? montoAutorizado,
-    Expression<String>? decididoPor,
-    Expression<int>? decididoEn,
-    Expression<String>? motivoRechazo,
-    Expression<int>? numero,
-    Expression<int>? createdAt,
-    Expression<int>? updatedAt,
-    Expression<String>? createdBy,
-    Expression<int>? deletedAt,
-    Expression<int>? syncVersion,
+    Expression<String>? respuesta,
+    Expression<int>? leidaEn,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
-      if (id != null) 'id': id,
       if (colportorId != null) 'colportor_id': colportorId,
-      if (coordinadorId != null) 'coordinador_id': coordinadorId,
-      if (fechaPedido != null) 'fecha_pedido': fechaPedido,
-      if (estado != null) 'estado': estado,
-      if (montoTotal != null) 'monto_total': montoTotal,
-      if (origen != null) 'origen': origen,
-      if (excedeLimite != null) 'excede_limite': excedeLimite,
-      if (montoAutorizado != null) 'monto_autorizado': montoAutorizado,
-      if (decididoPor != null) 'decidido_por': decididoPor,
-      if (decididoEn != null) 'decidido_en': decididoEn,
-      if (motivoRechazo != null) 'motivo_rechazo': motivoRechazo,
-      if (numero != null) 'numero': numero,
-      if (createdAt != null) 'created_at': createdAt,
-      if (updatedAt != null) 'updated_at': updatedAt,
-      if (createdBy != null) 'created_by': createdBy,
-      if (deletedAt != null) 'deleted_at': deletedAt,
-      if (syncVersion != null) 'sync_version': syncVersion,
+      if (respuesta != null) 'respuesta': respuesta,
+      if (leidaEn != null) 'leida_en': leidaEn,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
-  PedidoCasaEditoraCompanion copyWith({
-    Value<String>? id,
+  DeudaCasaCacheCompanion copyWith({
     Value<String>? colportorId,
-    Value<String?>? coordinadorId,
-    Value<int>? fechaPedido,
-    Value<String>? estado,
-    Value<int>? montoTotal,
-    Value<String>? origen,
-    Value<int>? excedeLimite,
-    Value<int?>? montoAutorizado,
-    Value<String?>? decididoPor,
-    Value<int?>? decididoEn,
-    Value<String?>? motivoRechazo,
-    Value<int?>? numero,
-    Value<int>? createdAt,
-    Value<int>? updatedAt,
-    Value<String?>? createdBy,
-    Value<int?>? deletedAt,
-    Value<int>? syncVersion,
+    Value<String>? respuesta,
+    Value<int>? leidaEn,
     Value<int>? rowid,
   }) {
-    return PedidoCasaEditoraCompanion(
-      id: id ?? this.id,
+    return DeudaCasaCacheCompanion(
       colportorId: colportorId ?? this.colportorId,
-      coordinadorId: coordinadorId ?? this.coordinadorId,
-      fechaPedido: fechaPedido ?? this.fechaPedido,
-      estado: estado ?? this.estado,
-      montoTotal: montoTotal ?? this.montoTotal,
-      origen: origen ?? this.origen,
-      excedeLimite: excedeLimite ?? this.excedeLimite,
-      montoAutorizado: montoAutorizado ?? this.montoAutorizado,
-      decididoPor: decididoPor ?? this.decididoPor,
-      decididoEn: decididoEn ?? this.decididoEn,
-      motivoRechazo: motivoRechazo ?? this.motivoRechazo,
-      numero: numero ?? this.numero,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      createdBy: createdBy ?? this.createdBy,
-      deletedAt: deletedAt ?? this.deletedAt,
-      syncVersion: syncVersion ?? this.syncVersion,
+      respuesta: respuesta ?? this.respuesta,
+      leidaEn: leidaEn ?? this.leidaEn,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -22856,59 +21238,14 @@ class PedidoCasaEditoraCompanion
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
-    }
     if (colportorId.present) {
       map['colportor_id'] = Variable<String>(colportorId.value);
     }
-    if (coordinadorId.present) {
-      map['coordinador_id'] = Variable<String>(coordinadorId.value);
+    if (respuesta.present) {
+      map['respuesta'] = Variable<String>(respuesta.value);
     }
-    if (fechaPedido.present) {
-      map['fecha_pedido'] = Variable<int>(fechaPedido.value);
-    }
-    if (estado.present) {
-      map['estado'] = Variable<String>(estado.value);
-    }
-    if (montoTotal.present) {
-      map['monto_total'] = Variable<int>(montoTotal.value);
-    }
-    if (origen.present) {
-      map['origen'] = Variable<String>(origen.value);
-    }
-    if (excedeLimite.present) {
-      map['excede_limite'] = Variable<int>(excedeLimite.value);
-    }
-    if (montoAutorizado.present) {
-      map['monto_autorizado'] = Variable<int>(montoAutorizado.value);
-    }
-    if (decididoPor.present) {
-      map['decidido_por'] = Variable<String>(decididoPor.value);
-    }
-    if (decididoEn.present) {
-      map['decidido_en'] = Variable<int>(decididoEn.value);
-    }
-    if (motivoRechazo.present) {
-      map['motivo_rechazo'] = Variable<String>(motivoRechazo.value);
-    }
-    if (numero.present) {
-      map['numero'] = Variable<int>(numero.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<int>(createdAt.value);
-    }
-    if (updatedAt.present) {
-      map['updated_at'] = Variable<int>(updatedAt.value);
-    }
-    if (createdBy.present) {
-      map['created_by'] = Variable<String>(createdBy.value);
-    }
-    if (deletedAt.present) {
-      map['deleted_at'] = Variable<int>(deletedAt.value);
-    }
-    if (syncVersion.present) {
-      map['sync_version'] = Variable<int>(syncVersion.value);
+    if (leidaEn.present) {
+      map['leida_en'] = Variable<int>(leidaEn.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -22918,669 +21255,10 @@ class PedidoCasaEditoraCompanion
 
   @override
   String toString() {
-    return (StringBuffer('PedidoCasaEditoraCompanion(')
-          ..write('id: $id, ')
+    return (StringBuffer('DeudaCasaCacheCompanion(')
           ..write('colportorId: $colportorId, ')
-          ..write('coordinadorId: $coordinadorId, ')
-          ..write('fechaPedido: $fechaPedido, ')
-          ..write('estado: $estado, ')
-          ..write('montoTotal: $montoTotal, ')
-          ..write('origen: $origen, ')
-          ..write('excedeLimite: $excedeLimite, ')
-          ..write('montoAutorizado: $montoAutorizado, ')
-          ..write('decididoPor: $decididoPor, ')
-          ..write('decididoEn: $decididoEn, ')
-          ..write('motivoRechazo: $motivoRechazo, ')
-          ..write('numero: $numero, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class PedidoItem extends Table with TableInfo<PedidoItem, PedidoItemData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  PedidoItem(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> pedidoId = GeneratedColumn<String>(
-    'pedido_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> productoId = GeneratedColumn<String>(
-    'producto_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> cantidad = GeneratedColumn<int>(
-    'cantidad',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> precioUnitario = GeneratedColumn<int>(
-    'precio_unitario',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> cantidadRecibida = GeneratedColumn<int>(
-    'cantidad_recibida',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<String> colportorId = GeneratedColumn<String>(
-    'colportor_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> cantidadAutorizada = GeneratedColumn<int>(
-    'cantidad_autorizada',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
-    'created_by',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
-    'deleted_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
-    'sync_version',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    pedidoId,
-    productoId,
-    cantidad,
-    precioUnitario,
-    cantidadRecibida,
-    colportorId,
-    cantidadAutorizada,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'pedido_item';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  PedidoItemData map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return PedidoItemData(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}id'],
-      )!,
-      pedidoId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}pedido_id'],
-      )!,
-      productoId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}producto_id'],
-      )!,
-      cantidad: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}cantidad'],
-      )!,
-      precioUnitario: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}precio_unitario'],
-      ),
-      cantidadRecibida: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}cantidad_recibida'],
-      ),
-      colportorId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}colportor_id'],
-      ),
-      cantidadAutorizada: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}cantidad_autorizada'],
-      ),
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}created_at'],
-      )!,
-      updatedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}updated_at'],
-      )!,
-      createdBy: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}created_by'],
-      ),
-      deletedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}deleted_at'],
-      ),
-      syncVersion: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}sync_version'],
-      )!,
-    );
-  }
-
-  @override
-  PedidoItem createAlias(String alias) {
-    return PedidoItem(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const ['PRIMARY KEY(id)'];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class PedidoItemData extends DataClass implements Insertable<PedidoItemData> {
-  final String id;
-  final String pedidoId;
-  final String productoId;
-  final int cantidad;
-  final int? precioUnitario;
-  final int? cantidadRecibida;
-  final String? colportorId;
-  final int? cantidadAutorizada;
-  final int createdAt;
-  final int updatedAt;
-  final String? createdBy;
-  final int? deletedAt;
-  final int syncVersion;
-  const PedidoItemData({
-    required this.id,
-    required this.pedidoId,
-    required this.productoId,
-    required this.cantidad,
-    this.precioUnitario,
-    this.cantidadRecibida,
-    this.colportorId,
-    this.cantidadAutorizada,
-    required this.createdAt,
-    required this.updatedAt,
-    this.createdBy,
-    this.deletedAt,
-    required this.syncVersion,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
-    map['pedido_id'] = Variable<String>(pedidoId);
-    map['producto_id'] = Variable<String>(productoId);
-    map['cantidad'] = Variable<int>(cantidad);
-    if (!nullToAbsent || precioUnitario != null) {
-      map['precio_unitario'] = Variable<int>(precioUnitario);
-    }
-    if (!nullToAbsent || cantidadRecibida != null) {
-      map['cantidad_recibida'] = Variable<int>(cantidadRecibida);
-    }
-    if (!nullToAbsent || colportorId != null) {
-      map['colportor_id'] = Variable<String>(colportorId);
-    }
-    if (!nullToAbsent || cantidadAutorizada != null) {
-      map['cantidad_autorizada'] = Variable<int>(cantidadAutorizada);
-    }
-    map['created_at'] = Variable<int>(createdAt);
-    map['updated_at'] = Variable<int>(updatedAt);
-    if (!nullToAbsent || createdBy != null) {
-      map['created_by'] = Variable<String>(createdBy);
-    }
-    if (!nullToAbsent || deletedAt != null) {
-      map['deleted_at'] = Variable<int>(deletedAt);
-    }
-    map['sync_version'] = Variable<int>(syncVersion);
-    return map;
-  }
-
-  PedidoItemCompanion toCompanion(bool nullToAbsent) {
-    return PedidoItemCompanion(
-      id: Value(id),
-      pedidoId: Value(pedidoId),
-      productoId: Value(productoId),
-      cantidad: Value(cantidad),
-      precioUnitario: precioUnitario == null && nullToAbsent
-          ? const Value.absent()
-          : Value(precioUnitario),
-      cantidadRecibida: cantidadRecibida == null && nullToAbsent
-          ? const Value.absent()
-          : Value(cantidadRecibida),
-      colportorId: colportorId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(colportorId),
-      cantidadAutorizada: cantidadAutorizada == null && nullToAbsent
-          ? const Value.absent()
-          : Value(cantidadAutorizada),
-      createdAt: Value(createdAt),
-      updatedAt: Value(updatedAt),
-      createdBy: createdBy == null && nullToAbsent
-          ? const Value.absent()
-          : Value(createdBy),
-      deletedAt: deletedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(deletedAt),
-      syncVersion: Value(syncVersion),
-    );
-  }
-
-  factory PedidoItemData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return PedidoItemData(
-      id: serializer.fromJson<String>(json['id']),
-      pedidoId: serializer.fromJson<String>(json['pedidoId']),
-      productoId: serializer.fromJson<String>(json['productoId']),
-      cantidad: serializer.fromJson<int>(json['cantidad']),
-      precioUnitario: serializer.fromJson<int?>(json['precioUnitario']),
-      cantidadRecibida: serializer.fromJson<int?>(json['cantidadRecibida']),
-      colportorId: serializer.fromJson<String?>(json['colportorId']),
-      cantidadAutorizada: serializer.fromJson<int?>(json['cantidadAutorizada']),
-      createdAt: serializer.fromJson<int>(json['createdAt']),
-      updatedAt: serializer.fromJson<int>(json['updatedAt']),
-      createdBy: serializer.fromJson<String?>(json['createdBy']),
-      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
-      syncVersion: serializer.fromJson<int>(json['syncVersion']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
-      'pedidoId': serializer.toJson<String>(pedidoId),
-      'productoId': serializer.toJson<String>(productoId),
-      'cantidad': serializer.toJson<int>(cantidad),
-      'precioUnitario': serializer.toJson<int?>(precioUnitario),
-      'cantidadRecibida': serializer.toJson<int?>(cantidadRecibida),
-      'colportorId': serializer.toJson<String?>(colportorId),
-      'cantidadAutorizada': serializer.toJson<int?>(cantidadAutorizada),
-      'createdAt': serializer.toJson<int>(createdAt),
-      'updatedAt': serializer.toJson<int>(updatedAt),
-      'createdBy': serializer.toJson<String?>(createdBy),
-      'deletedAt': serializer.toJson<int?>(deletedAt),
-      'syncVersion': serializer.toJson<int>(syncVersion),
-    };
-  }
-
-  PedidoItemData copyWith({
-    String? id,
-    String? pedidoId,
-    String? productoId,
-    int? cantidad,
-    Value<int?> precioUnitario = const Value.absent(),
-    Value<int?> cantidadRecibida = const Value.absent(),
-    Value<String?> colportorId = const Value.absent(),
-    Value<int?> cantidadAutorizada = const Value.absent(),
-    int? createdAt,
-    int? updatedAt,
-    Value<String?> createdBy = const Value.absent(),
-    Value<int?> deletedAt = const Value.absent(),
-    int? syncVersion,
-  }) => PedidoItemData(
-    id: id ?? this.id,
-    pedidoId: pedidoId ?? this.pedidoId,
-    productoId: productoId ?? this.productoId,
-    cantidad: cantidad ?? this.cantidad,
-    precioUnitario: precioUnitario.present
-        ? precioUnitario.value
-        : this.precioUnitario,
-    cantidadRecibida: cantidadRecibida.present
-        ? cantidadRecibida.value
-        : this.cantidadRecibida,
-    colportorId: colportorId.present ? colportorId.value : this.colportorId,
-    cantidadAutorizada: cantidadAutorizada.present
-        ? cantidadAutorizada.value
-        : this.cantidadAutorizada,
-    createdAt: createdAt ?? this.createdAt,
-    updatedAt: updatedAt ?? this.updatedAt,
-    createdBy: createdBy.present ? createdBy.value : this.createdBy,
-    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
-    syncVersion: syncVersion ?? this.syncVersion,
-  );
-  PedidoItemData copyWithCompanion(PedidoItemCompanion data) {
-    return PedidoItemData(
-      id: data.id.present ? data.id.value : this.id,
-      pedidoId: data.pedidoId.present ? data.pedidoId.value : this.pedidoId,
-      productoId: data.productoId.present
-          ? data.productoId.value
-          : this.productoId,
-      cantidad: data.cantidad.present ? data.cantidad.value : this.cantidad,
-      precioUnitario: data.precioUnitario.present
-          ? data.precioUnitario.value
-          : this.precioUnitario,
-      cantidadRecibida: data.cantidadRecibida.present
-          ? data.cantidadRecibida.value
-          : this.cantidadRecibida,
-      colportorId: data.colportorId.present
-          ? data.colportorId.value
-          : this.colportorId,
-      cantidadAutorizada: data.cantidadAutorizada.present
-          ? data.cantidadAutorizada.value
-          : this.cantidadAutorizada,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
-      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
-      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
-      syncVersion: data.syncVersion.present
-          ? data.syncVersion.value
-          : this.syncVersion,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('PedidoItemData(')
-          ..write('id: $id, ')
-          ..write('pedidoId: $pedidoId, ')
-          ..write('productoId: $productoId, ')
-          ..write('cantidad: $cantidad, ')
-          ..write('precioUnitario: $precioUnitario, ')
-          ..write('cantidadRecibida: $cantidadRecibida, ')
-          ..write('colportorId: $colportorId, ')
-          ..write('cantidadAutorizada: $cantidadAutorizada, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    id,
-    pedidoId,
-    productoId,
-    cantidad,
-    precioUnitario,
-    cantidadRecibida,
-    colportorId,
-    cantidadAutorizada,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is PedidoItemData &&
-          other.id == this.id &&
-          other.pedidoId == this.pedidoId &&
-          other.productoId == this.productoId &&
-          other.cantidad == this.cantidad &&
-          other.precioUnitario == this.precioUnitario &&
-          other.cantidadRecibida == this.cantidadRecibida &&
-          other.colportorId == this.colportorId &&
-          other.cantidadAutorizada == this.cantidadAutorizada &&
-          other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt &&
-          other.createdBy == this.createdBy &&
-          other.deletedAt == this.deletedAt &&
-          other.syncVersion == this.syncVersion);
-}
-
-class PedidoItemCompanion extends UpdateCompanion<PedidoItemData> {
-  final Value<String> id;
-  final Value<String> pedidoId;
-  final Value<String> productoId;
-  final Value<int> cantidad;
-  final Value<int?> precioUnitario;
-  final Value<int?> cantidadRecibida;
-  final Value<String?> colportorId;
-  final Value<int?> cantidadAutorizada;
-  final Value<int> createdAt;
-  final Value<int> updatedAt;
-  final Value<String?> createdBy;
-  final Value<int?> deletedAt;
-  final Value<int> syncVersion;
-  final Value<int> rowid;
-  const PedidoItemCompanion({
-    this.id = const Value.absent(),
-    this.pedidoId = const Value.absent(),
-    this.productoId = const Value.absent(),
-    this.cantidad = const Value.absent(),
-    this.precioUnitario = const Value.absent(),
-    this.cantidadRecibida = const Value.absent(),
-    this.colportorId = const Value.absent(),
-    this.cantidadAutorizada = const Value.absent(),
-    this.createdAt = const Value.absent(),
-    this.updatedAt = const Value.absent(),
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  PedidoItemCompanion.insert({
-    required String id,
-    required String pedidoId,
-    required String productoId,
-    required int cantidad,
-    this.precioUnitario = const Value.absent(),
-    this.cantidadRecibida = const Value.absent(),
-    this.colportorId = const Value.absent(),
-    this.cantidadAutorizada = const Value.absent(),
-    required int createdAt,
-    required int updatedAt,
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       pedidoId = Value(pedidoId),
-       productoId = Value(productoId),
-       cantidad = Value(cantidad),
-       createdAt = Value(createdAt),
-       updatedAt = Value(updatedAt);
-  static Insertable<PedidoItemData> custom({
-    Expression<String>? id,
-    Expression<String>? pedidoId,
-    Expression<String>? productoId,
-    Expression<int>? cantidad,
-    Expression<int>? precioUnitario,
-    Expression<int>? cantidadRecibida,
-    Expression<String>? colportorId,
-    Expression<int>? cantidadAutorizada,
-    Expression<int>? createdAt,
-    Expression<int>? updatedAt,
-    Expression<String>? createdBy,
-    Expression<int>? deletedAt,
-    Expression<int>? syncVersion,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (pedidoId != null) 'pedido_id': pedidoId,
-      if (productoId != null) 'producto_id': productoId,
-      if (cantidad != null) 'cantidad': cantidad,
-      if (precioUnitario != null) 'precio_unitario': precioUnitario,
-      if (cantidadRecibida != null) 'cantidad_recibida': cantidadRecibida,
-      if (colportorId != null) 'colportor_id': colportorId,
-      if (cantidadAutorizada != null) 'cantidad_autorizada': cantidadAutorizada,
-      if (createdAt != null) 'created_at': createdAt,
-      if (updatedAt != null) 'updated_at': updatedAt,
-      if (createdBy != null) 'created_by': createdBy,
-      if (deletedAt != null) 'deleted_at': deletedAt,
-      if (syncVersion != null) 'sync_version': syncVersion,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  PedidoItemCompanion copyWith({
-    Value<String>? id,
-    Value<String>? pedidoId,
-    Value<String>? productoId,
-    Value<int>? cantidad,
-    Value<int?>? precioUnitario,
-    Value<int?>? cantidadRecibida,
-    Value<String?>? colportorId,
-    Value<int?>? cantidadAutorizada,
-    Value<int>? createdAt,
-    Value<int>? updatedAt,
-    Value<String?>? createdBy,
-    Value<int?>? deletedAt,
-    Value<int>? syncVersion,
-    Value<int>? rowid,
-  }) {
-    return PedidoItemCompanion(
-      id: id ?? this.id,
-      pedidoId: pedidoId ?? this.pedidoId,
-      productoId: productoId ?? this.productoId,
-      cantidad: cantidad ?? this.cantidad,
-      precioUnitario: precioUnitario ?? this.precioUnitario,
-      cantidadRecibida: cantidadRecibida ?? this.cantidadRecibida,
-      colportorId: colportorId ?? this.colportorId,
-      cantidadAutorizada: cantidadAutorizada ?? this.cantidadAutorizada,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      createdBy: createdBy ?? this.createdBy,
-      deletedAt: deletedAt ?? this.deletedAt,
-      syncVersion: syncVersion ?? this.syncVersion,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
-    }
-    if (pedidoId.present) {
-      map['pedido_id'] = Variable<String>(pedidoId.value);
-    }
-    if (productoId.present) {
-      map['producto_id'] = Variable<String>(productoId.value);
-    }
-    if (cantidad.present) {
-      map['cantidad'] = Variable<int>(cantidad.value);
-    }
-    if (precioUnitario.present) {
-      map['precio_unitario'] = Variable<int>(precioUnitario.value);
-    }
-    if (cantidadRecibida.present) {
-      map['cantidad_recibida'] = Variable<int>(cantidadRecibida.value);
-    }
-    if (colportorId.present) {
-      map['colportor_id'] = Variable<String>(colportorId.value);
-    }
-    if (cantidadAutorizada.present) {
-      map['cantidad_autorizada'] = Variable<int>(cantidadAutorizada.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<int>(createdAt.value);
-    }
-    if (updatedAt.present) {
-      map['updated_at'] = Variable<int>(updatedAt.value);
-    }
-    if (createdBy.present) {
-      map['created_by'] = Variable<String>(createdBy.value);
-    }
-    if (deletedAt.present) {
-      map['deleted_at'] = Variable<int>(deletedAt.value);
-    }
-    if (syncVersion.present) {
-      map['sync_version'] = Variable<int>(syncVersion.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('PedidoItemCompanion(')
-          ..write('id: $id, ')
-          ..write('pedidoId: $pedidoId, ')
-          ..write('productoId: $productoId, ')
-          ..write('cantidad: $cantidad, ')
-          ..write('precioUnitario: $precioUnitario, ')
-          ..write('cantidadRecibida: $cantidadRecibida, ')
-          ..write('colportorId: $colportorId, ')
-          ..write('cantidadAutorizada: $cantidadAutorizada, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion, ')
+          ..write('respuesta: $respuesta, ')
+          ..write('leidaEn: $leidaEn, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -24315,12 +21993,7 @@ class DatabaseAtV39 extends GeneratedDatabase {
   late final Deposito deposito = Deposito(this);
   late final Ticket ticket = Ticket(this);
   late final TicketFotoLocal ticketFotoLocal = TicketFotoLocal(this);
-  late final CuentaColportor cuentaColportor = CuentaColportor(this);
-  late final CuentaDeudaHistorial cuentaDeudaHistorial = CuentaDeudaHistorial(
-    this,
-  );
-  late final PedidoCasaEditora pedidoCasaEditora = PedidoCasaEditora(this);
-  late final PedidoItem pedidoItem = PedidoItem(this);
+  late final DeudaCasaCache deudaCasaCache = DeudaCasaCache(this);
   late final UbicacionUnionLocal ubicacionUnionLocal = UbicacionUnionLocal(
     this,
   );
@@ -24473,22 +22146,6 @@ class DatabaseAtV39 extends GeneratedDatabase {
     'deposito_ticket_idx',
     'CREATE INDEX deposito_ticket_idx ON deposito (ticket_id)',
   );
-  late final Index cuentaColportorUsuarioIdx = Index(
-    'cuenta_colportor_usuario_idx',
-    'CREATE INDEX cuenta_colportor_usuario_idx ON cuenta_colportor (usuario_id)',
-  );
-  late final Index cuentaDeudaHistorialUsuarioIdx = Index(
-    'cuenta_deuda_historial_usuario_idx',
-    'CREATE INDEX cuenta_deuda_historial_usuario_idx ON cuenta_deuda_historial (usuario_id, desde)',
-  );
-  late final Index pedidoCasaEditoraColportorIdx = Index(
-    'pedido_casa_editora_colportor_idx',
-    'CREATE INDEX pedido_casa_editora_colportor_idx ON pedido_casa_editora (colportor_id)',
-  );
-  late final Index pedidoItemPedidoIdx = Index(
-    'pedido_item_pedido_idx',
-    'CREATE INDEX pedido_item_pedido_idx ON pedido_item (pedido_id)',
-  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -24533,10 +22190,7 @@ class DatabaseAtV39 extends GeneratedDatabase {
     deposito,
     ticket,
     ticketFotoLocal,
-    cuentaColportor,
-    cuentaDeudaHistorial,
-    pedidoCasaEditora,
-    pedidoItem,
+    deudaCasaCache,
     ubicacionUnionLocal,
     syncFueraDelArea,
     jornadaColportorIdx,
@@ -24576,10 +22230,6 @@ class DatabaseAtV39 extends GeneratedDatabase {
     entregaVentaIdx,
     devolucionVentaIdx,
     depositoTicketIdx,
-    cuentaColportorUsuarioIdx,
-    cuentaDeudaHistorialUsuarioIdx,
-    pedidoCasaEditoraColportorIdx,
-    pedidoItemPedidoIdx,
   ];
   @override
   int get schemaVersion => 39;

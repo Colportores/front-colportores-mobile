@@ -28,7 +28,13 @@ class AvisoDrive extends StatelessWidget {
     this.accion,
     this.alAccionar,
     this.detalle,
-  }) : assert(accion != null || alAccionar == null, 'sin texto de acción no hay a qué accionar');
+    this.accionSecundaria,
+    this.alAccionarSecundaria,
+  }) : assert(accion != null || alAccionar == null, 'sin texto de acción no hay a qué accionar'),
+       assert(
+         accionSecundaria != null || alAccionarSecundaria == null,
+         'sin texto de acción no hay a qué accionar',
+       );
 
   final ClaseAvisoDrive clase;
   final String texto;
@@ -42,6 +48,13 @@ class AvisoDrive extends StatelessWidget {
   /// Una línea de más bajo el texto (por ejemplo, por qué falló el último intento). Al aparecer, el
   /// lector de pantalla la anuncia: el aviso es una región viva.
   final String? detalle;
+
+  /// Una segunda acción, más discreta, junto a [accion] (por ejemplo «Ocultar hasta mañana» en la
+  /// franja de Hoy).
+  final String? accionSecundaria;
+
+  /// Qué hace [accionSecundaria].
+  final VoidCallback? alAccionarSecundaria;
 
   @override
   Widget build(BuildContext context) {
@@ -97,14 +110,31 @@ class AvisoDrive extends StatelessWidget {
           if (accion != null)
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton(
-                key: const Key('aviso_drive_accion'),
-                onPressed: alAccionar,
-                style: TextButton.styleFrom(
-                  minimumSize: const Size(48, 48),
-                  foregroundColor: theme.colorScheme.primary,
-                ),
-                child: Text(accion!),
+              // Con la letra grande los dos botones no entran en un renglón: el segundo baja.
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (accionSecundaria != null)
+                    TextButton(
+                      key: const Key('aviso_drive_accion_secundaria'),
+                      onPressed: alAccionarSecundaria,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(48, 48),
+                        foregroundColor: colores.gris,
+                      ),
+                      child: Text(accionSecundaria!),
+                    ),
+                  TextButton(
+                    key: const Key('aviso_drive_accion'),
+                    onPressed: alAccionar,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                      foregroundColor: theme.colorScheme.primary,
+                    ),
+                    child: Text(accion!),
+                  ),
+                ],
               ),
             ),
         ],

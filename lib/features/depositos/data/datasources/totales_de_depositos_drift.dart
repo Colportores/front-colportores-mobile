@@ -11,12 +11,15 @@ import '../models/deposito_model.dart';
 /// El estado sale de las columnas que baja el pull (`validado_en`, `rechazado_en`): un depósito vivo
 /// (`deleted_at IS NULL`) es **rechazado** si tiene `rechazado_en` (aunque tuviera `validado_en`: ante
 /// la duda no se acredita), **validado** si tiene `validado_en`, y **por validar** si no tiene ninguna.
+/// Un pago de alquiler **anulado** (`anulado_at`, el coordinador devolvió la plata, 0167) no está en
+/// ninguno: no suma a «Depositado» y su efectivo vuelve a estar «en mano» (esquema-datos §deposito).
 final class TotalesDeDepositosDrift {
   TotalesDeDepositosDrift(this._db);
 
   final AppDatabase _db;
 
-  static const _condicionValidado = 'validado_en IS NOT NULL AND rechazado_en IS NULL';
+  static const _condicionValidado =
+      'validado_en IS NOT NULL AND rechazado_en IS NULL AND anulado_at IS NULL';
   static const _condicionPorValidar = 'validado_en IS NULL AND rechazado_en IS NULL';
 
   /// Las tablas que, al cambiar, cambian estas sumas.

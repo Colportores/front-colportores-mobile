@@ -196,7 +196,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     if (frenaPorCuentaRestringida(context, ref)) return;
     final editar = ref.read(editarPersonaDesdeLaFichaProvider);
     if (editar == null) return;
-    await editar(widget.personaId);
+    await editar((personaId: widget.personaId, espacioId: widget.espacioId));
   });
 
   /// «Agendar visita» con la casa y la persona ya puestas, del [tipo] que se pida. Al guardar vuelve acá
@@ -554,7 +554,12 @@ class _Mensaje extends StatelessWidget {
         children: [
           if (_tituloSinLeer(titulo) case final t?) _TituloDeLaPersona(t),
           if (alReintentar == null)
-            Text(texto, style: Theme.of(context).textTheme.bodyLarge)
+            // Región viva: «La persona ya no está…» se anuncia al lector cuando la pantalla la muestra
+            // (QA #141).
+            Semantics(
+              liveRegion: true,
+              child: Text(texto, style: Theme.of(context).textTheme.bodyLarge),
+            )
           else
             AvisoAlta(
               color: ColoresAlta.rojo,
@@ -840,7 +845,11 @@ class _CuerpoDeLaFicha extends StatelessWidget {
                 style: TextButton.styleFrom(
                   minimumSize: const Size(48, 48),
                   foregroundColor: ColoresAlta.azul,
-                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  textStyle: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 child: Text(TextosFicha.verMas(faltan)),
               ),
@@ -960,7 +969,11 @@ class _AvisoSoloLectura extends StatelessWidget {
                   style: TextButton.styleFrom(
                     minimumSize: const Size(48, 48),
                     foregroundColor: ColoresAlta.azul,
-                    textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    textStyle: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   child: Text(ocupado ? TextosFicha.reactivando : etiqueta),
                 ),

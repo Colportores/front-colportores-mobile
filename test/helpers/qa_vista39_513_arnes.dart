@@ -19,7 +19,6 @@ import 'qa_vista23_408_arnes.dart' show cargarFuentes408, chico;
 
 export 'qa_vista23_408_arnes.dart' show chico, grande, sinTextoCortado408, usarFuentesReales408;
 
-const conHallazgos513 = bool.fromEnvironment('QA_HALLAZGOS');
 const conCapturas513 = bool.fromEnvironment('QA_CAPTURAS');
 
 final boton513 = find.byKey(ClavesAgendarVisita.botonAgendar);

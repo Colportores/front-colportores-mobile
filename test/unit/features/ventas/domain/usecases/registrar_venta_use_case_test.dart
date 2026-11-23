@@ -283,6 +283,28 @@ void main() {
       }
     });
 
+    test(
+      'QA #430: las unidades de un producto (combo × componente y sueltas) no pasan del máximo',
+      () async {
+        const max = RegistrarVentaUseCase.maximoPorLinea;
+        const combo = LineaDeCombo(
+          comboId: 'col-combo',
+          componentes: [ComponenteVendido(productoId: 'p', cantidad: max)],
+          cantidad: 2,
+          precioCentavos: 0,
+        );
+        const suelto = LineaDeProducto(productoId: 'p', cantidad: 1, precioCentavos: 0);
+
+        for (final lineas in [
+          [combo],
+          [suelto, combo],
+        ]) {
+          final falla = await rechazada(venta(lineas: lineas)) as FailureValidacion;
+          expect(falla.campos.keys, ['lineas']);
+        }
+      },
+    );
+
     test('un total más grande que el entero del servidor', () async {
       const enorme = LineaDeProducto(productoId: 'p', cantidad: 99999, precioCentavos: 99999);
 

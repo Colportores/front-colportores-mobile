@@ -46,6 +46,8 @@ import 'generated/schema_v37.dart' as v37;
 import 'generated/schema_v38.dart' as v38;
 import 'generated/schema_v39.dart' as v39;
 import 'generated/schema_v4.dart' as v4;
+import 'generated/schema_v40.dart' as v40;
+import 'generated/schema_v41.dart' as v41;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
@@ -2444,13 +2446,167 @@ void main() {
     );
   });
 
-  test('dado lo guardado en la versión 38, cuando migra a la 39, se conserva todo, aparecen las cuatro '
+  test(
+    'dado una campaña y un depósito guardados en la versión 38, cuando migra a la 39, no se pierde '
+    'nada, la campaña queda sin monto de alquiler, el depósito sin anular y no se encola nada',
+    () async {
+      // HU-CTA-007 (#389): `campania.alquiler_monto` y `deposito.anulado_at`, que bajan por el pull.
+      const campania = v38.CampaniaData(
+        id: 'c-1',
+        nombre: 'Primavera 2026',
+        fechaInicio: '2026-09-01',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 3,
+      );
+      const deposito = v38.DepositoData(
+        id: 'd-1',
+        monto: 600000,
+        fecha: 1,
+        destino: 'RETIRO_COORDINADOR',
+        concepto: 'ALQUILER',
+        campaniaId: 'c-1',
+        validadoEn: 5,
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 38,
+        newVersion: 39,
+        createOld: v38.DatabaseAtV38.new,
+        createNew: v39.DatabaseAtV39.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch
+            ..insert(viejo.campania, campania)
+            ..insert(viejo.deposito, deposito);
+        },
+        validateItems: (nuevo) async {
+          final campanias = await nuevo.select(nuevo.campania).get();
+          expect(campanias.map((c) => c.id), ['c-1']);
+          expect(campanias.single.nombre, 'Primavera 2026');
+          expect(campanias.single.syncVersion, 3);
+          expect(campanias.single.alquilerMonto, isNull);
+          final depositos = await nuevo.select(nuevo.deposito).get();
+          expect(depositos.map((d) => d.id), ['d-1']);
+          expect(depositos.single.monto, 600000);
+          expect(depositos.single.validadoEn, 5);
+          expect(depositos.single.anuladoAt, isNull);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // Las columnas aceptan el monto del alquiler y la marca de anulado.
+          await nuevo.customStatement(
+            'UPDATE campania SET alquiler_monto = 1850000 WHERE id = \'c-1\'',
+          );
+          await nuevo.customStatement('UPDATE deposito SET anulado_at = 9 WHERE id = \'d-1\'');
+          expect((await nuevo.select(nuevo.campania).getSingle()).alquilerMonto, 1850000);
+          expect((await nuevo.select(nuevo.deposito).getSingle()).anuladoAt, 9);
+        },
+      );
+    },
+  );
+
+  test(
+    'dado un catálogo guardado en la versión 39, cuando migra a la 40, ningún producto se pierde ni '
+    'cambia, la tabla ya no tiene `tipo` y acepta una fila sin él',
+    () async {
+      // #735 (backend-supabase 0198): `producto.tipo` (NOT NULL) se saca; SQLite recrea la tabla.
+      const libro = v39.ProductoData(
+        id: 'pro-1',
+        nombre: 'El Conflicto de los Siglos',
+        descripcion: 'Edición de bolsillo',
+        tipo: 'LIBRO',
+        esBonificable: 1,
+        esMisionero: 0,
+        precioBaseCompra: 18000,
+        casaEditora: 'ACES',
+        imagenUrl: 'https://cdn.ejemplo.uy/conflicto.jpg',
+        createdAt: 1758700000000,
+        updatedAt: 1758700001000,
+        createdBy: 'adm-1',
+        syncVersion: 3,
+        codigoEditor: 'CS-01',
+        categoria: 'BONIFICABLES',
+      );
+      const baja = v39.ProductoData(
+        id: 'pro-2',
+        nombre: 'Revista dada de baja',
+        tipo: 'REVISTA',
+        esBonificable: 0,
+        esMisionero: 0,
+        createdAt: 1,
+        updatedAt: 2,
+        deletedAt: 3,
+        syncVersion: 7,
+      );
+      const misionero = v39.ProductoData(
+        id: 'pro-3',
+        nombre: 'Misionero',
+        tipo: 'MISIONERO',
+        esBonificable: 0,
+        esMisionero: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 1,
+        categoria: 'MISIONEROS',
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 39,
+        newVersion: 40,
+        createOld: v39.DatabaseAtV39.new,
+        createNew: v40.DatabaseAtV40.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch.insertAll(viejo.producto, [libro, baja, misionero]);
+        },
+        validateItems: (nuevo) async {
+          final productos = {for (final p in await nuevo.select(nuevo.producto).get()) p.id: p};
+          expect(productos.keys, unorderedEquals(['pro-1', 'pro-2', 'pro-3']));
+
+          final l = productos['pro-1']!;
+          expect(l.nombre, 'El Conflicto de los Siglos');
+          expect(l.descripcion, 'Edición de bolsillo');
+          expect(l.esBonificable, 1);
+          expect(l.precioBaseCompra, 18000);
+          expect(l.casaEditora, 'ACES');
+          expect(l.imagenUrl, 'https://cdn.ejemplo.uy/conflicto.jpg');
+          expect(l.createdAt, 1758700000000);
+          expect(l.updatedAt, 1758700001000);
+          expect(l.createdBy, 'adm-1');
+          expect(l.syncVersion, 3);
+          expect(l.codigoEditor, 'CS-01');
+          expect(l.categoria, 'BONIFICABLES');
+
+          // El producto dado de baja y el sin categoría siguen como estaban.
+          expect(productos['pro-2']!.deletedAt, 3);
+          expect(productos['pro-2']!.syncVersion, 7);
+          expect(productos['pro-2']!.categoria, isNull);
+          expect(productos['pro-3']!.esMisionero, 1);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La columna no existe más, y una fila como la que baja el pull ahora entra sin ella.
+          final columnas = await nuevo.customSelect('PRAGMA table_info(producto)').get();
+          expect(columnas.map((c) => c.read<String>('name')), isNot(contains('tipo')));
+          await nuevo.customStatement(
+            'INSERT INTO producto (id, nombre, es_bonificable, es_misionero, created_at, updated_at, '
+            "sync_version, categoria) VALUES ('pro-4', 'Nuevo', 0, 0, 1, 1, 1, 'MATERIAL')",
+          );
+          expect(await nuevo.select(nuevo.producto).get(), hasLength(4));
+        },
+      );
+    },
+  );
+
+  test('dado lo guardado en la versión 40, cuando migra a la 41, se conserva todo, aparecen las cuatro '
       'réplicas de la deuda vacías y se quita `deuda_casa_cache` (#671)', () async {
     // #671: la deuda con la casa editora baja con la sincronización. Se crean `cuenta_colportor`,
     // `cuenta_deuda_historial`, `pedido_casa_editora` y `pedido_item`, vacías (las llena el pull), y se
     // quita `deuda_casa_cache`, la última respuesta de la RPC. Un depósito, la cola y los watermarks no se
     // tocan: lo que esperaba subir sigue esperando (convenciones §9).
-    const job = v38.SyncQueueData(
+    const job = v40.SyncQueueData(
       id: 'q-1',
       clientOpId: 'op-1',
       entity: 'deposito',
@@ -2462,13 +2618,13 @@ void main() {
       code: '',
       message: '',
     );
-    const watermark = v38.SyncWatermarkData(scope: 'mirror', watermark: 'w-1');
+    const watermark = v40.SyncWatermarkData(scope: 'mirror', watermark: 'w-1');
 
     await verificador.testWithDataIntegrity(
-      oldVersion: 38,
-      newVersion: 39,
-      createOld: v38.DatabaseAtV38.new,
-      createNew: v39.DatabaseAtV39.new,
+      oldVersion: 40,
+      newVersion: 41,
+      createOld: v40.DatabaseAtV40.new,
+      createNew: v41.DatabaseAtV41.new,
       openTestedDatabase: _abrir,
       createItems: (batch, viejo) {
         batch
