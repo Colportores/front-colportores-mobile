@@ -30,7 +30,8 @@ import 'mi_plata_page.dart';
 /// Son cuatro tarjetas: la deuda con la casa editora, Depositado, En mano y Por cobrar. «Depositado» suma
 /// solo lo que el coordinador validó y baja del servidor por el pull: mientras el teléfono no bajó nada
 /// no se dibuja (ni un cero), y sin conexión un aviso dice de cuándo es (33A·02). La deuda la cuenta el
-/// servidor (HU-CTA-002): se muestra lo último que llegó y su toque abre el detalle por pedido (33B).
+/// teléfono con lo que bajó con la sincronización (HU-CTA-002, #671): se muestra con la hora de esa bajada y
+/// su toque abre el detalle por pedido (33B).
 /// Las tres cifras se tocan y abren su detalle en «Mi plata» (HU-CTA-003, 33C). Debajo, «ACCIONES» con
 /// «Registrar depósito» (HU-CTA-004, vista 33 D).
 class CuentaPage extends ConsumerStatefulWidget {
@@ -88,7 +89,7 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.activa) {
           ref.invalidate(resumenDeCuentaProvider(widget.colportorId));
-          // La deuda se vuelve a pedir al servidor; la última que llegó sigue a la vista mientras tanto.
+          // La deuda se vuelve a leer de lo que bajó; la última lectura sigue a la vista mientras tanto.
           unawaited(ref.read(deudaConLaCasaProvider(widget.colportorId).notifier).actualizar());
         }
       });
@@ -113,7 +114,7 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       final datos = resumen.requireValue;
       final depositadoAl = datos.depositadoAl;
       final sinConexion = ref.watch(conexionProvider).value == TipoConexion.sinConexion;
-      // La deuda guardada: su hora entra en el aviso, y si no se pudo actualizar se avisa.
+      // La deuda: la hora de la última sincronización entra en el aviso, y si no se pudo leer de nuevo se avisa.
       final deudaLeidaEn = ref.watch(
         deudaConLaCasaProvider(widget.colportorId).select((e) => e.lectura?.leidaEn),
       );

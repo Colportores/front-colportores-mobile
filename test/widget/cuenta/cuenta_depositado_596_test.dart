@@ -5,7 +5,6 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
-import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/resumen_de_cuenta.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/cuenta_providers.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/deuda_casa_providers.dart';
@@ -309,6 +308,8 @@ void main() {
         final repo = await montar(tester, conexion: TipoConexion.wifi, deudaLeidaEn: _ayerALas21);
         expect(find.textContaining('No pudimos actualizar la deuda'), findsNothing);
 
+        // Al volver a leer lo que bajó, la base falla: queda lo último con su hora.
+        await releerDeuda(tester);
         repo.fallar();
         await asentar(tester);
 
@@ -333,20 +334,6 @@ void main() {
       },
     );
 
-    testWidgets('con red pero sin respuesta del servidor (se agotó la espera) pasa lo mismo', (
-      tester,
-    ) async {
-      final repo = await montar(tester, conexion: TipoConexion.wifi, deudaLeidaEn: _ayerALas21);
-
-      repo.fallar(const FailureDeudaSinConexion());
-      await asentar(tester);
-
-      expect(
-        find.text('No pudimos actualizar la deuda con la casa editora. Es de ayer a las 21:00.'),
-        findsOneWidget,
-      );
-    });
-
     testWidgets('sin deuda guardada y con el servidor caído, Mi Cuenta no avisa de la deuda', (
       tester,
     ) async {
@@ -367,6 +354,7 @@ void main() {
         deudaLeidaEn: _ayerALas21,
       );
 
+      await releerDeuda(tester);
       repo.fallar();
       await asentar(tester);
 

@@ -1,14 +1,15 @@
-// La deuda con la casa editora (vista 33B, HU-CTA-002, #441): un test por artboard (33B·01 a 33B·03),
-// los estados que el canvas no dibuja (cargando, sin conexión, a favor, los saldos que no dan el
-// total) y los casos límite de cada flujo: el doble toque en «Reintentar», la falla a mitad, la lista
-// larga, los textos largos y el texto al 200 %.
+// La deuda con la casa editora (vista 33B, HU-CTA-002, #441, #671): un test por artboard (33B·01 a
+// 33B·03), los estados que el canvas no dibuja (cargando, sin conexión, a favor, los saldos que no dan el
+// total) y los casos límite de cada flujo: el doble toque en «Reintentar», la falla a mitad, la
+// sincronización que trae una deuda nueva con la pantalla abierta, la lista larga, los textos largos y
+// el texto al 200 %. La deuda se cuenta en el teléfono con lo que bajó con la sincronización.
 import 'dart:async';
 
-import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/deuda_con_la_casa.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/pages/deuda_casa_page.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/deuda_casa_providers.dart';
+import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -152,7 +153,7 @@ void main() {
   });
 
   group('33B·03 · Error', () {
-    testWidgets('sin nada guardado y con el servidor caído, «No pudimos traer tus pedidos.» con '
+    testWidgets('si no se puede leer lo que bajó, «No pudimos traer tus pedidos.» con '
         '«Reintentar», nunca un \$ 0', (tester) async {
       final repo = RepositorioDeDeudaControlable();
       await montarDeuda(tester, repo);
@@ -167,25 +168,74 @@ void main() {
       expect(find.text('TOTAL'), findsNothing);
     });
 
-    testWidgets('sin nada guardado y sin conexión dice que hace falta la red (decisión del 04/11), '
-        'con «Reintentar»', (tester) async {
-      final repo = RepositorioDeDeudaControlable();
-      await montarDeuda(tester, repo);
-      repo.fallar(const FailureDeudaSinConexion());
-      await tester.pump();
-      await tester.pump();
+    testWidgets(
+      'si el teléfono todavía no sincronizó nunca y no hay conexión dice que hace falta la '
+      'conexión (decisión del 04/11), con «Reintentar», y no un \$ 0',
+      (tester) async {
+        final repo = RepositorioDeDeudaControlable();
+        await montarDeuda(tester, repo, conexion: TipoConexion.sinConexion);
+        repo.sinSincronizar();
+        await tester.pump();
+        await tester.pump();
 
-      expect(
-        find.text('Necesitás conexión para ver tu deuda con la casa editora.'),
-        findsOneWidget,
-      );
-      expect(find.text('No pudimos traer tus pedidos.'), findsNothing);
-      expect(find.text('Reintentar'), findsOneWidget);
-    });
+        expect(
+          find.text('Necesitás conexión para ver tu deuda con la casa editora.'),
+          findsOneWidget,
+        );
+        expect(find.text('Estamos bajando tus datos. Probá en unos segundos.'), findsNothing);
+        expect(find.text('No pudimos traer tus pedidos.'), findsNothing);
+        expect(find.text('Reintentar'), findsOneWidget);
+        expect(find.text(r'$ 0'), findsNothing);
+        expect(find.text('No le debés nada a la casa editora'), findsNothing);
+      },
+    );
 
-    testWidgets('«Reintentar» vuelve a pedir, pasa por la carga y muestra la deuda', (
-      tester,
-    ) async {
+    testWidgets(
+      'si el teléfono todavía no sincronizó nunca pero hay conexión dice que los datos se están '
+      'bajando (decisión del 23/11), con «Reintentar», y no un \$ 0',
+      (tester) async {
+        final repo = RepositorioDeDeudaControlable();
+        await montarDeuda(tester, repo);
+        repo.sinSincronizar();
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.text('Estamos bajando tus datos. Probá en unos segundos.'), findsOneWidget);
+        expect(find.textContaining('Necesitás conexión'), findsNothing);
+        expect(find.text('No pudimos traer tus pedidos.'), findsNothing);
+        expect(find.text('Reintentar'), findsOneWidget);
+        expect(find.text(r'$ 0'), findsNothing);
+        expect(find.text('No le debés nada a la casa editora'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'si la conexión se va o vuelve mientras no hay nada bajado, el texto sigue a la conexión',
+      (tester) async {
+        final repo = RepositorioDeDeudaControlable();
+        final monitor = MonitorQueCambia();
+        await montarDeuda(tester, repo, monitor: monitor);
+        repo.sinSincronizar();
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('Estamos bajando tus datos. Probá en unos segundos.'), findsOneWidget);
+
+        monitor.cambiar(TipoConexion.sinConexion);
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text('Necesitás conexión para ver tu deuda con la casa editora.'),
+          findsOneWidget,
+        );
+
+        monitor.cambiar(TipoConexion.wifi);
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('Estamos bajando tus datos. Probá en unos segundos.'), findsOneWidget);
+      },
+    );
+
+    testWidgets('«Reintentar» vuelve a leer, pasa por la carga y muestra la deuda', (tester) async {
       final repo = RepositorioDeDeudaControlable();
       await montarDeuda(tester, repo);
       repo.fallar();
@@ -226,33 +276,30 @@ void main() {
       }
     });
 
-    testWidgets(
-      'dos toques seguidos en «Reintentar» antes de que termine el primero piden una sola '
-      'vez',
-      (tester) async {
-        final repo = RepositorioDeDeudaControlable();
-        await montarDeuda(tester, repo);
-        repo.fallar();
-        await tester.pump();
-        await tester.pump();
+    testWidgets('dos toques seguidos en «Reintentar» antes de que termine el primero leen una sola '
+        'vez', (tester) async {
+      final repo = RepositorioDeDeudaControlable();
+      await montarDeuda(tester, repo);
+      repo.fallar();
+      await tester.pump();
+      await tester.pump();
 
-        final boton = find.text('Reintentar');
-        await tester.tap(boton);
-        await tester.tap(boton, warnIfMissed: false);
-        await tester.pump();
+      final boton = find.text('Reintentar');
+      await tester.tap(boton);
+      await tester.tap(boton, warnIfMissed: false);
+      await tester.pump();
 
-        expect(repo.lecturas, 2);
-        expect(repo.pendientes, 1);
-        repo.responder(lectura(deudaDelCanvas));
-        await tester.pump();
-        await tester.pump();
-        expect(find.text(r'$ 18.400'), findsOneWidget);
-      },
-    );
+      expect(repo.lecturas, 2);
+      expect(repo.pendientes, 1);
+      repo.responder(lectura(deudaDelCanvas));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text(r'$ 18.400'), findsOneWidget);
+    });
   });
 
   group('Cargando', () {
-    testWidgets('mientras el servidor no contesta y no hay nada guardado, tres bloques grises y el '
+    testWidgets('mientras se lee lo que bajó y no hay nada, tres bloques grises y el '
         'lector de pantalla dice qué se espera', (tester) async {
       final manejador = tester.ensureSemantics();
       final repo = RepositorioDeDeudaControlable();
@@ -268,7 +315,7 @@ void main() {
     });
 
     testWidgets(
-      'con algo guardado se ve enseguida, sin pasar por la carga, mientras se actualiza',
+      'con algo ya leído se ve enseguida, sin pasar por la carga, mientras se vuelve a leer',
       (tester) async {
         final repo = RepositorioDeDeudaControlable(guardada: lectura(deudaDelCanvas));
         await montarDeuda(tester, repo);
@@ -276,6 +323,15 @@ void main() {
         expect(find.byKey(const Key('deuda_esqueleto_total')), findsNothing);
         expect(find.text(r'$ 18.400'), findsOneWidget);
         expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsNothing);
+        expect(
+          repo.lecturas,
+          1,
+          reason: 'abrir la pantalla lee una vez, sin pedirle nada al servidor',
+        );
+
+        await releerDeuda(tester);
+        expect(find.byKey(const Key('deuda_esqueleto_total')), findsNothing);
+        expect(find.text(r'$ 18.400'), findsOneWidget, reason: 'lo leído sigue a la vista');
         expect(repo.pendientes, 1);
 
         repo.responder(lectura(deuda(total: 3000, pedidos: [deudaDelCanvas.pedidos.last])));
@@ -290,31 +346,26 @@ void main() {
   group('Sin conexión', () {
     final ayerALas21 = DateTime(2026, 11, 3, 21);
 
-    testWidgets('sin conexión se ve lo último que llegó con el aviso de su hora (como 33A·02)', (
-      tester,
-    ) async {
-      final repo = RepositorioDeDeudaControlable(
-        guardada: lectura(deudaDelCanvas, leidaEn: ayerALas21),
-      );
-      await montarDeuda(tester, repo);
-      repo.fallar(const FailureDeudaSinConexion());
-      await tester.pump();
-      await tester.pump();
+    testWidgets(
+      'sin conexión se ve lo último que se sincronizó con el aviso de su hora (como 33A·02)',
+      (tester) async {
+        final repo = RepositorioDeDeudaControlable(
+          guardada: lectura(deudaDelCanvas, leidaEn: ayerALas21),
+        );
+        await montarDeuda(tester, repo, conexion: TipoConexion.sinConexion);
 
-      expect(find.text('Sin conexión. Esta deuda es de ayer a las 21:00.'), findsOneWidget);
-      expect(find.text(r'$ 18.400'), findsOneWidget);
-      expect(find.text('PEDIDO DEL 02/10'), findsOneWidget);
-      expect(find.text('Reintentar'), findsNothing);
-    });
+        expect(find.text('Sin conexión. Esta deuda es de ayer a las 21:00.'), findsOneWidget);
+        expect(find.text(r'$ 18.400'), findsOneWidget);
+        expect(find.text('PEDIDO DEL 02/10'), findsOneWidget);
+        expect(find.text('Reintentar'), findsNothing);
+      },
+    );
 
-    testWidgets('lo guardado de hoy y de hace días dicen «de hoy» y «del 28/10»', (tester) async {
+    testWidgets('lo sincronizado hoy y hace días dicen «de hoy» y «del 28/10»', (tester) async {
       final hoy = RepositorioDeDeudaControlable(
         guardada: lectura(deudaDelCanvas, leidaEn: DateTime(2026, 11, 4, 7, 5)),
       );
-      await montarDeuda(tester, hoy);
-      hoy.fallar(const FailureDeudaSinConexion());
-      await tester.pump();
-      await tester.pump();
+      await montarDeuda(tester, hoy, conexion: TipoConexion.sinConexion);
       expect(find.text('Sin conexión. Esta deuda es de hoy a las 07:05.'), findsOneWidget);
 
       // Se desmonta la primera pantalla: la segunda arranca de cero, con su propio repositorio.
@@ -322,54 +373,56 @@ void main() {
       final viejo = RepositorioDeDeudaControlable(
         guardada: lectura(deudaDelCanvas, leidaEn: DateTime(2026, 10, 28, 9)),
       );
-      await montarDeuda(tester, viejo);
-      viejo.fallar(const FailureDeudaSinConexion());
-      await tester.pump();
-      await tester.pump();
+      await montarDeuda(tester, viejo, conexion: TipoConexion.sinConexion);
       expect(find.text('Sin conexión. Esta deuda es del 28/10 a las 09:00.'), findsOneWidget);
     });
 
-    testWidgets('si el servidor falla sin que falte la conexión, lo guardado queda a la vista y el '
-        'aviso no dice «sin conexión»', (tester) async {
+    testWidgets(
+      'con conexión pero sin poder leer lo que bajó, lo último leído queda a la vista y el '
+      'aviso no dice «sin conexión»',
+      (tester) async {
+        final repo = RepositorioDeDeudaControlable(
+          guardada: lectura(deudaDelCanvas, leidaEn: ayerALas21),
+        );
+        await montarDeuda(tester, repo);
+        await releerDeuda(tester);
+        repo.fallar();
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.text('No pudimos actualizarla. Esta deuda es de ayer a las 21:00.'),
+          findsOneWidget,
+        );
+        expect(find.text(r'$ 18.400'), findsOneWidget);
+        expect(find.textContaining('Sin conexión'), findsNothing);
+        // Decisión del 04/11: «No pudimos actualizarla…» se puede reintentar.
+        expect(find.text('Reintentar'), findsOneWidget);
+        expect(
+          tester.getSize(find.byKey(const Key('cuenta_reintentar'))).height,
+          greaterThanOrEqualTo(48),
+        );
+      },
+    );
+
+    testWidgets('«Reintentar» de lo ya leído vuelve a leer, deja lo leído a la vista y dos '
+        'toques seguidos leen una sola vez', (tester) async {
       final repo = RepositorioDeDeudaControlable(
         guardada: lectura(deudaDelCanvas, leidaEn: ayerALas21),
       );
       await montarDeuda(tester, repo);
+      await releerDeuda(tester);
       repo.fallar();
       await tester.pump();
       await tester.pump();
-
-      expect(
-        find.text('No pudimos actualizarla. Esta deuda es de ayer a las 21:00.'),
-        findsOneWidget,
-      );
-      expect(find.text(r'$ 18.400'), findsOneWidget);
-      expect(find.textContaining('Sin conexión'), findsNothing);
-      // Decisión del 04/11: «No pudimos actualizarla…» se puede reintentar.
-      expect(find.text('Reintentar'), findsOneWidget);
-      expect(
-        tester.getSize(find.byKey(const Key('cuenta_reintentar'))).height,
-        greaterThanOrEqualTo(48),
-      );
-    });
-
-    testWidgets('«Reintentar» de lo guardado pide de nuevo, deja lo guardado a la vista y dos '
-        'toques seguidos piden una sola vez', (tester) async {
-      final repo = RepositorioDeDeudaControlable(
-        guardada: lectura(deudaDelCanvas, leidaEn: ayerALas21),
-      );
-      await montarDeuda(tester, repo);
-      repo.fallar();
-      await tester.pump();
-      await tester.pump();
-      expect(repo.lecturas, 1);
+      expect(repo.lecturas, 2);
 
       await tester.tap(find.byKey(const Key('cuenta_reintentar')));
       await tester.tap(find.byKey(const Key('cuenta_reintentar')), warnIfMissed: false);
       await tester.pump();
       await tester.pump();
 
-      expect(repo.lecturas, 2);
+      expect(repo.lecturas, 3);
       expect(find.text('Reintentar'), findsNothing);
       expect(find.textContaining('No pudimos actualizarla'), findsNothing);
       expect(find.text(r'$ 18.400'), findsOneWidget);
@@ -381,15 +434,12 @@ void main() {
       expect(find.text('Reintentar'), findsOneWidget);
     });
 
-    testWidgets('al volver a pedir, el aviso se va, lo guardado sigue a la vista y lo nuevo '
-        'reemplaza a lo viejo; dos pedidos seguidos cuentan como uno', (tester) async {
+    testWidgets('al volver a leer, lo leído sigue a la vista y lo nuevo reemplaza a lo viejo; dos '
+        'lecturas seguidas cuentan como una', (tester) async {
       final repo = RepositorioDeDeudaControlable(
         guardada: lectura(deudaDelCanvas, leidaEn: ayerALas21),
       );
-      await montarDeuda(tester, repo);
-      repo.fallar(const FailureDeudaSinConexion());
-      await tester.pump();
-      await tester.pump();
+      await montarDeuda(tester, repo, conexion: TipoConexion.sinConexion);
       expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsOneWidget);
       expect(repo.lecturas, 1);
 
@@ -400,8 +450,9 @@ void main() {
       unawaited(notifier.actualizar());
       await tester.pump();
 
+      // La primera pide una lectura; la segunda, con esa en curso, no suma otra.
       expect(repo.lecturas, 2);
-      expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsNothing);
+      expect(repo.pendientes, 1);
       expect(find.text(r'$ 18.400'), findsOneWidget);
 
       repo.responder(lectura(deuda(total: 3000, pedidos: [deudaDelCanvas.pedidos.last])));
@@ -409,7 +460,53 @@ void main() {
       await tester.pump();
       expect(find.text(r'$ 3.000'), findsWidgets);
       expect(find.text(r'$ 18.400'), findsNothing);
-      expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsNothing);
+      expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsOneWidget);
+    });
+
+    testWidgets(
+      'si la sincronización trae una deuda nueva con la pantalla abierta, se lee sola, sin '
+      'tocar nada, y no pasa por la carga',
+      (tester) async {
+        final repo = RepositorioDeDeudaControlable(guardada: lectura(deudaDelCanvas));
+        await montarDeuda(tester, repo);
+        expect(find.text(r'$ 18.400'), findsOneWidget);
+
+        repo.sincronizo(lectura(deuda(total: 3000, pedidos: [deudaDelCanvas.pedidos.last])));
+        await tester.pump();
+        expect(find.byKey(const Key('deuda_esqueleto_total')), findsNothing);
+        expect(
+          find.text(r'$ 18.400'),
+          findsOneWidget,
+          reason: 'lo anterior sigue hasta que llega lo nuevo',
+        );
+        repo.responder(lectura(deuda(total: 3000, pedidos: [deudaDelCanvas.pedidos.last])));
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.text(r'$ 3.000'), findsWidgets);
+        expect(find.text(r'$ 18.400'), findsNothing);
+      },
+    );
+
+    testWidgets('si la sincronización trae un cambio mientras se está leyendo, se lee otra vez al '
+        'terminar y no se pierde', (tester) async {
+      final repo = RepositorioDeDeudaControlable();
+      await montarDeuda(tester, repo);
+      expect(repo.lecturas, 1);
+
+      repo.sincronizo(lectura(deudaDelCanvas));
+      await tester.pump();
+      expect(repo.lecturas, 1, reason: 'todavía está leyendo: la segunda espera');
+
+      repo.responder(lectura(deuda(total: 100)));
+      await tester.pump();
+      await tester.pump();
+      expect(repo.lecturas, 2, reason: 'terminó la primera y vuelve a leer por el cambio');
+
+      repo.responder(lectura(deudaDelCanvas));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text(r'$ 18.400'), findsOneWidget);
     });
   });
 
@@ -583,7 +680,33 @@ void main() {
       expect(find.text('abrir'), findsOneWidget);
     });
 
-    testWidgets('si el servidor contesta cuando la pantalla ya se cerró, no pasa nada', (
+    testWidgets('volver atrás y reentrar muestra la deuda otra vez y no deja nada cargando', (
+      tester,
+    ) async {
+      final repo = RepositorioDeDeudaControlable(guardada: lectura(deudaDelCanvas));
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_conRutaAnterior(repo));
+
+      for (var vez = 1; vez <= 2; vez++) {
+        await tester.tap(find.text('abrir'));
+        await tester.pumpAndSettle();
+        // Al reentrar, la lectura de antes sigue a la vista o se vuelve a leer: en los dos casos no se
+        // queda cargando.
+        if (repo.pendientes > 0) {
+          repo.responder(lectura(deudaDelCanvas));
+          await tester.pumpAndSettle();
+        }
+        expect(find.text(r'$ 18.400'), findsOneWidget, reason: 'vez $vez');
+        expect(find.byKey(const Key('deuda_esqueleto_total')), findsNothing, reason: 'vez $vez');
+        await tester.tap(find.byKey(const Key('deuda_volver')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('deuda_lista')), findsNothing, reason: 'vez $vez');
+      }
+    });
+
+    testWidgets('si la lectura contesta cuando la pantalla ya se cerró, no pasa nada', (
       tester,
     ) async {
       final repo = RepositorioDeDeudaControlable();

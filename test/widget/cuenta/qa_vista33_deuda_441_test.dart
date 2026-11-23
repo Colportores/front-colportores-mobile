@@ -4,16 +4,19 @@
 // `_fuentes_`):
 // - los 10 estados de 33B y los 5 de la tarjeta de Mi Cuenta en 360x640 y 412x915, con el texto a
 //   1,0 y 2,0: sin overflow, tamaño de toque (Android e iOS), nombre en lo tocable y contraste;
-// - la lectura real (repositorio + caché en memoria) de punta a punta: guardar, cortar la red, volver;
+// - la lectura real (repositorio + cuenta del teléfono) de punta a punta con lo que baja con la
+//   sincronización: sin conexión, sin haber sincronizado nunca, la sincronización que trae algo con la
+//   pantalla abierta y la base que falla;
 // - los hallazgos de QA: los ya arreglados corren; los que siguen abiertos van con `skip: true` y el comentario `QA #441: …`.
-import 'dart:convert';
+import 'dart:async';
 
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
-import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
-import 'package:colportores_mobile/features/cuenta/data/datasources/deuda_con_la_casa_cache_data_source.dart';
-import 'package:colportores_mobile/features/cuenta/data/datasources/deuda_con_la_casa_remote_data_source.dart';
+import 'package:colportores_mobile/features/cuenta/data/datasources/deuda_con_la_casa_local_data_source.dart';
 import 'package:colportores_mobile/features/cuenta/data/repositories/deuda_con_la_casa_repository_impl.dart';
+import 'package:colportores_mobile/features/cuenta/domain/entities/deuda_con_la_casa.dart'
+    show LineaDePedido;
+import 'package:colportores_mobile/features/cuenta/domain/services/calculador_de_la_deuda.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/pages/deuda_casa_page.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/cuenta_providers.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/deuda_casa_providers.dart';
@@ -30,46 +33,46 @@ import '../../helpers/qa_vista33_deuda_441_arnes.dart';
 const _tamanos = {'360x640': Size(360, 640), '412x915': Size(412, 915)};
 const _escalas = [1.0, 2.0];
 
-/// Una caché en memoria para el repositorio real.
-final class _CacheEnMemoria implements DeudaConLaCasaCacheDataSource {
-  DeudaGuardada? guardada;
-  @override
-  Future<DeudaGuardada?> leer(String colportorId) async => guardada;
-  @override
-  Future<void> guardar(String colportorId, String respuesta, DateTime leidaEn) async =>
-      guardada = (respuesta: respuesta, leidaEn: leidaEn);
-}
-
-/// Un servidor que contesta lo que el test le dé.
-final class _Servidor implements DeudaConLaCasaRemoteDataSource {
-  Object? respuesta;
+/// Lo que baja con la sincronización, en memoria: el test lo cambia y avisa como la base.
+final class _LocalEnMemoria implements DeudaConLaCasaLocalDataSource {
+  BajadaDeLaDeuda? bajada;
   Object? falla;
-  var llamadas = 0;
+  var lecturas = 0;
+  final _cambios = StreamController<void>.broadcast();
+
   @override
-  Future<Object?> leer() async {
-    llamadas++;
+  Stream<void> get cambios => _cambios.stream;
+
+  @override
+  Future<BajadaDeLaDeuda?> leer(String colportorId) async {
+    lecturas++;
     if (falla != null) throw falla!;
-    return respuesta;
+    return bajada;
   }
+
+  void sincronizo() => _cambios.add(null);
 }
 
-Map<String, Object?> _json({int total = 1840000, int suma = 1840000}) => {
-  'deuda_total': total,
-  'suma_de_saldos': suma,
-  'depositos_validados': 0,
-  'pedidos': [
-    {
-      'pedido_id': 'p-1',
-      'fecha_pedido': '2026-10-02T15:00:00Z',
-      'monto': 1840000,
-      'pagado': 0,
-      'saldo': 1840000,
-      'lineas': [
-        {'nombre': 'Salud y Hogar', 'cantidad': 10},
-      ],
-    },
-  ],
-};
+/// Lo que bajó para el canvas 33B·01 con un solo pedido de $ 18.400.
+BajadaDeLaDeuda _bajada({DateTime? ultimaBajada, int pedidos = 1}) => (
+  insumos: InsumosDeLaDeuda(
+    deudaTotalCentavos: 1840000 * pedidos,
+    historial: const [],
+    pedidos: [
+      for (var i = 1; i <= pedidos; i++)
+        PedidoDeLaDeuda(
+          pedidoId: 'p-$i',
+          numero: i,
+          fechaPedido: DateTime.utc(2026, 10, i, 15),
+          montoCentavos: 1840000,
+          lineas: const [LineaDePedido(nombre: 'Salud y Hogar', cantidad: 10)],
+        ),
+    ],
+    depositosValidadosCentavos: 0,
+    tarjetasValidadasCentavos: 0,
+  ),
+  ultimaBajada: ultimaBajada ?? DateTime.utc(2026, 11, 3, 21),
+);
 
 void main() {
   for (final estado in EstadoQa33B.values) {
@@ -83,7 +86,8 @@ void main() {
             await repoEnEstado(
               tester,
               estado,
-              (repo) => montarDeuda(tester, repo, tamano: t.value, escala: esc),
+              (repo, conexion) =>
+                  montarDeuda(tester, repo, tamano: t.value, escala: esc, conexion: conexion),
             );
             expect(tester.takeException(), isNull);
             await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
@@ -171,6 +175,8 @@ void main() {
       final repo = RepositorioDeDeudaControlable(guardada: lectura(deudaDelCanvas));
       await montarDeuda(tester, repo);
       expect(find.text('PEDIDO DEL 02/10'), findsOneWidget);
+      repo.sincronizo(lectura(deuda(total: 0)));
+      await tester.pump();
       repo.responder(lectura(deuda(total: 0)));
       await tester.pump();
       await tester.pump();
@@ -218,70 +224,103 @@ void main() {
     });
   });
 
-  group('Lectura real de punta a punta (repositorio + caché + pantalla)', () {
-    testWidgets('con red se ve y se guarda; sin red, la 2ª vez se ve lo guardado con su hora y '
-        '«Reintentar» no hace falta', (tester) async {
-      final servidor = _Servidor()..respuesta = _json();
-      final cache = _CacheEnMemoria();
-      final repo = DeudaConLaCasaRepositoryImpl(
-        servidor,
-        cache,
-        ahora: () => DateTime.utc(2026, 11, 3, 21),
-      );
-      // Primera apertura, con red.
-      await _montarConRepo(tester, repo);
-      await tester.pump();
-      await tester.pump();
-      await tester.pump();
-      expect(find.text(r'$ 18.400'), findsOneWidget);
-      expect(cache.guardada, isNotNull);
-      expect(jsonDecode(cache.guardada!.respuesta), isA<Map<String, Object?>>());
+  group('Lectura real de punta a punta (repositorio + cuenta del teléfono + pantalla)', () {
+    testWidgets('lo que bajó se cuenta y se ve; sin red, con la hora de la última sincronización y '
+        'sin «Reintentar»', (tester) async {
+      final local = _LocalEnMemoria()..bajada = _bajada(ultimaBajada: DateTime(2026, 11, 3, 21));
+      final repo = DeudaConLaCasaRepositoryImpl(local, ahora: () => DateTime(2026, 11, 4, 10));
+      await _montarConRepo(tester, repo, conexion: TipoConexion.sinConexion);
 
-      // Segunda apertura, sin red: el servidor cortó.
-      await tester.pumpWidget(const SizedBox());
-      servidor.falla = const DeudaSinConexionException();
-      await _montarConRepo(tester, repo);
-      await tester.pump();
-      await tester.pump();
-      await tester.pump();
       expect(find.text(r'$ 18.400'), findsOneWidget);
-      expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsOneWidget);
+      expect(find.text('PEDIDO DEL 01/10'), findsOneWidget);
+      expect(find.text('Salud y Hogar × 10'), findsOneWidget);
       expect(
         tester.widget<Text>(find.byKey(const Key('cuenta_aviso_sin_conexion'))).data,
-        contains('Sin conexión'),
+        'Sin conexión. Esta deuda es de ayer a las 21:00.',
       );
       expect(find.text('No pudimos traer tus pedidos.'), findsNothing);
+      expect(find.text('Reintentar'), findsNothing);
+      expect(local.lecturas, 1, reason: 'leerla no llama al servidor ni se repite sola');
     });
 
-    testWidgets('una respuesta rara del servidor no pisa lo guardado ni se muestra', (
-      tester,
-    ) async {
-      final servidor = _Servidor()..respuesta = _json();
-      final cache = _CacheEnMemoria();
-      final repo = DeudaConLaCasaRepositoryImpl(
-        servidor,
-        cache,
-        ahora: () => DateTime.utc(2026, 11, 3, 21),
-      );
+    testWidgets('sin haber sincronizado nunca y con conexión: dice que los datos se están bajando, '
+        'nunca un \$ 0, y «Reintentar» muestra la deuda cuando llega', (tester) async {
+      final local = _LocalEnMemoria();
+      final repo = DeudaConLaCasaRepositoryImpl(local, ahora: () => DateTime(2026, 11, 4, 10));
       await _montarConRepo(tester, repo);
-      await tester.pump();
-      await tester.pump();
-      await tester.pump();
-      final guardadaAntes = cache.guardada!.respuesta;
 
-      await tester.pumpWidget(const SizedBox());
-      servidor.respuesta = {'deuda_total': 'mucho'};
-      await _montarConRepo(tester, repo);
+      expect(find.text('Estamos bajando tus datos. Probá en unos segundos.'), findsOneWidget);
+      expect(find.textContaining('Necesitás conexión'), findsNothing);
+      expect(find.text(r'$ 0'), findsNothing);
+
+      local.bajada = _bajada();
+      await tester.tap(find.text('Reintentar'));
       await tester.pump();
       await tester.pump();
       await tester.pump();
-      expect(cache.guardada!.respuesta, guardadaAntes);
       expect(find.text(r'$ 18.400'), findsOneWidget);
+      expect(find.textContaining('Estamos bajando'), findsNothing);
+    });
+
+    testWidgets('sin haber sincronizado nunca y sin red no hay cifra: dice que hace falta la '
+        'conexión, nunca un \$ 0', (tester) async {
+      final local = _LocalEnMemoria();
+      final repo = DeudaConLaCasaRepositoryImpl(local, ahora: () => DateTime(2026, 11, 4, 10));
+      await _montarConRepo(tester, repo, conexion: TipoConexion.sinConexion);
+
       expect(
-        tester.widget<Text>(find.byKey(const Key('cuenta_error_texto'))).data,
-        startsWith('No pudimos actualizarla'),
+        find.text('Necesitás conexión para ver tu deuda con la casa editora.'),
+        findsOneWidget,
       );
-      expect(find.text('Reintentar'), findsOneWidget);
+      expect(find.text(r'$ 0'), findsNothing);
+      expect(find.text('No le debés nada a la casa editora'), findsNothing);
+
+      // Llega la primera sincronización: «Reintentar» muestra la deuda.
+      local.bajada = _bajada();
+      await tester.tap(find.text('Reintentar'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text(r'$ 18.400'), findsOneWidget);
+    });
+
+    testWidgets('la sincronización trae otro pedido con la pantalla abierta: se suma sin tocar '
+        'nada y sin pasar por la carga', (tester) async {
+      final local = _LocalEnMemoria()..bajada = _bajada();
+      final repo = DeudaConLaCasaRepositoryImpl(local, ahora: () => DateTime(2026, 11, 4, 10));
+      await _montarConRepo(tester, repo);
+      expect(find.text('PEDIDO DEL 01/10'), findsOneWidget);
+      expect(find.text('PEDIDO DEL 02/10'), findsNothing);
+
+      local.bajada = _bajada(pedidos: 2);
+      local.sincronizo();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const Key('deuda_esqueleto_total')), findsNothing);
+      expect(find.text(r'$ 36.800'), findsOneWidget);
+      expect(find.text('PEDIDO DEL 02/10'), findsOneWidget);
+    });
+
+    testWidgets('si la base no se puede leer, el error con «Reintentar» (nunca un \$ 0); al volver '
+        'a andar, «Reintentar» la muestra', (tester) async {
+      final local = _LocalEnMemoria()
+        ..bajada = _bajada()
+        ..falla = StateError('base ilegible');
+      final repo = DeudaConLaCasaRepositoryImpl(local, ahora: () => DateTime(2026, 11, 4, 10));
+      await _montarConRepo(tester, repo);
+
+      expect(find.text('No pudimos traer tus pedidos.'), findsOneWidget);
+      expect(find.text(r'$ 0'), findsNothing);
+
+      local.falla = null;
+      await tester.tap(find.text('Reintentar'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text(r'$ 18.400'), findsOneWidget);
+      expect(find.text('Reintentar'), findsNothing);
     });
   });
 
@@ -303,7 +342,6 @@ void main() {
           ],
         );
         await tester.pump();
-        repo.fallar(const FailureDeudaSinConexion());
         await tester.pump();
         await tester.pump();
         final aviso = tester.widget<Text>(find.byKey(const Key('cuenta_aviso_sin_conexion')));
@@ -329,7 +367,6 @@ void main() {
           ],
         );
         await tester.pump();
-        repo.fallar(const FailureDeudaSinConexion());
         await tester.pump();
         await tester.pump();
         final aviso = tester.widget<Text>(find.byKey(const Key('cuenta_aviso_sin_conexion')));
@@ -355,7 +392,6 @@ void main() {
           ],
         );
         await tester.pump();
-        repo.fallar(const FailureDeudaSinConexion());
         await tester.pump();
         await tester.pump();
         expect(find.text(r'$ 18.400'), findsOneWidget);
@@ -384,8 +420,8 @@ void main() {
     testWidgets('33B sin conexión y sin nada guardado: el aviso dice que hace falta conexión '
         '(«Necesitás conexión para ver tu deuda…», convenciones §sin conexión)', (tester) async {
       final repo = RepositorioDeDeudaControlable();
-      await montarDeuda(tester, repo);
-      repo.fallar(const FailureDeudaSinConexion());
+      await montarDeuda(tester, repo, conexion: TipoConexion.sinConexion);
+      repo.sinSincronizar();
       await tester.pump();
       await tester.pump();
       expect(find.textContaining('Necesitás conexión'), findsOneWidget);
@@ -400,10 +436,7 @@ void main() {
         final repo = RepositorioDeDeudaControlable(
           guardada: lectura(deudaDelCanvas, leidaEn: DateTime(2026, 11, 3, 21)),
         );
-        await montarDeuda(tester, repo);
-        repo.fallar(const FailureDeudaSinConexion());
-        await tester.pump();
-        await tester.pump();
+        await montarDeuda(tester, repo, conexion: TipoConexion.sinConexion);
         final nodo = tester.getSemantics(find.byKey(const Key('cuenta_aviso_sin_conexion')));
         var viva = false;
         void mirar(SemanticsNode n) {
@@ -430,7 +463,11 @@ void main() {
   });
 }
 
-Future<void> _montarConRepo(WidgetTester tester, DeudaConLaCasaRepositoryImpl repo) async {
+Future<void> _montarConRepo(
+  WidgetTester tester,
+  DeudaConLaCasaRepositoryImpl repo, {
+  TipoConexion conexion = TipoConexion.wifi,
+}) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -439,6 +476,7 @@ Future<void> _montarConRepo(WidgetTester tester, DeudaConLaCasaRepositoryImpl re
       overrides: [
         deudaConLaCasaRepositoryProvider.overrideWithValue(repo),
         relojCuentaProvider.overrideWithValue(() => DateTime(2026, 11, 4, 10)),
+        monitorConectividadProvider.overrideWithValue(ConexionFija(conexion)),
       ],
       child: MaterialApp(
         theme: temaClaro(),
@@ -446,4 +484,7 @@ Future<void> _montarConRepo(WidgetTester tester, DeudaConLaCasaRepositoryImpl re
       ),
     ),
   );
+  await tester.pump();
+  await tester.pump();
+  await tester.pump();
 }
