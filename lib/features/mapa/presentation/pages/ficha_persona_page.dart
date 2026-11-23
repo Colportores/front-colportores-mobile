@@ -196,7 +196,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     if (frenaPorCuentaRestringida(context, ref)) return;
     final editar = ref.read(editarPersonaDesdeLaFichaProvider);
     if (editar == null) return;
-    await editar(widget.personaId);
+    await editar((personaId: widget.personaId, espacioId: widget.espacioId));
   });
 
   /// «Agendar visita» con la casa y la persona ya puestas, del [tipo] que se pida. Al guardar vuelve acá

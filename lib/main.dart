@@ -55,6 +55,7 @@ import 'features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
 import 'features/mapa/presentation/flujo_agendar_desde_la_agenda.dart';
+import 'features/mapa/presentation/flujo_editar_persona_desde_la_ficha.dart';
 import 'features/mapa/presentation/flujo_ficha_desde_la_casa.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
 import 'features/mapa/presentation/flujo_ver_venta_desde_la_casa.dart';
@@ -482,6 +483,20 @@ Future<void> main() async {
               colportorId: colportorId,
               espacioId: espacioId,
               espacioPersonaId: cobranza.espacioPersonaId,
+            );
+          },
+        ),
+        // «Editar persona» y «Agregar» teléfono de la ficha (vista 32 B): la edición (vista 32 C, HU-UBI-010)
+        // y, con «Dar de baja y crear nueva», el alta de la persona nueva y la baja de la original
+        // (R6, #405).
+        editarPersonaDesdeLaFichaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoEditarPersonaDesdeLaFicha.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
             );
           },
         ),
