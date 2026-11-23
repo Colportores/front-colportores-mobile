@@ -24,6 +24,8 @@ import '../../../respaldo/presentation/textos_respaldo_drive.dart';
 import '../../../respaldo/presentation/widgets/hoja_recuperar_respaldo.dart';
 import '../../../respaldo/presentation/widgets/hojas_drive.dart';
 import '../../../respaldo/presentation/widgets/seccion_respaldo_drive.dart';
+import '../../../sincronizacion/presentation/pages/sincronizacion_page.dart';
+import '../../../sincronizacion/presentation/textos_sincronizacion.dart';
 import '../../../tiles/presentation/pages/mapas_offline_page.dart';
 import '../../../tiles/presentation/providers/resumen_mapas_providers.dart';
 import '../../../tiles/presentation/textos_mapas_offline.dart';
@@ -95,6 +97,9 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
               ),
             ),
           );
+        case DriveQuedoEnOtraCuenta(:final estado):
+          // Google devolvió otra cuenta que la del respaldo anterior (16E·01).
+          await _elegirCuentaDrive(estado);
         case DriveNoQuedoConectado():
           avisoCancelado.mostrar();
         case DriveOcupado() || null:
@@ -103,6 +108,21 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     } finally {
       _abriendoHojaDrive = false;
     }
+  }
+
+  /// La hoja «Esta no es la cuenta de tu respaldo» (16E·01 a 16E·04) y lo que avisa al volver. Quien la
+  /// llama ya tiene tomada su guarda de «abriendo una hoja»: un segundo toque no abre otra.
+  Future<void> _elegirCuentaDrive(DriveCuentaPorConfirmar cuenta) async {
+    final salida = await mostrarHojaOtraCuentaDrive(context, cuenta: cuenta);
+    if (!mounted) return;
+    // Cerró la hoja sin elegir: la fila queda pendiente y tocarla la vuelve a abrir. Si desconectó,
+    // la fila ya dice «Sin conectar».
+    final aviso = avisoDeOtraCuenta(salida);
+    if (aviso == null) return;
+    final mensajero = ScaffoldMessenger.of(context)..clearSnackBars();
+    recordarAviso(
+      mensajero.showSnackBar(SnackBar(key: Key(aviso.clave), content: Text(aviso.texto))),
+    );
   }
 
   /// «Recuperar mi respaldo» (#610, «Recup. luego»; vista 16, 16G, #691): vuelve a abrir el
@@ -136,6 +156,10 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
       }
       if (!mounted) return;
       switch (drive) {
+        case DriveCuentaPorConfirmar():
+          // Antes de traer un respaldo hay que elegir de qué cuenta es: el respaldo está frenado.
+          await _elegirCuentaDrive(drive);
+          return;
         case DriveConCuenta(:final email):
           final empezar = await mostrarHojaRecuperarRespaldo(context, cuentaDrive: email);
           if (empezar != true || !mounted) return;
@@ -173,12 +197,18 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     );
   }
 
-  /// Tocar la fila con Drive conectado: la hoja para desconectar.
-  Future<void> _desconectarDrive() async {
+  /// Tocar la fila con Drive conectado: la hoja para desconectar. Con otra cuenta por confirmar
+  /// (16E·01), la hoja para elegir con cuál seguir.
+  Future<void> _verCuentaDrive() async {
     if (_abriendoHojaDrive) return;
     _abriendoHojaDrive = true;
     try {
-      await mostrarHojaDesconectarDrive(context);
+      final estado = ref.read(estadoRespaldoDriveProvider).value;
+      if (estado is DriveCuentaPorConfirmar) {
+        await _elegirCuentaDrive(estado);
+      } else {
+        await mostrarHojaDesconectarDrive(context);
+      }
     } finally {
       _abriendoHojaDrive = false;
     }
@@ -280,15 +310,10 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     if (_revisando) return; // Doble tap: idempotente (HU-AUTH-006, casos borde).
     setState(() => _revisando = true);
 
-    // Si no se puede contar, se cierra igual con la confirmación común: cerrar sesión no borra
-    // nada, lo pendiente se sube en el próximo login.
-    var pendientes = 0;
-    try {
-      final resumen = await ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
-      pendientes = resumen.fold((_) => 0, (r) => r.operacionesSinSincronizar ?? 0);
-    } on Object {
-      pendientes = 0;
-    }
+    // Si no se puede contar, la hoja no dice «Todo sincronizado»: dice que no pudo revisar y deja
+    // reintentar o cerrar igual (cerrar sesión no borra nada; lo pendiente se sube en el próximo
+    // login).
+    final pendientes = await _contarPendientes();
     if (!mounted) return;
     setState(() => _revisando = false);
 
@@ -296,6 +321,7 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     await mostrarHojaCerrarSesion(
       context,
       pendientes: pendientes,
+      contar: _contarPendientes,
       cerrar: () async {
         final Either<Failure, ResultadoCierreSesion> resultado;
         try {
@@ -316,6 +342,16 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
         return true;
       },
     );
+  }
+
+  /// Las operaciones que faltan subir, o `null` si no se pudieron contar.
+  Future<int?> _contarPendientes() async {
+    try {
+      final resumen = await ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
+      return resumen.fold((_) => null, (r) => r.operacionesSinSincronizar);
+    } on Object {
+      return null;
+    }
   }
 
   @override
@@ -466,7 +502,7 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                         ultimoRespaldo: ultimoRespaldo,
                         ahora: DateTime.now(),
                         alConectar: () => unawaited(_conectarDrive()),
-                        alVerCuenta: () => unawaited(_desconectarDrive()),
+                        alVerCuenta: () => unawaited(_verCuentaDrive()),
                         alReintentar: () =>
                             unawaited(ref.read(estadoRespaldoDriveProvider.notifier).recargar()),
                       ),
@@ -482,6 +518,29 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                           ],
                         ),
                       ],
+                      const SizedBox(height: 24),
+                      // Estado de la sincronización, «Actualizar ahora» y modo ahorro de datos
+                      // (HU-SYNC-007 y HU-SYNC-008, vista 25).
+                      const _TituloSeccion(TextosSincronizacion.seccionConfiguracion),
+                      const SizedBox(height: 8),
+                      _Tarjeta(
+                        children: [
+                          ListTile(
+                            key: const Key('configuracion_sincronizacion'),
+                            minVerticalPadding: 12,
+                            // Con el texto al 200 % en 360 dp «Sincronización» no entra entre el ícono
+                            // y la flecha con el hueco de siempre: se achica el hueco en vez de
+                            // partir la palabra (mismo hallazgo que QA #153, menor 1).
+                            horizontalTitleGap: 8,
+                            leading: const Icon(Icons.sync),
+                            title: const Text(TextosSincronizacion.filaConfiguracion),
+                            subtitle: const Text(TextosSincronizacion.filaConfiguracionDetalle),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () =>
+                                unawaited(Navigator.of(context).push(SincronizacionPage.ruta())),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 24),
                       const _TituloSeccion('Privacidad y datos'),
                       const SizedBox(height: 8),

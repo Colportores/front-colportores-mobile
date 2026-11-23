@@ -57,9 +57,9 @@ final class HistorialNotificacionesRepositoryImpl implements HistorialNotificaci
       });
 
   @override
-  Future<Either<Failure, Unit>> marcarTodasLeidas({required DateTime ahora}) =>
+  Future<Either<Failure, Unit>> marcarTodasLeidas({required DateTime ahora, Set<String>? ids}) =>
       _correr('NOTIF_LEER_TODAS', const {}, () async {
-        await _local.marcarTodasLeidas(ahora: ahora);
+        await _local.marcarTodasLeidas(ahora: ahora, ids: ids);
         return unit;
       });
 

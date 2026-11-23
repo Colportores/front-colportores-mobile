@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,13 +8,15 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
+import '../../domain/entities/estado_respaldo_drive.dart';
 import '../providers/respaldo_drive_providers.dart';
 import '../textos_respaldo_drive.dart';
 import 'aviso_drive.dart';
 
 /// Abre la hoja «Respaldo en tu Google Drive» (16D·02, 03, 08 y 09). Devuelve cómo terminó el
-/// intento ([DriveQuedoConectado], o [DriveNoQuedoConectado] con [FailureDriveCancelado] si la
-/// persona cerró la pantalla de Google), o `null` si tocó «Ahora no».
+/// intento ([DriveQuedoConectado]; [DriveQuedoEnOtraCuenta] si Google devolvió otra cuenta que la del
+/// respaldo anterior, 16E·01; o [DriveNoQuedoConectado] con [FailureDriveCancelado] si la persona
+/// cerró la pantalla de Google), o `null` si tocó «Ahora no».
 ///
 /// Con [conPrimerRespaldo] en `false` la conexión no hace el primer respaldo («Recuperar mi
 /// respaldo», 16G·03, #707).
@@ -42,6 +46,65 @@ Future<bool?> mostrarHojaDesconectarDrive(BuildContext context) => mostrarHojaIn
     borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
   ),
   builder: (_) => const HojaDesconectarDrive(),
+);
+
+/// Cómo terminó la hoja de otra cuenta de Google (16E·01 a 16E·04).
+sealed class ResultadoOtraCuentaDrive {
+  const ResultadoOtraCuentaDrive();
+}
+
+/// Volvió a la cuenta del respaldo anterior (16E·03): [correo] es esa cuenta.
+final class VolvioALaCuentaAnterior extends ResultadoOtraCuentaDrive {
+  const VolvioALaCuentaAnterior(this.correo);
+
+  final String correo;
+}
+
+/// Siguió con la cuenta nueva (16E·02). [primerRespaldoHecho] dice qué se le avisa.
+final class SiguioConLaCuentaNueva extends ResultadoOtraCuentaDrive {
+  const SiguioConLaCuentaNueva({required this.primerRespaldoHecho});
+
+  final bool primerRespaldoHecho;
+}
+
+/// Desconectó el Drive desde la hoja (decisión del 23/11, R6): no queda cuenta por confirmar.
+final class DesconectoElDrive extends ResultadoOtraCuentaDrive {
+  const DesconectoElDrive();
+}
+
+/// Lo que se le avisa a la persona tras la hoja de otra cuenta, con la clave del aviso; `null` si no
+/// hay nada que avisar (cerró sin elegir, o desconectó: la fila «Cuenta Drive» ya lo dice).
+({String clave, String texto})? avisoDeOtraCuenta(ResultadoOtraCuentaDrive? salida) =>
+    switch (salida) {
+      VolvioALaCuentaAnterior(:final correo) => (
+        clave: 'configuracion_drive_volvio',
+        texto: TextosRespaldoDrive.volvioALaAnterior(correo),
+      ),
+      SiguioConLaCuentaNueva(:final primerRespaldoHecho) => (
+        clave: 'configuracion_drive_conectado',
+        texto: primerRespaldoHecho
+            ? TextosRespaldoDrive.exitoConPrimerRespaldo
+            : TextosRespaldoDrive.exitoSinPrimerRespaldo,
+      ),
+      DesconectoElDrive() || null => null,
+    };
+
+/// Abre la hoja «Esta no es la cuenta de tu respaldo» (16E·01 a 16E·04). Devuelve con qué cuenta
+/// quedó la persona, [DesconectoElDrive] si desconectó, o `null` si la cerró sin elegir: el respaldo
+/// sigue frenado y la fila lo dice.
+Future<ResultadoOtraCuentaDrive?> mostrarHojaOtraCuentaDrive(
+  BuildContext context, {
+  required DriveCuentaPorConfirmar cuenta,
+}) => mostrarHojaInferior<ResultadoOtraCuentaDrive>(
+  context: context,
+  isScrollControlled: true,
+  enableDrag: false,
+  showDragHandle: false,
+  backgroundColor: Colors.white,
+  shape: const RoundedRectangleBorder(
+    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+  ),
+  builder: (_) => HojaOtraCuentaDrive(cuenta: cuenta),
 );
 
 enum _FaseConectar { previa, conectando, error, sinConexion }
@@ -76,7 +139,7 @@ class _HojaConectarDriveState extends ConsumerState<HojaConectarDrive> {
     }
     if (!mounted) return;
     switch (resultado) {
-      case DriveQuedoConectado():
+      case DriveQuedoConectado() || DriveQuedoEnOtraCuenta():
         Navigator.of(context).pop(resultado);
       case DriveNoQuedoConectado(falla: FailureDriveCancelado()):
         Navigator.of(context).pop(resultado);
@@ -245,6 +308,314 @@ class _HojaDesconectarDriveState extends ConsumerState<HojaDesconectarDrive> {
   }
 }
 
+enum _PasoOtraCuenta { avisar, confirmarSeguir }
+
+enum _AccionOtraCuenta { volver, seguir }
+
+/// «Esta no es la cuenta de tu respaldo» (16E·01): sale apenas vuelve del consentimiento de Google, con
+/// la cuenta del respaldo anterior, su último respaldo y la de ahora. Dos salidas: «Volver a la cuenta
+/// anterior» (abre de nuevo el selector de cuentas de Google; 16E·03) o «Seguir con la cuenta nueva»,
+/// que antes pide confirmar qué pasa (16E·02). Nada se borra.
+///
+/// Mientras trabaja la hoja no se puede cerrar ni tocar dos veces. Sin conexión, «Volver» espera a que
+/// vuelva (16E·04). Si falla, queda abierta con el aviso. Cerrarla sin elegir deja la fila «Cuenta
+/// Drive» pendiente: tocarla vuelve a abrir esta hoja.
+class HojaOtraCuentaDrive extends ConsumerStatefulWidget {
+  const HojaOtraCuentaDrive({required this.cuenta, super.key});
+
+  final DriveCuentaPorConfirmar cuenta;
+
+  @override
+  ConsumerState<HojaOtraCuentaDrive> createState() => _HojaOtraCuentaDriveState();
+}
+
+class _HojaOtraCuentaDriveState extends ConsumerState<HojaOtraCuentaDrive> {
+  _PasoOtraCuenta _paso = _PasoOtraCuenta.avisar;
+
+  /// Lo que está haciendo ahora, o `null`. Es un campo y no solo el estado: la guarda corta el
+  /// segundo toque aunque llegue antes de que se vuelva a dibujar.
+  _AccionOtraCuenta? _trabajando;
+
+  /// La cuenta de ahora: cambia si, al volver, la persona elige otra distinta de la anterior.
+  late DriveCuentaPorConfirmar _cuenta = widget.cuenta;
+
+  /// Se está abriendo la hoja de desconectar: corta el segundo toque.
+  bool _abriendoDesconexion = false;
+
+  /// El aviso de que algo falló, con su mensaje; `null` si no hay falla. El de sin conexión del
+  /// teléfono no pasa por acá (sale de [conexionProvider]).
+  String? _error;
+  bool _errorDeRed = false;
+
+  Future<void> _volver() async {
+    if (_trabajando != null) return; // Doble toque: una sola conexión.
+    setState(() {
+      _trabajando = _AccionOtraCuenta.volver;
+      _error = null;
+      _errorDeRed = false;
+    });
+    ResultadoConexionDrive resultado;
+    try {
+      resultado = await ref.read(estadoRespaldoDriveProvider.notifier).conectar();
+    } on Object {
+      resultado = const DriveNoQuedoConectado(FailureDriveNoConectado());
+    }
+    if (!mounted) return;
+    switch (resultado) {
+      case DriveQuedoConectado():
+        Navigator.of(context).pop(VolvioALaCuentaAnterior(_cuenta.anteriorEmail));
+        return;
+      case DriveQuedoEnOtraCuenta(:final estado):
+        // Eligió otra cuenta que tampoco es la anterior: la hoja sigue con la que eligió ahora.
+        setState(() => _cuenta = estado);
+      case DriveNoQuedoConectado(falla: FailureDriveCancelado()):
+        break; // Cerró la pantalla de Google: la hoja sigue como estaba.
+      case DriveNoQuedoConectado(:final falla):
+        setState(() {
+          _error = falla is FailureSinConexion
+              ? TextosRespaldoDrive.sinConexionParaCambiarDeCuenta
+              : falla.mensaje;
+          _errorDeRed = falla is FailureSinConexion;
+        });
+      case DriveOcupado():
+        break;
+    }
+    setState(() => _trabajando = null);
+  }
+
+  /// «Desconectar Drive» (decisión del 23/11, R6): abre la hoja de desconectar de siempre, con sus
+  /// textos y sin borrar ningún respaldo. Si desconectó, la hoja se cierra: ya no hay cuenta por
+  /// confirmar.
+  Future<void> _desconectar() async {
+    if (_trabajando != null || _abriendoDesconexion) return;
+    _abriendoDesconexion = true;
+    try {
+      final desconecto = await mostrarHojaDesconectarDrive(context);
+      if (!mounted || desconecto != true) return;
+      Navigator.of(context).pop(const DesconectoElDrive());
+    } finally {
+      _abriendoDesconexion = false;
+    }
+  }
+
+  Future<void> _seguir() async {
+    if (_trabajando != null) return; // Doble toque: una sola vez.
+    setState(() {
+      _trabajando = _AccionOtraCuenta.seguir;
+      _error = null;
+      _errorDeRed = false;
+    });
+    ResultadoConexionDrive resultado;
+    try {
+      resultado = await ref.read(estadoRespaldoDriveProvider.notifier).confirmarCuentaNueva();
+    } on Object {
+      resultado = const DriveNoQuedoConectado(FailureDriveNoConectado());
+    }
+    if (!mounted) return;
+    switch (resultado) {
+      case DriveQuedoConectado(:final primerRespaldoHecho):
+        Navigator.of(context).pop(SiguioConLaCuentaNueva(primerRespaldoHecho: primerRespaldoHecho));
+        return;
+      case DriveNoQuedoConectado(:final falla):
+        setState(() => _error = falla.mensaje);
+      case DriveQuedoEnOtraCuenta() || DriveOcupado():
+        break;
+    }
+    setState(() => _trabajando = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>()!;
+    final trabajando = _trabajando != null;
+    final confirmando = _paso == _PasoOtraCuenta.confirmarSeguir;
+    final sinRedDelTelefono = ref.watch(conexionProvider).value == TipoConexion.sinConexion;
+    final sinRed = sinRedDelTelefono || _errorDeRed;
+    final conError = _error != null && !_errorDeRed;
+    final ultimo = ref.watch(ultimoRespaldoDriveProvider).value;
+    final anterior = _cuenta.anteriorEmail;
+    final nueva = _cuenta.email;
+
+    return PopScope(
+      // Sin elegir se puede cerrar; en la confirmación, el atrás vuelve a la hoja anterior.
+      canPop: !trabajando && !confirmando,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !trabajando && confirmando) {
+          setState(() {
+            _paso = _PasoOtraCuenta.avisar;
+            _error = null;
+            _errorDeRed = false;
+          });
+        }
+      },
+      child: _MarcoHoja(
+        clave: Key(confirmando ? 'drive_hoja_seguir_con_la_nueva' : 'drive_hoja_otra_cuenta'),
+        titulo: confirmando
+            ? TextosRespaldoDrive.tituloSeguirConLaNueva
+            : TextosRespaldoDrive.tituloOtraCuenta,
+        hijos: [
+          Text(
+            confirmando
+                ? TextosRespaldoDrive.textoSeguirConLaNueva(anterior: anterior, nueva: nueva)
+                : TextosRespaldoDrive.textoOtraCuenta(anterior: anterior, nueva: nueva),
+            style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+          ),
+          if (!confirmando) ...[
+            _FilasDeCuentas(
+              filas: [
+                (TextosRespaldoDrive.rotuloRespaldoAnterior, anterior),
+                (
+                  TextosRespaldoDrive.rotuloUltimoRespaldo,
+                  ultimo == null
+                      ? TextosRespaldoDrive.sinRespaldoTodavia
+                      : TextosRespaldoDrive.fechaDelUltimoRespaldo(ultimo.toLocal()),
+                ),
+                (TextosRespaldoDrive.rotuloCuentaDeAhora, nueva),
+              ],
+            ),
+            Text(
+              TextosRespaldoDrive.noSeBorraNada,
+              style: theme.textTheme.bodySmall?.copyWith(color: colores.gris),
+            ),
+          ],
+          if (sinRed)
+            const AvisoDrive(
+              key: Key('drive_hoja_otra_cuenta_sin_conexion'),
+              clase: ClaseAvisoDrive.sinConexion,
+              texto: TextosRespaldoDrive.sinConexionParaCambiarDeCuenta,
+            )
+          else if (conError)
+            AvisoDrive(
+              key: const Key('drive_hoja_otra_cuenta_error'),
+              clase: ClaseAvisoDrive.error,
+              texto: _error!,
+            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 10,
+            children: [
+              if (!confirmando) ...[
+                _BotonHoja(
+                  clave: const Key('drive_otra_cuenta_volver'),
+                  texto: TextosRespaldoDrive.volverALaCuentaAnterior,
+                  principal: true,
+                  cargando: _trabajando == _AccionOtraCuenta.volver,
+                  // Sin red no hay a dónde ir (16E·04): el botón espera a que vuelva.
+                  onPressed: trabajando || sinRedDelTelefono ? null : _volver,
+                  apagadoSinCarga: sinRedDelTelefono && !trabajando,
+                ),
+                _BotonHoja(
+                  clave: const Key('drive_otra_cuenta_seguir'),
+                  texto: TextosRespaldoDrive.seguirConLaCuentaNueva,
+                  principal: false,
+                  onPressed: trabajando
+                      ? null
+                      : () => setState(() {
+                          _paso = _PasoOtraCuenta.confirmarSeguir;
+                          _error = null;
+                          _errorDeRed = false;
+                        }),
+                ),
+                // Lo raro va como opción a mano pero secundaria (R6): salir sin elegir ninguna de las
+                // dos cuentas, dejando el Drive desconectado hasta decidir.
+                TextButton(
+                  key: const Key('drive_otra_cuenta_desconectar'),
+                  style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  onPressed: trabajando ? null : () => unawaited(_desconectar()),
+                  child: const Text(TextosRespaldoDrive.desconectarDrive),
+                ),
+              ] else ...[
+                _BotonHoja(
+                  clave: const Key('drive_otra_cuenta_confirmar_seguir'),
+                  texto: TextosRespaldoDrive.seguirConLaCuentaNueva,
+                  principal: true,
+                  cargando: _trabajando == _AccionOtraCuenta.seguir,
+                  onPressed: trabajando ? null : _seguir,
+                ),
+                _BotonHoja(
+                  clave: const Key('drive_otra_cuenta_confirmar_volver'),
+                  texto: TextosRespaldoDrive.volverALaAnterior,
+                  principal: false,
+                  cargando: _trabajando == _AccionOtraCuenta.volver,
+                  onPressed: trabajando || sinRedDelTelefono ? null : _volver,
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Las filas «rótulo · valor» de la hoja de otra cuenta (el bloque `kv` del canvas). Con la letra
+/// grande el valor baja bajo su rótulo: un correo largo se lee entero y nunca se corta con «…».
+class _FilasDeCuentas extends StatelessWidget {
+  const _FilasDeCuentas({required this.filas});
+
+  final List<(String, String)> filas;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>()!;
+    final letraGrande = MediaQuery.textScalerOf(context).scale(10) >= 13;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: colores.borde),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Column(
+          children: [
+            for (var i = 0; i < filas.length; i++)
+              Container(
+                key: Key('drive_otra_cuenta_fila_$i'),
+                decoration: BoxDecoration(
+                  border: i == 0 ? null : Border(top: BorderSide(color: colores.borde)),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                child: letraGrande
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        spacing: 2,
+                        children: [
+                          Text(
+                            filas[i].$1,
+                            style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
+                          ),
+                          Text(filas[i].$2, style: theme.textTheme.bodyMedium),
+                        ],
+                      )
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        spacing: 12,
+                        children: [
+                          Text(
+                            filas[i].$1,
+                            style: theme.textTheme.bodyMedium?.copyWith(color: colores.gris),
+                          ),
+                          Expanded(
+                            child: Text(
+                              filas[i].$2,
+                              textAlign: TextAlign.end,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// El marco de las hojas: el asa, el título y lo que sigue, en una columna que se desplaza con
 /// texto grande o con poco alto.
 class _MarcoHoja extends StatelessWidget {
@@ -321,9 +692,12 @@ class _BotonHoja extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             spacing: 10,
             children: [
-              const SizedBox.square(
+              SizedBox.square(
                 dimension: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: principal ? Colors.white : tema.colorScheme.primary,
+                ),
               ),
               Flexible(child: Text(texto, textAlign: TextAlign.center)),
             ],

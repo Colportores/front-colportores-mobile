@@ -66,7 +66,6 @@ void main() {
         ProductosCompanion.insert(
           id: id,
           nombre: nombre,
-          tipo: 'LIBRO',
           createdAt: t0,
           updatedAt: t0,
           deletedAt: Value(baja ? t0 : null),
@@ -228,6 +227,8 @@ void main() {
         'referencia_transferencia',
         'banco_origen',
         'ticket_id',
+        'anulado_at',
+        'motivo_anulacion',
         'created_at',
         'updated_at',
         'created_by',

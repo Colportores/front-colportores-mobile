@@ -2,12 +2,17 @@ import 'package:drift/drift.dart';
 
 import '../../../../core/database/fecha_utc_converter.dart';
 
-/// Eventos del `audit_log` local. Hoy la baja de una ubicación (HU-UBI-005); «marcar como duplicado»
+/// Eventos del `audit_log` local. La baja de una ubicación (HU-UBI-005), la edición de una persona
+/// (HU-UBI-010); «marcar como duplicado»
 /// (`duplicado_de_A`, HU-UBI-006) y la justificación de «Crear igual» (HU-UBI-001, #282) escriben acá
 /// con su propio evento.
 abstract final class EventoAuditoriaLocal {
   /// La baja de una ubicación, con el motivo que eligió el colportor.
   static const ubicacionBaja = 'ubicacion_baja';
+
+  /// Se modificó el nombre, el apellido o el teléfono de una persona (HU-UBI-010). Lleva solo el `uuid`
+  /// de la persona: nunca el valor viejo ni el nuevo (son datos personales, R-UB01) y sin motivo.
+  static const personaModificada = 'persona_modificada';
 
   /// La unión de duplicados que puso la baja `duplicado_de_<A>` de esta ubicación (B) se deshizo
   /// porque el servidor rechazó su trabajo (#679): `uuid` es B, `motivo` el código del rechazo
@@ -63,6 +68,12 @@ abstract final class EventoAuditoriaLocal {
   /// La verificación encontró un problema y se regenera la base (HU-SYNC-009). `motivo` son los
   /// problemas por nombre (`corrupt`, `brokenLink`…), nunca contenido del backup.
   static const backupIntegridadProblema = 'backup_integrity_problem';
+
+  /// Un cobro anulado (HU-COB-006, «Audit log»): `uuid` es el `id` del cobro, `creado_en` la hora de la
+  /// anulación (el mismo `anulado_at` del cobro) y `motivo` lo que se eligió: el texto que escribió la
+  /// colportora con «Otro» («Justificar», solo local) o, con otro motivo, el de la lista. Nunca el monto
+  /// ni el nombre del cliente.
+  static const cobroAnulado = 'cobro_anulado';
 
   /// El `uuid` de los eventos del backup: no hay una fila afectada, es el backup en su conjunto.
   static const uuidBackup = 'backup';

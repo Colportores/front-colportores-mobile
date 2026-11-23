@@ -97,7 +97,7 @@ final class ModificarUbicacionState extends Equatable {
 
   /// Cuántos espacios sin baja tiene ahora, mientras la hoja está abierta (la hoja sigue la cuenta:
   /// si llega o se va un espacio, esto cambia solo); `null` si no se pudo contar (el caso de uso igual
-  /// bloquea el cambio de edificio a otro tipo).
+  /// bloquea el cambio de edificio o negocio a casa).
   final int? espacios;
 
   /// El `numero_depto` del único espacio activo, cuando [espacios] es 1 y ese tiene número; `null`
@@ -167,7 +167,7 @@ final class ModificarUbicacionState extends Equatable {
     return p.distanciaMetrosA(o.coordenadas);
   }
 
-  /// Si el borrador deja a la ubicación con un solo espacio (S17: de edificio a casa o negocio, de
+  /// Si el borrador deja a la ubicación con un solo espacio (S17: de edificio o
   /// negocio a casa; [TipoUbicacion.reduceAUnEspacioHacia]).
   bool get _reduceAUnEspacio {
     final guardado = original?.tipo;

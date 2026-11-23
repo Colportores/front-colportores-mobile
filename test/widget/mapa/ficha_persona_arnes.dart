@@ -136,6 +136,9 @@ final class MundoFicha {
   /// Las veces que se tocó «Editar persona» y con qué persona.
   final ediciones = <String>[];
 
+  /// El espacio con el que se abrió cada edición de [ediciones].
+  final espaciosDeEdicion = <String>[];
+
   /// Los destinos de «Registrar visita».
   final visitas = <ContextoDeVisitaFicha>[];
 
@@ -165,6 +168,10 @@ final class MundoFicha {
   var conRegistrarVisita = false;
   var conDevolucion = false;
   var conRegistrarEntrega = false;
+
+  /// Con destino para tocar un cobro del historial (vista 30 B): guarda cada `id` que se abrió.
+  var conVerCobro = false;
+  final cobrosAbiertos = <String>[];
 }
 
 typedef ContextoDeVisitaFicha = ({String ubicacionId, String? espacioId, String? agendaId});
@@ -225,9 +232,15 @@ Future<void> montarFicha(
         relojPersonaProvider.overrideWithValue(() => ahoraFicha),
         generadorIdPersonaProvider.overrideWithValue(() => 'nota-nueva-${++contador}'),
         if (mundo.conEdicion)
-          editarPersonaDesdeLaFichaProvider.overrideWithValue((id) async {
-            mundo.ediciones.add(id);
+          editarPersonaDesdeLaFichaProvider.overrideWithValue((c) async {
+            mundo.ediciones.add(c.personaId);
+            mundo.espaciosDeEdicion.add(c.espacioId);
             await mundo.compuertaEdicion?.future;
+            return null;
+          }),
+        if (mundo.conVerCobro)
+          verCobroDesdeLaFichaProvider.overrideWithValue((id) {
+            mundo.cobrosAbiertos.add(id);
             return null;
           }),
         if (mundo.conDevolucion)

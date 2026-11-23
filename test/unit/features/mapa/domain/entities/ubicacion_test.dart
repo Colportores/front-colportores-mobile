@@ -85,11 +85,10 @@ void main() {
   });
 
   group('TipoUbicacion.reduceAUnEspacioHacia (S17)', () {
-    test('dado un cambio de tipo, cuando se pregunta si deja un solo espacio, solo EDIFICIO a '
-        'CASA o NEGOCIO y NEGOCIO a CASA lo hacen', () {
+    test('dado un cambio de tipo, cuando se pregunta si deja un solo espacio, solo EDIFICIO y '
+        'NEGOCIO a CASA lo hacen (EDIFICIO a NEGOCIO ya no: Cristian, 09/11, «Negocio mapa»)', () {
       final reducen = {
         (TipoUbicacion.edificio, TipoUbicacion.casa),
-        (TipoUbicacion.edificio, TipoUbicacion.negocio),
         (TipoUbicacion.negocio, TipoUbicacion.casa),
       };
 

@@ -3,8 +3,7 @@
 // 200 %; los escenarios de la HU con su texto literal; y los casos límite que el PR no prueba (el
 // error después de haber mostrado la ficha, lo que se ve mientras vuelve a leer, lo que pasa en vivo).
 //
-// Las capturas salen a `.dart_tool/qa_capturas/563_*.png` solo con `--dart-define=QA_CAPTURAS=true`; los
-// tests de hallazgos (con `skip`) se corren con `--dart-define=QA_HALLAZGOS=true`.
+// Las capturas salen a `.dart_tool/qa_capturas/563_*.png` solo con `--dart-define=QA_CAPTURAS=true`.
 import 'dart:async';
 import 'dart:ui' show Tristate;
 
@@ -38,7 +37,6 @@ final class _FichaQueFallaDespues extends FichaPersonaRepositorioFalso {
 }
 
 void main() {
-  const hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
   setUpAll(() {
     usarFuentesReales563 = true;
     WidgetsApp.debugAllowBannerOverride = false;
@@ -628,8 +626,7 @@ void main() {
     });
   });
 
-  group('hallazgos de la QA (se corren con --dart-define=QA_HALLAZGOS=true)', () {
-    // skip: issue #141 — a 360×640 con el texto al 200 % «Comprado» se parte por la mitad («Comprad» / «o»).
+  group('hallazgos de la QA, arreglados (#626)', () {
     testWidgets('las filas de la cuenta no parten una palabra a 360×640 con el texto al 200 %', (
       tester,
     ) async {
@@ -649,10 +646,8 @@ void main() {
           reason: '«$rotulo» ocupa más de una línea: la palabra se parte',
         );
       }
-    }, skip: !hallazgos);
+    });
 
-    // skip: issue #141 — «Ver», «Llamar», «+ Nota», «Reactivar» y «Reintentar» no traen `fontFamily`: salen
-    // en la letra del sistema y no en Inter como el resto de la ficha.
     testWidgets('los botones de texto de la ficha usan la letra del tema (Inter)', (tester) async {
       await llegarAFicha(tester, EstadoFicha.completa, tamano: telefonoGrande563);
 
@@ -663,9 +658,8 @@ void main() {
         ).style.merge(tester.widget<Text>(texto).style);
         expect(estilo.fontFamily, 'Inter', reason: '«$rotulo» sin la letra del tema');
       }
-    }, skip: !hallazgos);
+    });
 
-    // skip: issue #141 — «La persona ya no está en tu teléfono. Volvé atrás.» no se anuncia al lector.
     testWidgets('cuando la persona ya no está, el aviso se anuncia como región viva', (
       tester,
     ) async {
@@ -675,6 +669,6 @@ void main() {
       final nodo = tester.getSemantics(find.text(TextosFicha.personaNoEncontrada));
       expect(nodo.flagsCollection.isLiveRegion, isTrue);
       h.dispose();
-    }, skip: !hallazgos);
+    });
   });
 }

@@ -24,7 +24,13 @@ List<Notificacion> _sesenta() => [
 ];
 
 Future<void> _alFinal(WidgetTester tester) async {
-  await tester.scrollUntilVisible(filaDe(_id(_cuantos - 1)), 400, scrollable: _scrollable);
+  // La fila «Tipo de aviso» (#484) suma alto al principio de la lista: más pasos que los 50 de siempre.
+  await tester.scrollUntilVisible(
+    filaDe(_id(_cuantos - 1)),
+    400,
+    scrollable: _scrollable,
+    maxScrolls: 100,
+  );
   await tester.pump();
 }
 

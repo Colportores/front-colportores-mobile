@@ -285,6 +285,13 @@ class AsistenteRecuperacion extends Notifier<EstadoAsistente> {
             texto: falla.mensaje,
           ),
         );
+      case DriveQuedoEnOtraCuenta():
+        // No debería pasar: sin Drive conectado no hay cuenta anterior con la que compararla. Si
+        // pasara, el respaldo queda frenado y buscar no encontraría nada: se avisa en vez de seguir.
+        state = state.copyWith(
+          avisoDeDrive: () =>
+              (clase: ClaseAvisoDrive.error, texto: const FailureDriveNoConectado().mensaje),
+        );
       case DriveOcupado():
         break;
     }

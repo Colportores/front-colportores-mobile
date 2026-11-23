@@ -36,6 +36,9 @@ class AltaPersonaPage extends ConsumerStatefulWidget {
     required this.espacioId,
     required this.colportorId,
     this.ayuda,
+    this.nombreInicial,
+    this.apellidoInicial,
+    this.telefonoInicial,
   });
 
   /// El espacio al que se agrega la persona.
@@ -48,15 +51,33 @@ class AltaPersonaPage extends ConsumerStatefulWidget {
   /// una venta). `null` = el alta de siempre, sin línea.
   final String? ayuda;
 
-  /// Abre el alta encima de la pantalla actual. [ayuda] es la línea opcional bajo el título.
+  /// Lo que el formulario trae ya escrito: el nombre, el apellido y el teléfono que la colportora puso
+  /// en «Editar persona» antes de elegir «Dar de baja y crear nueva» (HU-UBI-010, #405). `null` = el
+  /// campo arranca vacío, como el alta de siempre.
+  final String? nombreInicial;
+  final String? apellidoInicial;
+  final String? telefonoInicial;
+
+  /// Abre el alta encima de la pantalla actual. [ayuda] es la línea opcional bajo el título; los
+  /// `...Inicial` son lo que ya viene escrito.
   static Future<Persona?> abrir(
     BuildContext context, {
     required String espacioId,
     required String colportorId,
     String? ayuda,
+    String? nombreInicial,
+    String? apellidoInicial,
+    String? telefonoInicial,
   }) => Navigator.of(context).push<Persona>(
     MaterialPageRoute(
-      builder: (_) => AltaPersonaPage(espacioId: espacioId, colportorId: colportorId, ayuda: ayuda),
+      builder: (_) => AltaPersonaPage(
+        espacioId: espacioId,
+        colportorId: colportorId,
+        ayuda: ayuda,
+        nombreInicial: nombreInicial,
+        apellidoInicial: apellidoInicial,
+        telefonoInicial: telefonoInicial,
+      ),
     ),
   );
 
@@ -133,6 +154,10 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
   @override
   void initState() {
     super.initState();
+    _nombre.text = widget.nombreInicial ?? '';
+    _apellido.text = widget.apellidoInicial ?? '';
+    _telefono.text = widget.telefonoInicial ?? '';
+    _habiaCambios = _hayCambios;
     for (final c in [_nombre, _apellido, _telefono, _nota]) {
       c.addListener(_alCambiarElTexto);
     }

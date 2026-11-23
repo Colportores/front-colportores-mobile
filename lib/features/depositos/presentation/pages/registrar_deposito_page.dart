@@ -23,6 +23,7 @@ import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../../ventas/presentation/formato_venta.dart';
 import '../../../ventas/presentation/widgets/piezas_venta.dart';
+import '../../domain/entities/campania_para_el_pago.dart';
 import '../../domain/entities/deposito.dart';
 import '../../domain/usecases/registrar_deposito_con_ticket_use_case.dart';
 import '../providers/depositos_providers.dart';
@@ -55,12 +56,19 @@ import '../widgets/piezas_deposito.dart';
 ///   número de un depósito rechazado; la foto hay que sacarla otra vez.
 ///
 /// Devuelve `true` si se registró un depósito.
+///
+/// **El alquiler, por campaña** (decisión «Alq. campaña», 25/10): con el concepto «Alquiler» la campaña
+/// se pone sola si hay una en curso y, si el colportor está en dos, elige a cuál paga. Desde «Mi
+/// alquiler» (HU-CTA-007) llega con el concepto y la campaña ya elegidos ([campaniaId]), también si esa
+/// campaña ya terminó y todavía se debe.
 class RegistrarDepositoPage extends ConsumerStatefulWidget {
   const RegistrarDepositoPage({
     super.key,
     required this.colportorId,
     this.copiaDe,
     this.desdeMisTickets = false,
+    this.concepto = ConceptoDeDeposito.casaEditora,
+    this.campaniaId,
   });
 
   /// UUID del colportor con la sesión iniciada.
@@ -71,6 +79,12 @@ class RegistrarDepositoPage extends ConsumerStatefulWidget {
 
   /// Se abrió desde «Mis tickets»: el éxito no ofrece «Ver mis tickets», que ya está debajo.
   final bool desdeMisTickets;
+  /// Para qué es el dinero al abrir: «Mi alquiler» lo abre en [ConceptoDeDeposito.alquiler].
+  final ConceptoDeDeposito concepto;
+
+  /// La campaña a la que paga el alquiler, si ya viene decidida (desde «Mi alquiler»); `null` = la pone
+  /// la pantalla (la en curso, o la que el colportor elija si está en dos).
+  final String? campaniaId;
 
   /// Abre la pantalla encima de la actual. `true` si se registró un depósito.
   static Future<bool> abrir(
@@ -78,6 +92,8 @@ class RegistrarDepositoPage extends ConsumerStatefulWidget {
     required String colportorId,
     ItemDelHistorial? copiaDe,
     bool desdeMisTickets = false,
+    ConceptoDeDeposito concepto = ConceptoDeDeposito.casaEditora,
+    String? campaniaId,
   }) async {
     final registrado = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -85,6 +101,8 @@ class RegistrarDepositoPage extends ConsumerStatefulWidget {
           colportorId: colportorId,
           copiaDe: copiaDe,
           desdeMisTickets: desdeMisTickets,
+          concepto: concepto,
+          campaniaId: campaniaId,
         ),
       ),
     );
@@ -108,11 +126,14 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
   final _referencia = TextEditingController();
   final _scroll = ScrollController();
 
-  var _concepto = ConceptoDeDeposito.casaEditora;
+  late var _concepto = widget.concepto;
   var _destino = DestinoDeDeposito.banco;
 
   /// Crédito o débito; `null` = «No» (38A-01, «Tarjeta»).
   TipoDeTarjeta? _tarjeta;
+  /// La campaña que el colportor eligió entre las suyas en curso (solo si está en dos o más); `null` =
+  /// todavía no eligió.
+  String? _campaniaElegida;
 
   /// El día elegido (sin hora, día de Montevideo); `null` = hoy.
   DateTime? _dia;
@@ -200,8 +221,8 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
   /// «En mano» del colportor, si ya se calculó.
   int? _enMano;
 
-  /// La campaña del alquiler: `AsyncData(null)` si no está en ninguna en curso.
-  AsyncValue<String?> _campania = const AsyncLoading();
+  /// Las campañas en curso a las que puede pagar el alquiler: vacía si no está en ninguna.
+  AsyncValue<List<CampaniaParaElPago>> _candidatas = const AsyncLoading();
 
   /// Hay cámara y galería para la foto del ticket.
   var _fotoDisponible = false;
@@ -215,7 +236,7 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
         ?.value
         .enMano
         .totalCentavos;
-    _campania = ref.watch(campaniaDelAlquilerProvider(widget.colportorId));
+    _candidatas = ref.watch(campaniasParaElAlquilerProvider(widget.colportorId));
     _fotoDisponible = ref.watch(fotoDelTicketDisponibleProvider);
     _sinConexion = ref.watch(conexionProvider).value == TipoConexion.sinConexion;
   }
@@ -235,13 +256,30 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
     return null;
   }
 
+  /// A qué campaña paga el alquiler: la que vino decidida de «Mi alquiler»; si no, la única en curso, o
+  /// la que el colportor eligió si está en dos o más. `null` = todavía no hay (ninguna en curso, sin
+  /// saber todavía cuál es, o sin elegir).
+  String? get _campaniaDelPago {
+    final decidida = widget.campaniaId;
+    if (decidida != null) return decidida;
+    final lista = _candidatas.value;
+    if (lista == null || lista.isEmpty) return null;
+    if (lista.length == 1) return lista.single.id;
+    return lista.any((c) => c.id == _campaniaElegida) ? _campaniaElegida : null;
+  }
+
+  /// Hay que elegir entre dos o más campañas en curso y todavía no se eligió (con la campaña decidida
+  /// no hay nada que elegir).
+  bool get _hayQueElegirCampania =>
+      _concepto == ConceptoDeDeposito.alquiler &&
+      widget.campaniaId == null &&
+      (_candidatas.value?.length ?? 0) > 1 &&
+      _campaniaDelPago == null;
+
   /// Algo que no depende de lo escrito impide registrar: alquiler sin campaña en curso (o sin saber
   /// todavía cuál es), o banco/oficina en un teléfono sin cámara.
   bool _bloqueado() {
-    if (_concepto == ConceptoDeDeposito.alquiler) {
-      final campania = _campania;
-      if (!campania.hasValue || campania.value == null) return true;
-    }
+    if (_concepto == ConceptoDeDeposito.alquiler && _campaniaDelPago == null) return true;
     return _destino.llevaTicket && !_fotoDisponible;
   }
 
@@ -260,6 +298,7 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
     if (_montoVacio && _faltaLaFoto && _fotoDisponible) return TextosDeposito.faltanFotoYMonto;
     if (_montoVacio) return TextosDeposito.faltaElMonto;
     if (_faltaLaFoto && _fotoDisponible) return TextosDeposito.faltaLaFoto;
+    if (_hayQueElegirCampania) return TextosDeposito.faltaLaCampania;
     return null;
   }
 
@@ -279,6 +318,13 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
         _ => null,
       },
     );
+  }
+
+  void _elegirCampania(int i) {
+    if (_enviando) return;
+    final lista = _candidatas.value;
+    if (lista == null || i >= lista.length) return;
+    setState(() => _campaniaElegida = lista[i].id);
   }
 
   void _elegirDestino(int i) {
@@ -381,7 +427,7 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
     final enMano = _enMano;
     final centavos = _centavos;
     if (centavos == null || !_sePuedeRegistrar(enMano)) return;
-    final campaniaId = _concepto == ConceptoDeDeposito.alquiler ? _campania.value : null;
+    final campaniaId = _concepto == ConceptoDeDeposito.alquiler ? _campaniaDelPago : null;
     final foto = _destino.llevaTicket ? _foto : null;
     final referencia = _destino.llevaTicket ? _referencia.text.trim() : '';
     final sinConexion = _sinConexion;
@@ -540,9 +586,10 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
     final enMano = _enMano;
     final errorDelMonto = _errorDelMonto(enMano);
     final puede = _sePuedeRegistrar(enMano);
-    final campania = _campania;
     final alquilerSinCampania =
-        _concepto == ConceptoDeDeposito.alquiler && campania.hasValue && campania.value == null;
+        _concepto == ConceptoDeDeposito.alquiler &&
+        widget.campaniaId == null &&
+        (_candidatas.value?.isEmpty ?? false);
     final nota = _nota();
     return _marco(
       cabecera: CabeceraVenta(
@@ -599,6 +646,7 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
             texto: TextosDeposito.sinCampaniaParaElAlquiler,
             error: true,
           ),
+        ..._campaniaDelAlquiler(),
         const SizedBox(height: 12),
         SegmentadoDeCobro(
           rotulo: TextosDeposito.donde,
@@ -631,6 +679,52 @@ class _RegistrarDepositoPageState extends ConsumerState<RegistrarDepositoPage> {
         ),
       ),
     );
+  }
+
+  /// A qué campaña paga el alquiler: dos o más en curso piden elegir (38A, «Alq. campaña»); desde «Mi
+  /// alquiler» la campaña ya viene decidida y la línea lo dice. Una sola en curso se pone sola, sin
+  /// preguntar.
+  List<Widget> _campaniaDelAlquiler() {
+    if (_concepto != ConceptoDeDeposito.alquiler) return const [];
+    final decidida = widget.campaniaId;
+    if (decidida != null) {
+      final nombre = ref
+          .watch(alquilerDelColportorProvider(widget.colportorId))
+          .asData
+          ?.value
+          .campanias
+          .where((c) => c.campaniaId == decidida)
+          .firstOrNull
+          ?.campania;
+      if (nombre == null) return const [];
+      return [
+        AyudaDeDeposito(
+          key: const Key('deposito_campania_decidida'),
+          texto: TextosDeposito.pagaElAlquilerDe(nombre),
+        ),
+      ];
+    }
+    final lista = _candidatas.value;
+    if (lista == null || lista.length < 2) return const [];
+    final elegida = lista.indexWhere((c) => c.id == _campaniaElegida);
+    return [
+      const SizedBox(height: 12),
+      SegmentadoDeCobro(
+        rotulo: TextosDeposito.campania,
+        etiqueta: TextosDeposito.campaniaEtiqueta,
+        opciones: [for (final c in lista) c.nombre],
+        elegida: elegida,
+        alElegir: _elegirCampania,
+        prefijoDeClave: 'deposito_campania',
+        habilitado: !_enviando,
+      ),
+      if (_intentoIncompleto && _hayQueElegirCampania)
+        AyudaDeDeposito(
+          key: const Key('deposito_falta_campania'),
+          texto: const FailureDepositoSinCampania().mensaje,
+          error: true,
+        ),
+    ];
   }
 
   /// La foto del ticket y el número de operación (banco u oficina), o la línea del retiro.

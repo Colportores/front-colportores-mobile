@@ -69,21 +69,21 @@ abstract final class TextosDevolucion {
   /// «Ya pagó $ 3.300, más de lo que se queda. Ese dinero no se devuelve: la venta queda saldada y
   /// nada queda a favor del cliente.» Va cuando lo devuelto vale más que lo que el cliente debía.
   static String sinDevolver(int centavos) =>
-      'Ya pagó ${FormatoVenta.monto(centavos)} más de lo que se queda. Ese dinero no se devuelve: '
+      'Ya pagó ${FormatoVenta.montoSinQuiebre(centavos)} más de lo que se queda. Ese dinero no se devuelve: '
       'la venta queda saldada y nada queda a favor del cliente.';
 
   /// «Vendidos 1 · $ 2.600»; con lo que ya volvió: «Vendidos 3 · ya devolvió 1 · $ 2.600».
   static String vendidos(int cantidad, int devueltos, int precioCentavos) {
     final partes = ['Vendidos $cantidad'];
     if (devueltos > 0) partes.add('ya devolvió $devueltos');
-    partes.add(FormatoVenta.monto(precioCentavos));
+    partes.add(FormatoVenta.montoSinQuiebre(precioCentavos));
     return partes.join(' · ');
   }
 
   /// «María Fernández · pagó $ 4.500 de $ 4.500».
   static String pago(String? nombre, int pagoCentavos, int deQuedaCentavos) {
     final pago =
-        'pagó ${FormatoVenta.monto(pagoCentavos)} de ${FormatoVenta.monto(deQuedaCentavos)}';
+        'pagó ${FormatoVenta.montoSinQuiebre(pagoCentavos)} de ${FormatoVenta.montoSinQuiebre(deQuedaCentavos)}';
     return nombre == null || nombre.isEmpty ? _mayuscula(pago) : '$nombre · $pago';
   }
 

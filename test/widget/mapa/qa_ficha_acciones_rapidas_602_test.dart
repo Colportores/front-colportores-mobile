@@ -310,28 +310,24 @@ void main() {
     );
   });
 
-  group(
-    '32B·01 · la cuenta con letra al doble',
-    () {
-      testWidgets(
-        'las etiquetas de la cuenta no se parten en medio de la palabra a 360 con letra ×2',
-        (tester) async {
-          // Con las fuentes del proyecto: con la de prueba (cajas) las medidas no valen.
-          await _cargarFuentes(tester);
-          await montarFicha(tester, mundo(), tamano: _chico, escala: 2);
+  group('32B·01 · la cuenta con letra al doble', () {
+    testWidgets(
+      'las etiquetas de la cuenta no se parten en medio de la palabra a 360 con letra ×2',
+      (tester) async {
+        // Con las fuentes del proyecto: con la de prueba (cajas) las medidas no valen.
+        await _cargarFuentes(tester);
+        await montarFicha(tester, mundo(), tamano: _chico, escala: 2);
 
-          final cuenta = find.byKey(ClavesFicha.cuenta);
-          double alto(String t) =>
-              tester.getSize(find.descendant(of: cuenta, matching: find.text(t))).height;
-          // «Comprado» y «Pagado» son una palabra: tienen que ocupar un solo renglón, igual de altos.
-          expect(
-            alto('Comprado'),
-            alto('Pagado'),
-            reason: '«Comprado» se corta como «Comprad» / «o»',
-          );
-        },
-      );
-    },
-    skip: 'QA #162: a 360 dp con letra ×2 «Comprado» de la cuenta se parte en «Comprad» / «o»',
-  );
+        final cuenta = find.byKey(ClavesFicha.cuenta);
+        double alto(String t) =>
+            tester.getSize(find.descendant(of: cuenta, matching: find.text(t))).height;
+        // «Comprado» y «Pagado» son una palabra: tienen que ocupar un solo renglón, igual de altos.
+        expect(
+          alto('Comprado'),
+          alto('Pagado'),
+          reason: '«Comprado» se corta como «Comprad» / «o»',
+        );
+      },
+    );
+  });
 }

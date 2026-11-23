@@ -82,6 +82,15 @@ final class Ticket extends Equatable {
   /// La foto ya está en el bucket.
   bool get fotoSubida => urlCloud != null;
 
+  /// La fila ya llegó al servidor y volvió con sus datos (`subido_en` lo pone el servidor). Hasta
+  /// entonces el teléfono no sabe quién lo valida: `campaniaValidadoraId` vacío no quiere decir
+  /// «Administración», quiere decir «todavía no se sabe».
+  bool get llegoAlServidor => subidoEn != null;
+
+  /// Lo valida Administración (el servidor no encontró una campaña que lo valide, «Ticket libre»,
+  /// backend-supabase#200 y #209). Solo se afirma con el dato que mandó el servidor.
+  bool get loRevisaAdministracion => llegoAlServidor && campaniaValidadoraId == null;
+
   Ticket copyWith({String? urlCloud, Auditoria? auditoria}) => Ticket(
     id: id,
     tipo: tipo,

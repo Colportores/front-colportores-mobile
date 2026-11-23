@@ -8,7 +8,7 @@ import '../textos_respaldo_drive.dart';
 import 'aviso_drive.dart';
 
 /// La sección «Respaldo» de Configuración con la fila «Cuenta Drive» (vista 16, 16D·01, 04, 06 y
-/// 10). No decide nada: dibuja el [estado] y avisa qué tocó la persona.
+/// 10, y 16E·01 con otra cuenta por confirmar). No decide nada: dibuja el [estado] y avisa qué tocó la persona.
 class SeccionRespaldoDrive extends StatelessWidget {
   const SeccionRespaldoDrive({
     super.key,
@@ -31,7 +31,8 @@ class SeccionRespaldoDrive extends StatelessWidget {
   /// «Conectar» o «Reconectar».
   final VoidCallback alConectar;
 
-  /// Tocó la fila con Drive conectado: lleva a desconectar.
+  /// Tocó la fila con Drive conectado: lleva a desconectar. Con otra cuenta por confirmar (16E·01),
+  /// vuelve a abrir la hoja para elegir.
   final VoidCallback alVerCuenta;
 
   /// «Reintentar» cuando no se pudo leer el estado.
@@ -113,6 +114,7 @@ class _Fila extends StatelessWidget {
     final List<Widget> lineas;
     final Widget? trailing;
     final VoidCallback? alTocar;
+    var pista = TextosRespaldoDrive.pistaDesconectar;
 
     switch (estado) {
       case AsyncError():
@@ -153,6 +155,20 @@ class _Fila extends StatelessWidget {
             ];
             trailing = Text(TextosRespaldoDrive.reconectar, style: accion);
             alTocar = alConectar;
+          case DriveCuentaPorConfirmar(:final email):
+            // Ámbar, no rojo: no es un error sino una elección que falta (16E·01 y 16E·02).
+            leading = const _Glifo(
+              icono: Icons.cloud_outlined,
+              fondo: Color(0xFFFBF1DA),
+              color: Color(0xFF6E5212),
+            );
+            lineas = [
+              _Correo(email, estilo: lineaChica),
+              Text(TextosRespaldoDrive.sinRespaldoEnEstaCuenta, style: lineaChica),
+            ];
+            trailing = chevron;
+            alTocar = alVerCuenta;
+            pista = TextosRespaldoDrive.pistaCuentaPorConfirmar;
           case DriveSinEspacio(:final email):
             leading = _Glifo(icono: Icons.priority_high, fondo: error, color: Colors.white);
             lineas = [
@@ -189,7 +205,7 @@ class _Fila extends StatelessWidget {
     );
     // Quien usa lector de pantalla tiene que saber que tocar la fila conectada lleva a desconectar.
     if (identical(trailing, chevron)) {
-      fila = Semantics(hint: TextosRespaldoDrive.pistaDesconectar, child: fila);
+      fila = Semantics(hint: pista, child: fila);
     }
     if (!accionAparte) return fila;
     return Column(

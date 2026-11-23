@@ -8,10 +8,13 @@ import '../../../../core/notificaciones/permiso_alarmas_exactas.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart';
 import '../../domain/entities/estado_notificaciones.dart';
+import '../../domain/repositories/avisos_del_servidor_repository.dart';
 import '../providers/alarmas_exactas_providers.dart';
+import '../providers/avisos_del_servidor_providers.dart';
 import '../providers/notificaciones_providers.dart';
 import '../providers/preferencias_recordatorios_providers.dart';
 import '../widgets/aviso_notificaciones.dart';
+import '../widgets/avisos_del_servidor_widgets.dart';
 import '../widgets/preferencias_recordatorios_widgets.dart';
 
 /// Configuración › Notificaciones (vista 24): el estado del permiso del teléfono (grupo A) y las
@@ -33,6 +36,12 @@ import '../widgets/preferencias_recordatorios_widgets.dart';
 /// - Apagar «Recordatorios de agenda» deja la anticipación sin tocar (24B·02); cambiar la anticipación
 ///   avisa cuántos recordatorios se reprogramaron (24B·03); si no se puede guardar, el control vuelve
 ///   a como estaba y lo dice (24B·06).
+/// - La sección AVISOS (#516) tiene un interruptor por aviso del servidor: Pedidos, Tickets, Cuotas y
+///   Asignaciones (sin «Promociones», decisión del 04/11). Cuotas y «Aviso de las visitas de mañana»
+///   suman la hora que elige la colportora (09:00 y 20:00 por defecto). Se guardan en el servidor
+///   (`avisosDelServidorProvider`): cargando, error al leer con «Reintentar», y, si no se puede guardar
+///   (también sin conexión), el control vuelve a como estaba y lo dice con «Reintentar» (24B·05 y 24B·06).
+///   Los recordatorios de agenda siguen funcionando sin conexión.
 class NotificacionesPage extends ConsumerStatefulWidget {
   const NotificacionesPage({super.key});
 
@@ -106,9 +115,11 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
 
   Future<void> _cambiarActivados({required bool activados}) async {
     final mensajero = ScaffoldMessenger.of(context);
+    // El teléfono guarda el interruptor y el servidor recibe su copia desde el notificador de los
+    // avisos, que sigue vivo aunque la persona salga de la pantalla mientras tanto.
     await ref
-        .read(preferenciasRecordatoriosProvider.notifier)
-        .cambiarActivados(activados: activados);
+        .read(avisosDelServidorProvider.notifier)
+        .cambiarRecordatoriosDeAgenda(activados: activados);
     // Con los recordatorios apagados no se avisa nada: el aviso de la anticipación («te avisamos 35
     // min antes») que sigue a la vista contradiría al aviso fijo de 24B·02 (#155).
     // Si la persona salió de la pantalla mientras se guardaba no se puede leer el estado (`ref`): vale
@@ -194,10 +205,19 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
     AsyncValue<EstadoAlarmasExactas> alarmas,
     AsyncValue<EstadoPreferenciasRecordatorios> preferencias,
   ) {
-    if (alarmas.value != EstadoAlarmasExactas.apagadas) return const [];
+    // Sin el aviso a la vista, el «No pudimos abrir los ajustes» de un intento viejo se descarta: si
+    // el aviso vuelve, no reaparece sin que la persona toque «Abrir ajustes» de nuevo (QA #510). No es
+    // un cambio que redibuje: ese texto cuelga del aviso y hoy no se ve.
+    if (alarmas.value != EstadoAlarmasExactas.apagadas) {
+      _alarmasNoAbren = false;
+      return const [];
+    }
     // Con «Recordatorios de agenda» apagados no hay recordatorios que lleguen tarde (decidido el
     // 03/11, mapa §2): el aviso vuelve apenas se prenden.
-    if (preferencias.value?.preferencias.activados == false) return const [];
+    if (preferencias.value?.preferencias.activados == false) {
+      _alarmasNoAbren = false;
+      return const [];
+    }
     final theme = Theme.of(context);
     final colores = theme.extension<ColoresColportaje>() ?? ColoresColportaje.unica;
     return [
@@ -228,58 +248,167 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
   /// Las preferencias de los recordatorios (grupo B). Con el permiso del teléfono apagado se ven a
   /// todo contraste, con el aviso de 24B·04 arriba y sin la opacidad .45 del canvas (decidido el
   /// 27/10, mapa §2: un control tocable a 45 % no llega a AA).
-  List<Widget> _preferencias(AsyncValue<EstadoPreferenciasRecordatorios> preferencias) =>
-      switch (preferencias) {
-        AsyncData(:final value) => [
-          if (!value.preferencias.activados)
-            const AvisoNotificaciones(
-              tono: TonoAviso.info,
-              texto: TextosNotificaciones.recordatoriosApagados,
-              textoKey: Key('pref_apagados_aviso'),
-            ),
-          if (value.falla != null)
-            AvisoNotificaciones(
-              tono: TonoAviso.error,
-              // Solo el interruptor: el texto del canvas; si no, el aviso dice que volvió todo.
-              texto: _soloElInterruptor(value)
-                  ? TextosNotificaciones.errorAlGuardar
-                  : TextosNotificaciones.errorAlGuardarVarios,
-              textoKey: const Key('pref_error_guardar'),
-              textoAccion: TextosNotificaciones.reintentar,
-              accionKey: const Key('pref_error_reintentar'),
-              onAccion: () => unawaited(_reintentarGuardado()),
-            ),
-          Semantics(
-            header: true,
-            child: Text(
-              TextosNotificaciones.seccionRecordatorios,
-              style: Theme.of(
-                context,
-              ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary),
-            ),
-          ),
-          InterruptorRecordatorios(
-            activado: value.preferencias.activados,
-            onCambio: (v) => unawaited(_cambiarActivados(activados: v)),
-          ),
-          TarjetaAnticipacion(
-            minutos: value.preferencias.anticipacionMinutos,
-            habilitada: value.preferencias.activados,
-            onGuardar: (m) => unawaited(_cambiarAnticipacion(m)),
-          ),
-        ],
-        AsyncError() => [
+  List<Widget> _preferencias(
+    AsyncValue<EstadoPreferenciasRecordatorios> preferencias,
+    AsyncValue<EstadoAvisosDelServidor> avisos,
+  ) => switch (preferencias) {
+    AsyncData(:final value) => [
+      if (!value.preferencias.activados)
+        const AvisoNotificaciones(
+          tono: TonoAviso.info,
+          texto: TextosNotificaciones.recordatoriosApagados,
+          textoKey: Key('pref_apagados_aviso'),
+        ),
+      if (value.falla != null)
+        AvisoNotificaciones(
+          tono: TonoAviso.error,
+          // Solo el interruptor: el texto del canvas; si no, el aviso dice que volvió todo.
+          texto: _soloElInterruptor(value)
+              ? TextosNotificaciones.errorAlGuardar
+              : TextosNotificaciones.errorAlGuardarVarios,
+          textoKey: const Key('pref_error_guardar'),
+          textoAccion: TextosNotificaciones.reintentar,
+          accionKey: const Key('pref_error_reintentar'),
+          onAccion: () => unawaited(_reintentarGuardado()),
+        ),
+      Semantics(
+        header: true,
+        child: Text(
+          TextosNotificaciones.seccionRecordatorios,
+          style: Theme.of(
+            context,
+          ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary),
+        ),
+      ),
+      InterruptorRecordatorios(
+        activado: value.preferencias.activados,
+        onCambio: (v) => unawaited(_cambiarActivados(activados: v)),
+      ),
+      TarjetaAnticipacion(
+        minutos: value.preferencias.anticipacionMinutos,
+        habilitada: value.preferencias.activados,
+        onGuardar: (m) => unawaited(_cambiarAnticipacion(m)),
+      ),
+      if (avisos case AsyncData(value: final a))
+        TarjetaHoraAgenda(
+          hora: a.avisos.horaAgenda,
+          habilitada: value.preferencias.activados,
+          onElegirHora: (h) =>
+              unawaited(ref.read(avisosDelServidorProvider.notifier).cambiarHoraAgenda(h)),
+        ),
+    ],
+    AsyncError() => [
+      AvisoNotificaciones(
+        tono: TonoAviso.error,
+        texto: TextosNotificaciones.errorAlLeerPreferencias,
+        textoKey: const Key('pref_error_leer'),
+        textoAccion: TextosNotificaciones.reintentar,
+        accionKey: const Key('pref_reintentar_leer'),
+        onAccion: () => ref.invalidate(preferenciasRecordatoriosProvider),
+      ),
+    ],
+    _ => const [],
+  };
+
+  /// El texto del error al guardar un aviso del servidor (24B·06): sin conexión lo dice y guía; con
+  /// conexión, lo que volvió a como estaba (un interruptor, una hora, o varios cambios).
+  static String _textoErrorAvisos(EstadoAvisosDelServidor estado) {
+    if (estado.fallo == FalloDeAvisos.sinConexion) {
+      return TextosNotificaciones.errorAlGuardarSinConexion;
+    }
+    final pedido = estado.falla;
+    if (pedido == null) return TextosNotificaciones.errorAlGuardar;
+    final actual = estado.avisos;
+    final interruptores = [
+      pedido.pedidos != actual.pedidos,
+      pedido.tickets != actual.tickets,
+      pedido.cuotas != actual.cuotas,
+      pedido.asignaciones != actual.asignaciones,
+    ].where((cambio) => cambio).length;
+    final horas = [
+      pedido.horaCuota != actual.horaCuota,
+      pedido.horaAgenda != actual.horaAgenda,
+    ].where((cambio) => cambio).length;
+    if (interruptores + horas > 1) return TextosNotificaciones.errorAlGuardarVarios;
+    if (horas == 0) return TextosNotificaciones.errorAlGuardar;
+    return TextosNotificaciones.errorAlGuardarHora(
+      pedido.horaCuota != actual.horaCuota ? HoraDeAviso.cuotas : HoraDeAviso.visitasDeManana,
+    );
+  }
+
+  /// La sección AVISOS (grupo B, #516): los avisos que manda el servidor. Cargando (24B·05), error al
+  /// leer con «Reintentar», y con datos, un interruptor por aviso (Cuotas con su hora).
+  List<Widget> _avisos(AsyncValue<EstadoAvisosDelServidor> avisos) {
+    final notificador = ref.read(avisosDelServidorProvider.notifier);
+    final titulo = Semantics(
+      header: true,
+      child: Text(
+        TextosNotificaciones.seccionAvisos,
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary),
+      ),
+    );
+    return switch (avisos) {
+      AsyncData(:final value) => [
+        titulo,
+        if (value.falla != null)
           AvisoNotificaciones(
             tono: TonoAviso.error,
-            texto: TextosNotificaciones.errorAlLeerPreferencias,
-            textoKey: const Key('pref_error_leer'),
+            texto: _textoErrorAvisos(value),
+            textoKey: const Key('avisos_error_guardar'),
             textoAccion: TextosNotificaciones.reintentar,
-            accionKey: const Key('pref_reintentar_leer'),
-            onAccion: () => ref.invalidate(preferenciasRecordatoriosProvider),
+            accionKey: const Key('avisos_error_reintentar'),
+            onAccion: () => unawaited(notificador.reintentar()),
           ),
-        ],
-        _ => const [],
-      };
+        TarjetaPreferencia(
+          hijo: InterruptorPreferencia(
+            interruptorKey: const Key('aviso_pedidos_interruptor'),
+            titulo: TextosNotificaciones.avisoPedidos,
+            activado: value.avisos.pedidos,
+            onCambio: (v) => unawaited(notificador.cambiarPedidos(activado: v)),
+          ),
+        ),
+        TarjetaPreferencia(
+          hijo: InterruptorPreferencia(
+            interruptorKey: const Key('aviso_tickets_interruptor'),
+            titulo: TextosNotificaciones.avisoTickets,
+            activado: value.avisos.tickets,
+            onCambio: (v) => unawaited(notificador.cambiarTickets(activado: v)),
+          ),
+        ),
+        TarjetaAvisoCuotas(
+          activado: value.avisos.cuotas,
+          hora: value.avisos.horaCuota,
+          onCambio: (v) => unawaited(notificador.cambiarCuotas(activado: v)),
+          onElegirHora: (h) => unawaited(notificador.cambiarHoraCuota(h)),
+        ),
+        TarjetaPreferencia(
+          hijo: InterruptorPreferencia(
+            interruptorKey: const Key('aviso_asignaciones_interruptor'),
+            titulo: TextosNotificaciones.avisoAsignaciones,
+            detalle: TextosNotificaciones.avisoAsignacionesDetalle,
+            activado: value.avisos.asignaciones,
+            onCambio: (v) => unawaited(notificador.cambiarAsignaciones(activado: v)),
+          ),
+        ),
+      ],
+      AsyncError(:final error) => [
+        titulo,
+        AvisoNotificaciones(
+          tono: TonoAviso.error,
+          texto: error is AvisosSinConexionException
+              ? TextosNotificaciones.errorAlLeerAvisosSinConexion
+              : TextosNotificaciones.errorAlLeerAvisos,
+          textoKey: const Key('avisos_error_leer'),
+          textoAccion: TextosNotificaciones.reintentar,
+          accionKey: const Key('avisos_reintentar_leer'),
+          onAccion: () => ref.invalidate(avisosDelServidorProvider),
+        ),
+      ],
+      _ => [titulo, const CargandoAvisos()],
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -287,6 +416,7 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
     final estado = ref.watch(notificacionesProvider);
     final preferencias = ref.watch(preferenciasRecordatoriosProvider);
     final alarmas = ref.watch(alarmasExactasProvider);
+    final avisos = ref.watch(avisosDelServidorProvider);
 
     return Scaffold(
       key: const Key('notificaciones_pagina'),
@@ -343,7 +473,8 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
                     else ...[
                       ..._permiso(estado),
                       ..._alarmas(alarmas, preferencias),
-                      ..._preferencias(preferencias),
+                      ..._preferencias(preferencias, avisos),
+                      ..._avisos(avisos),
                     ],
                   ],
                 ),

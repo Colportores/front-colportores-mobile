@@ -226,6 +226,8 @@ class MainActivity : FlutterActivity() {
      * - `nivelAlmacen` → `"hardware"` (TEE o StrongBox) o `"software"` (Supuesto S10).
      * - `abrirAjustesSeguridad` / `abrirAjustesAlmacenamiento` / `abrirAjustesRed` → abre esa pantalla
      *   de los ajustes (vista 13, #222; «Activar datos» del mapa, #190) y devuelve si pudo.
+     * - `abrirAjustesApp` → abre la pantalla de la app en los ajustes (permisos), «Abrir ajustes»
+     *   sin permiso de cámara (vista 29 C, #427), y devuelve si pudo.
      *
      * - `abrirEnlace` → abre `{url}` con el sistema (chat de soporte por WhatsApp, vista 13) y
      *   devuelve si pudo. Solo `https://wa.me/...`: cualquier otro enlace se rechaza.
@@ -242,6 +244,7 @@ class MainActivity : FlutterActivity() {
                     "abrirAjustesAlmacenamiento" ->
                         result.success(abrirAjustes(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
                     "abrirAjustesRed" -> result.success(abrirAjustes(Settings.ACTION_WIRELESS_SETTINGS))
+                    "abrirAjustesApp" -> result.success(abrirAjustesDeLaApp())
                     "abrirEnlace" -> result.success(abrirEnlace(call.argument<String>("url")))
                     else -> result.notImplemented()
                 }
@@ -260,6 +263,25 @@ class MainActivity : FlutterActivity() {
     private fun abrirAjustes(accion: String): Boolean {
         try {
             startActivity(Intent(accion).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return true
+        } catch (e: Exception) {
+            // Sin esa pantalla: se intenta con los ajustes generales.
+        }
+        try {
+            startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            // Tampoco abren.
+        }
+        return false
+    }
+
+    /** La pantalla de esta app en los ajustes (sus permisos); si no abre, los ajustes generales. */
+    private fun abrirAjustesDeLaApp(): Boolean {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
             return true
         } catch (e: Exception) {
             // Sin esa pantalla: se intenta con los ajustes generales.

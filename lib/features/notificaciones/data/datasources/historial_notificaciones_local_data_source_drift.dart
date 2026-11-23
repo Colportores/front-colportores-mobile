@@ -79,10 +79,24 @@ class HistorialNotificacionesLocalDataSourceDrift {
     );
   }
 
-  Future<void> marcarTodasLeidas({required DateTime ahora}) async {
-    await (_db.update(_tabla)..where((n) => n.leidaEn.isNull())).write(
-      NotificacionesHistorialCompanion(leidaEn: Value(instanteMs(ahora))),
-    );
+  /// Con [ids], solo esas filas (de a [_loteDeIds], por el tope de variables de SQLite); sin [ids],
+  /// todas las que siguen sin leer.
+  Future<void> marcarTodasLeidas({required DateTime ahora, Set<String>? ids}) async {
+    final leida = NotificacionesHistorialCompanion(leidaEn: Value(instanteMs(ahora)));
+    if (ids == null) {
+      await (_db.update(_tabla)..where((n) => n.leidaEn.isNull())).write(leida);
+      return;
+    }
+    final lista = ids.toList();
+    await _db.transaction(() async {
+      for (var i = 0; i < lista.length; i += _loteDeIds) {
+        final lote = lista.sublist(
+          i,
+          i + _loteDeIds > lista.length ? lista.length : i + _loteDeIds,
+        );
+        await (_db.update(_tabla)..where((n) => n.leidaEn.isNull() & n.id.isIn(lote))).write(leida);
+      }
+    });
   }
 
   /// Con [ids], solo esas filas (de a [_loteDeIds], por el tope de variables de SQLite); sin [ids],

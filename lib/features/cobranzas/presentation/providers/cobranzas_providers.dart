@@ -10,14 +10,17 @@ import '../../../mapa/domain/services/saldos_de_personas.dart';
 import '../../../mapa/presentation/providers/house_status_providers.dart';
 import '../../data/datasources/cobranza_local_data_source_drift.dart';
 import '../../data/datasources/cuotas_local_data_source_drift.dart';
+import '../../data/repositories/anulacion_de_cobro_repository_impl.dart';
 import '../../data/repositories/cobranza_repository_impl.dart';
 import '../../data/repositories/plan_de_cuotas_repository_impl.dart';
 import '../../data/repositories/saldo_pendiente_repository_impl.dart';
 import '../../domain/entities/cuota.dart';
 import '../../domain/entities/venta_con_saldo.dart';
+import '../../domain/repositories/anulacion_de_cobro_repository.dart';
 import '../../domain/repositories/cobranza_repository.dart';
 import '../../domain/repositories/plan_de_cuotas_repository.dart';
 import '../../domain/repositories/saldo_pendiente_repository.dart';
+import '../../domain/usecases/anular_cobro_use_case.dart';
 import '../../domain/usecases/armar_plan_de_cuotas_use_case.dart';
 import '../../domain/usecases/modificar_cuotas_use_case.dart';
 import '../../domain/usecases/registrar_cobro_use_case.dart';
@@ -56,6 +59,34 @@ final registrarCobroUseCaseProvider = Provider<RegistrarCobroUseCase>(
     ahora: ref.watch(relojCobroProvider),
   ),
 );
+
+/// Leer un cobro y anularlo (HU-COB-006, #422): la anulación marca el cobro, lo encola, deja el
+/// `audit_log` y recalcula el color de la casa en la misma transacción.
+final anulacionDeCobroRepositoryProvider = Provider<AnulacionDeCobroRepository>(
+  (ref) => AnulacionDeCobroRepositoryImpl(ref.watch(cobranzaLocalProvider)),
+);
+
+/// Anula un cobro con la hora del teléfono (el reloj es [relojCobroProvider]).
+final anularCobroUseCaseProvider = Provider<AnularCobroUseCase>(
+  (ref) => AnularCobroUseCase(
+    ref.watch(anulacionDeCobroRepositoryProvider),
+    ahora: ref.watch(relojCobroProvider),
+  ),
+);
+
+/// ¿El coordinador ya validó el ticket de este cobro? (30B-07). Con el ticket validado la colportora no
+/// anula sola: se lo pide al coordinador. Sale del ticket local ligado al cobro (HU-COB-007, #426); si no
+/// se puede leer, la respuesta es «no» y lo cuida el servidor igual (`CB002`).
+final ticketValidadoDelCobroProvider = FutureProvider.autoDispose.family<bool, String>((
+  ref,
+  cobranzaId,
+) async {
+  try {
+    return await ref.watch(cobranzaLocalProvider).ticketValidado(cobranzaId);
+  } on Object {
+    return false;
+  }
+});
 
 /// Lo que debe cada persona, sumando el saldo de sus ventas vivas (la línea «Saldo» de «¿Con quién?»
 /// y el monto de «$ Cobrar»). Local: sale de las ventas y cobros del teléfono, nunca del servidor.

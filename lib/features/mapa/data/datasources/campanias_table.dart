@@ -9,7 +9,7 @@ import '../../../../core/database/fecha_utc_converter.dart';
 /// Misma forma que `public.campania` (backend-supabase 0001 y 0008: sin `ciudad_id`; las ciudades
 /// cuelgan de `campania_ciudad`), con las diferencias del motor de siempre (ver `Ubicaciones`).
 /// **Solo las columnas que la app lee hoy**: el servidor manda además `tipo` y `coordinador_id`, y el
-/// motor ignora lo que la tabla local no tiene. Las fechas son `date` en el cloud y acá texto
+/// motor ignora lo que la tabla local no tiene. Desde el esquema 39 se lee también `alquiler_monto`. Las fechas son `date` en el cloud y acá texto
 /// `AAAA-MM-DD`, igual que las vigencias de los precios: se comparan como texto y no cambian de día
 /// con la zona horaria del teléfono.
 @DataClassName('CampaniaFila')
@@ -32,6 +32,11 @@ class Campanias extends Table {
   IntColumn get updatedAt => integer().map(const FechaUtcConverter())();
 
   TextColumn get createdBy => text().nullable()();
+
+  /// Lo que cobra la campaña de alquiler a cada colportor inscripto, en **centavos** (backend-supabase
+  /// 0067 y 0114, HU-CTA-007, decisión de Cristian 21/10): monto fijo y único por campaña. `null` o 0 =
+  /// la campaña no cobra alquiler. Lo cambia el coordinador en el servidor y baja por el pull.
+  IntColumn get alquilerMonto => integer().nullable()();
 
   /// Soft delete: una campaña dada de baja no cuenta como vigente ni por empezar.
   IntColumn get deletedAt => integer().nullable().map(const FechaUtcConverter())();

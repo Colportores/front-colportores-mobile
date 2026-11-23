@@ -155,6 +155,12 @@ final borrarCopiaLocalDeTicketUseCaseProvider = Provider<BorrarCopiaLocalDeTicke
   (ref) => BorrarCopiaLocalDeTicketUseCase(ref.watch(ticketRepositoryProvider)),
 );
 
+/// Un ticket con su copia local, mientras la pantalla de la vista 29 C está abierta: de ahí salen
+/// «subiendo», «subido», «en cola» y el error.
+final ticketObservadoProvider = StreamProvider.autoDispose.family<TicketRegistrado?, String>(
+  (ref, ticketId) => ref.watch(ticketRepositoryProvider).observarTicket(ticketId),
+);
+
 /// Los ids de los cobros cuyo ticket todavía no subió su foto (el cobro con «ticket pendiente»).
 final cobrosConTicketPendienteProvider = StreamProvider<Set<String>>(
   (ref) => ref.watch(ticketRepositoryProvider).cobrosConTicketPendiente(),

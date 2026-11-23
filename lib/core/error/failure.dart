@@ -607,7 +607,7 @@ final class FailureUltimoEspacioConPersonas extends Failure {
       );
 }
 
-/// Se quiso pasar un `EDIFICIO` a `CASA` o `NEGOCIO`, o un `NEGOCIO` a `CASA`, teniendo **dos o
+/// Se quiso pasar un `EDIFICIO` o un `NEGOCIO` a `CASA` teniendo **dos o
 /// más** espacios activos (HU-UBI-004, "Cambio de tipo bloqueado", Supuesto S17 con la decisión de
 /// Cristian del 07/10: con un solo espacio el cambio se permite y el depto pasa a ser el de la casa
 /// o el del negocio). Texto literal del criterio de aceptación.
@@ -1121,6 +1121,14 @@ final class FailureCuentaNoDisponible extends Failure {
     : super(mensaje: 'No pudimos calcular tu cuenta.', codigo: 'CUENTA_NO_DISPONIBLE');
 }
 
+/// No se pudo armar «Mi alquiler» (HU-CTA-007, vista 38C): la base local no se pudo leer. Es **otra
+/// cosa** que «tu campaña no cobra alquiler»: nadie muestra eso ante esta falla. Se puede reintentar.
+/// El canvas no dibuja el error de 38C; el texto sigue el de 33B·03 («para confirmar», mapa §2).
+final class FailureAlquilerNoDisponible extends Failure {
+  const FailureAlquilerNoDisponible()
+    : super(mensaje: 'No pudimos traer tu alquiler.', codigo: 'ALQUILER_NO_DISPONIBLE');
+}
+
 /// El cobro no se pudo guardar en el teléfono (28·08). No se registró nada: se puede reintentar. El
 /// texto es el del canvas.
 final class FailureCobroNoGuardado extends Failure {
@@ -1128,6 +1136,48 @@ final class FailureCobroNoGuardado extends Failure {
     : super(
         mensaje: 'No pudimos guardar el cobro. No se registró nada: probá de nuevo.',
         codigo: 'COBRO_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// Pasaron más de 72 horas desde el cobro: ya no se puede anular (HU-COB-006, 30B-06). Vale para todos,
+/// también para el coordinador (decisión de Cristian, 23/10, «Anular 72 h»).
+final class FailureAnulacionFueraDePlazo extends Failure {
+  const FailureAnulacionFueraDePlazo()
+    : super(
+        mensaje: 'Pasaron más de 72 h desde el cobro: ya no se puede anular.',
+        codigo: 'COBRO_ANULACION_FUERA_DE_PLAZO',
+      );
+}
+
+/// Falta el motivo de la anulación, o eligió «Otro» sin contar qué pasó (30B-02 y 30B-03). La pantalla no
+/// deja llegar hasta acá; si llega, no se anula nada.
+final class FailureAnulacionSinMotivo extends Failure {
+  const FailureAnulacionSinMotivo()
+    : super(mensaje: 'Elegí el motivo para seguir.', codigo: 'COBRO_ANULACION_SIN_MOTIVO');
+}
+
+/// El cobro que se quiere ver o anular ya no está en el teléfono (o no es de esta cuenta).
+final class FailureCobroAusente extends Failure {
+  const FailureCobroAusente()
+    : super(
+        mensaje: 'Este cobro ya no está en tu teléfono. Volvé atrás y elegí otro.',
+        codigo: 'COBRO_AUSENTE',
+      );
+}
+
+/// El cobro no se pudo anular en el teléfono (30B-08). No cambió nada: sigue registrado como estaba y se
+/// puede reintentar. El texto es el del canvas.
+final class FailureCobroNoAnulado extends Failure {
+  const FailureCobroNoAnulado({this.causa})
+    : super(
+        mensaje: 'No pudimos anular el cobro. Sigue registrado como estaba.',
+        codigo: 'COBRO_NO_ANULADO',
       );
 
   /// El tipo de la excepción, para el log; nunca su texto.

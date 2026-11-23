@@ -24,6 +24,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'agenda_items_falsos.dart';
+import 'deptos_falsos.dart';
 import 'hoja_casa_falsos.dart';
 import 'lista_ubicaciones_falsos.dart' show ahoraLista;
 import 'persona_falsos.dart' show PersonaRepositorioFalso;
@@ -113,6 +114,7 @@ List<ItemAgenda> itemsDe491(Estado491 e) {
           tipoUbicacion: TipoUbicacion.edificio,
           numeroDepto: '3B',
           ubicacionId: 'u-1',
+          espacioId: 'esp-3B',
         ),
         itemAgenda(
           'cob',
@@ -237,6 +239,8 @@ Future<Montaje491> montar491(
     ProviderScope(
       key: UniqueKey(),
       overrides: [
+        // Un edificio muestra sus deptos (C·09, #452): el 3B, que se abre como una casa (C·10).
+        if (e == Estado491.edificio) ...overridesDeptos(),
         ...overridesHojaCasa(
           registrarVisita: m.visitas.add,
           agendas: r,
@@ -298,6 +302,8 @@ Future<Montaje491> montar491(
   );
   await tester.pump();
   await tester.pump();
+  // En un edificio las visitas agendadas son de cada depto: se abre el 3B (C·10).
+  if (e == Estado491.edificio) await abrirDepto(tester);
   return m;
 }
 

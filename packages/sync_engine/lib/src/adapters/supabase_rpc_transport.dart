@@ -102,6 +102,7 @@ class SupabaseRpcTransport implements SyncTransport {
       if (jobs.length == 1) {
         return PushResult(
           serverTime: DateTime.now().toUtc(),
+          serverTimeEsDelServidor: false,
           results: [
             JobResult(
               clientOpId: jobs.single.clientOpId,
@@ -117,6 +118,7 @@ class SupabaseRpcTransport implements SyncTransport {
       final segunda = await _subir(jobs.sublist(mitad));
       return PushResult(
         serverTime: segunda.serverTime,
+        serverTimeEsDelServidor: segunda.serverTimeEsDelServidor,
         results: [...primera.results, ...segunda.results],
       );
     }

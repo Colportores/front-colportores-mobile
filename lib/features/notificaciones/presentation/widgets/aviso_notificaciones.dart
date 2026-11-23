@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
 
+/// Cuál de las dos horas de la pantalla es: la del aviso de cuotas (en AVISOS) o la del aviso de las
+/// visitas de mañana (en RECORDATORIOS).
+enum HoraDeAviso { cuotas, visitasDeManana }
+
 /// Los textos de la vista 24, grupo A (permiso de notificaciones, HU-NOT-001).
 ///
 /// Salen del canvas (`24 Notificaciones.dc.html`, 24A·01 a 24A·06) salvo los marcados «propuesta»:
@@ -110,6 +114,47 @@ abstract final class TextosNotificaciones {
 
   /// No se pudieron leer las preferencias. Propuesta: el canvas no lo dibuja.
   static const errorAlLeerPreferencias = 'No pudimos leer tus preferencias de recordatorios.';
+
+  // Vista 24, grupo B, sección AVISOS (HU-NOT-004, #516). Los nombres salen del canvas 24B·01; sin
+  // «Promociones» (decisión de Cristian, 04/11). Los textos de la hora y de los errores son propuestas.
+  static const seccionAvisos = 'AVISOS';
+  static const avisoPedidos = 'Pedidos';
+  static const avisoTickets = 'Tickets';
+  static const avisoCuotas = 'Cuotas';
+  static const avisoAsignaciones = 'Asignaciones';
+  static const avisoAsignacionesDetalle = 'Zona y campaña';
+
+  /// La hora de «Tenés una cuota por cobrar» (por defecto 09:00), debajo del interruptor de Cuotas.
+  static const horaCuotaTitulo = 'Hora del aviso';
+  static const horaCuotaDetalle = 'Cuándo te avisamos de las cuotas por cobrar';
+
+  /// La hora de «Mañana tenés visitas» (por defecto 20:00), debajo de la anticipación.
+  static const horaAgendaTitulo = 'Aviso de las visitas de mañana';
+  static const horaAgendaDetalle = 'A esta hora te avisamos de lo que tenés agendado para mañana';
+
+  /// La ayuda del selector de hora del sistema.
+  static const horaElegirAyuda = 'Hora del aviso';
+
+  /// Lo que se lee en voz alta de la hora: «09:00, tocá para cambiarla».
+  static String horaValorAccesible(String hora) => '$hora, tocá para cambiarla';
+
+  /// 24B·06 cuando lo que no se guardó es la hora de un aviso: dice cuál (hay dos horas en la
+  /// pantalla, una arriba y otra abajo, y la persona tiene que saber cuál volvió a como estaba).
+  static String errorAlGuardarHora(HoraDeAviso hora) => switch (hora) {
+    HoraDeAviso.cuotas => 'No pudimos guardar la hora del aviso de cuotas. Volvió a como estaba.',
+    HoraDeAviso.visitasDeManana =>
+      'No pudimos guardar la hora del aviso de las visitas de mañana. Volvió a como estaba.',
+  };
+
+  /// 24B·06 sin conexión: lo dice y guía (el cambio de los avisos del servidor necesita red).
+  static const errorAlGuardarSinConexion =
+      'Sin conexión: no pudimos guardar el cambio. Volvió a como estaba. Probá de nuevo cuando '
+      'tengas conexión.';
+
+  /// No se pudieron leer los avisos del servidor.
+  static const errorAlLeerAvisos = 'No pudimos leer tus avisos.';
+  static const errorAlLeerAvisosSinConexion =
+      'Sin conexión: no pudimos leer tus avisos. Probá de nuevo cuando tengas conexión.';
 }
 
 enum TonoAviso { info, advertencia, error }
