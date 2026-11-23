@@ -8,6 +8,9 @@ import 'aviso_notificaciones.dart';
 import 'preferencias_recordatorios_widgets.dart';
 import 'renglon_con_par_al_final.dart';
 
+/// Escala de texto máxima dentro del selector de hora del sistema (alto fijo del diálogo de Material).
+const double _escalaMaximaDelSelectorDeHora = 1.5;
+
 /// Abre el selector de hora del sistema (24 h) en [actual] y devuelve la hora elegida, o `null` si se
 /// cerró sin elegir.
 Future<HoraDelAviso?> elegirHoraDelAviso(BuildContext context, HoraDelAviso actual) async {
@@ -15,10 +18,18 @@ Future<HoraDelAviso?> elegirHoraDelAviso(BuildContext context, HoraDelAviso actu
     context: context,
     initialTime: TimeOfDay(hour: actual.hora, minute: actual.minuto),
     helpText: TextosNotificaciones.horaElegirAyuda,
-    builder: (contexto, hijo) => MediaQuery(
-      data: MediaQuery.of(contexto).copyWith(alwaysUse24HourFormat: true),
-      child: hijo!,
-    ),
+    builder: (contexto, hijo) {
+      final datos = MediaQuery.of(contexto);
+      return MediaQuery(
+        data: datos.copyWith(
+          alwaysUse24HourFormat: true,
+          // El selector del sistema tiene una altura fija: con el texto al 200 % se desborda y el botón
+          // «OK» queda fuera de la tarjeta. El resto de la pantalla sigue con la escala del teléfono.
+          textScaler: datos.textScaler.clamp(maxScaleFactor: _escalaMaximaDelSelectorDeHora),
+        ),
+        child: hijo!,
+      );
+    },
   );
   if (elegida == null) return null;
   return HoraDelAviso(elegida.hour, elegida.minute);
