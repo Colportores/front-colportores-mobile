@@ -59,7 +59,9 @@ final class PagoDeAlquiler extends Equatable {
 ///
 /// Todo en centavos. El saldo es el monto menos lo pagado **validado** (lo «por validar» se muestra
 /// aparte y no lo baja) y nunca queda negativo: lo pagado de más no queda «a favor» sino que baja la
-/// deuda con la casa editora (decisión de Cristian, 28/10, «Alquiler fav»; backend-supabase 0152).
+/// deuda con la casa editora (decisión de Cristian, 28/10, «Alquiler fav»; backend-supabase 0152). Cuánto
+/// bajó lo dice el servidor en `cuenta_colportor.alquiler_trasladado` ([AlquilerDelColportor.trasladadoCentavos]):
+/// el teléfono no lo calcula.
 final class AlquilerDeCampania extends Equatable {
   const AlquilerDeCampania({
     required this.campaniaId,
@@ -88,9 +90,6 @@ final class AlquilerDeCampania extends Equatable {
   /// Lo que falta pagar; 0 si ya está pago (o de más).
   int get saldoCentavos => math.max(0, montoCentavos - pagadoCentavos);
 
-  /// Lo pagado sobre el monto: pasó a bajar la deuda con la casa editora.
-  int get pagadoDeMasCentavos => math.max(0, pagadoCentavos - montoCentavos);
-
   /// No falta nada.
   bool get estaPago => saldoCentavos == 0;
 
@@ -105,7 +104,7 @@ final class AlquilerDeCampania extends Equatable {
 /// cobra alquiler (si está en dos, cada saldo va por separado: decisión de Cristian, 25/10, «Alq.
 /// campaña»).
 final class AlquilerDelColportor extends Equatable {
-  const AlquilerDelColportor({required this.campanias, this.bajadoEn});
+  const AlquilerDelColportor({required this.campanias, this.bajadoEn, this.trasladadoCentavos = 0});
 
   /// El colportor no está en ninguna campaña que cobre alquiler.
   static const vacio = AlquilerDelColportor(campanias: []);
@@ -126,9 +125,14 @@ final class AlquilerDelColportor extends Equatable {
   /// Lo que falta pagar y todavía espera validación, entre todas las campañas.
   int get porValidarCentavos => campanias.fold<int>(0, (suma, c) => suma + c.porValidarCentavos);
 
-  /// Lo pagado de más entre todas las campañas: lo que ya bajó la deuda con la casa editora.
-  int get pagadoDeMasCentavos => campanias.fold<int>(0, (suma, c) => suma + c.pagadoDeMasCentavos);
+  /// Lo pagado de más que el servidor ya pasó a la deuda con la casa editora, en todas las campañas
+  /// (`cuenta_colportor.alquiler_trasladado`, backend-supabase 0152): una sola cifra, la que baja con
+  /// el sync. 0 si no hay traslado o el teléfono todavía no bajó la cuenta.
+  final int trasladadoCentavos;
+
+  /// Hay un traslado que contar (el aviso «Pagaste $ X de más»).
+  bool get hayTraslado => trasladadoCentavos > 0;
 
   @override
-  List<Object?> get props => [campanias, bajadoEn];
+  List<Object?> get props => [campanias, bajadoEn, trasladadoCentavos];
 }

@@ -233,7 +233,7 @@ void main() {
               pagoDe(3000),
             ],
           ),
-        ]),
+        ], trasladado: 500),
       );
       await montarAlquiler(tester, repo);
       expect(find.textContaining('Pagaste \$ 500 de más'), findsOneWidget);

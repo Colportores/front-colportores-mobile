@@ -209,13 +209,15 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('dado que pagué \$ 500 de más del alquiler, la deuda lo dice', (tester) async {
+    testWidgets('dado que el servidor trasladó \$ 500 de más del alquiler, la deuda lo dice', (
+      tester,
+    ) async {
       await montarDeudaConAlquiler(
         tester,
         RepositorioDeAlquilerControlable(
           inicial: alquilerCon([
             campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
-          ]),
+          ], trasladado: 500),
         ),
       );
 
@@ -230,6 +232,34 @@ void main() {
         RepositorioDeAlquilerControlable(inicial: alquilerDelCanvas),
       );
       expect(find.byKey(const Key('deuda_nota_alquiler')), findsNothing);
+    });
+
+    testWidgets('sin traslado del servidor la deuda no dice nada aunque los pagos pasen el monto', (
+      tester,
+    ) async {
+      await montarDeudaConAlquiler(
+        tester,
+        RepositorioDeAlquilerControlable(
+          inicial: alquilerCon([
+            campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
+          ]),
+        ),
+      );
+
+      expect(find.byKey(const Key('deuda_nota_alquiler')), findsNothing);
+    });
+
+    testWidgets('quien se dio de baja y ya no tiene campañas igual ve el traslado en la deuda', (
+      tester,
+    ) async {
+      await montarDeudaConAlquiler(
+        tester,
+        RepositorioDeAlquilerControlable(
+          inicial: const AlquilerDelColportor(campanias: [], trasladadoCentavos: 50000),
+        ),
+      );
+
+      expect(find.text(r'Incluye $ 500 que pagaste de más en el alquiler.'), findsOneWidget);
     });
 
     testWidgets('si el alquiler no se puede leer, la deuda se ve igual, sin la nota', (
@@ -250,7 +280,7 @@ void main() {
       alquiler.emitir(
         alquilerCon([
           campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
-        ]),
+        ], trasladado: 500),
       );
       await tester.pumpAndSettle();
 
