@@ -640,7 +640,8 @@ class TarjetaDePedido extends StatelessWidget {
       EstadoDelPedido.autorizado ||
       EstadoDelPedido.despachado => ('⇢', ColoresCuenta.azulFondo, ColoresCuenta.azul),
       EstadoDelPedido.recibido => ('✓', ColoresCuenta.verdeFondo, ColoresCuenta.verde),
-      EstadoDelPedido.rechazado => ('!', Colors.white, ColoresCuenta.rojo),
+      EstadoDelPedido.rechazado ||
+      EstadoDelPedido.noSeEnvio => ('!', Colors.white, ColoresCuenta.rojo),
       EstadoDelPedido.cancelado => ('✕', ColoresCuenta.grisFondo, ColoresCuenta.gris),
     };
     final fecha = TextosPedidos.fechaCorta(pedido.fecha, ahora);
@@ -675,7 +676,9 @@ class TarjetaDePedido extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: fondo,
                         borderRadius: BorderRadius.circular(10),
-                        border: pedido.estado == EstadoDelPedido.rechazado
+                        border:
+                            pedido.estado == EstadoDelPedido.rechazado ||
+                                pedido.estado == EstadoDelPedido.noSeEnvio
                             ? Border.all(color: tinta, width: 1.5)
                             : null,
                       ),

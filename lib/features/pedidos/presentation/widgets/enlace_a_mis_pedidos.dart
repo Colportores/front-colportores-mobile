@@ -7,8 +7,8 @@ import '../providers/pedidos_providers.dart';
 import '../textos_pedidos.dart';
 
 /// La fila «Mis pedidos · 1 por autorizar ›» de Mi Cuenta (33A·01): abre la lista de pedidos a la casa
-/// editora (37B). Con pedidos por autorizar los cuenta; sin ninguno, o si todavía no se leyeron, solo el
-/// «›»: no inventa un cero.
+/// editora (37B). Con pedidos por autorizar los cuenta y, si el servidor rechazó alguno al sincronizar, dice
+/// cuántos no se enviaron (#748); sin ninguno, o si todavía no se leyeron, solo el «›»: no inventa un cero.
 class EnlaceAMisPedidos extends ConsumerWidget {
   const EnlaceAMisPedidos({super.key, required this.colportorId, required this.alAbrir});
 
@@ -17,12 +17,15 @@ class EnlaceAMisPedidos extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final porAutorizar = ref.watch(
-      pedidosProvider(
-        colportorId,
-      ).select((p) => p.value?.where((e) => e.estado == EstadoDelPedido.porAutorizar).length ?? 0),
+    final resumen = ref.watch(
+      pedidosProvider(colportorId).select((p) {
+        final pedidos = p.value ?? const <Pedido>[];
+        return TextosPedidos.resumenDePedidos(
+          porAutorizar: pedidos.where((e) => e.estado == EstadoDelPedido.porAutorizar).length,
+          noSeEnviaron: pedidos.where((e) => e.estado == EstadoDelPedido.noSeEnvio).length,
+        );
+      }),
     );
-    final resumen = porAutorizar > 0 ? TextosPedidos.porAutorizar(porAutorizar) : null;
     return Semantics(
       button: true,
       container: true,
