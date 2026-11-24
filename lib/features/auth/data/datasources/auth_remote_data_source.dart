@@ -21,13 +21,15 @@ abstract interface class AuthRemoteDataSource {
   /// Supabase Auth `signUp` (HU-AUTH-001/002). Devuelve la sesión si Supabase la deja iniciada,
   /// o `null` si la cuenta se creó pero falta confirmar el email ("Confirm email" activo) — eso
   /// **no** es un error, el fake en memoria no tiene ese paso intermedio y siempre devuelve
-  /// sesión.
+  /// sesión. [terminosVersion] es la versión de los Términos que aceptó (`v1`): va en los metadatos
+  /// del alta y el servidor la guarda (backend-supabase#109).
   Future<SesionModel?> registrar({
     required String nombre,
     required String apellido,
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   });
 
   /// Sesión que el proveedor tiene persistida en el dispositivo (o `null`). Con Supabase la

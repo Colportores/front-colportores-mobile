@@ -716,7 +716,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
         espacioId: espacioId,
         colportorId: colportorId,
       );
-      if (nueva != null && mounted) _guardada = TextosPersonas.guardada(nueva.nombre);
+      if (nueva != null && mounted) _guardada = TextosPersonas.guardada(nueva.persona.nombre);
     }, TextosPestanasHojaCasa.noPudimosAbrirAlta);
   }
 

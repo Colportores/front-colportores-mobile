@@ -52,10 +52,10 @@ final class PedidoConSaldo extends Equatable {
   ];
 }
 
-/// La deuda del colportor con la casa editora tal como la contó el servidor (HU-CTA-002, vista 33B).
-///
-/// La cuenta se hace en un solo lugar, el servidor: el teléfono solo la muestra y guarda la última
-/// respuesta. Todo en centavos.
+/// La deuda del colportor con la casa editora (HU-CTA-002, vista 33B), contada en el teléfono con lo que
+/// baja con la sincronización (decisión de Cristian, 05/11, #671). El total es el que registró el servidor
+/// en la cuenta (`cuenta_colportor`); el reparto por pedido y la de hace 7 días salen de lo que bajó, con
+/// la regla de `mi_deuda_con_la_casa_editora()`. Todo en centavos.
 final class DeudaConLaCasa extends Equatable {
   const DeudaConLaCasa({
     required this.deudaTotalCentavos,
@@ -79,14 +79,15 @@ final class DeudaConLaCasa extends Equatable {
   /// Solo los pedidos con saldo, el más viejo primero.
   final List<PedidoConSaldo> pedidos;
 
-  /// La deuda que figuraba hace 7 días (7 × 24 h), la que registró el servidor (backend-supabase 0168).
+  /// La deuda que figuraba hace 7 días (7 × 24 h), la que registró el servidor (backend-supabase 0168) y
+  /// bajó en `cuenta_deuda_historial`.
   /// `null` = el servidor no tiene registro de esa fecha (cuenta nueva, o menos de una semana desde que
   /// empezó a registrarlas): no es «igual», es «no se puede comparar». Negativa = estaba a favor.
   final int? deudaHace7DiasCentavos;
 
   /// Cuánto cambió la deuda contra la semana pasada: negativo = bajó, positivo = subió, 0 = igual.
-  /// `null` si no hay con qué comparar. Es la cuenta del servidor sobre su propio historial:
-  /// «deuda_total − deuda_hace_7_dias» (decisión de Cristian, 04/11, «Del servidor, todo cuenta»).
+  /// `null` si no hay con qué comparar. Es «deuda_total − deuda_hace_7_dias» sobre el historial del
+  /// servidor (decisión de Cristian, 04/11, «Del servidor, todo cuenta»).
   int? get variacionCentavos {
     final hace7 = deudaHace7DiasCentavos;
     return hace7 == null ? null : deudaTotalCentavos - hace7;
@@ -113,8 +114,8 @@ final class DeudaConLaCasa extends Equatable {
   ];
 }
 
-/// La última respuesta del servidor y cuándo llegó (hora del teléfono, UTC). Es lo que se guarda para
-/// ver la deuda sin conexión.
+/// La deuda calculada con lo último que bajó y la hora de esa bajada ([leidaEn], UTC): con ella la pantalla
+/// dice de cuándo es lo que muestra cuando no hay conexión.
 final class LecturaDeLaDeuda extends Equatable {
   const LecturaDeLaDeuda({required this.deuda, required this.leidaEn});
 

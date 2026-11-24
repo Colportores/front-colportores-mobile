@@ -2,8 +2,9 @@
 // cambió la deuda contra la semana pasada (la deuda de hace 7 días la registra el servidor, backend-supabase
 // 0168) y la tarjeta sin lectura, que dice por qué no hay cifra: leyendo (33A·03), sin conexión o con una
 // falla del servidor (decisión del orquestador, 04/11, por el mapa: estados que no se saben).
-import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/deuda_con_la_casa.dart';
+import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -15,13 +16,17 @@ Future<void> _montar(
   RepositorioDeDeudaControlable deudaRepo, {
   Size tamano = const Size(390, 844),
   double escala = 1,
+  TipoConexion red = TipoConexion.wifi,
 }) async {
   await montarCuenta(
     tester,
     RepositorioDeCuentaControlable(inicial: resumenDelCanvas),
     tamano: tamano,
     escala: escala,
-    overrides: overridesDeDeuda(deudaRepo),
+    overrides: [
+      ...overridesDeDeuda(deudaRepo),
+      monitorConectividadProvider.overrideWithValue(ConexionFija(red)),
+    ],
   );
   // Lo guardado llega en un microtask y se pinta en el cuadro siguiente.
   await tester.pump();
@@ -112,7 +117,7 @@ void main() {
       expect(textoDe(tester, variacion), r'▼ $ 1.700 contra la semana pasada');
     });
 
-    testWidgets('lo guardado también muestra la línea, antes de que el servidor conteste', (
+    testWidgets('lo ya bajado también muestra la línea, sin pedirle nada al servidor', (
       tester,
     ) async {
       final repo = RepositorioDeDeudaControlable(
@@ -121,7 +126,7 @@ void main() {
       await _montar(tester, repo);
 
       expect(textoDe(tester, variacion), r'▼ $ 2.100 contra la semana pasada');
-      expect(repo.pendientes, 1);
+      expect(repo.pendientes, 0);
     });
 
     testWidgets('el lector de pantalla lee el total y la variación, como botón', (tester) async {
@@ -154,12 +159,14 @@ void main() {
       manejador.dispose();
     });
 
-    testWidgets('si el servidor contesta otra deuda, la línea se actualiza', (tester) async {
+    testWidgets('si la sincronización trae otra deuda, la línea se actualiza', (tester) async {
       final repo = RepositorioDeDeudaControlable(
         guardada: lectura(deuda(total: 18400, haceUnaSemana: 20500)),
       );
       await _montar(tester, repo);
 
+      repo.sincronizo(lectura(deuda(total: 20000, haceUnaSemana: 18400)));
+      await tester.pump();
       await _responder(tester, repo, deuda(total: 20000, haceUnaSemana: 18400));
 
       expect(textoDe(tester, variacion), r'▲ $ 1.600 contra la semana pasada');
@@ -219,12 +226,26 @@ void main() {
       },
     );
 
-    testWidgets('sin conexión y sin nada guardado: «Necesitás conexión para ver tu deuda con la '
-        'casa editora.»', (tester) async {
+    testWidgets('con conexión y sin nada bajado todavía: «Estamos bajando tus datos. Probá en unos '
+        'segundos.» (no dice que hace falta la conexión)', (tester) async {
       final repo = RepositorioDeDeudaControlable();
       await _montar(tester, repo);
 
-      repo.fallar(const FailureDeudaSinConexion());
+      repo.sinSincronizar();
+      await tester.pump();
+      await tester.pump();
+
+      expect(textoDe(tester, sinLectura), 'Estamos bajando tus datos. Probá en unos segundos.');
+      expect(find.byKey(cargando), findsNothing);
+      expect(find.byKey(const Key('cuenta_deuda_monto')), findsNothing);
+    });
+
+    testWidgets('sin conexión y sin nada bajado: «Necesitás conexión para ver tu deuda con la '
+        'casa editora.»', (tester) async {
+      final repo = RepositorioDeDeudaControlable();
+      await _montar(tester, repo, red: TipoConexion.sinConexion);
+
+      repo.sinSincronizar();
       await tester.pump();
       await tester.pump();
 
@@ -255,16 +276,18 @@ void main() {
       final repo = RepositorioDeDeudaControlable();
       await _montar(tester, repo);
 
-      repo.fallar(const FailureDeudaSinConexion());
+      repo.sinSincronizar();
       await tester.pump();
       await tester.pump();
       expect(
         tester.getSemantics(find.byKey(tarjeta)).label,
-        'Deuda con la casa editora. Necesitás conexión para ver tu deuda con la casa editora.',
+        'Deuda con la casa editora. Estamos bajando tus datos. Probá en unos segundos.',
       );
 
       await tester.tap(find.byKey(tarjeta));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Reintentar'));
+      await tester.pump();
       repo.fallar();
       await tester.pump();
       await tester.pump();
@@ -292,29 +315,35 @@ void main() {
       expect(find.byKey(variacion), findsOneWidget);
     });
 
-    testWidgets('tras la falla, tocar la tarjeta vuelve a pedir y mientras tanto muestra el bloque '
-        'gris, no el error viejo', (tester) async {
-      final repo = RepositorioDeDeudaControlable();
-      await _montar(tester, repo);
-      repo.fallar(const FailureDeudaSinConexion());
-      await tester.pump();
-      await tester.pump();
-      expect(find.byKey(sinLectura), findsOneWidget);
+    testWidgets(
+      'sin nada bajado, «Reintentar» del detalle lee de nuevo y mientras tanto la tarjeta '
+      'muestra el bloque gris, no el error viejo',
+      (tester) async {
+        final repo = RepositorioDeDeudaControlable();
+        await _montar(tester, repo);
+        repo.sinSincronizar();
+        await tester.pump();
+        await tester.pump();
+        expect(find.byKey(sinLectura), findsOneWidget);
 
-      await tester.tap(find.byKey(tarjeta));
-      await tester.pumpAndSettle();
-      // Al abrir el detalle se pidió de nuevo; volviendo a Mi Cuenta la tarjeta sigue la misma lectura.
-      expect(repo.lecturas, 2);
-      await tester.tap(find.byKey(const Key('deuda_volver')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(cargando), findsOneWidget);
-      expect(find.byKey(sinLectura), findsNothing);
+        await tester.tap(find.byKey(tarjeta));
+        await tester.pumpAndSettle();
+        // Abrir el detalle no lee de nuevo; «Reintentar» sí, y la tarjeta sigue la misma lectura.
+        expect(repo.lecturas, 1);
+        await tester.tap(find.text('Reintentar'));
+        await tester.pump();
+        expect(repo.lecturas, 2);
+        await tester.tap(find.byKey(const Key('deuda_volver')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(cargando), findsOneWidget);
+        expect(find.byKey(sinLectura), findsNothing);
 
-      repo.fallar();
-      await tester.pump();
-      await tester.pump();
-      expect(textoDe(tester, sinLectura), 'No pudimos traer tu deuda con la casa editora.');
-    });
+        repo.fallar();
+        await tester.pump();
+        await tester.pump();
+        expect(textoDe(tester, sinLectura), 'No pudimos traer tu deuda con la casa editora.');
+      },
+    );
 
     testWidgets('con una lectura guardada que ya no se actualiza, queda la cifra (no la línea de '
         'falla)', (tester) async {
@@ -323,7 +352,9 @@ void main() {
       );
       await _montar(tester, repo);
 
-      repo.fallar(const FailureDeudaSinConexion());
+      // Al volver a leerla, la base falla: queda la cifra de antes, no la línea de falla.
+      await releerDeuda(tester);
+      repo.fallar();
       await tester.pump();
       await tester.pump();
 
@@ -341,7 +372,7 @@ void main() {
       expect(find.byKey(cargando), findsOneWidget);
       expect(tester.takeException(), isNull);
 
-      repo.fallar(const FailureDeudaSinConexion());
+      repo.sinSincronizar();
       await tester.pump();
       await tester.pump();
 

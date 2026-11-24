@@ -11,6 +11,9 @@ import '../models/deposito_model.dart';
 /// El estado sale de las columnas que baja el pull (`validado_en`, `rechazado_en`): un depósito vivo
 /// (`deleted_at IS NULL`) es **rechazado** si tiene `rechazado_en` (aunque tuviera `validado_en`: ante
 /// la duda no se acredita), **validado** si tiene `validado_en`, y **por validar** si no tiene ninguna.
+/// Un depósito **con ticket** que el coordinador rechazó baja del servidor como `ticket.estado =
+/// 'RECHAZADO'` (el depósito no lleva `rechazado_en`: el CHECK del servidor lo reserva al retiro, 0152):
+/// tampoco suma y su efectivo vuelve a estar «en mano», igual que `efectivo_en_mano()` (QA #388).
 /// Un pago de alquiler **anulado** (`anulado_at`, el coordinador devolvió la plata, 0167) no está en
 /// ninguno: no suma a «Depositado» y su efectivo vuelve a estar «en mano» (esquema-datos §deposito).
 final class TotalesDeDepositosDrift {
@@ -18,12 +21,19 @@ final class TotalesDeDepositosDrift {
 
   final AppDatabase _db;
 
+  /// El ticket del depósito (si lo tiene y sigue vivo) no está rechazado.
+  static const _ticketNoRechazado =
+      'NOT EXISTS (SELECT 1 FROM ticket t WHERE t.id = deposito.ticket_id '
+      "AND t.estado = 'RECHAZADO' AND t.deleted_at IS NULL)";
+
   static const _condicionValidado =
-      'validado_en IS NOT NULL AND rechazado_en IS NULL AND anulado_at IS NULL';
-  static const _condicionPorValidar = 'validado_en IS NULL AND rechazado_en IS NULL';
+      'validado_en IS NOT NULL AND rechazado_en IS NULL AND anulado_at IS NULL '
+      'AND $_ticketNoRechazado';
+  static const _condicionPorValidar =
+      'validado_en IS NULL AND rechazado_en IS NULL AND $_ticketNoRechazado';
 
   /// Las tablas que, al cambiar, cambian estas sumas.
-  Set<ResultSetImplementation<dynamic, dynamic>> get tablas => {_db.depositos};
+  Set<ResultSetImplementation<dynamic, dynamic>> get tablas => {_db.depositos, _db.tickets};
 
   /// Las dos sumas de ahora.
   Future<TotalesDeDepositos> leer() async => TotalesDeDepositos(

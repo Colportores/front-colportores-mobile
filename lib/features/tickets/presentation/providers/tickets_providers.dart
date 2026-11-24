@@ -11,15 +11,21 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../cobranzas/domain/entities/cobranza.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart';
+import '../../data/datasources/historial_de_tickets_drift.dart';
 import '../../data/datasources/ticket_local_data_source_drift.dart';
 import '../../data/repositories/ticket_repository_impl.dart';
 import '../../data/services/servidor_de_fotos_supabase.dart';
+import '../../data/services/visor_de_fotos_supabase.dart';
+import '../../domain/entities/item_del_historial.dart';
 import '../../domain/entities/ticket.dart';
+import '../../domain/repositories/historial_de_tickets_repository.dart';
 import '../../domain/repositories/ticket_repository.dart';
 import '../../domain/services/captura_de_foto.dart';
 import '../../domain/services/politica_de_compresion.dart';
 import '../../domain/services/puertos_de_fotos.dart';
+import '../../domain/services/visor_de_fotos.dart';
 import '../../domain/usecases/borrar_copia_local_de_ticket_use_case.dart';
 import '../../domain/usecases/registrar_ticket_use_case.dart';
 import '../../domain/usecases/subir_fotos_de_tickets_use_case.dart';
@@ -227,3 +233,66 @@ final colaDeSubidaDeFotosProvider = Provider<void>((ref) {
       unawaited(escucha.cancel());
     });
 });
+
+// --- «Mis tickets» (vista 38B, HU-COB-009, #388) ---------------------------------------------------
+
+/// De dónde sale el historial: las tablas `deposito`, `ticket` y `ticket_foto_local` de la DB local.
+/// Sin DB abierta, su `Stream` falla y la pantalla muestra 38B·07.
+final historialDeTicketsRepositoryProvider = Provider<HistorialDeTicketsRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return const _HistorialSinBase();
+  return HistorialDeTicketsDrift(db);
+});
+
+final class _HistorialSinBase implements HistorialDeTicketsRepository {
+  const _HistorialSinBase();
+
+  @override
+  Stream<HistorialDeTickets> observar() =>
+      Stream.error(StateError('La base de datos local no está abierta'));
+
+  @override
+  Future<Cobranza?> cobroConTarjeta(String cobroId) =>
+      Future.error(StateError('La base de datos local no está abierta'));
+}
+
+/// Sin reintentos: un `Stream` que falla deja el error a la vista con su «Reintentar» en vez de
+/// quedarse en «cargando» (Riverpod 3 reintenta 10 veces).
+Duration? _sinReintentos(int intento, Object error) => null;
+
+/// «Mis tickets» del colportor, al día con cada depósito, ticket, foto o bajada del servidor.
+final historialDeTicketsProvider = StreamProvider.autoDispose<HistorialDeTickets>(
+  (ref) => ref.watch(historialDeTicketsRepositoryProvider).observar(),
+  retry: _sinReintentos,
+);
+
+/// El enlace para ver una foto que ya está en la nube. Sin Supabase configurado (tests y demo) no hay a
+/// quién pedírsela.
+final visorDeFotosDeTicketProvider = Provider<VisorDeFotosDeTicket>(
+  (ref) => ConfigSupabase.configurada
+      ? VisorDeFotosSupabase.conCliente(Supabase.instance.client)
+      : const _SinVisorDeFotos(),
+);
+
+final class _SinVisorDeFotos implements VisorDeFotosDeTicket {
+  const _SinVisorDeFotos();
+
+  @override
+  Future<FotoParaVer> ver(String ticketId) async => const FotoNoDisponible();
+}
+
+/// La foto del ticket para el detalle (38B·02, 38B·03): la copia del teléfono si sigue ahí y, si no, la
+/// de la nube cuando ya subió. Una foto que todavía no subió y cuya copia ya no está no tiene qué
+/// mostrar.
+final fotoDelTicketProvider = FutureProvider.autoDispose
+    .family<FotoParaVer, ({String ticketId, bool subida})>((ref, clave) async {
+      try {
+        final local = await ref.read(ticketRepositoryProvider).bytesDeLaFoto(clave.ticketId);
+        final bytes = local.fold<Uint8List?>((_) => null, (b) => b);
+        if (bytes != null) return FotoEnElTelefono(bytes);
+      } on Object {
+        // Sin la copia local sigue la de la nube.
+      }
+      if (!clave.subida) return const SinFotoParaVer();
+      return ref.read(visorDeFotosDeTicketProvider).ver(clave.ticketId);
+    });

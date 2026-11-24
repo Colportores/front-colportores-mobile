@@ -432,8 +432,8 @@ void main() {
         cuenta: RepositorioDeCuentaControlable(inicial: resumenCuentaNueva),
       );
       await montar443(tester, arnes);
-      await sacarLaFoto(tester);
       expect(_texto(r'En mano: $ 0'), findsOneWidget);
+      await sacarLaFoto(tester);
       await escribirMonto(tester, '1');
       expect(_texto(r'Tenés $ 0 en mano.'), findsOneWidget);
       expect(botonRegistrar(tester).onPressed, isNull);

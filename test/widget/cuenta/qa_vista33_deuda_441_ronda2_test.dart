@@ -6,7 +6,6 @@
 // - el literal del canvas 33A·02, carácter por carácter;
 // - los casos límite del «Reintentar» de Mi Cuenta y la privacidad de lo que se imprime.
 import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
-import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/deuda_con_la_casa.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/resumen_de_cuenta.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/deuda_casa_providers.dart';
@@ -67,9 +66,11 @@ void main() {
               tamano: t.value,
               escala: esc,
             );
-            repo.fallar(
-              servidorCaido ? const FailureDeudaNoDisponible() : const FailureDeudaSinConexion(),
-            );
+            if (servidorCaido) {
+              // Con red, la base no se pudo leer al volver a leer: queda lo último con su aviso.
+              await releerDeuda(tester);
+              repo.fallar();
+            }
             await _asentar(tester);
             expect(tester.takeException(), isNull);
             // El aviso está y dice de cuándo es la deuda que se ve.
@@ -89,7 +90,7 @@ void main() {
   group('Literal del canvas 33A·02', () {
     testWidgets('con la deuda y «Depositado» de la misma hora, el aviso es el del canvas, '
         'palabra por palabra', (tester) async {
-      final repo = await _montar(
+      await _montar(
         tester,
         red: TipoConexion.sinConexion,
         guardada: lectura(deudaDelCanvas, leidaEn: DateTime(2026, 11, 3, 21)),
@@ -100,7 +101,6 @@ void main() {
           porCobrar: cifra(9700, variacion: -1300),
         ),
       );
-      repo.fallar(const FailureDeudaSinConexion());
       await _asentar(tester);
       expect(
         tester.widget<Text>(find.byKey(const Key('cuenta_aviso_sin_conexion'))).data,
@@ -114,19 +114,16 @@ void main() {
     testWidgets('Mi Cuenta no inventa una cifra; el detalle dice que falta la conexión; al volver '
         'la red, «Reintentar» muestra la deuda y la tarjeta la toma', (tester) async {
       final repo = await _montar(tester, red: TipoConexion.sinConexion);
-      repo.fallar(const FailureDeudaSinConexion());
+      repo.sinSincronizar();
       await _asentar(tester);
       // Nada guardado, ninguna hora: sin aviso y sin cifra (ni un «$ 0»).
       expect(find.byKey(const Key('cuenta_aviso_sin_conexion')), findsNothing);
       expect(find.byKey(const Key('cuenta_deuda_monto')), findsNothing);
       expect(find.text('DEUDA CON LA CASA EDITORA'), findsOneWidget);
 
-      // Se abre el detalle: pide de nuevo (carga) y falla por falta de red.
+      // Se abre el detalle: no hay nada bajado todavía y dice que hace falta la conexión.
       await tester.tap(find.byKey(const Key('cuenta_deuda')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('deuda_esqueleto_total')), findsOneWidget);
-      repo.fallar(const FailureDeudaSinConexion());
-      await _asentar(tester);
       expect(
         find.text('Necesitás conexión para ver tu deuda con la casa editora.'),
         findsOneWidget,
@@ -159,6 +156,7 @@ void main() {
         red: TipoConexion.wifi,
         guardada: lectura(deudaDelCanvas, leidaEn: DateTime(2026, 11, 3, 21)),
       );
+      await releerDeuda(tester);
       repo.fallar();
       await _asentar(tester);
       final antes = repo.lecturas;
