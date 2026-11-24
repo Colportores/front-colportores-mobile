@@ -23,15 +23,7 @@ void main() {
 
   Future<void> sembrarProducto(String id, String nombre) => db
       .into(db.productos)
-      .insert(
-        ProductosCompanion.insert(
-          id: id,
-          nombre: nombre,
-          tipo: 'LIBRO',
-          createdAt: t0,
-          updatedAt: t0,
-        ),
-      );
+      .insert(ProductosCompanion.insert(id: id, nombre: nombre, createdAt: t0, updatedAt: t0));
 
   Future<void> venta(
     String id, {
@@ -80,6 +72,7 @@ void main() {
     bool pendiente = false,
     DateTime? borrada,
     DateTime? creada,
+    DateTime? prevista,
   }) => db
       .into(db.entregas)
       .insert(
@@ -89,6 +82,7 @@ void main() {
           productoId: producto,
           cantidad: cantidad,
           pendiente: Value(pendiente),
+          fechaPrevista: Value(prevista),
           fechaEntrega: Value(pendiente ? null : (cuando ?? DateTime.utc(2026, 10, 13, 15))),
           createdAt: creada ?? t0,
           updatedAt: creada ?? t0,
@@ -196,7 +190,7 @@ void main() {
     });
 
     test(
-      'las entregas pendientes todavía no se arman (su fecha prevista llega con HU-VEN-003)',
+      'una entrega pendiente sin fecha prevista no se muestra: no se inventa una fecha',
       () async {
         await venta('ven-1');
         await entrega('ent-1', 'ven-1', 'pro-1', pendiente: true);
@@ -204,6 +198,24 @@ void main() {
         expect(await fuente.movimientos('per-1'), isEmpty);
       },
     );
+
+    test('una entrega pendiente con fecha prevista se muestra pendiente, fechada con ella, y las '
+        'hechas siguen con su fecha de entrega', () async {
+      final sabado = DateTime.utc(2026, 10, 31, 13);
+      await venta('ven-1');
+      await entrega('ent-1', 'ven-1', 'pro-1', pendiente: true, prevista: sabado);
+      await entrega('ent-2', 'ven-1', 'pro-2', cantidad: 2, pendiente: true, prevista: sabado);
+      await entrega('ent-3', 'ven-1', 'pro-3');
+
+      final entregas = (await fuente.movimientos('per-1')).whereType<EntregaEnFicha>().toList();
+
+      final pendiente = entregas.singleWhere((e) => e.pendiente);
+      expect(pendiente.fecha, sabado);
+      expect(pendiente.lineas.map((l) => l.cantidad), [1, 2]);
+      final hecha = entregas.singleWhere((e) => !e.pendiente);
+      expect(hecha.fecha, DateTime.utc(2026, 10, 13, 15));
+      expect(hecha.lineas, hasLength(1));
+    });
 
     test('lo dado de baja no aparece: entregas, cobros y los de una venta borrada', () async {
       await venta('ven-1');

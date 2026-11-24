@@ -21,6 +21,10 @@ Future<void> traer(WidgetTester tester, Finder finder) async {
   }
 }
 
+/// Una pantalla alta: con «PRÓXIMA VISITA» y las acciones rápidas bajo la cuenta, el historial queda más
+/// allá de lo que el `ListView` construye a 390×844, y estos tests miran la ficha entera, no el desplazamiento.
+const _altaParaTodaLaFicha = Size(390, 1600);
+
 void main() {
   /// El mundo del canvas 32B·01: María con teléfono, cuenta, dos notas, una venta y una visita.
   MundoFicha mundoDelCanvas() {
@@ -33,7 +37,7 @@ void main() {
     testWidgets('muestra el nombre, dónde está, el teléfono, la cuenta, la nota y el historial', (
       tester,
     ) async {
-      await montarFicha(tester, mundoDelCanvas());
+      await montarFicha(tester, mundoDelCanvas(), tamano: _altaParaTodaLaFicha);
 
       expect(find.text('María Pérez'), findsOneWidget);
       expect(find.textContaining('Mataojo 2044'), findsOneWidget);
@@ -54,6 +58,51 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('un cobro del historial se toca y abre su detalle; lo demás no (vista 30 B)', (
+      tester,
+    ) async {
+      final m = mundoDelCanvas()..conVerCobro = true;
+      m.movimientos.poner([
+        CobroEnFicha(
+          id: 'cob-1',
+          fecha: DateTime(2026, 10, 20, 12),
+          montoCentavos: 60000,
+          efectivo: true,
+          ventaId: 'ven-1',
+          numeroTalonario: '0042',
+        ),
+      ]);
+      await montarFicha(tester, m, tamano: _altaParaTodaLaFicha);
+
+      await tester.tap(find.byKey(ClavesFicha.fila('cob-1')));
+      await asentar(tester);
+      expect(m.cobrosAbiertos, ['cob-1']);
+
+      await tester.tap(find.byKey(ClavesFicha.fila('ven-1')));
+      await asentar(tester);
+      expect(m.cobrosAbiertos, ['cob-1'], reason: 'una venta no abre un cobro');
+    });
+
+    testWidgets('sin destino para el cobro, la fila no es un botón', (tester) async {
+      final m = mundoDelCanvas();
+      m.movimientos.poner([
+        CobroEnFicha(
+          id: 'cob-1',
+          fecha: DateTime(2026, 10, 20, 12),
+          montoCentavos: 60000,
+          efectivo: true,
+          ventaId: 'ven-1',
+        ),
+      ]);
+      await montarFicha(tester, m, tamano: _altaParaTodaLaFicha);
+
+      expect(find.byKey(ClavesFicha.fila('cob-1')), findsOneWidget);
+      expect(
+        find.descendant(of: find.byKey(ClavesFicha.fila('cob-1')), matching: find.byType(InkWell)),
+        findsNothing,
+      );
+    });
+
     testWidgets('el historial junta entregas y cobros con las visitas y ventas', (tester) async {
       final m = mundoDelCanvas();
       m.movimientos.poner([
@@ -72,7 +121,7 @@ void main() {
           lineas: const [LineaDeFicha(nombre: 'Nuestros Hijos', cantidad: 1)],
         ),
       ]);
-      await montarFicha(tester, m);
+      await montarFicha(tester, m, tamano: _altaParaTodaLaFicha);
 
       expect(find.text('20/10 · COBRO'), findsOneWidget);
       expect(find.text('LUN 26/10 · ENTREGA PENDIENTE'), findsOneWidget);
@@ -119,7 +168,7 @@ void main() {
 
     testWidgets('se mantiene al día: una visita nueva aparece sin volver a abrir', (tester) async {
       final m = mundoDelCanvas();
-      await montarFicha(tester, m);
+      await montarFicha(tester, m, tamano: _altaParaTodaLaFicha);
       expect(find.byKey(ClavesFicha.fila('vis-2')), findsNothing);
 
       m.fichas.poner(

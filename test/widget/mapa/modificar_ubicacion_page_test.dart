@@ -104,6 +104,7 @@ Future<_Escenario> _montar(
   TipoConexion? conexion,
   PendientesFalso? pendientes,
   bool ofreceIrALaCobranza = false,
+  FutureOr<Object?> Function(CobranzaPendiente)? irALaCobranza,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -130,6 +131,8 @@ Future<_Escenario> _montar(
         ),
         if (conexion != null) conexionProvider.overrideWith((ref) => Stream.value(conexion)),
         consultorPendientesUbicacionProvider.overrideWithValue(pendientes ?? PendientesFalso()),
+        if (irALaCobranza != null)
+          irALaCobranzaDesdeLaBajaProvider.overrideWithValue(irALaCobranza),
       ],
       child: MaterialApp(
         theme: temaClaro(),
@@ -1038,11 +1041,10 @@ void main() {
       expect(_habilitado(tester, _guardar), isFalse);
       expect(e.repo.escrituras, isEmpty);
 
+      // A Negocio ya no se bloquea: el negocio es como un edificio (Cristian, 09/11, «Negocio mapa»).
       await _tocar(tester, find.text('Negocio'));
-      expect(
-        find.text('Esta ubicación tiene 3 espacios. Borralos o reubicalos primero.'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
+      expect(_habilitado(tester, _guardar), isTrue);
 
       await _tocar(tester, find.text('Edificio'));
       expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
@@ -1055,7 +1057,7 @@ void main() {
         espacios: 2,
       );
 
-      await _tocar(tester, find.text('Negocio'));
+      await _tocar(tester, find.text('Casa'));
 
       expect(
         find.text('Esta ubicación tiene 2 espacios. Borralos o reubicalos primero.'),
@@ -1088,19 +1090,42 @@ void main() {
       expect(e.salidas.single, isA<UbicacionEditada>());
     });
 
-    testWidgets('con un solo departamento, a Negocio también se guarda', (tester) async {
-      final e = await _montar(
-        tester,
-        ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
-        espacios: 1,
-      );
+    testWidgets(
+      'con un solo departamento, a Negocio también se guarda y el depto sigue con su número '
+      '(Cristian, 09/11, «Negocio mapa»)',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+          espacios: 1,
+        );
 
-      await _tocar(tester, find.text('Negocio'));
-      await _tocar(tester, _guardar);
+        await _tocar(tester, find.text('Negocio'));
+        await _tocar(tester, _guardar);
 
-      expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.negocio);
-      expect(e.repo.escrituras.single.reduceAUnEspacio, isTrue);
-    });
+        expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.negocio);
+        expect(e.repo.escrituras.single.reduceAUnEspacio, isFalse);
+      },
+    );
+
+    testWidgets(
+      'de edificio con 3 deptos a Negocio se guarda sin perder ninguno (Cristian, 09/11)',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          ubicacion: ubicacionGuardada(tipo: TipoUbicacion.edificio),
+          espacios: 3,
+        );
+
+        await _tocar(tester, find.text('Negocio'));
+        expect(find.textContaining('Borralos o reubicalos primero.'), findsNothing);
+        expect(find.textContaining('queda como el espacio'), findsNothing);
+        await _tocar(tester, _guardar);
+
+        expect(e.repo.escrituras.single.nueva.tipo, TipoUbicacion.negocio);
+        expect(e.repo.escrituras.single.reduceAUnEspacio, isFalse);
+      },
+    );
 
     for (final tipo in [TipoUbicacion.edificio, TipoUbicacion.negocio]) {
       testWidgets(
@@ -1429,12 +1454,12 @@ void main() {
       expect(e.salidas.single, isA<UbicacionEditada>());
     });
 
-    testWidgets('la línea dice «de la casa» o «del negocio» según el tipo nuevo y se va al volver '
-        'al tipo guardado', (tester) async {
+    testWidgets('la línea dice «de la casa» solo al pasar a Casa (a Negocio el depto sigue con su '
+        'número, 09/11) y se va al volver al tipo guardado', (tester) async {
       await _montar(tester, repo: _conUnDepto(TipoUbicacion.edificio));
 
       await _tocar(tester, find.text('Negocio'));
-      expect(find.text(_lineaNegocio), findsOneWidget);
+      expect(find.text(_lineaNegocio), findsNothing);
       expect(find.text(_lineaCasa), findsNothing);
 
       await _tocar(tester, find.text('Casa'));
@@ -2331,7 +2356,7 @@ void main() {
         'cuenta, y al volver a un solo departamento se guarda lo tipeado', (tester) async {
       final repo = _conUnDepto(TipoUbicacion.edificio);
       await _montar(tester, repo: repo);
-      await _tocar(tester, find.text('Negocio'));
+      await _tocar(tester, find.text('Casa'));
       await _escribirCalle(tester, 'Av. Brasil');
       await _escribirNumero(tester, '1238');
 
@@ -2346,14 +2371,11 @@ void main() {
       await _asentar(tester);
       expect(find.widgetWithText(TextField, 'Av. Brasil'), findsOneWidget);
       expect(find.widgetWithText(TextField, '1238'), findsOneWidget);
-      expect(find.text(_lineaNegocio), findsOneWidget);
+      expect(find.text(_lineaCasa), findsOneWidget);
       await _tocar(tester, _guardar);
 
       final nueva = repo.escrituras.single.nueva;
-      expect(
-        (nueva.tipo, nueva.calle, nueva.numero),
-        (TipoUbicacion.negocio, 'Av. Brasil', '1238'),
-      );
+      expect((nueva.tipo, nueva.calle, nueva.numero), (TipoUbicacion.casa, 'Av. Brasil', '1238'));
     });
 
     testWidgets('dos cambios seguidos antes de que la hoja se redibuje: queda la cuenta de ahora, '
@@ -2507,7 +2529,7 @@ void main() {
         've sin desbordes', (tester) async {
       final repo = _conUnDepto(TipoUbicacion.edificio);
       await _montar(tester, repo: repo, tamano: const Size(360, 640), escala: 2);
-      await _tocar(tester, find.text('Negocio'));
+      await _tocar(tester, find.text('Casa'));
 
       repo.cambiarEspacios(120);
       await _asentar(tester);
@@ -2903,6 +2925,77 @@ void main() {
       expect(e.repo.bajas, isEmpty);
     });
 
+    const conDestino = CobranzaPendiente(
+      montoCentavos: 145000,
+      ventaId: 'v-1',
+      espacioId: 'esp-1',
+      espacioPersonaId: 'ep-1',
+    );
+
+    testWidgets(
+      'dado una cobranza con destino en la app, cuando elige «Ir a la cobranza», entonces '
+      'abre el cobro de esa venta y la edición sigue donde estaba',
+      (tester) async {
+        final abiertas = <CobranzaPendiente>[];
+        final e = await _montar(
+          tester,
+          irALaCobranza: (c) {
+            abiertas.add(c);
+            return true;
+          },
+          pendientes: PendientesFalso(const PendientesUbicacion(cobranzaPendiente: conDestino)),
+        );
+
+        await _tocar(tester, find.text('Dar de baja'));
+        expect(
+          find.text(
+            r'Tiene una cobranza pendiente de $U 1.450. Una casa con ventas no se puede dar de '
+            'baja. Si ya no existe, cobrá lo pendiente y avisale a tu coordinador.',
+          ),
+          findsOneWidget,
+          reason: 'sin plan de cuotas no se inventa un «N.ª cuota»',
+        );
+        await _tocar(tester, find.text('Ir a la cobranza'));
+
+        expect(abiertas, [conDestino]);
+        expect(e.salidas, isEmpty, reason: 'la edición no se cierra');
+        expect(find.text(TextosModificar.guardarCambios), findsOneWidget);
+        expect(e.repo.bajas, isEmpty);
+      },
+    );
+
+    testWidgets('dado que el cobro no se puede abrir, cuando elige «Ir a la cobranza», entonces lo '
+        'dice y la edición sigue abierta', (tester) async {
+      final e = await _montar(
+        tester,
+        irALaCobranza: (_) => throw StateError('sin sesión'),
+        pendientes: PendientesFalso(const PendientesUbicacion(cobranzaPendiente: conDestino)),
+      );
+
+      await _tocar(tester, find.text('Dar de baja'));
+      await _tocar(tester, find.text('Ir a la cobranza'));
+
+      expect(find.text('No pudimos abrir el cobro. Probá de nuevo.'), findsOneWidget);
+      expect(e.salidas, isEmpty);
+      expect(find.text(TextosModificar.guardarCambios), findsOneWidget);
+    });
+
+    testWidgets('dado una cobranza sin destino conocido (sin venta), entonces la app no ofrece '
+        '«Ir a la cobranza» aunque exista el destino', (tester) async {
+      await _montar(
+        tester,
+        irALaCobranza: (_) => true,
+        pendientes: PendientesFalso(
+          const PendientesUbicacion(cobranzaPendiente: CobranzaPendiente(montoCentavos: 145000)),
+        ),
+      );
+
+      await _tocar(tester, find.text('Dar de baja'));
+
+      expect(find.text('Ir a la cobranza'), findsNothing);
+      expect(find.text('Entendido'), findsOneWidget);
+    });
+
     testWidgets('dado una cobranza pendiente en una pantalla sin cobranzas, entonces solo ofrece '
         '«Entendido» y la edición sigue abierta', (tester) async {
       final e = await _montar(
@@ -2933,7 +3026,7 @@ void main() {
 
       expect(
         find.text(
-          'No podés dar de baja esta casa porque tiene ventas o visitas de otro colportor. '
+          'No podés dar de baja esta casa porque tiene ventas. '
           'Si ya no existe, avisale a tu coordinador.',
         ),
         findsOneWidget,

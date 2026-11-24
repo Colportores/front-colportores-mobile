@@ -71,9 +71,41 @@ final fichaDePersonaProvider = StreamProvider.autoDispose.family<FichaDePersona?
   retry: _sinReintentos,
 );
 
-/// A dónde lleva «Editar persona» del menú «⋯» (y «Agregar» cuando no tiene teléfono): recibe el `id` de
-/// la persona y devuelve cuando la edición terminó. **Sin destino** (la edición de personas, HU-UBI-010,
-/// todavía no está en esta rama): mientras sea `null` esas opciones no se muestran.
-final editarPersonaDesdeLaFichaProvider = Provider<FutureOr<Object?> Function(String personaId)?>(
+/// Lo que recibe «Editar persona» de la ficha (HU-UBI-010): la persona y el espacio desde el que se abrió
+/// la ficha (en un edificio, el depto). El espacio hace falta para «Dar de baja y crear nueva»: la
+/// persona nueva se registra en el mismo lugar que la original.
+typedef ContextoDeEdicionDeLaFicha = ({String personaId, String espacioId});
+
+/// A dónde lleva «Editar persona» del menú «⋯» (y «Agregar» cuando no tiene teléfono): la edición de la
+/// persona (vista 32 C, HU-UBI-010) y, si en ella se elige «Dar de baja y crear nueva», el alta de la
+/// persona nueva y la baja de la original (R6, #405). Devuelve cuando todo terminó; la ficha, que lee en
+/// vivo, ya muestra lo guardado. **Sin destino** (sin sesión iniciada): mientras sea `null` esas
+/// opciones no se muestran.
+final editarPersonaDesdeLaFichaProvider =
+    Provider<FutureOr<Object?> Function(ContextoDeEdicionDeLaFicha)?>((ref) => null);
+
+/// Lo que recibe «Registrar entrega» de la ficha (HU-VEN-005): la persona y el espacio ya puestos. Del
+/// chip llega sin [ventaId] y el destino resuelve qué venta se entrega («¿Qué venta?» si hay más de
+/// una); de «Entregar», en la tarjeta de una entrega pendiente, llega con la venta de esa tarjeta.
+/// Con [fechaPrevista] (la de la tarjeta de una entrega pendiente) se abre la de esa fecha: una venta
+/// puede tener una entrega por cada cita (decisión de Cristian del 11/11, «Entrega cita»).
+typedef ContextoDeEntregaDeLaFicha = ({
+  String personaId,
+  String espacioId,
+  String? ventaId,
+  DateTime? fechaPrevista,
+});
+
+/// A dónde lleva «Registrar entrega» de la ficha de la persona (HU-VEN-005): la pantalla que marca como
+/// entregado lo que quedó pendiente (vista 27, grupo C, HU-VEN-003). Devuelve cuando se cierra; la
+/// ficha, que lee en vivo, ya muestra lo entregado. **Sin destino** (esa pantalla todavía no está en
+/// esta rama): mientras sea `null` «Registrar entrega» no se muestra.
+final registrarEntregaDesdeLaFichaProvider =
+    Provider<FutureOr<Object?> Function(ContextoDeEntregaDeLaFicha)?>((ref) => null);
+
+/// A dónde lleva tocar un cobro del historial de la ficha (el detalle del cobro y «Anular cobro», vista
+/// 30 B, HU-COB-006): recibe el `id` del cobro y devuelve cuando se cerró. **Sin destino** (o mientras el
+/// historial no traiga cobros): la fila del cobro no se puede tocar.
+final verCobroDesdeLaFichaProvider = Provider<FutureOr<Object?> Function(String cobranzaId)?>(
   (ref) => null,
 );

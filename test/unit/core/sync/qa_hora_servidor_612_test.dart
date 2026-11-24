@@ -3,8 +3,6 @@
 // (`SupabaseRpcTransport` con un cliente HTTP falso → `TransporteQueAnotaLaHora` → `HoraDelServidorEnDb`
 // sobre Drift en memoria → `LimpiarNotasBorradasUseCase` → borrado real), que los del PR prueban por
 // separado y con un transporte falso.
-//
-// Los hallazgos van con `skip`; `--dart-define=QA_HALLAZGOS=true` los corre para verlos fallar.
 import 'dart:convert';
 
 import 'package:colportores_mobile/core/database/app_database.dart';
@@ -26,8 +24,6 @@ import 'package:sync_engine/adapters.dart';
 import 'package:sync_engine/sync_engine.dart';
 
 import '../../../helpers/logger_mudo.dart';
-
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 const _sobre = ClientEnvelope(
   deviceId: '018f2c4e-6b7d-7a11-9f3c-000000000001',
@@ -93,7 +89,7 @@ void main() {
     await nota('vencida', borrada: haceDias(95));
     await nota('vieja', borrada: haceDias(400));
     await nota('activa');
-    await nota('lugar-vieja', borrada: haceDias(400), tipo: TipoObjetivoNota.ubicacion);
+    await nota('visita-vieja', borrada: haceDias(400), tipo: TipoObjetivoNota.visita);
   }
 
   SupabaseRpcTransport rpc(http.Response Function(http.Request) responder) => SupabaseRpcTransport(
@@ -129,7 +125,7 @@ void main() {
         await hora.registrar(hoy);
         final borradas = await limpiar(relojEquipo: DateTime.utc(2028, 5, 1), servidor: hora);
         expect(borradas, 2);
-        expect(await ids(), ['activa', 'lugar-vieja', 'reciente']);
+        expect(await ids(), ['activa', 'reciente', 'visita-vieja']);
       },
     );
 
@@ -159,7 +155,7 @@ void main() {
         await hora.registrar(haceDias(100));
         // Al servidor le faltan 100 días: la de 95 días (borrada DESPUÉS de esa hora) queda; la de 400, no.
         expect(await limpiar(relojEquipo: hoy), 1);
-        expect(await ids(), ['activa', 'lugar-vieja', 'reciente', 'vencida']);
+        expect(await ids(), ['activa', 'reciente', 'vencida', 'visita-vieja']);
       },
     );
 
@@ -180,7 +176,7 @@ void main() {
       await hora.registrar(hoy);
       expect(await limpiar(relojEquipo: hoy), 2);
       expect(await limpiar(relojEquipo: hoy), 0);
-      expect(await ids(), ['activa', 'lugar-vieja', 'reciente']);
+      expect(await ids(), ['activa', 'reciente', 'visita-vieja']);
     });
 
     test('dadas 40 horas registradas a la vez y desordenadas, queda la más alta', () async {
@@ -285,8 +281,6 @@ void main() {
               '`pullResponseFromJson` rellena `serverTime` con `DateTime.now()` si falta o es ilegible',
         );
       },
-      // skip: QA #612 — `_fecha` (wire.dart) inventa DateTime.now() y el decorador lo anota como del servidor.
-      skip: !_verHallazgos,
     );
 
     test(
@@ -299,8 +293,6 @@ void main() {
         await t.push(loteDe(1));
         expect(await hora.ultima(), isNull);
       },
-      // skip: QA #612 — mismo hueco que el pull: `_fecha` rellena con el reloj del equipo.
-      skip: !_verHallazgos,
     );
   });
 

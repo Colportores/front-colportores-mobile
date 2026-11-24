@@ -194,6 +194,7 @@ class FilaDeCuotaEditable extends StatelessWidget {
     this.ayuda,
     this.error,
     this.cerrada = false,
+    this.calculada = false,
     this.habilitado = true,
   });
 
@@ -212,19 +213,50 @@ class FilaDeCuotaEditable extends StatelessWidget {
 
   /// La cuota ya está pagada: se muestra pero no se toca.
   final bool cerrada;
+
+  /// La última cuota del plan: es lo que falta, se calcula sola y no se escribe a mano (decisión del
+  /// 03/11, #608). Se muestra su [valorFijo] como campo de solo lectura, con la [ayuda] debajo.
+  final bool calculada;
   final bool habilitado;
 
   @override
   Widget build(BuildContext context) {
     final conError = error != null;
-    final editable = habilitado && !cerrada;
+    final soloLectura = cerrada || calculada;
+    final editable = habilitado && !soloLectura;
     // Con letra grande el monto no entra al lado del rótulo sin cortarse: pasa debajo y usa todo el ancho.
     final grande = MediaQuery.textScalerOf(context).scale(14) > 14 * 1.15;
     final etiqueta = Text(
       rotulo,
       style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 13, color: ColoresAgenda.tinta),
     );
-    final Widget monto = cerrada
+    final Widget monto = calculada
+        ? Semantics(
+            readOnly: true,
+            label:
+                'Monto de la cuota $rotulo: ${valorFijo ?? ''}. ${TextosCuotas.calculadaSemantica}',
+            excludeSemantics: true,
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: grande ? 6 : 14),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    valorFijo ?? '',
+                    style: const TextStyle(
+                      fontFamily: 'JetBrainsMono',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: ColoresAgenda.tinta,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.calculate_outlined, size: 16, color: ColoresAgenda.gris),
+                ],
+              ),
+            ),
+          )
+        : cerrada
         ? Semantics(
             label: 'Monto de la cuota $rotulo: ${valorFijo ?? ''}. ${TextosCuotas.pagada}',
             excludeSemantics: true,
@@ -278,7 +310,7 @@ class FilaDeCuotaEditable extends StatelessWidget {
         Container(
           padding: const EdgeInsets.fromLTRB(14, 4, 8, 4),
           decoration: BoxDecoration(
-            color: cerrada ? ColoresAgenda.grisFondo : Colors.white,
+            color: soloLectura ? ColoresAgenda.grisFondo : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: conError ? ColoresAgenda.rojo : _borde, width: 1.5),
           ),
@@ -293,7 +325,7 @@ class FilaDeCuotaEditable extends StatelessWidget {
               : Row(
                   children: [
                     Expanded(child: etiqueta),
-                    cerrada ? monto : SizedBox(width: 130, child: monto),
+                    soloLectura ? monto : SizedBox(width: 130, child: monto),
                   ],
                 ),
         ),

@@ -38,6 +38,26 @@ abstract final class TextosQueVenta {
         : '$n no tiene ventas con saldo. No queda nada para cobrar.';
   }
 
+  // --- Pregunta al cancelar (Decisión de Cristian, 03/11) ---
+  /// Los botones de la pregunta, en este orden.
+  static const anotarLaVisita = 'Sí, anotar la visita';
+  static const meEquivoque = 'No, me equivoqué';
+
+  /// «¿María no te pagó?»: con el nombre de pila de quien debe, el mismo del título de C·08.
+  ///
+  /// Sin nombre (la persona ya no está en la casa) el canvas ni la decisión dicen qué va: queda
+  /// «¿No te pagaron?», que no nombra a nadie (mapa §2: texto, pendiente).
+  static String noTePago(String? nombre) {
+    final n = nombre?.trim() ?? '';
+    return n.isEmpty ? '¿No te pagaron?' : '¿$n no te pagó?';
+  }
+
+  /// Mientras se guarda la visita (mapa §2: texto, pendiente).
+  static const anotandoLaVisita = 'Anotando la visita…';
+
+  /// Después de «Sí, anotar la visita» (mapa §2: texto, pendiente).
+  static const visitaAnotada = 'Anotamos la visita de cobranza.';
+
   /// Lo que lee el lector de pantalla de una opción: «Venta 0038 · 12/10. Colección de 1 libro.
   /// Saldo $ 1.200». Sin la palabra «Saldo» el monto suelto no dice qué es.
   static String opcionParaLector(VentaConSaldo venta) {

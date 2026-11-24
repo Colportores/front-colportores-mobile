@@ -47,6 +47,7 @@ void main() {
       expect(texto, isNot(contains('34.8851')));
     },
     skip:
-        'QA #540: el toString de UbicacionFila (Drift, generado) vuelca calle, número y coordenadas',
+        'QA #540: el toString de UbicacionFila (Drift, generado) vuelca calle, número y coordenadas; '
+        'no se puede cambiar en la clase generada: lo vigila arquitectura/filas_de_drift_sin_interpolar_test.dart (#565)',
   );
 }

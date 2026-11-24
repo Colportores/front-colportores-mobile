@@ -79,7 +79,6 @@ void main() {
       expect(jornada.totalVisitas, 0);
       expect(jornada.totalVentas, 0);
       expect(jornada.acompananteId, isNull);
-      expect(jornada.tipoAcompanamiento, isNull);
       expect(repositorio.consultas, ['u-1']);
       expect(repositorio.creadas, [jornada]);
     });

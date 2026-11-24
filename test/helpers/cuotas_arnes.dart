@@ -161,6 +161,12 @@ Future<void> tocarEnCuotas(WidgetTester tester, Finder f) async {
   await asentarAgendar(tester);
 }
 
-/// Lo que dice el campo de monto del lugar [i].
-String textoDeCuota(WidgetTester tester, int i) =>
-    tester.widget<TextField>(campoDeCuota(i)).controller!.text;
+/// El monto de solo lectura de la última cuota (calculada, #608) del lugar [i].
+Finder montoCalculado(int i) =>
+    find.descendant(of: find.byKey(Key('cuotas_fila_$i')), matching: find.textContaining(r'$ '));
+
+/// Lo que dice el campo de monto del lugar [i]; la última cuota es de solo lectura y se lee del texto.
+String textoDeCuota(WidgetTester tester, int i) {
+  if (campoDeCuota(i).evaluate().isEmpty) return tester.widget<Text>(montoCalculado(i).first).data!;
+  return tester.widget<TextField>(campoDeCuota(i)).controller!.text;
+}

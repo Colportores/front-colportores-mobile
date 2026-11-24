@@ -21,9 +21,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// El «ahora» de los tests del centro: viernes 23 de octubre de 2026, 16:10 (hora local).
 final ahoraDelCentro = DateTime(2026, 10, 23, 16, 10);
 
-/// Un recordatorio de visita recibido [hace] antes de [ahoraDelCentro].
+/// Un aviso (por defecto, un recordatorio de visita) recibido [hace] antes de [ahoraDelCentro].
 Notificacion aviso(
   String id, {
+  TipoNotificacion tipo = TipoNotificacion.recordatorioVisita,
   Duration hace = const Duration(minutes: 40),
   String titulo = 'Cobranza a las 16:00',
   String? detalle = 'Av. Italia 2810',
@@ -32,7 +33,7 @@ Notificacion aviso(
   bool conDestino = true,
 }) => Notificacion(
   id: id,
-  tipo: TipoNotificacion.recordatorioVisita,
+  tipo: tipo,
   titulo: titulo,
   detalle: detalle,
   destino: conDestino ? (destino ?? DestinoAgenda('agenda-$id')) : null,
@@ -51,6 +52,7 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
   final marcadas = <String>[];
   int llamadasMarcarTodas = 0;
   final borrados = <Set<String>?>[];
+  final marcadasTodas = <Set<String>?>[];
 
   /// Una falla para la próxima llamada de cada operación (y las siguientes, mientras valga).
   bool fallaAlMarcar = false;
@@ -65,6 +67,7 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
   Completer<void>? puertaAlMarcar;
   Completer<void>? puertaAlMarcarTodas;
   Completer<void>? puertaAlBorrar;
+  Completer<void>? puertaAlRegistrar;
 
   /// La primera emisión de `observar` espera a esta puerta (para ver «cargando»).
   Completer<void>? puertaAlObservar;
@@ -114,6 +117,8 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
     Notificacion notificacion, {
     required DateTime ahora,
   }) async {
+    final puerta = puertaAlRegistrar;
+    if (puerta != null) await puerta.future;
     final prefijo = prefijoQueFallaAlRegistrar;
     if (prefijo != null && notificacion.id.startsWith(prefijo)) {
       return const Left(FailureInesperado());
@@ -147,14 +152,18 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
   }
 
   @override
-  Future<Either<Failure, Unit>> marcarTodasLeidas({required DateTime ahora}) async {
+  Future<Either<Failure, Unit>> marcarTodasLeidas({
+    required DateTime ahora,
+    Set<String>? ids,
+  }) async {
     llamadasMarcarTodas++;
+    marcadasTodas.add(ids);
     final puerta = puertaAlMarcarTodas;
     if (puerta != null) await puerta.future;
     if (fallaAlMarcarTodas) return const Left(FailureInesperado());
     for (var i = 0; i < _filas.length; i++) {
       final f = _filas[i];
-      if (f.leida) continue;
+      if (f.leida || (ids != null && !ids.contains(f.id))) continue;
       _filas[i] = Notificacion(
         id: f.id,
         tipo: f.tipo,

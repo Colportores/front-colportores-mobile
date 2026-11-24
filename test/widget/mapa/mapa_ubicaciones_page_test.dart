@@ -82,15 +82,16 @@ void main() {
       expect(find.descendant(of: pestana, matching: find.text('6')), findsOneWidget);
       expect(botonMiUbicacion, findsOneWidget);
       expect(botonNueva, findsOneWidget);
-      expect(find.descendant(of: botonNueva, matching: find.text('Nueva')), findsOneWidget);
+      // El pin para sumar una casa (vista 39, M·01; vista 41): un botón redondo con la gota.
+      expect(find.bySemanticsLabel('Arrastrá para sumar una casa'), findsOneWidget);
       expect(chipReferencias, findsOneWidget);
       expect(find.text('Referencias'), findsOneWidget);
       // Minimizada solo se ve la pestaña: ninguna fila, ninguna vista previa.
       expect(altoHoja(tester), AlturaHoja.altoMinimizada(TextScaler.noScaling));
       expect(fila('a'), findsNothing);
       expect(vistaPrevia, findsNothing);
-      // «Agendados» llega con las visitas (HU-VIS-001/002): por ahora la hoja no lo ofrece.
-      expect(find.text('Agendados'), findsNothing);
+      // «Agendados» (06C·03, #407): la segunda pestaña, junto a «Cercanía».
+      expect(find.text('Agendados'), findsOneWidget);
     });
 
     testWidgets('a menos de 60 m del GPS el marcador crece y muestra su número de puerta; el '
@@ -241,13 +242,14 @@ void main() {
   });
 
   group('06C·03 · Agendados', () {
-    testWidgets('no se ofrece: llega con las visitas (HU-VIS-001/002, S8), decisión de Cristian '
-        'en el #199', (tester) async {
+    testWidgets('se ofrece junto a «Cercanía», que sigue siendo la de entrada (#407; el resto, en '
+        'mapa_agendados_407_test)', (tester) async {
       await montarMapaUbicaciones(tester, repo: RepoListaFalso(canvas()));
       await tocarAsa(tester, 2);
 
-      expect(find.text('Agendados'), findsNothing);
-      expect(find.text('Atrasados'), findsNothing);
+      expect(find.text('Agendados'), findsOneWidget);
+      // Con «Cercanía» elegida se ve la lista de ubicaciones, no los chips de «Agendados».
+      expect(fila('a'), findsOneWidget);
       expect(find.text('Cobranzas'), findsNothing);
     });
   });
@@ -284,10 +286,10 @@ void main() {
         gps: gpsSinPermiso(),
       );
 
-      m.mapa.tocarPunto('d');
+      m.mapa.tocarPunto('a');
       await asentarLista(tester);
 
-      expect(find.text('Negocio · Entrevista agendada'), findsOneWidget);
+      expect(find.text('Casa · Cobranza pendiente'), findsOneWidget);
       expect(find.textContaining('de vos'), findsNothing);
     });
 

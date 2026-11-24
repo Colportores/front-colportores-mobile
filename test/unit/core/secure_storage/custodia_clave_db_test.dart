@@ -324,6 +324,52 @@ void main() {
     });
   });
 
+  group('CustodiaClaveDb — envoltorio que viaja con el backup (HU-SYNC-006)', () {
+    test('sin envoltorio en el equipo, no hay texto que subir', () async {
+      expect(await custodia.leerEnvoltorioCodificado(), isNull);
+    });
+
+    test(
+      'el texto que se sube es el del archivo y otro equipo lo abre con la contraseña',
+      () async {
+        final dek = custodia.generarDek();
+        await custodia.envolverConPassword(dek, 'secreto123');
+
+        final texto = await custodia.leerEnvoltorioCodificado();
+        final recuperada = await custodia.abrirEnvoltorio(
+          EnvoltorioDek.decodificar(texto!),
+          'secreto123',
+        );
+
+        expect(texto, EnvoltorioDek.decodificar(await contenidoDelEnvoltorio()).codificar());
+        expect(texto, isNot(contains(base64Encode(dek.bytes))), reason: 'nunca la DEK en claro');
+        expect(recuperada.bytes, dek.bytes);
+      },
+    );
+
+    test('un archivo roto no se sube: lanza EnvoltorioCorruptoException', () async {
+      await File(
+        p.join(dir.path, ArchivoEnvoltorioDek.nombreArchivoPorDefecto),
+      ).writeAsString('esto no es un envoltorio');
+
+      await expectLater(
+        custodia.leerEnvoltorioCodificado(),
+        throwsA(isA<EnvoltorioCorruptoException>()),
+      );
+    });
+
+    test('con otra contraseña, el envoltorio de Drive no abre', () async {
+      await custodia.envolverConPassword(custodia.generarDek(), 'secreto123');
+      final envoltorio = EnvoltorioDek.decodificar((await custodia.leerEnvoltorioCodificado())!);
+
+      await expectLater(
+        custodia.abrirEnvoltorio(envoltorio, 'otra'),
+        throwsA(isA<EnvoltorioNoAbreException>()),
+      );
+      expect(proveedor.entregadas.every((c) => c.destruida), isTrue);
+    });
+  });
+
   group('CustodiaClaveDb — marca de inicialización', () {
     test('dado un dispositivo nuevo, no está inicializado', () async {
       expect(await custodia.dbInicializada(), isFalse);
@@ -505,6 +551,16 @@ void main() {
         expect(almacen.contenido[ClaveSegura.avisoPrivacidadOculto], '["u-1"]');
       },
     );
+
+    test('conserva el modo ahorro de datos (HU-SYNC-008): recuperar los datos no vuelve a gastar '
+        'datos móviles sin que la persona lo pida', () async {
+      final dek = custodia.generarDek();
+      await almacen.escribir(ClaveSegura.modoAhorroDatos, '1');
+
+      await custodia.reconstruirAlmacen(dek);
+
+      expect(almacen.contenido[ClaveSegura.modoAhorroDatos], '1');
+    });
 
     for (final (escritura, queda) in [(1, 'nada'), (2, 'la marca sin DEK')]) {
       test('dado que el Keystore falla en la escritura $escritura, queda $queda: nunca "DEK sin '
@@ -734,6 +790,25 @@ void main() {
 
       expect(almacen.contenido[ClaveSegura.recordatoriosActivados], '0');
       expect(almacen.contenido[ClaveSegura.anticipacionRecordatorios], '60');
+    });
+
+    test('borra también el modo ahorro de datos (HU-SYNC-008): la próxima persona que entre en '
+        'este teléfono arranca con el comportamiento estándar', () async {
+      await almacen.escribir(ClaveSegura.modoAhorroDatos, '1');
+      await almacen.escribir(ClaveSegura.sesionAuth, 'sesion');
+
+      await custodia.olvidarDatosDelUsuario();
+
+      expect(almacen.contenido.containsKey(ClaveSegura.modoAhorroDatos), isFalse);
+      expect(almacen.contenido.containsKey(ClaveSegura.sesionAuth), isTrue);
+    });
+
+    test('«Empezar de nuevo» (olvidar) no toca el modo ahorro de datos', () async {
+      await almacen.escribir(ClaveSegura.modoAhorroDatos, '1');
+
+      await custodia.olvidar();
+
+      expect(almacen.contenido[ClaveSegura.modoAhorroDatos], '1');
     });
 
     test('«Empezar de nuevo» (olvidar) no toca lo contestado sobre las notificaciones', () async {

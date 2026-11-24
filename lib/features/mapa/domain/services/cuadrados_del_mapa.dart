@@ -37,13 +37,12 @@ abstract final class CuadradosDelMapa {
     final visibleAlto = alto - reservaInferior;
     if (visibleAlto <= 0) return false;
 
-    final centro = ProyeccionMercator.aPixeles(camara.centro, camara.zoom);
     const mitad = ladoDp / 2;
     final vistas = <({double x, double y})>[];
     for (final casa in casas) {
-      final mundo = ProyeccionMercator.aPixeles(casa, camara.zoom);
-      final x = mundo.x - centro.x + ancho / 2;
-      final y = mundo.y - centro.y + alto / 2;
+      // Con el mapa girado (seguimiento «Seguir y girar», #670) los cuadrados se miran donde caen
+      // en la pantalla, que es donde se tapan.
+      final (:x, :y) = ProyeccionMercator.aPantalla(casa, camara, ancho: ancho, alto: alto);
       if (x < -mitad || x > ancho + mitad || y < -mitad || y > visibleAlto + mitad) continue;
       vistas.add((x: x, y: y));
     }

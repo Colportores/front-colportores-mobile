@@ -24,13 +24,14 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/agendar_visita_arnes.dart';
+import '../../helpers/deptos_falsos.dart';
 import '../../helpers/hoja_casa_falsos.dart';
 import '../../helpers/notificaciones_arnes.dart' show Telefono;
 import '../../helpers/persona_falsos.dart';
 
 final _agendar = find.byKey(ClavesHojaCasa.agendar);
 final _formulario = find.byType(AgendarVisitaPage);
-final _avisoEdificio = find.text(TextosRegistrarVisita.edificioSinDepto);
+final _avisoEdificio = find.text(TextosRegistrarVisita.edificioSinDeptoParaAgendar);
 final _guardar = find.byKey(ClavesAgendarVisita.botonAgendar);
 
 final class _Montaje {
@@ -64,6 +65,8 @@ Future<_Montaje> _montar(
   // El repositorio de personas dice lo mismo que el contexto de la hoja (en la app salen de la misma DB).
   final personas = PersonaRepositorioFalso()..sembrar(contexto?.personas ?? [mariaFernandez]);
   final overrides = <Override>[
+    // Un edificio muestra sus deptos (C·09, #452): el 3B, que se abre como una casa (C·10).
+    ...overridesDeptos(),
     ...overridesHojaCasa(
       lectura: contexto == null ? null : (_) => Stream.value(contexto),
       registrarVisita: (_) {},
@@ -135,7 +138,7 @@ void main() {
       },
     );
 
-    testWidgets('al guardar, la cita queda en la casa, vuelve a la hoja y avisa', (tester) async {
+    testWidgets('al guardar, la cita queda en la casa, la hoja se cierra y avisa', (tester) async {
       final m = await _montar(tester);
       await _tocarAgendar(tester);
 
@@ -148,9 +151,9 @@ void main() {
       expect(recibida.agenda.tipo, TipoAgenda.entrevista);
       expect(recibida.agenda.colportorId, 'col-1');
       expect(_formulario, findsNothing);
-      // Al volver, la hoja sigue abierta (no se cerró) y el aviso de éxito se ve.
-      expect(m.cierres, isEmpty);
-      expect(_agendar, findsOneWidget);
+      // Tras guardar (decisión de Cristian, 05/11) la hoja se cierra, el mapa queda libre y el aviso de
+      // éxito se ve.
+      expect(m.cierres, hasLength(1));
       expect(find.text('Agendada. La casa queda como «Entrevista agendada».'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -212,6 +215,7 @@ void main() {
         tipo: TipoUbicacion.edificio,
         contexto: const ContextoDeLaCasa(espacioId: 'esp-3B', personas: []),
       );
+      await abrirDepto(tester);
 
       await _tocarAgendar(tester);
 
@@ -223,7 +227,7 @@ void main() {
   // Decisiones de la revisión del 29/10 (#491 P1 y P2, mapa §2), aplicadas en #570.
   group('decisiones de la revisión', () {
     testWidgets(
-      'edificio sin depto elegido: «+ Agendar» se ve y al tocarlo avisa, sin abrir el formulario',
+      'edificio sin depto elegido: no hay «+ Agendar» ni aviso; se agenda desde el depto (C·10, #452)',
       (tester) async {
         final m = await _montar(
           tester,
@@ -231,11 +235,8 @@ void main() {
           contexto: const ContextoDeLaCasa(personas: []),
         );
 
-        expect(_agendar, findsOneWidget);
-        await tester.tap(_agendar);
-        await asentarAgendar(tester);
-
-        expect(_avisoEdificio, findsOneWidget);
+        expect(_agendar, findsNothing);
+        expect(_avisoEdificio, findsNothing);
         expect(_formulario, findsNothing);
         expect(m.destinos, isEmpty);
       },

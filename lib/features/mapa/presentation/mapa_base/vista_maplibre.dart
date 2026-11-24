@@ -236,6 +236,7 @@ class _VistaMapLibreState extends ConsumerState<VistaMapLibre> {
   CamaraMapa _aCamara(ml.CameraPosition posicion) => CamaraMapa(
     centro: Coordenadas(lat: posicion.target.latitude, lon: posicion.target.longitude),
     zoom: posicion.zoom,
+    rumbo: posicion.bearing,
   );
 
   void _alQuedarQuieta() {
@@ -441,7 +442,13 @@ class _PuertoMapLibre implements PuertoVistaMapa {
   @override
   Future<void> moverCamara(CamaraMapa camara) async {
     await _controlador.moveCamera(
-      ml.CameraUpdate.newLatLngZoom(ml.LatLng(camara.centro.lat, camara.centro.lon), camara.zoom),
+      ml.CameraUpdate.newCameraPosition(
+        ml.CameraPosition(
+          target: ml.LatLng(camara.centro.lat, camara.centro.lon),
+          zoom: camara.zoom,
+          bearing: camara.rumbo,
+        ),
+      ),
     );
   }
 }

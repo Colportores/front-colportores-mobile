@@ -68,7 +68,6 @@ void main() {
         colportorId: 'u-1',
         inicio: t0,
         acompananteId: 'u-2',
-        tipoAcompanamiento: 'PAREJA',
         totalVisitas: 3,
         totalVentas: 1,
         auditoria: Auditoria(

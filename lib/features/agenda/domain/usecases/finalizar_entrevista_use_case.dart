@@ -17,13 +17,15 @@ final class FinalizarEntrevistaParams extends Equatable {
   const FinalizarEntrevistaParams({
     required this.ids,
     required this.espacioId,
-    required this.espacioPersonaId,
+    this.espacioPersonaId,
     required this.colportorId,
     required this.entrada,
     required this.salida,
     this.agendaId,
     this.jornadaId,
     this.nota = '',
+    this.misioneros = const {},
+    this.conHoras = true,
   });
 
   /// Termina la entrevista [en] curso con las horas que confirmó la colportora.
@@ -32,6 +34,7 @@ final class FinalizarEntrevistaParams extends Equatable {
     required DateTime entrada,
     required DateTime salida,
     String nota = '',
+    Map<String, int> misioneros = const {},
   }) => FinalizarEntrevistaParams(
     ids: en.ids,
     espacioId: en.espacioId,
@@ -42,6 +45,7 @@ final class FinalizarEntrevistaParams extends Equatable {
     agendaId: en.agendaId,
     jornadaId: en.jornadaId,
     nota: nota,
+    misioneros: misioneros,
   );
 
   final IdsResultadoVisita ids;
@@ -49,7 +53,9 @@ final class FinalizarEntrevistaParams extends Equatable {
   /// El espacio (casa o depto) donde fue la entrevista; si en el teléfono cambió, la visita va al
   /// vigente (ver [ResolverDestinoDeEntrevista]).
   final String espacioId;
-  final String espacioPersonaId;
+
+  /// Con quién; `null` = la entrevista fue sin persona (la visita cuelga de la casa).
+  final String? espacioPersonaId;
   final String colportorId;
   final DateTime entrada;
   final DateTime salida;
@@ -58,6 +64,14 @@ final class FinalizarEntrevistaParams extends Equatable {
 
   /// La nota de la visita, local-only: en blanco no crea ninguna.
   final String nota;
+
+  /// Los misioneros que dejó sin venta («Lo que dejaste», #608): producto → cuántos.
+  final Map<String, int> misioneros;
+
+  /// Si [entrada] y [salida] son las de una entrevista y se guardan en la visita (#466). `false` en
+  /// la venta que sale de la hoja de la casa sin entrevista («Vender desde la casa»): sus horas son
+  /// «ahora» y no se inventa una entrevista.
+  final bool conHoras;
 
   /// Lleva la nota (dato personal): nunca debe salir en un log ni en un `toString`.
   @override
@@ -74,6 +88,8 @@ final class FinalizarEntrevistaParams extends Equatable {
     agendaId,
     jornadaId,
     nota,
+    misioneros,
+    conHoras,
   ];
 }
 
@@ -100,8 +116,9 @@ const entrevistaSinLugar = FailureValidacion(
 /// 4. Borra la entrevista en curso. Si **eso** falla, devuelve `Left`: la visita ya quedó guardada y
 ///    el reintento (mismos ids) la encuentra y vuelve a intentar el borrado.
 ///
-/// **Las horas de entrada y salida no se guardan en la visita** hasta #466 (esperan las columnas
-/// de backend-supabase#132): se validan y se usan para el aviso y el resumen.
+/// Las horas de entrada y salida quedan en la visita (`entrevista_entrada` y `entrevista_salida`,
+/// decisión de Cristian, 23/10, «Horas entrev», #466), con los misioneros que dejó sin venta («Lo que
+/// dejaste», #608), en la misma transacción.
 ///
 /// Para «Sí, registrar la venta» este caso de uso **no se llama**: si la venta no se completa el
 /// resultado no se guarda (R44, vista 39), y la entrevista sigue en curso hasta que el flujo de
@@ -134,20 +151,17 @@ final class FinalizarEntrevistaUseCase
     );
     if (invalida != null) return Left(invalida);
 
-    // La entrevista empezó con una casa y una persona elegidas (R·04): sin alguna de las dos no hay
-    // entrevista que guardar. «Sin persona» es otra cosa: es lo que queda si la persona ya no está.
-    final campos = <String, String>{
-      if (params.espacioId.trim().isEmpty) 'espacio': 'Falta la casa de la entrevista',
-      if (params.espacioPersonaId.trim().isEmpty)
-        'persona': 'Elegí con quién fue la entrevista para guardarla.',
-    };
-    if (campos.isNotEmpty) return Left(FailureValidacion(campos: campos));
+    // La entrevista empezó en una casa (R·04): sin ella no hay entrevista que guardar. La persona es
+    // opcional («Entrev. s/n», 05/11): sin persona, o con una que ya no está, la visita queda de la casa.
+    if (params.espacioId.trim().isEmpty) {
+      return const Left(FailureValidacion(campos: {'espacio': 'Falta la casa de la entrevista'}));
+    }
 
     final DestinoDeEntrevista? destino;
     try {
       destino = await _destino.resolver(
         espacioId: params.espacioId.trim(),
-        espacioPersonaId: params.espacioPersonaId.trim(),
+        espacioPersonaId: _sinVacios(params.espacioPersonaId),
       );
     } on Object catch (e) {
       _log.error(
@@ -170,6 +184,9 @@ final class FinalizarEntrevistaUseCase
         agendaId: params.agendaId,
         jornadaId: params.jornadaId,
         nota: params.nota,
+        entrevistaEntrada: params.conHoras ? params.entrada : null,
+        entrevistaSalida: params.conHoras ? params.salida : null,
+        misioneros: params.misioneros,
       ),
     );
     if (guardada.isLeft()) return guardada;
@@ -212,4 +229,9 @@ final class FinalizarEntrevistaUseCase
     );
     return const Left(entrevistaSinLugar);
   }
+}
+
+String? _sinVacios(String? id) {
+  final limpio = id?.trim();
+  return limpio == null || limpio.isEmpty ? null : limpio;
 }

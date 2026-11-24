@@ -12,9 +12,13 @@ import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local
 import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart'
+    show TipoResultadoVisita;
 import 'package:colportores_mobile/features/cobranzas/data/datasources/cobranza_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/cobranzas/data/datasources/cuotas_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart';
+import 'package:colportores_mobile/features/cobranzas/domain/entities/cuota.dart'
+    show SituacionDeCuota;
 import 'package:colportores_mobile/features/cobranzas/domain/entities/pedido_de_plan.dart';
 import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
 import 'package:colportores_mobile/features/ventas/data/datasources/venta_local_data_source_drift.dart';
@@ -216,9 +220,22 @@ void main() {
     });
 
     test('dado un plan de 12 cuotas, cuando se arma, entra', () async {
-      await cuotas.crearPlan(plan(montos: List.filled(12, 1000)));
+      await cuotas.crearPlan(plan(montos: [...List.filled(11, 20000), 30000]));
       expect(await citas(), hasLength(12));
     });
+
+    test(
+      'dada la última cuota escrita a mano distinta de lo que falta, cuando se arma, se rechaza sin agendar nada (#608)',
+      () async {
+        // Falta plata: 100.000 + 100.000 no llegan a los 250.000 del saldo.
+        await rechaza(
+          () => cuotas.crearPlan(plan(montos: [100000, 100000])),
+          MotivoPlanDeCuotas.ultimaCuota,
+        );
+        expect(await citas(), isEmpty);
+        expect(cola(), isEmpty);
+      },
+    );
 
     test(
       'dado un plan armado con saldo por cobrar, cuando se lee, el saldo no se toca y se ve cada cuota',
@@ -240,7 +257,7 @@ void main() {
 
     test(
       'dado un pago parcial dentro de la cuota, cuando se registra, la cuota sigue activa con lo que falta '
-      'y el cobro lleva su número',
+      'y el cobro no lleva número de cuota',
       () async {
         await cobros.registrar(cobroDe('c-1', 30000, despues));
 
@@ -250,7 +267,7 @@ void main() {
         expect(leido.cuotas.first.estaCubierta, isFalse);
         expect((await db.select(db.agendas).get()).where((a) => a.estado == 'CUMPLIDA'), isEmpty);
         expect(cola(), ['cobranza:insert']);
-        expect(encolador.encolados.single.payload['numero_cuota'], 1);
+        expect(encolador.encolados.single.payload.containsKey('numero_cuota'), isFalse);
       },
     );
 
@@ -278,7 +295,7 @@ void main() {
         final leido = (await cuotas.leerPlan('v-1'))!;
         expect(leido.cuotas.map((c) => c.estaCubierta), [true, false, false]);
         expect(leido.cuotas[1].pagadoCentavos, 16700);
-        expect(encolador.encolados.first.payload['numero_cuota'], 1);
+        expect(encolador.encolados.first.payload.containsKey('numero_cuota'), isFalse);
       },
     );
 
@@ -334,11 +351,11 @@ void main() {
     );
 
     test(
-      'dada una venta sin plan, cuando se cobra, el pago es libre y no lleva número de cuota',
+      'dada una venta sin plan, cuando se cobra, el pago es libre y no manda número de cuota',
       () async {
         await sembrarVenta(id: 'v-2', monto: 100000);
         await cobros.registrar(cobroDe('c-2', 50000, despues, venta: 'v-2'));
-        expect(encolador.encolados.single.payload['numero_cuota'], isNull);
+        expect(encolador.encolados.single.payload.containsKey('numero_cuota'), isFalse);
       },
     );
 
@@ -426,6 +443,55 @@ void main() {
       await rechaza(() => cuotas.modificarCuotas(cambio({'q-1': 0})), MotivoPlanDeCuotas.montos);
     });
 
+    test(
+      'dada la última cuota escrita a mano, cuando se guarda, se rechaza y no cambia nada (#608)',
+      () async {
+        // Las anteriores no cambian y la última sube: no suma lo que hay por repartir.
+        await rechaza(
+          () => cuotas.modificarCuotas(cambio({'q-1': 83300, 'q-2': 83300, 'q-3': 70000})),
+          MotivoPlanDeCuotas.ultimaCuota,
+        );
+        expect(cola(), isEmpty);
+        expect((await citas()).map((a) => a.montoPrevisto), [83300, 83300, 83400]);
+      },
+    );
+
+    test(
+      'dada una cuota anterior cambiada sin recalcular la última, cuando se guarda, se rechaza (#608)',
+      () async {
+        await rechaza(
+          () => cuotas.modificarCuotas(cambio({'q-1': 80000})),
+          MotivoPlanDeCuotas.ultimaCuota,
+        );
+        expect(cola(), isEmpty);
+      },
+    );
+
+    test(
+      'dada la última cuota recalculada como lo que falta, cuando se cambia una anterior, se guarda (#608)',
+      () async {
+        final nuevo = await cuotas.modificarCuotas(
+          cambio({'q-1': 100000, 'q-2': 75000, 'q-3': 75000}),
+        );
+        expect(nuevo.cuotas.map((c) => c.montoCentavos), [100000, 75000, 75000]);
+      },
+    );
+
+    test(
+      'dada una sola cuota abierta (es la última), cuando se intenta cambiar, se rechaza (#608)',
+      () async {
+        await cobros.registrar(cobroDe('c-1', 166600, despues));
+        encolador.encolados.clear();
+
+        await rechaza(
+          () => cuotas.modificarCuotas(cambio({'q-3': 50000})),
+          MotivoPlanDeCuotas.ultimaCuota,
+        );
+        expect(cola(), isEmpty);
+        expect((await citas()).firstWhere((a) => a.id == 'q-3').montoPrevisto, 83400);
+      },
+    );
+
     test('dada una cuota que no es de la venta, cuando se cambia, se rechaza', () async {
       await rechaza(
         () => cuotas.modificarCuotas(cambio({'otra': 100})),
@@ -489,14 +555,64 @@ void main() {
     );
 
     test(
-      'dada la última cuota cancelada, cuando se cancela, no hay a quién pasarle el monto y la deuda sigue en la venta',
+      'dada la última cuota abierta, cuando se cancela, se rechaza con un aviso que guía y no se toca nada (#608)',
       () async {
-        await agendas.cancelar('q-3', ahora: despues);
+        await expectLater(
+          agendas.cancelar('q-3', ahora: despues),
+          throwsA(
+            isA<AgendaRechazadaException>().having(
+              (e) => e.motivo.mensaje,
+              'mensaje',
+              allOf(contains('última cuota'), contains('Reprogramala'), contains('anteriores')),
+            ),
+          ),
+        );
 
         final filas = await citas();
-        expect(filas.firstWhere((a) => a.id == 'q-1').montoPrevisto, 83300);
-        expect(filas.firstWhere((a) => a.id == 'q-2').montoPrevisto, 83300);
-        expect((await cuotas.leerPlan('v-1'))!.venta.saldoCentavos, 250000);
+        expect(filas.map((a) => a.estado).toSet(), {'PROGRAMADA'});
+        expect(filas.map((a) => a.montoPrevisto), [83300, 83300, 83400]);
+        expect(cola(), isEmpty);
+      },
+    );
+
+    test(
+      'dada una sola cuota abierta porque las demás se pagaron, cuando se cancela, se rechaza: se reprograma (#608)',
+      () async {
+        await cobros.registrar(cobroDe('c-1', 166600, despues));
+        encolador.encolados.clear();
+
+        await expectLater(
+          agendas.cancelar('q-3', ahora: despues),
+          throwsA(isA<AgendaRechazadaException>()),
+        );
+        expect((await citas()).firstWhere((a) => a.id == 'q-3').estado, 'PROGRAMADA');
+        expect(cola(), isEmpty);
+      },
+    );
+
+    test(
+      'dada una cuota del medio, cuando se cancela, pasa su monto a la última y esta sigue sin poder cancelarse (#608)',
+      () async {
+        await agendas.cancelar('q-2', ahora: despues);
+
+        final filas = await citas();
+        expect(filas.firstWhere((a) => a.id == 'q-2').estado, 'CANCELADA');
+        expect(filas.firstWhere((a) => a.id == 'q-3').montoPrevisto, 166700);
+        await expectLater(
+          agendas.cancelar('q-3', ahora: despues),
+          throwsA(isA<AgendaRechazadaException>()),
+        );
+      },
+    );
+
+    test(
+      'dada una cobranza suelta, sin venta ni monto, cuando se cancela, se cancela como siempre (#608)',
+      () async {
+        await agendas.agendar(agendaDe('suelta-1', tipo: TipoAgenda.cobranza));
+        encolador.encolados.clear();
+
+        final r = await agendas.cancelar('suelta-1', ahora: despues);
+        expect(r.escribio, isTrue);
       },
     );
 
@@ -514,12 +630,158 @@ void main() {
     );
 
     test(
-      'dadas las últimas cuotas canceladas, cuando se cancelan, no hay a quién pasarle nada y la primera no cambia',
+      'dada la cuota 3 como única abierta tras cancelar las otras, cuando se cancela, se rechaza (#608)',
       () async {
-        await agendas.cancelar('q-3', ahora: despues);
+        await agendas.cancelar('q-1', ahora: despues);
         await agendas.cancelar('q-2', ahora: despues);
-        // Sin cuotas detrás, ninguna cambió.
-        expect((await citas()).firstWhere((a) => a.id == 'q-1').montoPrevisto, 83300);
+
+        await expectLater(
+          agendas.cancelar('q-3', ahora: despues),
+          throwsA(isA<AgendaRechazadaException>()),
+        );
+        expect((await citas()).firstWhere((a) => a.id == 'q-3').montoPrevisto, 250000);
+      },
+    );
+  });
+
+  group('«No contestó» sobre una cuota (#608)', () {
+    setUp(() async {
+      await cuotas.crearPlan(plan());
+      encolador.encolados.clear();
+    });
+
+    final ayer = DateTime.utc(2026, 10, 24, 15);
+
+    Future<AgendaFila> fila(String id) =>
+        (db.select(db.agendas)..where((a) => a.id.equals(id))).getSingle();
+
+    test(
+      'dada una cuota, cuando se registra «No contestó», la visita se guarda y la cuota sigue programada, sin tocarla',
+      () async {
+        final antes = await fila('q-1');
+
+        final r = await agendas.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: ayer),
+          agendaId: 'q-1',
+        );
+
+        expect(r.yaEstaba, isFalse);
+        expect(r.agendaNoCumplida, isFalse);
+        expect(r.agendaAfectadaId, isNull);
+        expect(r.agendaCreadaId, isNull);
+        expect(r.agendaIgnorada, isNull);
+        final despuesDe = await fila('q-1');
+        expect(despuesDe.estado, 'PROGRAMADA');
+        expect(despuesDe.visitaId, isNull);
+        expect(despuesDe.fechaProgramada, antes.fechaProgramada);
+        expect(despuesDe.updatedAt, antes.updatedAt);
+        expect(await db.select(db.visitas).get(), hasLength(1));
+        // Solo sube la visita (y, si cambió, el color de la casa): ninguna agenda.
+        expect(cola().where((c) => c.startsWith('agenda:')), isEmpty);
+        expect(cola(), contains('visita:insert'));
+      },
+    );
+
+    test(
+      'dada una cuota con «No contestó», cuando se vuelve a leer el plan, sigue siendo cuota abierta y no cambia el plan',
+      () async {
+        await agendas.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: ayer),
+          agendaId: 'q-2',
+        );
+
+        final leido = (await cuotas.leerPlan('v-1'))!;
+        expect(leido.cuotas.map((c) => c.estado), everyElement(EstadoAgenda.programada));
+        expect(leido.cuotas.map((c) => c.montoCentavos), [83300, 83300, 83400]);
+        expect(leido.abiertas, hasLength(3));
+      },
+    );
+
+    test('dada una cuota con «No contestó», cuando pasó su fecha, se ve vencida', () async {
+      await agendas.registrarVisita(
+        visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: ayer),
+        agendaId: 'q-1',
+      );
+
+      final primera = (await cuotas.leerPlan('v-1'))!.cuotas.first;
+      expect(primera.situacion(DateTime(2026, 10, 26, 9)), SituacionDeCuota.agendada);
+      expect(primera.situacion(DateTime(2026, 10, 27, 9)), SituacionDeCuota.vencida);
+    });
+
+    test(
+      'dado un doble toque con la misma visita, cuando se registra dos veces, la respuesta es la misma y no se escribe de más',
+      () async {
+        final visita = visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: ayer);
+        await agendas.registrarVisita(visita, agendaId: 'q-1');
+        encolador.encolados.clear();
+
+        final r = await agendas.registrarVisita(visita, agendaId: 'q-1');
+
+        expect(r.yaEstaba, isTrue);
+        expect(r.agendaNoCumplida, isFalse);
+        expect(r.agendaAfectadaId, isNull);
+        expect(r.agendaCreadaId, isNull);
+        expect(cola(), isEmpty);
+        expect(await db.select(db.visitas).get(), hasLength(1));
+        expect((await fila('q-1')).estado, 'PROGRAMADA');
+      },
+    );
+
+    test(
+      'dado «Deshacer» con lo que devolvió el registro, cuando se deshace, se borra solo la visita y la cuota sigue igual',
+      () async {
+        final r = await agendas.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: ayer),
+          agendaId: 'q-1',
+        );
+        encolador.encolados.clear();
+
+        final deshecha = await agendas.deshacerVisita(
+          'vis-1',
+          agendaCreadaId: r.agendaCreadaId,
+          agendaAfectadaId: r.agendaAfectadaId,
+          ahora: despues,
+        );
+
+        expect(deshecha.escribio, isTrue);
+        expect((await db.select(db.visitas).get()).single.deletedAt, isNotNull);
+        expect((await fila('q-1')).estado, 'PROGRAMADA');
+        expect(cola().where((c) => c.startsWith('agenda:')), isEmpty);
+      },
+    );
+
+    test(
+      'dada una cobranza que NO es cuota (sin venta ni monto), cuando se registra «No contestó», pasa a NO_CUMPLIDA como siempre',
+      () async {
+        await agendas.agendar(agendaDe('suelta-1', tipo: TipoAgenda.cobranza));
+        encolador.encolados.clear();
+
+        final r = await agendas.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.noContesto, creada: ayer),
+          agendaId: 'suelta-1',
+        );
+
+        expect(r.agendaNoCumplida, isTrue);
+        expect(r.agendaAfectadaId, 'suelta-1');
+        final suelta = await fila('suelta-1');
+        expect(suelta.estado, 'NO_CUMPLIDA');
+        expect(suelta.visitaId, 'vis-1');
+      },
+    );
+
+    test(
+      'dada una cuota, cuando el resultado la cumple, pasa a CUMPLIDA apuntando a la visita (no cambia lo de siempre)',
+      () async {
+        final r = await agendas.registrarVisita(
+          visitaDe('vis-1', resultado: TipoResultadoVisita.cobranza, creada: ayer),
+          agendaId: 'q-1',
+        );
+
+        expect(r.agendaNoCumplida, isFalse);
+        expect(r.agendaAfectadaId, 'q-1');
+        final primera = await fila('q-1');
+        expect(primera.estado, 'CUMPLIDA');
+        expect(primera.visitaId, 'vis-1');
       },
     );
   });

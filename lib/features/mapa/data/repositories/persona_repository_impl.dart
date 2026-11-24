@@ -2,6 +2,7 @@ import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/failure.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../domain/entities/contexto_edicion_persona.dart';
 import '../../domain/entities/espacio_persona.dart';
 import '../../domain/entities/nota_persona.dart';
 import '../../domain/entities/persona.dart';
@@ -51,6 +52,60 @@ final class PersonaRepositoryImpl implements PersonaRepository {
       );
       return Left(FailureInesperado(causa: tipo));
     }
+  }
+
+  @override
+  Future<Either<Failure, ContextoEdicionPersona?>> leerParaEditar(String personaId) async {
+    try {
+      return Right(await _local.leerParaEditar(personaId));
+    } on Object catch (e, st) {
+      return Left(_inesperado('PERSONA_LECTURA_FAIL', {'persona_id': personaId}, e, st));
+    }
+  }
+
+  @override
+  Future<Either<Failure, ResultadoModificarPersona>> modificar({
+    required String personaId,
+    required String nombre,
+    required String apellido,
+    required String? telefono,
+    required DateTime ahora,
+  }) async {
+    final contexto = {'persona_id': personaId};
+    try {
+      return Right(
+        await _local.modificar(
+          personaId: personaId,
+          nombre: nombre,
+          apellido: apellido,
+          telefono: telefono,
+          ahora: ahora,
+        ),
+      );
+    } on PersonaRechazadaException catch (e) {
+      _log.info(LogModulo.db, 'PERSONA_EDICION_RECHAZADA', 'edición de persona rechazada', {
+        ...contexto,
+        'motivo': e.motivo.name,
+      });
+      return Left(FailureValidacion(campos: {e.motivo.campo: e.motivo.mensaje}));
+    } on Object catch (e, st) {
+      return Left(_inesperado('PERSONA_EDICION_FAIL', contexto, e, st));
+    }
+  }
+
+  /// Ni al log ni a la falla va la excepción tal cual: la de Drift trae la sentencia con sus
+  /// parámetros, que acá son el nombre y el teléfono (convenciones §7.5). Solo su tipo.
+  Failure _inesperado(String operacion, Map<String, Object?> contexto, Object e, StackTrace st) {
+    final tipo = e.runtimeType.toString();
+    _log.error(
+      LogModulo.db,
+      operacion,
+      'falló una operación sobre una persona',
+      {...contexto, 'tipo': tipo},
+      null,
+      st,
+    );
+    return FailureInesperado(causa: tipo);
   }
 
   @override

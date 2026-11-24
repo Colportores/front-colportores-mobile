@@ -46,6 +46,9 @@ abstract final class TextosAgendarVisita {
   /// La hoja cuando solo se elige el día (entrevista estricta, R·03).
   static const hojaTituloDia = 'Día';
 
+  /// La hoja cuando el día ya está elegido y solo falta la hora («¿Cuándo volvés a cobrar?», 42B·01B).
+  static const hojaTituloHora = 'Hora';
+
   // Vista 39, R·02: la fecha sugerida por las entrevistas cercanas.
   static const etiquetaSugerida = 'SUGERIDA';
   static const etiquetaFecha = 'FECHA';
@@ -89,7 +92,7 @@ abstract final class TextosAgendarVisita {
   // 23A·05: el aviso de éxito.
   static String agendada(TipoAgenda tipo) => switch (tipo) {
     TipoAgenda.entrevista => 'Agendada. La casa queda como «Entrevista agendada».',
-    TipoAgenda.cobranza => 'Agendada.',
+    TipoAgenda.cobranza || TipoAgenda.entrega => 'Agendada.',
   };
 
   /// La visita quedó agendada, pero faltaba menos que la anticipación y no hay recordatorio.

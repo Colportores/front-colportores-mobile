@@ -96,6 +96,12 @@ final class PlanDeCuotasEnMemoria implements PlanDeCuotasRepository {
     if (!RepartoDeCuotas.montosValidos([for (final c in plan.cuotas) c.montoCentavos], saldo)) {
       return const Left(FailurePlanDeCuotas(MotivoPlanDeCuotas.montos));
     }
+    // La última cuota es lo que falta: no se escribe a mano (#608).
+    if (!RepartoDeCuotas.ultimaEsLoQueFalta([
+      for (final c in plan.cuotas) c.montoCentavos,
+    ], saldo)) {
+      return const Left(FailurePlanDeCuotas(MotivoPlanDeCuotas.ultimaCuota));
+    }
     _cuotas = [
       ..._cuotas,
       for (var i = 0; i < plan.cuotas.length; i++)
@@ -121,6 +127,16 @@ final class PlanDeCuotasEnMemoria implements PlanDeCuotasRepository {
       return Left(falla);
     }
     final porId = {for (final c in cambios.cambios) c.agendaId: c.montoCentavos};
+    // Las cuotas abiertas tienen que sumar justo lo que hay por repartir: la última es lo que falta (#608).
+    final abiertas = [
+      for (final c in _cuotas)
+        if (c.sePuedeModificar) c,
+    ];
+    final porRepartir = _monto - _cobrado + abiertas.fold<int>(0, (a, c) => a + c.pagadoCentavos);
+    final suma = abiertas.fold<int>(0, (a, c) => a + (porId[c.agendaId] ?? c.montoCentavos));
+    if (porId.isNotEmpty && suma != porRepartir) {
+      return const Left(FailurePlanDeCuotas(MotivoPlanDeCuotas.ultimaCuota));
+    }
     _cuotas = [
       for (final c in _cuotas)
         if (porId.containsKey(c.agendaId) && c.sePuedeModificar)

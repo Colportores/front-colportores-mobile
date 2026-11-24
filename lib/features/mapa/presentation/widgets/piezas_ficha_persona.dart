@@ -20,9 +20,17 @@ abstract final class ClavesFicha {
   static const opcionEditar = Key('ficha_opcion_editar');
   static const opcionBaja = Key('ficha_opcion_baja');
   static const cuenta = Key('ficha_cuenta');
+  static const acciones = Key('ficha_acciones');
+  static const botonAgendarCobranza = Key('ficha_agendar_cobranza');
+  static const botonRegistrarEntrega = Key('ficha_registrar_entrega');
   static const sinMovimientos = Key('ficha_sin_movimientos');
   static const notas = Key('ficha_notas');
   static const botonNota = Key('ficha_boton_nota');
+  static const proximaVisita = Key('ficha_proxima_visita');
+  static const botonAgendar = Key('ficha_boton_agendar');
+  static const tarjetaProximaVisita = Key('ficha_tarjeta_proxima_visita');
+  static const sinProximaVisita = Key('ficha_sin_proxima_visita');
+  static const errorProximaVisita = Key('ficha_error_proxima_visita');
   static const ultimaNota = Key('ficha_ultima_nota');
   static const historial = Key('ficha_historial');
   static const verMas = Key('ficha_ver_mas');
@@ -36,6 +44,9 @@ abstract final class ClavesFicha {
   static const error = Key('ficha_error');
 
   static Key fila(String id) => Key('ficha_fila_$id');
+
+  /// «Entregar» de la tarjeta de una entrega pendiente.
+  static Key entregar(String id) => Key('ficha_entregar_$id');
 
   static Key filtro(FiltroDeHistorial f) => Key('ficha_filtro_${f.name}');
 }
@@ -80,7 +91,11 @@ class RotuloDeSeccion extends StatelessWidget {
               style: TextButton.styleFrom(
                 minimumSize: const Size(48, 48),
                 foregroundColor: ColoresAlta.azul,
-                textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                textStyle: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               child: Text(accion!, textAlign: TextAlign.end),
             ),
@@ -278,7 +293,7 @@ class _Enlace extends StatelessWidget {
         minimumSize: const Size(48, 48),
         padding: const EdgeInsets.symmetric(horizontal: 10),
         foregroundColor: ColoresAlta.azul,
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w600),
       ),
       child: Text(texto),
     );
@@ -299,6 +314,9 @@ class TarjetaCuenta extends StatelessWidget {
       (TextosFicha.pagado, FormatoBajaPersona.monto(cuenta.pagadoCentavos), false),
       (TextosFicha.saldo, FormatoBajaPersona.monto(cuenta.saldoCentavos), true),
     ];
+    // Con el texto grande (200 %) el rótulo y el valor no entran uno al lado del otro: el rótulo se
+    // partía a la mitad («Comprad/o», QA #403 y #141). Pasan a dos renglones, el valor debajo.
+    final grande = MediaQuery.textScalerOf(context).scale(14) > 20;
     return KeyedSubtree(
       key: ClavesFicha.cuenta,
       child: _Cuadro(
@@ -308,39 +326,145 @@ class TarjetaCuenta extends StatelessWidget {
               MergeSemantics(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          rotulo,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: fuerte ? ColoresAlta.tinta : ColoresAlta.gris,
-                            fontWeight: fuerte ? FontWeight.w600 : FontWeight.w400,
-                          ),
+                  child: grande
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _RotuloDeLaCuenta(rotulo: rotulo, fuerte: fuerte),
+                            _ValorDeLaCuenta(valor: valor, fuerte: fuerte),
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _RotuloDeLaCuenta(rotulo: rotulo, fuerte: fuerte),
+                            ),
+                            const SizedBox(width: 12),
+                            Flexible(
+                              child: _ValorDeLaCuenta(valor: valor, fuerte: fuerte),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Flexible(
-                        child: Text(
-                          valor,
-                          textAlign: TextAlign.end,
-                          style: TextStyle(
-                            fontFamily: 'JetBrainsMono',
-                            fontSize: 14,
-                            fontWeight: fuerte ? FontWeight.w700 : FontWeight.w500,
-                            color: ColoresAlta.tinta,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _RotuloDeLaCuenta extends StatelessWidget {
+  const _RotuloDeLaCuenta({required this.rotulo, required this.fuerte});
+
+  final String rotulo;
+  final bool fuerte;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    rotulo,
+    style: TextStyle(
+      fontSize: 14,
+      color: fuerte ? ColoresAlta.tinta : ColoresAlta.gris,
+      fontWeight: fuerte ? FontWeight.w600 : FontWeight.w400,
+    ),
+  );
+}
+
+class _ValorDeLaCuenta extends StatelessWidget {
+  const _ValorDeLaCuenta({required this.valor, required this.fuerte});
+
+  final String valor;
+  final bool fuerte;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    valor,
+    textAlign: TextAlign.end,
+    style: TextStyle(
+      fontFamily: 'JetBrainsMono',
+      fontSize: 14,
+      fontWeight: fuerte ? FontWeight.w700 : FontWeight.w500,
+      color: ColoresAlta.tinta,
+    ),
+  );
+}
+
+/// Las acciones rápidas bajo la cuenta (32B·01, HU-VEN-005): «+ Agendar cobranza» y «Registrar entrega»,
+/// sin salir de la ficha. Con [ocupado] (ya se está abriendo algo) quedan apagadas: un segundo toque no
+/// abre otra pantalla encima. [conEntrega] en `false`: «Registrar entrega» no se dibuja, porque un botón
+/// sin a dónde llevar no se muestra (HU-UBI-003).
+class AccionesRapidasDeLaFicha extends StatelessWidget {
+  const AccionesRapidasDeLaFicha({
+    super.key,
+    required this.alAgendarCobranza,
+    required this.alRegistrarEntrega,
+    this.conCobranza = true,
+    this.conEntrega = true,
+    this.ocupado = false,
+  });
+
+  final VoidCallback alAgendarCobranza;
+  final VoidCallback alRegistrarEntrega;
+
+  /// Hay saldo que cobrar; sin él no se ofrece «+ Agendar cobranza».
+  final bool conCobranza;
+
+  /// Hay entregas pendientes y el caso de uso está disponible; si no, no se ofrece «Registrar entrega».
+  final bool conEntrega;
+  final bool ocupado;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      key: ClavesFicha.acciones,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        if (conCobranza)
+          _AccionRapida(
+            clave: ClavesFicha.botonAgendarCobranza,
+            texto: TextosFicha.agendarCobranza,
+            alTocar: ocupado ? null : alAgendarCobranza,
+          ),
+        if (conEntrega)
+          _AccionRapida(
+            clave: ClavesFicha.botonRegistrarEntrega,
+            texto: TextosFicha.registrarEntrega,
+            alTocar: ocupado ? null : alRegistrarEntrega,
+          ),
+      ],
+    );
+  }
+}
+
+class _AccionRapida extends StatelessWidget {
+  const _AccionRapida({required this.clave, required this.texto, required this.alTocar});
+
+  final Key clave;
+  final String texto;
+  final VoidCallback? alTocar;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      key: clave,
+      label: Text(texto),
+      onPressed: alTocar,
+      backgroundColor: Colors.white,
+      side: const BorderSide(color: ColoresAlta.grisBorde),
+      // El texto lleva su color: apagado (ocupado) hay que pintarlo apagado a mano, con el 38 % de
+      // Material que usa el resto de la app (login).
+      labelStyle: TextStyle(
+        color: alTocar == null
+            ? Theme.of(context).colorScheme.onSurface.withValues(alpha: .38)
+            : ColoresAlta.tinta,
+        fontWeight: FontWeight.w500,
+        fontSize: 14,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      materialTapTargetSize: MaterialTapTargetSize.padded,
     );
   }
 }
@@ -480,7 +604,14 @@ class FiltroDelHistorial extends StatelessWidget {
 }
 
 class FilaDeHistorial extends StatelessWidget {
-  const FilaDeHistorial({super.key, required this.movimiento, required this.ahora, this.alTocar});
+  const FilaDeHistorial({
+    super.key,
+    required this.movimiento,
+    required this.ahora,
+    this.alTocar,
+    this.alEntregar,
+    this.ocupado = false,
+  });
 
   final MovimientoDeFicha movimiento;
   final DateTime ahora;
@@ -488,6 +619,13 @@ class FilaDeHistorial extends StatelessWidget {
   /// Lo que pasa al tocar la fila (la venta abre su devolución, HU-VEN-004); `null`: la fila no se
   /// toca.
   final VoidCallback? alTocar;
+
+  /// «Entregar» (32B·01, HU-VEN-005): solo en la tarjeta de una entrega pendiente. `null`: la tarjeta
+  /// no lo ofrece (ficha de solo lectura o sin destino).
+  final VoidCallback? alEntregar;
+
+  /// Ya se está abriendo otra cosa: «Entregar» se ve apagado y no responde.
+  final bool ocupado;
 
   @override
   Widget build(BuildContext context) {
@@ -499,7 +637,23 @@ class FilaDeHistorial extends StatelessWidget {
       EntregaEnFicha() => ('⇢', ColoresAlta.grisFondo, ColoresAlta.tinta),
     };
     final pendiente = m is EntregaEnFicha && m.pendiente;
+    final entregar = pendiente ? alEntregar : null;
+    final alTocarFila = entregar == null ? alTocar : (ocupado ? null : entregar);
     final sub = FormatoFicha.subtitulo(m);
+    final accion = entregar == null
+        ? null
+        : Text(
+            TextosFicha.entregar,
+            key: ClavesFicha.entregar(m.id),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: ocupado ? ColoresAlta.gris : ColoresAlta.azul,
+            ),
+          );
+    // Con la letra más grande que la normal «Entregar» no entra al lado del texto sin desbordar a 320 dp:
+    // pasa debajo. Con la normal queda a la derecha, como en el canvas.
+    final accionDebajo = accion != null && MediaQuery.textScalerOf(context).scale(14) > 14.5;
     final cuadro = _Cuadro(
       hijo: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -523,10 +677,14 @@ class FilaDeHistorial extends StatelessWidget {
                 ),
                 if (sub != null)
                   Text(sub, style: const TextStyle(fontSize: 13, color: ColoresAlta.gris)),
+                if (accionDebajo)
+                  Padding(padding: const EdgeInsets.only(top: 8, bottom: 4), child: accion),
               ],
             ),
           ),
-          if (alTocar != null)
+          if (accion != null && !accionDebajo)
+            Padding(padding: const EdgeInsets.only(left: 8, top: 1), child: accion)
+          else if (accion == null && alTocar != null)
             const Padding(
               padding: EdgeInsets.only(left: 8, top: 2),
               child: Icon(Icons.chevron_right, color: ColoresAlta.gris, size: 22),
@@ -534,17 +692,19 @@ class FilaDeHistorial extends StatelessWidget {
         ],
       ),
     );
+    final etiqueta = FormatoFicha.paraLector(m, ahora);
     return Semantics(
       container: true,
-      button: alTocar != null,
-      onTap: alTocar,
-      label: FormatoFicha.paraLector(m, ahora),
+      button: entregar != null || alTocar != null,
+      enabled: entregar == null || !ocupado,
+      onTap: alTocarFila,
+      label: entregar == null ? etiqueta : '$etiqueta. ${TextosFicha.entregar}',
       excludeSemantics: true,
       child: KeyedSubtree(
         key: ClavesFicha.fila(m.id),
-        child: alTocar == null
+        child: alTocarFila == null
             ? cuadro
-            : InkWell(onTap: alTocar, borderRadius: BorderRadius.circular(14), child: cuadro),
+            : InkWell(onTap: alTocarFila, borderRadius: BorderRadius.circular(14), child: cuadro),
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../agenda/presentation/widgets/piezas_agenda.dart' show ColoresAgenda;
 import '../textos_devolucion.dart';
 
@@ -29,6 +30,9 @@ class TarjetaDeDatos extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Con el texto un poco más grande el rótulo y el valor no entran uno al lado del otro: pasan a
+    // dos renglones, el valor debajo (el valor, en la letra de los números, es ancho).
+    final grande = MediaQuery.textScalerOf(context).scale(14) > 16;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -46,34 +50,21 @@ class TarjetaDeDatos extends StatelessWidget {
               child: ExcludeSemantics(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          dato.rotulo,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: dato.fuerte ? ColoresAgenda.tinta : ColoresAgenda.gris,
-                            fontWeight: dato.fuerte ? FontWeight.w600 : FontWeight.w400,
-                          ),
+                  child: grande
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [_Rotulo(dato), _Valor(dato)],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // El valor tiene más sitio que el rótulo: «Nuestros Hijos × 1» no se
+                            // parte en dos renglones a 360 dp (QA #161).
+                            Flexible(child: _Rotulo(dato)),
+                            const SizedBox(width: 12),
+                            Expanded(flex: 2, child: _Valor(dato)),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Flexible(
-                        child: Text(
-                          dato.valor,
-                          textAlign: TextAlign.end,
-                          style: TextStyle(
-                            fontFamily: 'JetBrainsMono',
-                            fontSize: dato.fuerte ? 16 : 14,
-                            fontWeight: dato.fuerte ? FontWeight.w600 : FontWeight.w400,
-                            color: ColoresAgenda.tinta,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
             ),
@@ -81,6 +72,40 @@ class TarjetaDeDatos extends StatelessWidget {
       ),
     );
   }
+}
+
+class _Rotulo extends StatelessWidget {
+  const _Rotulo(this.dato);
+
+  final DatoDeDevolucion dato;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    dato.rotulo,
+    style: TextStyle(
+      fontSize: 14,
+      color: dato.fuerte ? ColoresAgenda.tinta : ColoresAgenda.gris,
+      fontWeight: dato.fuerte ? FontWeight.w600 : FontWeight.w400,
+    ),
+  );
+}
+
+class _Valor extends StatelessWidget {
+  const _Valor(this.dato);
+
+  final DatoDeDevolucion dato;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    dato.valor,
+    textAlign: TextAlign.end,
+    style: TextStyle(
+      fontFamily: 'JetBrainsMono',
+      fontSize: dato.fuerte ? 16 : 14,
+      fontWeight: dato.fuerte ? FontWeight.w600 : FontWeight.w400,
+      color: ColoresAgenda.tinta,
+    ),
+  );
 }
 
 /// El aviso verde de lo que quedó hecho (31-05).
@@ -153,10 +178,9 @@ const _formaHoja = RoundedRectangleBorder(
 Future<bool?> mostrarHojaConfirmarDevolucion(
   BuildContext context, {
   required List<DatoDeDevolucion> datos,
-}) => showModalBottomSheet<bool>(
+}) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: _formaHoja,
   builder: (_) => HojaConfirmarDevolucion(datos: datos),

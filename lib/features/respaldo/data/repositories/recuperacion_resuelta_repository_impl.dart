@@ -28,4 +28,11 @@ final class RecuperacionResueltaRepositoryImpl implements RecuperacionResueltaRe
       );
     }
   }
+
+  @override
+  Future<void> desmarcarResuelta(String usuarioId) async {
+    // Solo la marca de este usuario: la de otra persona del mismo teléfono no se toca.
+    if (await _almacen.leer(ClaveSegura.recuperacionResuelta) != usuarioId) return;
+    await _almacen.borrar(ClaveSegura.recuperacionResuelta);
+  }
 }

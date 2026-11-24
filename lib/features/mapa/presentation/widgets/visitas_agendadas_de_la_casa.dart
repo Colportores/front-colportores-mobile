@@ -25,6 +25,14 @@ abstract final class ClavesVisitasAgendadas {
   static const cambiar = Key('visitas_agendadas_cambiar');
 }
 
+/// La guarda de «un solo destino abierto a la vez» de la hoja de la casa: la comparten los botones de la
+/// hoja («Registrar visita», «+ Agendar», cobrar…) y las filas de «Visitas agendadas», para que tocar
+/// una fila y «+ Agendar» a la vez no abra dos destinos (QA #491). Es un campo y no estado de la UI:
+/// corta el segundo toque aunque llegue antes de volver a dibujar.
+class GuardaDeDestino {
+  bool ocupada = false;
+}
+
 /// «VISITAS AGENDADAS» de la hoja de la casa (vista 23, 23B·10 «En el mapa: tocar la casa»): las
 /// visitas `PROGRAMADA` de la casa —la entrevista del jueves, la cobranza del sábado—, de la más
 /// temprana a la más tardía, no solo la próxima. Es la misma lista de la Agenda filtrada por esa casa;
@@ -48,11 +56,19 @@ class VisitasAgendadasDeLaCasa extends ConsumerStatefulWidget {
     required this.colportorId,
     required this.ubicacionId,
     required this.ahora,
+    this.guarda,
+    this.espacioId,
   });
 
   final String colportorId;
   final String ubicacionId;
   final DateTime ahora;
+
+  /// La guarda que comparte con los botones de la hoja; `null` = solo la de sus propias filas.
+  final GuardaDeDestino? guarda;
+
+  /// Con un depto elegido (vista 39, C·10) solo las de ese depto; `null` = todas las de la casa.
+  final String? espacioId;
 
   @override
   ConsumerState<VisitasAgendadasDeLaCasa> createState() => _VisitasAgendadasDeLaCasaState();
@@ -88,8 +104,10 @@ class _VisitasAgendadasDeLaCasaState extends ConsumerState<VisitasAgendadasDeLaC
   }
 
   Future<void> _abrir(FutureOr<Object?> Function(String) destino, String agendaId) async {
-    if (_abriendo) return;
+    final guarda = widget.guarda;
+    if (_abriendo || (guarda?.ocupada ?? false)) return;
     _abriendo = true;
+    guarda?.ocupada = true;
     final mensajero = ScaffoldMessenger.maybeOf(context);
     try {
       await destino(agendaId);
@@ -98,6 +116,7 @@ class _VisitasAgendadasDeLaCasaState extends ConsumerState<VisitasAgendadasDeLaC
       mensajero?.showSnackBar(const SnackBar(content: Text(TextosAgenda.noPudimosAbrir)));
     } finally {
       _abriendo = false;
+      guarda?.ocupada = false;
     }
   }
 
@@ -109,7 +128,14 @@ class _VisitasAgendadasDeLaCasaState extends ConsumerState<VisitasAgendadasDeLaC
 
     // Con un error (también el que llega después de los primeros datos) la lista no se dibuja: el
     // aviso va aparte, arriba en la hoja.
-    final todas = leida.hasError ? null : leida.value;
+    final deLaCasa = leida.hasError ? null : leida.value;
+    final espacioId = widget.espacioId;
+    final todas = espacioId == null || deLaCasa == null
+        ? deLaCasa
+        : [
+            for (final v in deLaCasa)
+              if (v.agenda.espacioId == espacioId) v,
+          ];
     if (todas == null || todas.isEmpty) return const SizedBox.shrink();
     final recien = _recien;
     final tarjeta = recien == null
@@ -361,9 +387,9 @@ class FilaVisitaAgendada extends StatelessWidget {
                   ),
                 ),
               if (vencida)
-                const Text(
-                  TextosAgenda.pasoLaHora,
-                  style: TextStyle(
+                Text(
+                  TextosAgenda.pasoLaHoraDe(item.agenda.tipo),
+                  style: const TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
@@ -382,7 +408,12 @@ class FilaVisitaAgendada extends StatelessWidget {
     return Semantics(
       container: true,
       button: alTocar != null,
-      label: [cuando, tipo, ?subtitulo, if (vencida) TextosAgenda.pasoLaHora].join('. '),
+      label: [
+        cuando,
+        tipo,
+        ?subtitulo,
+        if (vencida) TextosAgenda.pasoLaHoraDe(item.agenda.tipo),
+      ].join('. '),
       onTap: alTocar,
       excludeSemantics: true,
       child: Container(

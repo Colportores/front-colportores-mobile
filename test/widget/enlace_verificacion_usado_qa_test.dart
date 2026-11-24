@@ -33,6 +33,7 @@ Future<AuthRemoteDataSourceEnMemoria> _remoto() async {
     cedula: '12345678',
     email: _correo,
     password: _clave,
+    terminosVersion: 'v1',
   );
   remote.confirmarEmail(_correo);
   return remote;

@@ -7,6 +7,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/entrevista_en_curso.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/misionero_dejado.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita_guardada.dart';
@@ -31,7 +32,7 @@ final inicioEntrevista = DateTime(2026, 10, 23, 14, 23);
 EntrevistaEnCurso entrevistaDePrueba({
   String colportorId = 'col-1',
   String espacioId = 'esp-1',
-  String espacioPersonaId = 'ep-1',
+  String? espacioPersonaId = 'ep-1',
   String visitaId = 'vis-1',
   String notaId = 'not-1',
   DateTime? inicio,
@@ -51,6 +52,9 @@ EntrevistaEnCurso entrevistaDePrueba({
 final class AgendaFalsa implements AgendaRepository {
   final recibidas = <({Visita visita, String? agendaId, NotaDeCampo? nota})>[];
 
+  /// Los misioneros de «Lo que dejaste» que llegaron con cada visita, por id de visita.
+  final misionerosPorVisita = <String, List<MisioneroDejado>>{};
+
   /// Si no es `null`, el registro espera a que se complete.
   Completer<void>? compuerta;
 
@@ -65,9 +69,11 @@ final class AgendaFalsa implements AgendaRepository {
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
+    List<MisioneroDejado> misioneros = const [],
   }) async {
     if (compuerta case final c?) await c.future;
     recibidas.add((visita: visita, agendaId: agendaId, nota: nota));
+    misionerosPorVisita[visita.id] = misioneros;
     if (falla case final f? when recibidas.length > fallaDesde) {
       recibidas.removeLast();
       return Left(f);
@@ -155,12 +161,12 @@ final class DestinoFalso implements ResolverDestinoDeEntrevista {
   /// Que devuelva `null`: ni la casa ni el depto siguen en el teléfono.
   bool sinDestino = false;
   bool falla = false;
-  final consultas = <({String espacioId, String espacioPersonaId})>[];
+  final consultas = <({String espacioId, String? espacioPersonaId})>[];
 
   @override
   Future<DestinoDeEntrevista?> resolver({
     required String espacioId,
-    required String espacioPersonaId,
+    String? espacioPersonaId,
   }) async {
     consultas.add((espacioId: espacioId, espacioPersonaId: espacioPersonaId));
     if (falla) throw StateError('no se puede leer');

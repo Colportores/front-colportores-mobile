@@ -12,6 +12,7 @@ import 'package:colportores_mobile/features/agenda/domain/entities/cambios_de_ag
 import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/franja_horaria.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/misionero_dejado.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/nota_de_campo.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
@@ -44,6 +45,7 @@ Agenda agendaDelDetalle({
   DateTime? cuando,
   String? slot = 'early_afternoon',
   String? ventaId,
+  String? entregaId,
   int? montoPrevistoCentavos,
 }) => Agenda(
   id: id,
@@ -55,6 +57,7 @@ Agenda agendaDelDetalle({
   estado: estado,
   colportorId: 'col-1',
   ventaId: ventaId,
+  entregaId: entregaId,
   montoPrevistoCentavos: montoPrevistoCentavos,
   auditoria: Auditoria(
     createdAt: DateTime.utc(2026, 10, 23),
@@ -185,6 +188,7 @@ final class AgendaRepositorioDetalle implements AgendaRepository {
     Visita visita, {
     String? agendaId,
     NotaDeCampo? nota,
+    List<MisioneroDejado> misioneros = const [],
   }) => throw UnimplementedError();
 
   @override

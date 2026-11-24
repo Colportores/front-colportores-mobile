@@ -8,8 +8,9 @@ import '../../../../core/database/fecha_utc_converter.dart';
 ///
 /// Misma forma que `public.producto` (backend-supabase 0001), con las diferencias del motor de
 /// siempre (ver `Ubicaciones`): fechas en epoch ms UTC, sin claves foráneas ni defaults de
-/// servidor. **Sin el `CHECK` de `tipo`**: si el servidor suma un tipo, un teléfono con la versión
-/// vieja de la app no puede frenar todo el pull por una fila que todavía no entiende.
+/// servidor. **Sin `tipo`** desde la versión 39 del esquema: el servidor lo dejó como heredado en 0149
+/// y lo borró en 0198 (backend-supabase#233); el pull puede seguir mandando la clave un tiempo y la
+/// tabla la ignora, porque solo guarda sus columnas.
 @DataClassName('ProductoFila')
 class Productos extends Table {
   @override
@@ -20,10 +21,6 @@ class Productos extends Table {
   TextColumn get nombre => text()();
 
   TextColumn get descripcion => text().nullable()();
-
-  /// `LIBRO`, `REVISTA`, `MATERIAL` o `MISIONERO`. **Heredado** desde backend-supabase 0149: lo
-  /// reemplaza [categoria] y la app ya no lo lee.
-  TextColumn get tipo => text()();
 
   /// Cuenta para la beca del colportor (el icono 🏆 de la vista 26).
   BoolColumn get esBonificable => boolean().withDefault(const Constant(false))();
@@ -57,7 +54,7 @@ class Productos extends Table {
 
   /// La categoría del producto (`producto.categoria`, backend-supabase 0149, «Categorías» de
   /// Cristian, 28/10): `BONIFICABLES`, `MISIONEROS`, `REVISTAS`, `ESPIRITUALES` o `MATERIAL`. Una por
-  /// producto, en lugar de `tipo`, que el servidor deja como heredado. Va al final porque llegó con
+  /// producto, en lugar del `tipo` de antes. Va al final porque llegó con
   /// la versión 26 del esquema (`ALTER TABLE … ADD COLUMN`) y es **nula** hasta que el pull trae la
   /// fila de nuevo: sin categoría el producto no se ofrece en Precios (no se deriva de `tipo`). Sin
   /// el `CHECK`, por lo mismo que `tipo`: una categoría nueva del servidor no frena el pull.

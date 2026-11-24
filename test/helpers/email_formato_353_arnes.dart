@@ -17,7 +17,8 @@ import 'acceso_qa_arnes.dart';
 import 'db_local_repository_en_memoria.dart';
 import 'qa_vista14_351_arnes.dart';
 
-const textoIncompletoDeLasTres = 'El email no es válido';
+const textoIncompletoDeLasTres =
+    'El email no es válido. Revisá que esté completo, como nombre@correo.com.';
 
 /// Una pantalla armada para el test: cómo mandarle un email y cuántas veces salió al servidor.
 final class ArmadaEmail {

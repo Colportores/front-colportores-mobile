@@ -23,7 +23,7 @@ class CatalogoLocalDataSource {
   Stream<CatalogoLocal> observar(String campaniaCiudadId) {
     return _db
         .customSelect(
-          'SELECT 1',
+          'SELECT 1 AS cambio_del_catalogo',
           readsFrom: {
             _db.productos,
             _db.colecciones,

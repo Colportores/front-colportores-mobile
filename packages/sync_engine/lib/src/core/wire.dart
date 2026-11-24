@@ -106,8 +106,9 @@ List<Object?> jobsToJson(PushBatch batch) => [
         {
           'client_op_id': job.clientOpId,
           'entity': job.entity,
-          'op': job.op.name,
-          'sync_version': job.syncVersion,
+          'op': job.op.wireName,
+          // La unión de duplicados no compara versiones (§6.2): no la lleva.
+          if (job.op != Op.marcarComoDuplicado) 'sync_version': job.syncVersion,
           'payload': job.payload,
         },
     ];
@@ -184,6 +185,7 @@ Map<String, Object?> pushResponseToJson(PushResult result) => {
 
 PushResult pushResponseFromJson(Map<String, Object?> json) => PushResult(
       serverTime: _fecha(json['server_time']),
+      serverTimeEsDelServidor: _fechaLegible(json['server_time']),
       results: [
         for (final crudo in (json['results'] as List? ?? const []))
           _resultFromJson(_mapa(crudo, 'result')),
@@ -226,6 +228,8 @@ Map<String, Object?> pullResponseToJson(PullDelta delta) => {
       'watermark': delta.watermark,
       'has_more': delta.hasMore,
       'rows': delta.rows,
+      if (delta.outOfArea.isNotEmpty) 'out_of_area': delta.outOfArea,
+      if (delta.areaReset.isNotEmpty) 'area_reset': delta.areaReset.toList(),
     };
 
 PullDelta pullResponseFromJson(
@@ -242,11 +246,22 @@ PullDelta pullResponseFromJson(
 
   return PullDelta(
     serverTime: _fecha(json['server_time']),
+    serverTimeEsDelServidor: _fechaLegible(json['server_time']),
     // Si el servidor no manda uno nuevo, se conserva el que había: inventar uno
     // acá sería adelantar el cursor sin datos.
     watermark: _watermark(json['watermark']) ?? watermarkPrevio ?? '',
     hasMore: json['has_more'] == true,
     rows: filas,
+    // Las dos claves son aditivas (backend 0016): sin avisos no vienen, y un
+    // servidor anterior no las manda.
+    outOfArea: {
+      for (final MapEntry(key: entidad, value: ids)
+          in (json['out_of_area'] as Map? ?? const {}).entries)
+        '$entidad': [for (final id in ids as List) '$id'],
+    },
+    areaReset: {
+      for (final entidad in json['area_reset'] as List? ?? const []) '$entidad',
+    },
   );
 }
 
@@ -274,12 +289,9 @@ Map<String, Object?> _mapa(Object? valor, String queEs) {
   throw FormatException('$queEs tiene que ser un objeto');
 }
 
-Op _op(Object? valor) => switch (valor) {
-      'insert' => Op.insert,
-      'update' => Op.update,
-      'delete' => Op.delete,
-      _ => throw FormatException('op inválida: $valor'),
-    };
+Op _op(Object? valor) => valor is String
+    ? Op.fromWireName(valor)
+    : throw FormatException('op inválida: $valor');
 
 /// Un `outcome` que este cliente no conoce es un contrato desalineado. Tratarlo
 /// como aceptado borraría de la cola un job que nunca subió.
@@ -292,3 +304,6 @@ JobOutcome _outcome(Object? valor) => switch (valor) {
 
 DateTime _fecha(Object? valor) =>
     DateTime.tryParse('$valor')?.toUtc() ?? DateTime.now().toUtc();
+
+/// `false` cuando [_fecha] tuvo que inventar la hora con el reloj del equipo.
+bool _fechaLegible(Object? valor) => DateTime.tryParse('$valor') != null;

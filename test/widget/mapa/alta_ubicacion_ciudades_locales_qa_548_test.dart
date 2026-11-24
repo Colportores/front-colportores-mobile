@@ -340,20 +340,17 @@ void main() {
     });
   });
 
-  group('hallazgos de QA #548', () {
-    // `testWidgets` solo acepta `skip: bool`: el motivo, con la convención «QA #<issue>», va en la
-    // descripción. El implementador saca el `skip` cuando lo arregla.
+  group('hallazgos de QA #548, arreglados (#626)', () {
     testWidgets(
       'QA #274: a 360×640 el aviso «No pudimos leer las ciudades…» y su «Reintentar» se ven sin '
       'desplazar la hoja',
       (tester) async {
         await _montar(tester, pull: null);
 
-        // Hoy el aviso queda cortado a una línea sobre el pie fijo y «Reintentar» está bajo el borde
-        // de la pantalla (y = 789 con 640 de alto): hay que desplazar la hoja para llegar a la salida.
+        // Antes el aviso quedaba cortado a una línea sobre el pie fijo y «Reintentar» bajo el borde
+        // de la pantalla (y = 789 con 640 de alto): había que desplazar la hoja para llegar a la salida.
         expect(find.text('Reintentar').hitTestable(), findsOneWidget);
       },
-      skip: true,
     );
   });
 

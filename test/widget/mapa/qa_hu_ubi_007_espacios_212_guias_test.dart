@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/qa_hu_ubi_007_212_arnes.dart';
-import 'hoja_espacios_arnes.dart' show botonAgregarDepto, botonDarDeBaja, filaDepto;
+import 'hoja_espacios_arnes.dart' show botonAgregarDepto, botonDarDeBaja;
 
 typedef _Llegar = Future<void> Function(WidgetTester tester);
 
@@ -17,7 +17,7 @@ Future<void> _lista(WidgetTester tester) async {}
 Future<void> _alta(WidgetTester tester) => tocar212(tester, botonAgregarDepto);
 
 Future<void> _avisoConPersonas(WidgetTester tester) async {
-  await tocar212(tester, filaDepto('esp-1'));
+  await editarDepto212(tester, 'esp-1');
   await tocar212(tester, botonDarDeBaja);
 }
 

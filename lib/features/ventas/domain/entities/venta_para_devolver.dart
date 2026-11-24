@@ -96,9 +96,14 @@ final class CuentaDeLaVenta extends Equatable {
   /// Lo que todavía debe el cliente de lo que se queda.
   int get saldoCentavos => math.max(0, seQuedaConCentavos - yaPagoCentavos);
 
-  /// Pagó todo lo que se queda comprando (también una venta de $ 0): una venta saldada no acepta
-  /// devoluciones (decisión de Cristian, 03/11; el servidor la rechaza con `23514`).
+  /// Pagó todo lo que se queda comprando (también una venta de $ 0).
   bool get estaSaldada => saldoCentavos == 0;
+
+  /// La venta ya no acepta devoluciones: costó algo y el cliente la pagó entera (decisión de Cristian,
+  /// 03/11; el servidor la rechaza con `23514`). Una venta de $ 0 (un regalo) **sí** las acepta, aunque
+  /// esté «saldada»: la devolución solo anota los libros y los repone en el stock, sin montos
+  /// (decisión de Cristian, 04/11, «Sí, solo vuelve el libro»; backend-supabase 0166).
+  bool get rechazaDevoluciones => estaSaldada && montoTotalCentavos > 0;
 
   @override
   List<Object?> get props => [montoTotalCentavos, cobradoCentavos, devueltoCentavos];
@@ -154,8 +159,12 @@ final class VentaParaDevolver extends Equatable {
   /// Lo que todavía debe el cliente de lo que se queda.
   int get saldoCentavos => cuenta.saldoCentavos;
 
-  /// El cliente pagó todo lo que se queda comprando: la venta no acepta devoluciones.
+  /// El cliente pagó todo lo que se queda comprando.
   bool get estaSaldada => cuenta.estaSaldada;
+
+  /// La venta costó algo y está pagada entera: no acepta devoluciones. Una de $ 0 sí (ver
+  /// [CuentaDeLaVenta.rechazaDevoluciones]).
+  bool get rechazaDevoluciones => cuenta.rechazaDevoluciones;
 
   /// Ya volvió todo lo vendido: no queda nada para devolver.
   bool get estaTodoDevuelto => renglones.isNotEmpty && renglones.every((r) => r.disponibles == 0);

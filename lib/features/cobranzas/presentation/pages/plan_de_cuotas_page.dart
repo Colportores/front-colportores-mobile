@@ -480,15 +480,27 @@ class _PlanDeCuotasPageState extends ConsumerState<PlanDeCuotasPage> {
         const SizedBox(height: 11),
         const RotuloDeCuotas(TextosCuotas.cuotasRotulo),
         for (var i = 0; i < _cantidad; i++) ...[
-          FilaDeCuotaEditable(
-            key: Key('cuotas_fila_$i'),
-            rotulo: TextosCuotas.rotuloDeCuota(i + 1, fechas[i]),
-            controlador: _controladores[i],
-            alCambiar: (t) => _alEditar(i, t),
-            ayuda: _ajustadas.contains(i) ? TextosCuotas.seAjusto : null,
-            error: _problemas[i] == null ? null : TextosCuotas.problema(_problemas[i]!, saldo),
-            habilitado: !_enviando,
-          ),
+          if (i == _cantidad - 1)
+            // La última es lo que falta: no se escribe a mano (decisión del 03/11, #608).
+            FilaDeCuotaEditable(
+              key: Key('cuotas_fila_$i'),
+              rotulo: TextosCuotas.rotuloDeCuota(i + 1, fechas[i]),
+              valorFijo: FormatoVenta.monto(_montos[i]),
+              calculada: true,
+              ayuda: _ajustadas.contains(i)
+                  ? TextosCuotas.ultimaCalculadaAjustada()
+                  : TextosCuotas.ultimaCalculada,
+            )
+          else
+            FilaDeCuotaEditable(
+              key: Key('cuotas_fila_$i'),
+              rotulo: TextosCuotas.rotuloDeCuota(i + 1, fechas[i]),
+              controlador: _controladores[i],
+              alCambiar: (t) => _alEditar(i, t),
+              ayuda: _ajustadas.contains(i) ? TextosCuotas.seAjusto : null,
+              error: _problemas[i] == null ? null : TextosCuotas.problema(_problemas[i]!, saldo),
+              habilitado: !_enviando,
+            ),
           const SizedBox(height: 11),
         ],
         const Text(

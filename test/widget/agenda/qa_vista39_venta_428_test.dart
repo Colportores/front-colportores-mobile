@@ -2,27 +2,19 @@
 // cobrar?»). Complementa los tests del implementador con los casos límite que ellos no tocan: la nota
 // que viaja, el doble toque en «Sí», acciones superpuestas, el aviso que debe seguir a la vista, los
 // bordes del reloj y la matriz de tamaños y letra con las guías de accesibilidad.
-//
-// Los que llevan `skip:` documentan un hallazgo del QA (se sacan cuando el implementador lo arregla).
-// `--dart-define=QA_HALLAZGOS=true` los corre igual para verlos fallar.
 import 'dart:async';
 
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/hoja_termino_entrevista.dart';
 import 'package:colportores_mobile/features/agenda/presentation/widgets/textos_entrevista.dart';
 import 'package:colportores_mobile/features/ventas/presentation/formato_venta.dart';
-import 'package:colportores_mobile/features/ventas/presentation/widgets/hoja_cuando_cobrar.dart';
+import 'package:colportores_mobile/features/ventas/presentation/pages/cuando_cobrar_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/qa_vista39_venta_428_arnes.dart';
 import '../../helpers/venta_ui_falsos.dart' show tocar;
-
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
-
-/// `skip` de un hallazgo: salvo con `QA_HALLAZGOS=true`.
-const _hallazgo = !_verHallazgos;
 
 void main() {
   late Arnes428 a;
@@ -41,7 +33,7 @@ void main() {
       await a.tocarKey(tester, ClavesEntrevista.registrarVenta);
       await a.armarLaVenta(tester);
       await a.registrar(tester);
-      await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await a.sinFecha(tester);
 
       final recibida = a.montaje.agenda.recibidas.single;
       expect(recibida.nota?.texto, 'volver con la esposa');
@@ -70,7 +62,7 @@ void main() {
       );
     });
 
-    // skip: QA #428 — decisión P1: el aviso sale al llegar a R·08, después de la hoja (hoy sale antes).
+    // QA #428, decisión P1: el aviso sale al volver al mapa (42B·01H), después del cierre.
     testWidgets('dado el aviso «Venta 0039 guardada.», cuando elijo «Sin fecha», entonces el aviso '
         'sigue a la vista aunque haya tardado en elegir (R·08)', (tester) async {
       await a.montar(tester);
@@ -78,10 +70,10 @@ void main() {
 
       // Ana lee la pregunta unos segundos: el aviso (4 s) corre por debajo de la hoja.
       await tester.pump(const Duration(seconds: 6));
-      await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await a.sinFecha(tester);
 
-      expect(find.text('Venta 0039 guardada.'), findsOneWidget);
-    }, skip: _hallazgo);
+      expect(find.text('Venta 0039 guardada. Cobranza sin fecha.'), findsOneWidget);
+    });
   });
 
   group('casos límite del recorrido', () {
@@ -109,10 +101,11 @@ void main() {
       },
     );
 
-    // skip: QA #428 — atrás + «Salir» con la venta guardándose: la venta y la visita se guardan pero el
-    // recorrido devuelve «no se completó» y la entrevista queda en curso.
+    // QA #428: atrás con la venta guardándose no pregunta ni sale (la pantalla no se cierra mientras
+    // la venta se está yendo a la base): no hay «Salir» que diga que no se guardó una venta que sí se
+    // guardó, y al terminar el recorrido sigue con la venta registrada.
     testWidgets('dado que el botón de atrás se usa mientras la venta se está guardando, entonces '
-        'el aviso no dice que no se guardó una venta que sí se guardó', (tester) async {
+        'no pregunta ni sale y el recorrido sigue con la venta guardada', (tester) async {
       await a.montar(tester);
       await a.hastaLaVenta(tester);
       await a.armarLaVenta(tester);
@@ -124,20 +117,26 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       await tester.binding.handlePopRoute();
       await tester.pump(const Duration(milliseconds: 400));
-      final salir = find.text(TextosVenta.salirSalir);
-      expect(salir, findsOneWidget, reason: 'con la venta a medias, atrás pide confirmar');
-      await tester.tap(salir);
-      await tester.pump(const Duration(milliseconds: 400));
+      expect(
+        find.text(TextosVenta.salirSalir),
+        findsNothing,
+        reason: 'con la venta guardándose, atrás no pide confirmar ni se va',
+      );
+      expect(find.byKey(const Key('nueva_venta_pagina')), findsOneWidget);
       compuerta.complete();
       await tester.pumpAndSettle();
 
-      // La venta y la visita se guardaron (la transacción ya había empezado)...
+      // La venta y la visita se guardaron: el recorrido sigue con «Venta registrada» (sin cobrar nada
+      // ni agendar la entrega ni la cobranza) hasta el mapa.
       expect(a.entorno.ventas.recibidas, hasLength(1));
       expect(a.montaje.agenda.recibidas, hasLength(1));
-      // ...así que el recorrido no puede decir que no se completó ni dejar la entrevista abierta.
+      await a.tocarKey(tester, const Key('venta_terminar'));
+      await a.saltarFechaDeEntrega(tester);
+      await a.sinFecha(tester);
+      // ...y lo dice: no «no se completó», ni la entrevista abierta.
       expect(a.salida, isA<VentaGuardadaEnLaEntrevista>());
       expect(a.montaje.almacen.guardadas, isEmpty);
-    }, skip: _hallazgo);
+    });
 
     testWidgets('dado el 31/10 a las 23:57, cuando elijo «Hoy», entonces propone las 23:59 y '
         'agenda ese día', (tester) async {
@@ -146,7 +145,7 @@ void main() {
       a.montaje.reloj = () => DateTime(2026, 10, 31, 23, 57);
 
       await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.hoy));
-      await a.tocarKey(tester, const Key('agendar_hoja_listo'));
+      await a.listoYGuardar(tester);
 
       final fecha = a.agendas.recibidas.single.agenda.fechaProgramada.toLocal();
       expect(fecha, DateTime(2026, 10, 31, 23, 59));
@@ -160,7 +159,7 @@ void main() {
       a.montaje.reloj = () => DateTime(2026, 10, 31, 23, 57);
 
       await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.manana));
-      await a.tocarKey(tester, const Key('agendar_hoja_listo'));
+      await a.listoYGuardar(tester);
 
       expect(
         a.agendas.recibidas.single.agenda.fechaProgramada.toLocal(),
@@ -192,7 +191,7 @@ void main() {
       await a.tocarKey(tester, ClavesEntrevista.registrarVenta);
       await a.armarLaVenta(tester);
       await a.registrar(tester);
-      await a.tocarKey(tester, ClavesCuandoCobrar.opcion(CuandoCobrar.sinFecha));
+      await a.sinFecha(tester);
 
       expect(a.montaje.agenda.recibidas, hasLength(1));
       expect(a.entorno.ventas.recibidas, hasLength(1));

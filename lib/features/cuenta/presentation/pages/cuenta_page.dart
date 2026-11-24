@@ -1,13 +1,30 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
+import '../../../depositos/presentation/pages/registrar_deposito_page.dart';
+import '../../../depositos/presentation/providers/depositos_providers.dart'
+    show ticketsDeDepositoRechazadosProvider, ticketsDeDepositoSinSubirProvider;
+import '../../../depositos/presentation/widgets/aviso_tickets_sin_subir.dart';
+import '../../../pedidos/presentation/pages/mis_pedidos_page.dart';
+import '../../../pedidos/presentation/pages/pedir_pedido_page.dart';
+import '../../../pedidos/presentation/textos_pedidos.dart';
+import '../../../pedidos/presentation/widgets/enlace_a_mis_pedidos.dart';
+import '../../../tickets/presentation/pages/historial_de_tickets_page.dart';
+import '../../../tickets/presentation/providers/tickets_providers.dart'
+    show historialDeTicketsProvider;
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../domain/entities/resumen_de_cuenta.dart';
 import '../providers/cuenta_providers.dart';
+import '../providers/deuda_casa_providers.dart';
 import '../textos_cuenta.dart';
+import '../widgets/piezas_alquiler.dart';
 import '../widgets/piezas_cuenta.dart';
 import '../widgets/piezas_mi_plata.dart';
+import '../widgets/tarjeta_de_deuda.dart';
+import 'alquiler_page.dart';
 import 'mi_plata_page.dart';
 
 /// La pestaña «Cuenta» (vista 33A, HU-CTA-001): las cifras de la plata del colportor con cuánto
@@ -19,10 +36,14 @@ import 'mi_plata_page.dart';
 /// aviso: no hay nada viejo que decir. Mientras se calcula, un bloque gris por tarjeta
 /// (33A·03); si la base no se puede leer, el error con «Reintentar» (33A·05), nunca ceros.
 ///
-/// En V1 son tres tarjetas, Depositado, En mano y Por cobrar. «Depositado» suma solo lo que el
-/// coordinador validó y baja del servidor por el pull: mientras el teléfono no bajó nada no se dibuja
-/// (ni un cero), y sin conexión un aviso dice de cuándo es (33A·02). La deuda con la casa editora llega
-/// con los pedidos (V2). Cada tarjeta se toca y abre su detalle en «Mi plata» (HU-CTA-003, 33C).
+/// Son cuatro tarjetas: la deuda con la casa editora, Depositado, En mano y Por cobrar. «Depositado» suma
+/// solo lo que el coordinador validó y baja del servidor por el pull: mientras el teléfono no bajó nada
+/// no se dibuja (ni un cero), y sin conexión un aviso dice de cuándo es (33A·02). La deuda la cuenta el
+/// teléfono con lo que bajó con la sincronización (HU-CTA-002, #671): se muestra con la hora de esa bajada y
+/// su toque abre el detalle por pedido (33B).
+/// Las tres cifras se tocan y abren su detalle en «Mi plata» (HU-CTA-003, 33C). Debajo, «ACCIONES» con
+/// «+ Hacer un pedido» (HU-STK-009, 37A), «Cargar ticket» y «Registrar depósito» (HU-CTA-004, vistas 38 A
+/// y 33 D) y las filas «Mis pedidos» (37B) y «Mis tickets» (HU-COB-009, vista 38B).
 class CuentaPage extends ConsumerStatefulWidget {
   const CuentaPage({super.key, required this.colportorId, this.activa = true});
 
@@ -54,6 +75,58 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
     }
   }
 
+  /// Ya se está abriendo «Registrar depósito».
+  var _abriendoDeposito = false;
+
+  Future<void> _registrarDeposito() async {
+    if (_abriendoDeposito) return;
+    _abriendoDeposito = true;
+    try {
+      await RegistrarDepositoPage.abrir(context, colportorId: widget.colportorId);
+    } finally {
+      _abriendoDeposito = false;
+    }
+  }
+
+  /// Ya se está abriendo «Mis tickets».
+  var _abriendoTickets = false;
+
+  Future<void> _abrirMisTickets() async {
+    if (_abriendoTickets) return;
+    _abriendoTickets = true;
+    try {
+      await HistorialDeTicketsPage.abrir(context, colportorId: widget.colportorId);
+    } finally {
+      _abriendoTickets = false;
+    }
+  }
+
+  /// Ya se está abriendo «Mi alquiler».
+  var _abriendoAlquiler = false;
+
+  Future<void> _abrirAlquiler() async {
+    if (_abriendoAlquiler) return;
+    _abriendoAlquiler = true;
+    try {
+      await AlquilerPage.abrir(context, colportorId: widget.colportorId);
+    } finally {
+      _abriendoAlquiler = false;
+    }
+  }
+
+  /// Ya se está abriendo «Nuevo pedido» o «Mis pedidos».
+  var _abriendoPedido = false;
+
+  Future<void> _abrirPedido(Future<void> Function() abrir) async {
+    if (_abriendoPedido) return;
+    _abriendoPedido = true;
+    try {
+      await abrir();
+    } finally {
+      _abriendoPedido = false;
+    }
+  }
+
   @override
   void didUpdateWidget(CuentaPage anterior) {
     super.didUpdateWidget(anterior);
@@ -63,7 +136,11 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
     // construcción.
     if (widget.activa && !anterior.activa) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && widget.activa) ref.invalidate(resumenDeCuentaProvider(widget.colportorId));
+        if (mounted && widget.activa) {
+          ref.invalidate(resumenDeCuentaProvider(widget.colportorId));
+          // La deuda se vuelve a leer de lo que bajó; la última lectura sigue a la vista mientras tanto.
+          unawaited(ref.read(deudaConLaCasaProvider(widget.colportorId).notifier).actualizar());
+        }
       });
     }
   }
@@ -86,6 +163,13 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       final datos = resumen.requireValue;
       final depositadoAl = datos.depositadoAl;
       final sinConexion = ref.watch(conexionProvider).value == TipoConexion.sinConexion;
+      // La deuda: la hora de la última sincronización entra en el aviso, y si no se pudo leer de nuevo se avisa.
+      final deudaLeidaEn = ref.watch(
+        deudaConLaCasaProvider(widget.colportorId).select((e) => e.lectura?.leidaEn),
+      );
+      final falloDeLaDeuda = ref.watch(
+        deudaConLaCasaProvider(widget.colportorId).select((e) => e.fallo),
+      );
       cuerpo = [
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -96,10 +180,36 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
               spacing: 8,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (sinConexion && depositadoAl != null)
+                // Sin conexión: el aviso sale si hay alguna hora guardada (la de «Depositado» o la de la
+                // deuda) y las nombra. Con red, si la deuda no se pudo actualizar, lo guardado se ve con
+                // su hora y un «Reintentar».
+                if (sinConexion && (depositadoAl != null || deudaLeidaEn != null))
                   AvisoSinConexionCuenta(
-                    texto: FormatoCuenta.sinConexion(depositadoAl, ref.read(relojCuentaProvider)()),
+                    texto: FormatoCuenta.sinConexion(
+                      depositadoAl,
+                      ref.read(relojCuentaProvider)(),
+                      deudaLeidaEn: deudaLeidaEn,
+                    ),
+                  )
+                else if (!sinConexion && deudaLeidaEn != null && falloDeLaDeuda != null)
+                  BannerErrorCuenta(
+                    margen: EdgeInsets.zero,
+                    texto: FormatoCuenta.deudaSinActualizar(
+                      deudaLeidaEn,
+                      ref.read(relojCuentaProvider)(),
+                    ),
+                    alReintentar: () => unawaited(
+                      ref.read(deudaConLaCasaProvider(widget.colportorId).notifier).actualizar(),
+                    ),
                   ),
+                // 38A-08: la foto de un ticket de depósito no pudo subir. Solo cuando pasa, para no
+                // sumar un hueco a la columna.
+                if ((ref.watch(ticketsDeDepositoSinSubirProvider).value ?? 0) > 0)
+                  const AvisoDeTicketsSinSubir(),
+                // La foto que ya no se puede reintentar (P1 del 10/11): avisarle al coordinador.
+                if (ref.watch(ticketsDeDepositoRechazadosProvider).value?.isNotEmpty ?? false)
+                  const AvisoDeTicketsRechazados(),
+                TarjetaDeDeuda(colportorId: widget.colportorId),
                 for (final tipo in TipoDeCifra.values)
                   if (_cifraDe(tipo, datos) case final cifra?)
                     TarjetaDeCifra(
@@ -108,6 +218,64 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                       alAbrir: () => _abrir(tipo),
                       cifra: cifra,
                     ),
+                AccionesDeCuenta(
+                  acciones: [
+                    // El orden de 33A·01: «+ Hacer un pedido», «Cargar ticket», «Registrar depósito».
+                    AccionDeCuenta(
+                      texto: TextosPedidos.hacerUnPedido,
+                      clave: const Key('cuenta_hacer_un_pedido'),
+                      alTocar: () => unawaited(
+                        _abrirPedido(
+                          () => PedirPedidoPage.abrir(context, colportorId: widget.colportorId),
+                        ),
+                      ),
+                    ),
+                    // «Cargar ticket» (vista 38): el mismo formulario que «Registrar depósito» (desde
+                    // «Paso ticket» el ticket y el depósito se cargan juntos).
+                    AccionDeCuenta(
+                      texto: TextosCuenta.cargarTicket,
+                      clave: const Key('cuenta_cargar_ticket'),
+                      alTocar: () => unawaited(_registrarDeposito()),
+                      apagadaPorque: datos.enMano.totalCentavos > 0
+                          ? null
+                          : TextosCuenta.sinPlataParaDepositar,
+                    ),
+                    AccionDeCuenta(
+                      texto: TextosCuenta.registrarDeposito,
+                      clave: const Key('cuenta_registrar_deposito'),
+                      alTocar: () => unawaited(_registrarDeposito()),
+                      // Con $ 0 en mano no hay qué depositar (como 33C·03, que no dibuja el botón).
+                      apagadaPorque: datos.enMano.totalCentavos > 0
+                          ? null
+                          : TextosCuenta.sinPlataParaDepositar,
+                    ),
+                  ],
+                ),
+                // «Mis pedidos · N por autorizar ›» (33A·01, HU-STK-009).
+                EnlaceAMisPedidos(
+                  colportorId: widget.colportorId,
+                  alAbrir: () => unawaited(
+                    _abrirPedido(
+                      () => MisPedidosPage.abrir(context, colportorId: widget.colportorId),
+                    ),
+                  ),
+                ),
+                // 33A·01: la puerta de «Mis tickets» (vista 38B), con cuántos esperan validación.
+                FilaDeEnlaceDeCuenta(
+                  key: const Key('cuenta_mis_tickets'),
+                  texto: TextosCuenta.misTickets,
+                  valor: _ticketsPorValidar(
+                    ref.watch(historialDeTicketsProvider).value?.porValidar,
+                  ),
+                  alTocar: () => unawaited(_abrirMisTickets()),
+                ),
+                // La línea de enlaces (33A·01): sin alquiler en ninguna campaña no hay línea (HU-CTA-007).
+                if (ref.watch(alquilerDelColportorProvider(widget.colportorId)).asData?.value
+                    case final alquiler? when alquiler.hayAlquiler)
+                  FilaDeAlquilerEnCuenta(
+                    alquiler: alquiler,
+                    alAbrir: () => unawaited(_abrirAlquiler()),
+                  ),
               ],
             ),
           ),
@@ -125,6 +293,10 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       ],
     );
   }
+
+  /// «1 por validar»; sin tickets esperando (o sin saberlo) no se dice nada.
+  static String? _ticketsPorValidar(int? cuantos) =>
+      cuantos == null || cuantos == 0 ? null : TextosCuenta.ticketsPorValidar(cuantos);
 
   /// La cifra de cada tarjeta; `null` = no se dibuja («Depositado» antes de la primera bajada).
   static CifraDeCuenta? _cifraDe(TipoDeCifra tipo, ResumenDeCuenta datos) => switch (tipo) {

@@ -37,12 +37,13 @@ final class ResumenDeCuentaLocalDataSourceDrift {
     _db.espacios,
     _db.ventaItems,
     _db.depositos,
+    _db.tickets,
     _db.syncMetas,
   };
 
   /// El resumen del colportor [colportorId], de nuevo cada vez que cambia algo que lo afecta.
   Stream<ResumenDeCuenta> observar(String colportorId) => _db
-      .customSelect('SELECT 1', readsFrom: _tablas)
+      .customSelect('SELECT 1 AS cambio_del_resumen_de_cuenta', readsFrom: _tablas)
       .watch()
       .asyncMap((_) => leer(colportorId))
       .distinct();

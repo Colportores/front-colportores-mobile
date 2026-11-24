@@ -7,18 +7,19 @@
 
 import 'package:sync_engine/sync_engine.dart';
 
-/// Las tablas de la DB local que **no** son entidades del contrato: la cola, los watermarks y los
-/// metadatos del motor. No se declaran ni se sincronizan.
-const tablasDelMotor = {'sync_queue', 'sync_watermark', 'sync_meta'};
+/// Las tablas de la DB local que **no** son entidades del contrato: la cola, los watermarks, los
+/// metadatos y la marca de «fuera del área» del motor. No se declaran ni se sincronizan.
+const tablasDelMotor = {'sync_queue', 'sync_watermark', 'sync_meta', 'sync_fuera_del_area'};
 
 /// Lo que dice §2 para cada tabla local.
 final specsDeLaApp = <SyncSpec>[
   // push: lo que escribe el colportor. `critical` sube al instante (§5.2).
   SyncSpec.push('jornada', critical: true),
-  // `alsoPull` (la réplica de las casas de la ciudad, §2.1) llega con I2 (#181): el pull por
-  // ciudad y el aviso de fuera del área.
-  SyncSpec.push('ubicacion'),
-  SyncSpec.push('espacio'),
+  // Bidireccionales (§2.1, I2, #181): baja toda la ciudad de su zona (sin zona, todas las de la
+  // campaña), más lo que registró él. Lo que sale del área se marca en `sync_fuera_del_area`, no se
+  // borra, y el pull no pisa una fila con escrituras que todavía no subieron.
+  SyncSpec.push('ubicacion', alsoPull: true),
+  SyncSpec.push('espacio', alsoPull: true),
   // §2 y backend 0032: sube y sobrevive a una reinstalación. Hoy la tabla local no tiene `id` ni
   // columnas de sync y nada la encola: eso es un seguimiento de #178.
   SyncSpec.push('ubicacion_par_decidido'),
@@ -29,6 +30,10 @@ final specsDeLaApp = <SyncSpec>[
   // son filas de `nota` (ADR-017) y la fila no lleva dato personal. Sin `alsoPull`: un solo escritor.
   SyncSpec.push('agenda'),
   SyncSpec.push('visita'),
+  // Lo que la colportora dejó en una entrevista sin venta («Lo que dejaste», #608; backend-supabase
+  // 0160): después de la visita de la que cuelga. Sin dato del cliente ni `colportor_id` (lo fija el
+  // servidor). Sin `alsoPull`: un solo escritor.
+  SyncSpec.push('visita_misionero'),
   // La venta y sus ítems (HU-VEN-001, #423): suben sin dato del cliente (`espacio_persona_id` es un id
   // opaco, ADR-004). `venta.motivo_monto_manual` es la única excepción de texto libre (decisión de
   // Cristian, 23/10). Sin `alsoPull`: un solo escritor.
@@ -56,10 +61,22 @@ final specsDeLaApp = <SyncSpec>[
   // como `cobranza` y `devolucion`: mueve plata y no se pierde (decisión del 30/10 sobre #593). El de
   // banco u oficina lleva el ticket, que sube antes: el depósito espera en la cola.
   SyncSpec.push('deposito', critical: true, alsoPull: true),
+  // El ticket del cobro con tarjeta o del depósito (HU-COB-007, #426; backend-supabase 0113 y 0146): sube
+  // sin dato del cliente y baja lo propio (`alsoPull`, filtrado por dueña) para ver el estado sin
+  // conexión. `usuario_id`, `subido_en`, `estado`, `revisado_*`, `motivo_rechazo` y
+  // `campania_validadora_id` los pone el servidor y el push los descarta. La foto no viaja por el
+  // motor: va por el enlace firmado de `foto-ticket` y su ruta se completa en `url_cloud`, una vez.
+  SyncSpec.push('ticket', alsoPull: true),
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
-  // `ubicacion_id`, no `id`). El `alsoPull` (las casas de la ciudad, §2.1) llega con el pull de las
-  // casas (#181).
-  SyncSpec.push('house_status', pk: 'ubicacion_id'),
+  // `ubicacion_id`, no `id`). Baja con las casas de la ciudad, con el mismo alcance (§2.1, #181).
+  SyncSpec.push('house_status', pk: 'ubicacion_id', alsoPull: true),
+
+  // push con pull de lo propio (contrato §2, backend-supabase 0124): el pedido a la casa editora que la
+  // colportora arma sin conexión (HU-STK-009, #387, todavía sin pantalla). Hoy solo baja: de ahí el
+  // teléfono reparte lo pagado entre los pedidos con saldo (#671). El pedido sube antes que sus líneas
+  // (el orden de los specs es el del lote, §3: va antes que los `pull`).
+  SyncSpec.push('pedido_casa_editora', alsoPull: true),
+  SyncSpec.push('pedido_item', alsoPull: true),
 
   // pull: el mapa de la campaña, por el canal de catálogo (§2). La app nunca las escribe.
   SyncSpec.pull('campania_ciudad'),
@@ -69,6 +86,9 @@ final specsDeLaApp = <SyncSpec>[
   // `campania` las baja cualquier autenticado (RLS de lectura abierta); `campania_colportor` baja
   // solo las inscripciones propias (backend-supabase 0014: `columna_duenio`). La app nunca las escribe.
   SyncSpec.pull('ciudad'),
+  // `pais` (V1: solo Uruguay), como `ciudad`: el contrato la lista entre las entidades `pull` y el
+  // servidor ya la sirve (backend-supabase 0002). Hoy ninguna pantalla la lee (P1 de #181, 12/11).
+  SyncSpec.pull('pais'),
   SyncSpec.pull('campania'),
   SyncSpec.pull('campania_colportor'),
 
@@ -96,6 +116,13 @@ final specsDeLaApp = <SyncSpec>[
   // el servidor todavía no la publica (backend-supabase 0145), el pull ignora la entidad.
   SyncSpec.pull('stock'),
 
+  // pull: la deuda con la casa editora (HU-CTA-002, #671; backend-supabase 0179, #254). La cuenta de la
+  // colportora y el historial de su deuda son réplicas de solo lectura, cada persona con las filas suyas:
+  // el teléfono calcula con ellas la deuda y la variación semanal, sin consultas a cada rato (decisión de
+  // Cristian, 05/11). Sin `realtime`: baja en el ciclo.
+  SyncSpec.pull('cuenta_colportor'),
+  SyncSpec.pull('cuenta_deuda_historial'),
+
   // local: jamás sale del teléfono por sync (Ley 18.331). Solo el backup E2E.
   SyncSpec.local('audit_log'),
   // La marca de unión de las ubicaciones (HU-UBI-006, «Marca local» de Cristian, 28/10): la llena el pull
@@ -109,6 +136,12 @@ final specsDeLaApp = <SyncSpec>[
   // El historial del centro de notificaciones (HU-NOT-005): avisos de este teléfono, con la
   // dirección de la visita en el texto; nunca sube.
   SyncSpec.local('notificacion_historial'),
+  // La copia comprimida de la foto de cada ticket y cómo va su subida (HU-COB-007, S41): archivos de este
+  // teléfono, que el colportor puede borrar. No sube por el motor.
+  SyncSpec.local('ticket_foto_local'),
+  // Qué movió cada unión de duplicados hecha en el teléfono (HU-UBI-006, #679): para deshacerla si el
+  // servidor rechaza su trabajo. Solo `id`; viaja en el backup con la cola de sync.
+  SyncSpec.local('ubicacion_union_local'),
 ];
 
 /// El registro validado contra [tablasLocales] (todas las de la DB, sin [tablasDelMotor]).
@@ -127,7 +160,7 @@ final entidadesQueEscribeElMotor = {
 /// servidor. Las `push` (lo que escribió el colportor, y puede no haber subido todavía) y las
 /// `local` (personas, notas, historial: solo viven en el teléfono), más la cola de sync, porque los
 /// jobs encolados al momento del backup tienen que volver a existir (contrato §7, fase 1). Las
-/// réplicas de solo lectura (`pull`) las reconstruye el pull, y `sesion_usuario` es de la sesión de
+/// réplicas de solo lectura (`pull`) las reconstruye el pull y `sesion_usuario` es de la sesión de
 /// este teléfono.
 final entidadesDelBackup = {
   for (final s in specsDeLaApp)

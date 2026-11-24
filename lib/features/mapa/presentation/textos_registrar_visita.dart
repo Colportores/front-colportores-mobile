@@ -14,6 +14,10 @@ abstract final class TextosRegistrarVisita {
   static const entrevistaDada = 'Entrevista dada';
   static const cobranza = 'Cobranza';
 
+  /// «Vender» no está en el canvas de C·06: lo pide la decisión de Cristian del 04/11 («Vender desde el
+  /// mapa»), que manda sobre el artboard. Texto propuesto (mapa §2: texto/aviso).
+  static const vender = 'Vender';
+
   static const ayudaGuardaYVuelve = 'Guarda y vuelve al mapa';
   static const ayudaProgramar = 'Elegís día y franja';
   static const ayudaEntrevistaDada = 'Empieza a contar el tiempo';
@@ -23,6 +27,20 @@ abstract final class TextosRegistrarVisita {
   /// para cambiarlo.
   static String ayudaCobranza(String persona, int centavos) =>
       '$persona debe ${FormatoBaja.monto(centavos).replaceFirst(r'$U', r'$')}';
+
+  /// La ayuda de «Vender» cuando en la casa hay más de una persona entrevistada: no se elige sola, se
+  /// pregunta a quién en el paso siguiente. Texto propuesto (mapa §2: texto/aviso).
+  static const ayudaVenderVarias = 'Elegís a quién le vendés';
+
+  /// «Vender» cuando las personas entrevistadas se dieron de baja desde que se abrió «¿Qué pasó?»: no hay
+  /// a quién venderle. Dice qué pasó y qué hacer (mapa §2: texto/aviso; texto del issue front-colportores-mobile#669).
+  static const nadieParaVender =
+      'Ya no queda ninguna persona entrevistada en esta casa. Elegí otra opción.';
+
+  /// La ayuda de «Vender»: «Registrar la venta de Pedro Gómez».
+  static String ayudaVender(String persona) => persona.trim().isEmpty
+      ? 'Registrar la venta de la entrevista'
+      : 'Registrar la venta de ${persona.trim()}';
 
   // R·01 — el aviso «Guardado».
   static String guardado(String direccion, String resultado) =>
@@ -48,9 +66,24 @@ abstract final class TextosRegistrarVisita {
   static const casaNoEstaMas =
       'Esta casa ya no está en tu teléfono. Cerrá esta hoja y volvé a abrir la casa.';
 
-  /// «Registrar visita» sobre un edificio: el depto se elige antes (#452) y todavía no está.
+  /// «¿Qué pasó en el 2A?» (vista 39, N·07): «¿Qué pasó?» en un depto, con su número. A confirmar (mapa
+  /// §2: texto): un depto sin número (el canvas no lo dibuja) dice «¿Qué pasó en este depto?».
+  static String tituloDelDepto(String? numeroDepto) {
+    final numero = numeroDepto?.trim() ?? '';
+    return numero.isEmpty ? '¿Qué pasó en este depto?' : '¿Qué pasó en el $numero?';
+  }
+
+  /// «Registrar visita» sin el depto elegido (en un edificio todo es por depto, vista 39 C·09). Desde
+  /// la hoja de la casa ya no pasa: el depto se elige en la lista de deptos. A confirmar (mapa §2:
+  /// texto): dice cómo seguir.
   static const edificioSinDepto =
-      'Todavía no se pueden registrar visitas en un edificio desde acá.';
+      'Elegí el depto en la lista del edificio para registrar la visita.';
+
+  /// «+ Agendar» de la pestaña Agenda sobre un edificio, o un negocio con más de un espacio: la cita es
+  /// de un depto, y el depto se elige en la hoja del edificio (vista 39, C·09 → C·10 «+ Agendar»). A
+  /// confirmar (mapa §2: texto): dice cómo seguir.
+  static const edificioSinDeptoParaAgendar =
+      'Para agendar en un edificio, tocalo en el Mapa, elegí el depto y tocá «+ Agendar».';
 
   /// El resultado se deshizo.
   static String seDeshizo(String direccion) => 'Se deshizo. $direccion vuelve a como estaba.';

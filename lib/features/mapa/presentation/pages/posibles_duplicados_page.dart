@@ -237,6 +237,18 @@ class _PosiblesDuplicadosPageState extends ConsumerState<PosiblesDuplicadosPage>
       }
     });
 
+    // Un par unido con la pantalla abierta queda oculto; si el servidor rechaza la unión, el teléfono
+    // la deshace y el par vuelve con su aviso: se suelta sin salir y volver a entrar (#679).
+    ref.listen(paresParaRevisarProvider(widget.colportorId), (_, lectura) {
+      final rechazadas = {
+        for (final p in lectura.value ?? const <ParaRevisar>[])
+          if (p.rechazoDeUnion != null) p.par.clave,
+      };
+      if (rechazadas.isNotEmpty) {
+        ref.read(unionesPendientesProvider.notifier).soltarRechazadas(rechazadas);
+      }
+    });
+
     final ruta = ModalRoute.of(context);
     _seguirCobertura(ruta != null && !ruta.isCurrent);
 
@@ -386,7 +398,8 @@ class _Encabezado extends StatelessWidget {
   }
 }
 
-/// Un par: el motivo y la distancia, las dos ubicaciones y «Revisar».
+/// Un par: el motivo y la distancia, las dos ubicaciones y «Revisar». Si el servidor rechazó la
+/// unión de este par y quedó separado en el teléfono, arriba va el aviso (#679).
 class _TarjetaPar extends StatelessWidget {
   const _TarjetaPar({required this.item, required this.alRevisar});
 
@@ -407,6 +420,13 @@ class _TarjetaPar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (item.rechazoDeUnion case final codigo?) ...[
+            AvisoUnionRechazada(
+              key: Key('union_rechazada_${par.clave}'),
+              texto: TextosPosiblesDuplicados.avisoUnionRechazada(codigo),
+            ),
+            const SizedBox(height: 10),
+          ],
           EncabezadoMotivoPar(
             motivo: TextosPosiblesDuplicados.motivo(par.motivo),
             distancia: TextosPosiblesDuplicados.aDistancia(par.distanciaMetros),

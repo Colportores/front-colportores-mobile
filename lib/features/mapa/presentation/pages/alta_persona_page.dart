@@ -11,8 +11,14 @@ import '../../domain/services/validador_persona.dart';
 import '../../domain/usecases/registrar_persona_use_case.dart';
 import '../providers/personas_providers.dart';
 import '../textos_personas.dart';
+import '../widgets/dialogos_modificar.dart';
 import '../widgets/piezas_alta.dart';
 import '../widgets/piezas_persona.dart';
+
+/// Lo que deja un alta: la persona guardada y el vínculo que la une con su espacio (el `espacio_persona`
+/// que el alta crea junto con ella). Quien necesita a la persona en un espacio, como la venta de una
+/// entrevista sin nombre (#669), usa [vinculoId] sin volver a leer el espacio.
+typedef AltaDePersona = ({Persona persona, String vinculoId});
 
 /// "Nueva persona" (HU-UBI-008, vista 32A, artboards A·01 a A·06): el formulario que da de alta a un
 /// cliente en un espacio. Todo se guarda en el teléfono —la persona y su nota no se sincronizan—, así
@@ -27,10 +33,18 @@ import '../widgets/piezas_persona.dart';
 /// - Si guardar falla, el formulario conserva lo escrito, el botón vuelve a habilitarse y pasa a decir
 ///   «Reintentar» (A·06).
 ///
-/// Devuelve la [Persona] guardada (o `null` si se cerró sin guardar), para que quien la abrió avise
-/// «Guardamos a Jorge en este teléfono.» (A·05).
+/// Devuelve la [Persona] guardada con el id de su vínculo ([AltaDePersona]), o `null` si se cerró sin
+/// guardar, para que quien la abrió avise «Guardamos a Jorge en este teléfono.» (A·05).
 class AltaPersonaPage extends ConsumerStatefulWidget {
-  const AltaPersonaPage({super.key, required this.espacioId, required this.colportorId});
+  const AltaPersonaPage({
+    super.key,
+    required this.espacioId,
+    required this.colportorId,
+    this.ayuda,
+    this.nombreInicial,
+    this.apellidoInicial,
+    this.telefonoInicial,
+  });
 
   /// El espacio al que se agrega la persona.
   final String espacioId;
@@ -38,14 +52,37 @@ class AltaPersonaPage extends ConsumerStatefulWidget {
   /// UUID del usuario con la sesión iniciada (`created_by`).
   final String colportorId;
 
-  /// Abre el alta encima de la pantalla actual.
-  static Future<Persona?> abrir(
+  /// Una línea bajo el título que dice para qué se pide el nombre en este paso (por ejemplo, antes de
+  /// una venta). `null` = el alta de siempre, sin línea.
+  final String? ayuda;
+
+  /// Lo que el formulario trae ya escrito: el nombre, el apellido y el teléfono que la colportora puso
+  /// en «Editar persona» antes de elegir «Dar de baja y crear nueva» (HU-UBI-010, #405). `null` = el
+  /// campo arranca vacío, como el alta de siempre.
+  final String? nombreInicial;
+  final String? apellidoInicial;
+  final String? telefonoInicial;
+
+  /// Abre el alta encima de la pantalla actual. [ayuda] es la línea opcional bajo el título; los
+  /// `...Inicial` son lo que ya viene escrito.
+  static Future<AltaDePersona?> abrir(
     BuildContext context, {
     required String espacioId,
     required String colportorId,
-  }) => Navigator.of(context).push<Persona>(
+    String? ayuda,
+    String? nombreInicial,
+    String? apellidoInicial,
+    String? telefonoInicial,
+  }) => Navigator.of(context).push<AltaDePersona>(
     MaterialPageRoute(
-      builder: (_) => AltaPersonaPage(espacioId: espacioId, colportorId: colportorId),
+      builder: (_) => AltaPersonaPage(
+        espacioId: espacioId,
+        colportorId: colportorId,
+        ayuda: ayuda,
+        nombreInicial: nombreInicial,
+        apellidoInicial: apellidoInicial,
+        telefonoInicial: telefonoInicial,
+      ),
     ),
   );
 
@@ -84,9 +121,51 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
   /// Los ids del alta, creados con el primer intento y repetidos en los siguientes.
   IdsAltaPersona? _ids;
 
+  /// Se está preguntando si se descarta (un segundo toque en la ✕ no abre otro aviso).
+  var _preguntando = false;
+
+  /// Lo que valía [_hayCambios] en el último cuadro: el atrás del sistema se decide con eso.
+  var _habiaCambios = false;
+
+  /// Hay algo escrito que se perdería al salir (HU-UBI-011: el alta de persona pregunta como las
+  /// notas, #679). Los espacios solos no cuentan.
+  bool get _hayCambios =>
+      [_nombre, _apellido, _telefono, _nota].any((c) => c.text.trim().isNotEmpty);
+
+  void _alCambiarElTexto() {
+    final hay = _hayCambios;
+    if (hay != _habiaCambios && mounted) setState(() => _habiaCambios = hay);
+  }
+
+  /// La ✕ y el atrás del sistema: sin nada escrito cierran directo; con texto sin guardar preguntan
+  /// «¿Descartar lo que escribiste?» (#679).
+  Future<void> _salir() async {
+    if (_enviando || _preguntando) return;
+    if (!_hayCambios) {
+      Navigator.of(context).pop();
+      return;
+    }
+    _preguntando = true;
+    bool descartar;
+    try {
+      descartar = await confirmarDescartarLoEscrito(context);
+    } finally {
+      _preguntando = false;
+    }
+    if (!mounted || !descartar || _enviando) return;
+    Navigator.of(context).pop();
+  }
+
   @override
   void initState() {
     super.initState();
+    _nombre.text = widget.nombreInicial ?? '';
+    _apellido.text = widget.apellidoInicial ?? '';
+    _telefono.text = widget.telefonoInicial ?? '';
+    _habiaCambios = _hayCambios;
+    for (final c in [_nombre, _apellido, _telefono, _nota]) {
+      c.addListener(_alCambiarElTexto);
+    }
     _focoNombre.addListener(() {
       if (!_focoNombre.hasFocus && !_nombreTocado) setState(() => _nombreTocado = true);
     });
@@ -151,7 +230,7 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
       _falla = null;
     });
     Failure? falla;
-    Persona? guardada;
+    AltaDePersona? guardada;
     try {
       final casoDeUso = ref.read(registrarPersonaUseCaseProvider);
       final ids = _ids ??= casoDeUso.nuevosIds();
@@ -166,7 +245,7 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
           nota: _nota.text,
         ),
       );
-      resultado.fold((f) => falla = f, (p) => guardada = p);
+      resultado.fold((f) => falla = f, (p) => guardada = (persona: p, vinculoId: ids.vinculo));
     } on Object catch (e) {
       // Nada de `e` al mensaje: puede traer lo escrito (convenciones §7.5).
       falla = FailureInesperado(causa: e.runtimeType.toString());
@@ -199,8 +278,11 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
     final conFalla = _falla != null;
 
     return PopScope(
-      // Mientras se guarda no se sale: el resultado se perdería.
-      canPop: !_enviando,
+      // Mientras se guarda no se sale (el resultado se perdería) y con texto sin guardar se pregunta.
+      canPop: !_enviando && !_hayCambios,
+      onPopInvokedWithResult: (salio, _) {
+        if (!salio && !_enviando) unawaited(_salir());
+      },
       child: Scaffold(
         body: SafeArea(
           child: Column(
@@ -212,7 +294,7 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
                   child: IconButton(
                     tooltip: TextosPersonas.cerrar,
                     constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                    onPressed: _enviando ? null : () => Navigator.of(context).maybePop(),
+                    onPressed: _enviando ? null : () => unawaited(_salir()),
                     icon: const Icon(Icons.close),
                   ),
                 ),
@@ -241,6 +323,14 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
                           style: theme.textTheme.headlineSmall,
                         ),
                       ),
+                      if (widget.ayuda != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.ayuda!,
+                          key: ClavesAltaPersona.ayuda,
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
                       if (donde != null) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -334,4 +424,9 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
       ),
     );
   }
+}
+
+/// Las claves del alta de persona, para los tests.
+abstract final class ClavesAltaPersona {
+  static const ayuda = Key('alta_persona_ayuda');
 }

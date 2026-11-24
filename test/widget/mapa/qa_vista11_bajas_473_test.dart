@@ -4,8 +4,7 @@
 // overflow, el aviso con «Deshacer» a la vista y sin tapar lo que se puede tocar, los avisos de falla
 // dentro de lo que se ve, los casos límite y la reentrada.
 //
-// Los que llevan `skip:` documentan un hallazgo (`QA #473`); `--dart-define=QA_HALLAZGOS=true` los
-// corre. Con `--dart-define=QA_CAPTURAS=true` saca las capturas a `.dart_tool/qa_capturas/` (no se
+// Con `--dart-define=QA_CAPTURAS=true` saca las capturas a `.dart_tool/qa_capturas/` (no se
 // commitean).
 import 'dart:ui' show Tristate;
 
@@ -15,8 +14,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/qa_vista11_bajas_473_arnes.dart';
-
-const _verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 String _donde(Size t, double escala) =>
     '${t.width.toInt()}×${t.height.toInt()} al ${(escala * 100).toInt()} %';
@@ -249,8 +246,6 @@ void main() {
       expect(m.repo.activos.map((e) => e.id), contains('b-1'), reason: 'se queda reactivado');
     });
 
-    // skip: QA #473 — tras reactivar todas las bajas, una baja nueva reaparece DESPLEGADA (el estado
-    // `_bajasAbiertas` sobrevive a la desaparición de la cabecera); el issue pide «plegado».
     testWidgets('reactivar todas las bajas hace desaparecer «Dados de baja»; una baja nueva '
         'vuelve a aparecer PLEGADA', (tester) async {
       final m = await llegarABajas(tester, EstadoBajas.desplegado);
@@ -272,7 +267,7 @@ void main() {
 
       await irA473(tester, cabecera473);
       expect(find.text('▾'), findsOneWidget, reason: 'la HU/el issue: «plegado»');
-    }, skip: !_verHallazgos);
+    });
 
     testWidgets('«Reactivar» mientras reactiva otro: el otro botón no se pierde y no se pisa el '
         'aviso', (tester) async {
@@ -398,16 +393,12 @@ void main() {
   });
 
   group('coherencia visual con las pantallas vecinas', () {
-    // skip: QA #473 — «No pudimos deshacer…» sale con el «✓» verde de «hecho»: una falla con la marca de
-    // éxito. Las fallas de la hoja van con el «!» rojo (`AvisoAlta`).
     testWidgets('«No pudimos deshacer…» no lleva el «✓» de éxito', (tester) async {
       await llegarABajas(tester, EstadoBajas.noPudoDeshacer);
       expect(find.textContaining('No pudimos deshacer'), findsOneWidget);
       expect(find.text('✓'), findsNothing);
-    }, skip: !_verHallazgos);
+    });
 
-    // skip: QA #473 — el texto de «Deshacer» de la tarjeta no declara `fontFamily` (los demás botones de
-    // la hoja y de 09·03 sí, 'Inter'): sin letra del tema se dibuja con la del sistema.
     testWidgets('«Deshacer» del aviso usa la letra de la app (Inter) como el mensaje', (
       tester,
     ) async {
@@ -419,10 +410,8 @@ void main() {
           ?.fontFamily;
       expect(letra(textoAviso473), 'Inter');
       expect(letra(deshacer473), 'Inter');
-    }, skip: !_verHallazgos);
+    });
 
-    // skip: QA #473 — el tema (`OutlinedButtonTheme`) deja el relleno horizontal en 0: «Reactivar» toca
-    // el borde de la píldora, igual que «Editar edificio» de la misma hoja (preexistente).
     testWidgets('«Reactivar» tiene aire entre la letra y el borde de la píldora', (tester) async {
       await llegarABajas(tester, EstadoBajas.desplegado);
       await irA473(tester, reactivar473('b-1'));
@@ -431,7 +420,7 @@ void main() {
         find.descendant(of: reactivar473('b-1'), matching: find.text('Reactivar')),
       );
       expect(texto.left - boton.left >= 8, isTrue, reason: 'aire a la izquierda: $texto en $boton');
-    }, skip: !_verHallazgos);
+    });
   });
 
   group('privacidad', () {

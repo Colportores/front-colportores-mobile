@@ -170,6 +170,24 @@ abstract final class TextosCuotas {
       'Dejá algo para las cuotas que siguen: cada una tiene que ser de más de \$ 0.';
   static const menorQueLoPagado = 'No puede ser menos de lo que ya se cobró de esta cuota.';
   static const noHayCuotasAbiertas = 'Todas las cuotas están pagadas.';
+
+  /// La última cuota no se escribe a mano (decisión del 03/11, #608): es lo que falta del saldo. Va
+  /// bajo su monto y también como problema de [ProblemaDeCuota.ultimaCalculada]. En la agenda, el
+  /// rechazo de cancelarla dice lo mismo (`MotivoRechazoAgenda.ultimaCuotaDelPlan`) y el rechazo de
+  /// guardarla escrita a mano, `MotivoPlanDeCuotas.ultimaCuota` (a confirmar).
+  static const ultimaCalculada =
+      'Es lo que falta: se calcula sola. Para cambiarla, cambiá las cuotas anteriores.';
+
+  /// Lo que el lector de pantalla dice del monto de la última cuota, antes del texto que lo explica.
+  static const calculadaSemantica = 'Calculada, no se edita.';
+
+  /// La única cuota abierta es la última: no hay anteriores que cambiar.
+  static const ultimaUnica =
+      'Es la única cuota que queda y es lo que falta: no se cambia. Para otro día, reprogramala '
+      'desde la Agenda.';
+
+  /// «Se ajustó» no se pierde en la última: «Se ajustó. Es lo que falta: …».
+  static String ultimaCalculadaAjustada() => '$seAjusto. $ultimaCalculada';
   static const sinAvisos =
       'Algunas cobranzas quedaron sin recordatorio: revisá que las notificaciones estén prendidas.';
 
@@ -179,5 +197,6 @@ abstract final class TextosCuotas {
     ProblemaDeCuota.superaElSaldo => superaElSaldo(saldoCentavos),
     ProblemaDeCuota.noDejaParaLasSiguientes => noDejaParaLasSiguientes,
     ProblemaDeCuota.menorQueLoPagado => menorQueLoPagado,
+    ProblemaDeCuota.ultimaCalculada => ultimaCalculada,
   };
 }

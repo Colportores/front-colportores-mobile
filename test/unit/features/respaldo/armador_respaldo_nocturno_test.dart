@@ -11,17 +11,59 @@ import 'package:colportores_mobile/core/secure_storage/archivo_envoltorio_dek.da
 import 'package:colportores_mobile/core/secure_storage/clave_db.dart';
 import 'package:colportores_mobile/core/secure_storage/cripto_sodium.dart';
 import 'package:colportores_mobile/core/secure_storage/custodia_clave_db.dart';
+import 'package:colportores_mobile/core/secure_storage/envoltorio_dek.dart';
 import 'package:colportores_mobile/features/respaldo/data/services/armador_respaldo_nocturno.dart';
 import 'package:colportores_mobile/features/respaldo/domain/entities/estado_respaldo_drive.dart';
 import 'package:colportores_mobile/features/respaldo/domain/services/respaldo_nocturno.dart';
 import 'package:colportores_mobile/features/respaldo/domain/services/servicio_respaldo.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sync_engine/adapters.dart' show ArchiveSinToken;
+import 'package:sync_engine/sync_engine.dart' show BackupEntry;
+import 'package:sync_engine/testing.dart';
 
 import '../../../helpers/logger_mudo.dart';
 import '../../../helpers/respaldo_drive_falsos.dart';
 
 ClaveDb _clave(int relleno) => ClaveDb(Uint8List.fromList(List<int>.filled(32, relleno)));
+
+/// El Drive en memoria, que como el de verdad no deja hacer nada sin el token de la cuenta.
+final class _DriveQueExigeToken extends FakeArchive {
+  _DriveQueExigeToken(this._token, String Function(List<int>) digest)
+    : super(authorized: true, digest: digest);
+
+  final Future<String?> Function() _token;
+
+  Future<void> _exigir() async {
+    if (await _token() == null) throw const ArchiveSinToken('sin token');
+  }
+
+  @override
+  Future<List<BackupEntry>> list() async {
+    await _exigir();
+    return super.list();
+  }
+
+  @override
+  Future<BackupEntry> upload({
+    required List<int> payload,
+    required String? parentId,
+    required String watermark,
+    DateTime? exportedAt,
+    String? keyId,
+    String? firma,
+  }) async {
+    await _exigir();
+    return super.upload(
+      payload: payload,
+      parentId: parentId,
+      watermark: watermark,
+      exportedAt: exportedAt,
+      keyId: keyId,
+      firma: firma,
+    );
+  }
+}
 
 final class _Red implements MonitorConectividad {
   TipoConexion tipo = TipoConexion.wifi;
@@ -39,6 +81,11 @@ void main() {
   late RespaldoDriveArmado drive;
   late _Red red;
   late ArmadorDeRespaldoNocturno armador;
+  late CustodiaClaveDb custodia;
+
+  /// El Drive en memoria del respaldo de la noche: la cadena y la clave envuelta que viaja con ella.
+  FakeArchive? archivoCreado;
+  late FakeKeyEnvelopes envoltoriosDrive;
 
   Future<void> guardarSesion(String usuarioId) => drive.almacen.escribir(
     ClaveSegura.sesionAuth,
@@ -69,19 +116,28 @@ void main() {
     drive = RespaldoDriveArmado();
     red = _Red();
     final cripto = CriptoSodium();
+    archivoCreado = null;
+    envoltoriosDrive = FakeKeyEnvelopes();
+    custodia = CustodiaClaveDb(
+      drive.almacen,
+      ArchivoEnvoltorioDek(directorio: () async => directorio),
+      cripto,
+      cripto,
+      parametros: const ParametrosArgon2id(memoriaBytes: 64 * 1024, iteraciones: 1, paralelismo: 1),
+      logger: loggerMudo(),
+    );
     armador = ArmadorDeRespaldoNocturno(
       almacen: drive.almacen,
       baseLocal: helper,
-      custodia: CustodiaClaveDb(
-        drive.almacen,
-        ArchivoEnvoltorioDek(directorio: () async => directorio),
-        cripto,
-        cripto,
-        logger: loggerMudo(),
-      ),
+      custodia: custodia,
       drive: drive.repo,
       google: drive.google,
       conectividad: red,
+      armarDrive: (token, digest) {
+        // El mismo Drive en todas las noches del test.
+        archivoCreado ??= _DriveQueExigeToken(token, digest);
+        return (archivo: archivoCreado!, envoltorios: envoltoriosDrive);
+      },
       logger: loggerMudo(),
     );
   });
@@ -224,6 +280,68 @@ void main() {
       expect(
         (await drive.repo.estado('u-1')).fold((f) => throw f, (e) => e),
         isA<DriveConectada>(),
+      );
+    });
+
+    group('la clave envuelta con la contraseña viaja con el respaldo de la noche', () {
+      Future<ResultadoRespaldo> respaldarDeNoche() async {
+        final sesion = (await armador.abrir())!;
+        final resultado = await sesion.servicio.respaldar(OrigenRespaldo.nocturno);
+        await sesion.cerrar();
+        return resultado;
+      }
+
+      test(
+        'el respaldo guardado deja en Drive la clave envuelta, con la llave de su cadena',
+        () async {
+          await custodia.envolverConPassword(_clave(7), 'la contraseña');
+
+          final resultado = await respaldarDeNoche();
+
+          expect(resultado, isA<RespaldoHecho>());
+          expect(envoltoriosDrive.subidas, 1);
+          final llavesDeLaCadena = archivoCreado!.entries.map((e) => e.keyId).toSet();
+          expect(llavesDeLaCadena, hasLength(1));
+          expect(
+            envoltoriosDrive.guardados.keys,
+            llavesDeLaCadena,
+            reason: 'sin ella el respaldo no se abre en un teléfono nuevo (ADR-006)',
+          );
+          expect(
+            utf8.decode(envoltoriosDrive.guardados.values.single),
+            (await custodia.leerEnvoltorioCodificado())!,
+          );
+        },
+      );
+
+      test('la noche siguiente, con el mismo envoltorio, no lo vuelve a subir', () async {
+        await custodia.envolverConPassword(_clave(7), 'la contraseña');
+
+        await respaldarDeNoche();
+        await respaldarDeNoche();
+
+        expect(envoltoriosDrive.subidas, 1);
+      });
+
+      test('si Drive no recibe la clave envuelta, el respaldo igual queda guardado', () async {
+        await custodia.envolverConPassword(_clave(7), 'la contraseña');
+        envoltoriosDrive.failOnPut = true;
+
+        final resultado = await respaldarDeNoche();
+
+        expect(resultado, isA<RespaldoHecho>());
+        expect(envoltoriosDrive.guardados, isEmpty);
+        expect(archivoCreado!.entries, isNotEmpty, reason: 'la cadena se subió');
+      });
+
+      test(
+        'sin contraseña elegida todavía no hay nada que subir y el respaldo se guarda',
+        () async {
+          final resultado = await respaldarDeNoche();
+
+          expect(resultado, isA<RespaldoHecho>());
+          expect(envoltoriosDrive.subidas, 0);
+        },
       );
     });
   });

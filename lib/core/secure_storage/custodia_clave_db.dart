@@ -159,6 +159,15 @@ final class CustodiaClaveDb {
   Future<ClaveDb> desenvolverConPassword(String password) async {
     final envoltorio = await _archivo.leer();
     if (envoltorio == null) throw const SinEnvoltorioException();
+    return abrirEnvoltorio(envoltorio, password);
+  }
+
+  /// Desenvuelve la DEK de [envoltorio] —uno que no es el de este equipo: el que viaja con el backup
+  /// en Drive (ADR-006)— con Argon2id([password]), con los parámetros y la sal de su cabecera.
+  ///
+  /// Lanza [EnvoltorioCorruptoException] si es de un algoritmo que esta app no conoce y
+  /// [EnvoltorioNoAbreException] si la contraseña no es la que lo armó.
+  Future<ClaveDb> abrirEnvoltorio(EnvoltorioDek envoltorio, String password) async {
     if (envoltorio.algoritmo != EnvoltorioDek.algoritmoActual) {
       throw const EnvoltorioCorruptoException('algoritmo desconocido');
     }
@@ -179,6 +188,11 @@ final class CustodiaClaveDb {
       clave.destruir();
     }
   }
+
+  /// El envoltorio de este equipo tal como está en el archivo (el texto que viaja con el backup),
+  /// o `null` si no hay. Lanza [EnvoltorioCorruptoException] si no se puede interpretar: un archivo
+  /// roto no se sube a Drive.
+  Future<String?> leerEnvoltorioCodificado() async => (await _archivo.leer())?.codificar();
 
   // --- Marca de inicialización ---
 
@@ -295,6 +309,9 @@ final class CustodiaClaveDb {
     ClaveSegura.respaldoDrive,
     // La DB sigue y el asistente de recuperación ya se resolvió: no se vuelve a ofrecer (HU-SYNC-006).
     ClaveSegura.recuperacionResuelta,
+    // El modo ahorro de datos (HU-SYNC-008) es una preferencia del teléfono: recuperar la DB no la
+    // apaga.
+    ClaveSegura.modoAhorroDatos,
   };
 
   /// Los valores de [seConservanAlReconstruir] que se pueden leer. Una clave que el almacén no deja
@@ -387,7 +404,7 @@ final class CustodiaClaveDb {
   /// privacidad, la entrevista en curso (apunta a filas que se borran) y el id de la instalación (el
   /// sync estrena uno, como en una reinstalación: la cola y la réplica también arrancan de cero) y lo
   /// contestado del permiso de notificaciones (el primer ingreso siguiente lo vuelve a pedir,
-  /// HU-NOT-001).
+  /// HU-NOT-001) y el modo ahorro de datos (vuelve al comportamiento estándar, HU-SYNC-008).
   static const List<ClaveSegura> seBorranAlBorrarDatos = [
     ClaveSegura.estadoCuenta,
     ClaveSegura.relojSesion,
@@ -409,6 +426,7 @@ final class CustodiaClaveDb {
     ClaveSegura.recordatoriosActivados,
     ClaveSegura.anticipacionRecordatorios,
     ClaveSegura.ultimaConciliacionRecordatorios,
+    ClaveSegura.modoAhorroDatos,
   ];
 
   /// Lo que el borrado de datos no toca, con el motivo en [olvidarDatosDelUsuario].

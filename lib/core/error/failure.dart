@@ -564,9 +564,9 @@ final class FailureLugarZonasEnVariasCiudades extends Failure {
 }
 
 /// No se pudieron leer los precios guardados en el teléfono (vista 26, 26·10): la base local no se
-/// pudo leer o todavía no existe de dónde leerlos (`ConsultaDePreciosSinFuente` y
-/// `FuenteDeCiudadesParaPreciosSinFuente`, hasta la réplica local del catálogo de
-/// front-colportores-mobile#180 y la de las ciudades y campañas de #274). Es **otra cosa** que «no
+/// pudo leer o el teléfono todavía no bajó el catálogo, las campañas o las ciudades
+/// (`ConsultaDePreciosRepositoryImpl`, `FuenteDeCiudadesParaPreciosLocal`, y sus `…SinFuente` sin base
+/// abierta; front-colportores-mobile#419 y #421). Es **otra cosa** que «no
 /// hay precios»: aquí no se sabe, y decir que no hay mandaría a la colportora a cotizar de memoria.
 /// Se puede reintentar.
 ///
@@ -607,7 +607,7 @@ final class FailureUltimoEspacioConPersonas extends Failure {
       );
 }
 
-/// Se quiso pasar un `EDIFICIO` a `CASA` o `NEGOCIO`, o un `NEGOCIO` a `CASA`, teniendo **dos o
+/// Se quiso pasar un `EDIFICIO` o un `NEGOCIO` a `CASA` teniendo **dos o
 /// más** espacios activos (HU-UBI-004, "Cambio de tipo bloqueado", Supuesto S17 con la decisión de
 /// Cristian del 07/10: con un solo espacio el cambio se permite y el depto pasa a ser el de la casa
 /// o el del negocio). Texto literal del criterio de aceptación.
@@ -944,6 +944,25 @@ final class FailureVentaNoGuardada extends Failure {
   List<Object?> get props => [...super.props, causa];
 }
 
+/// La venta a la que se quería sumar un libro ya está cerrada (pagada y entregada, anulada o con todo
+/// devuelto) o ya no está en el teléfono (HU-VEN-001, decisión de Cristian del 10/11, «Venta cerrada»):
+/// no crece y no se guardó nada. El libro va en una venta nueva. Un solo texto para las tres causas,
+/// que no dice cuál fue (decisión del 11/11, P2 del QA de #701).
+final class FailureVentaCerrada extends Failure {
+  const FailureVentaCerrada({required this.numeroTalonario})
+    : super(
+        mensaje:
+            'La venta $numeroTalonario ya está cerrada: no se le pueden sumar libros. '
+            'Registrá el libro como una venta nueva.',
+        codigo: 'VENTA_CERRADA',
+      );
+
+  final String numeroTalonario;
+
+  @override
+  List<Object?> get props => [...super.props, numeroTalonario];
+}
+
 /// La entrega no se pudo guardar en el teléfono (HU-VEN-002). No se registró nada: se puede
 /// reintentar. El texto adapta el de 27A·13 a la entrega: a confirmar con la pantalla (#432).
 final class FailureEntregaNoGuardada extends Failure {
@@ -1126,6 +1145,14 @@ final class FailureCuentaNoDisponible extends Failure {
     : super(mensaje: 'No pudimos calcular tu cuenta.', codigo: 'CUENTA_NO_DISPONIBLE');
 }
 
+/// No se pudo armar «Mi alquiler» (HU-CTA-007, vista 38C): la base local no se pudo leer. Es **otra
+/// cosa** que «tu campaña no cobra alquiler»: nadie muestra eso ante esta falla. Se puede reintentar.
+/// El canvas no dibuja el error de 38C; el texto sigue el de 33B·03 («para confirmar», mapa §2).
+final class FailureAlquilerNoDisponible extends Failure {
+  const FailureAlquilerNoDisponible()
+    : super(mensaje: 'No pudimos traer tu alquiler.', codigo: 'ALQUILER_NO_DISPONIBLE');
+}
+
 /// El cobro no se pudo guardar en el teléfono (28·08). No se registró nada: se puede reintentar. El
 /// texto es el del canvas.
 final class FailureCobroNoGuardado extends Failure {
@@ -1133,6 +1160,48 @@ final class FailureCobroNoGuardado extends Failure {
     : super(
         mensaje: 'No pudimos guardar el cobro. No se registró nada: probá de nuevo.',
         codigo: 'COBRO_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// Pasaron más de 72 horas desde el cobro: ya no se puede anular (HU-COB-006, 30B-06). Vale para todos,
+/// también para el coordinador (decisión de Cristian, 23/10, «Anular 72 h»).
+final class FailureAnulacionFueraDePlazo extends Failure {
+  const FailureAnulacionFueraDePlazo()
+    : super(
+        mensaje: 'Pasaron más de 72 h desde el cobro: ya no se puede anular.',
+        codigo: 'COBRO_ANULACION_FUERA_DE_PLAZO',
+      );
+}
+
+/// Falta el motivo de la anulación, o eligió «Otro» sin contar qué pasó (30B-02 y 30B-03). La pantalla no
+/// deja llegar hasta acá; si llega, no se anula nada.
+final class FailureAnulacionSinMotivo extends Failure {
+  const FailureAnulacionSinMotivo()
+    : super(mensaje: 'Elegí el motivo para seguir.', codigo: 'COBRO_ANULACION_SIN_MOTIVO');
+}
+
+/// El cobro que se quiere ver o anular ya no está en el teléfono (o no es de esta cuenta).
+final class FailureCobroAusente extends Failure {
+  const FailureCobroAusente()
+    : super(
+        mensaje: 'Este cobro ya no está en tu teléfono. Volvé atrás y elegí otro.',
+        codigo: 'COBRO_AUSENTE',
+      );
+}
+
+/// El cobro no se pudo anular en el teléfono (30B-08). No cambió nada: sigue registrado como estaba y se
+/// puede reintentar. El texto es el del canvas.
+final class FailureCobroNoAnulado extends Failure {
+  const FailureCobroNoAnulado({this.causa})
+    : super(
+        mensaje: 'No pudimos anular el cobro. Sigue registrado como estaba.',
+        codigo: 'COBRO_NO_ANULADO',
       );
 
   /// El tipo de la excepción, para el log; nunca su texto.
@@ -1248,6 +1317,9 @@ enum MotivoPlanDeCuotas {
 
   /// La cuota ya está cubierta, cancelada o no existe: ya no se modifica.
   cuotaCerrada,
+
+  /// La última cuota no es lo que falta del saldo: no se escribe a mano (decisión del 03/11, #608).
+  ultimaCuota,
 }
 
 /// El plan de cuotas no cumple una regla (HU-COB-004; decisiones de Cristian del 23/10, «Plan
@@ -1272,6 +1344,7 @@ final class FailurePlanDeCuotas extends Failure {
     MotivoPlanDeCuotas.sinSaldo => 'SIN_SALDO',
     MotivoPlanDeCuotas.sinVenta => 'SIN_VENTA',
     MotivoPlanDeCuotas.cuotaCerrada => 'CUOTA_CERRADA',
+    MotivoPlanDeCuotas.ultimaCuota => 'ULTIMA_CUOTA',
   };
 
   static String _texto(MotivoPlanDeCuotas m) => switch (m) {
@@ -1287,6 +1360,9 @@ final class FailurePlanDeCuotas extends Failure {
       'Esta venta ya no está en tu teléfono. Volvé atrás y elegí otra.',
     MotivoPlanDeCuotas.cuotaCerrada =>
       'Una de las cuotas ya no se puede cambiar. Volvé a la lista y revisá el plan.',
+    MotivoPlanDeCuotas.ultimaCuota =>
+      'La última cuota es lo que falta y no se escribe a mano. Cambiá las cuotas anteriores y se '
+          'calcula sola.',
   };
 
   @override
@@ -1333,4 +1409,177 @@ final class FailureCuotasNoDisponibles extends Failure {
         mensaje: 'No pudimos leer las cuotas guardadas en tu teléfono.',
         codigo: 'COBRO_CUOTAS_NO_DISPONIBLES',
       );
+}
+
+/// El teléfono no pudo leer lo que bajó para contar la deuda con la casa editora (HU-CTA-002, 33B·03):
+/// la base local no se pudo abrir o leer. Es **otra cosa** que «no debés nada»: nadie muestra «$ 0» ante
+/// esta falla. Se puede reintentar. El texto es el del canvas.
+final class FailureDeudaNoDisponible extends Failure {
+  const FailureDeudaNoDisponible()
+    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'DEUDA_CASA_NO_DISPONIBLE');
+}
+
+// --- Tickets (HU-COB-007, #426). Los textos son a confirmar con la pantalla (#427). ---
+
+/// El ticket no se pudo guardar en el teléfono. No se registró nada: se puede reintentar.
+final class FailureTicketNoGuardado extends Failure {
+  const FailureTicketNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos guardar el ticket. No cambió nada: probá de nuevo.',
+        codigo: 'TICKET_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudo leer el estado de los tickets del teléfono.
+final class FailureTicketNoDisponible extends Failure {
+  const FailureTicketNoDisponible()
+    : super(
+        mensaje: 'No pudimos leer tus tickets. Cerrá y abrí la pantalla de nuevo.',
+        codigo: 'TICKET_NO_DISPONIBLE',
+      );
+}
+
+/// El monto del ticket es cero, negativo o demasiado grande (el servidor lo rechaza con `23514`).
+final class FailureTicketMontoInvalido extends Failure {
+  const FailureTicketMontoInvalido()
+    : super(
+        mensaje: 'Ingresá el monto del ticket, mayor que cero.',
+        codigo: 'TICKET_MONTO_INVALIDO',
+      );
+}
+
+/// La fecha del ticket es después de hoy (el servidor lo rechaza con `23514`).
+final class FailureTicketFechaInvalida extends Failure {
+  const FailureTicketFechaInvalida()
+    : super(
+        mensaje: 'La fecha del ticket no puede ser futura. Revisá el día.',
+        codigo: 'TICKET_FECHA_INVALIDA',
+      );
+}
+
+/// Al ticket de tarjeta le falta el número de autorización (el servidor lo rechaza con `23514`).
+final class FailureTicketSinAutorizacion extends Failure {
+  const FailureTicketSinAutorizacion()
+    : super(
+        mensaje: 'Ingresá el número de autorización que dice el ticket.',
+        codigo: 'TICKET_SIN_AUTORIZACION',
+      );
+}
+
+/// Al ticket de tarjeta le falta decir si es de crédito o de débito (el servidor lo rechaza con
+/// `23514`).
+final class FailureTicketSinTarjeta extends Failure {
+  const FailureTicketSinTarjeta()
+    : super(
+        mensaje: 'Elegí si la tarjeta es de crédito o de débito.',
+        codigo: 'TICKET_SIN_TARJETA',
+      );
+}
+
+/// El número de autorización o la marca de la tarjeta son demasiado largos (40 caracteres como
+/// mucho).
+final class FailureTicketTextoLargo extends Failure {
+  const FailureTicketTextoLargo()
+    : super(
+        mensaje: 'El número de autorización y la tarjeta tienen hasta 40 caracteres.',
+        codigo: 'TICKET_TEXTO_LARGO',
+      );
+}
+
+/// La foto no sirve para subirla: está vacía o pesa más de 2 MiB (el servidor no la acepta).
+final class FailureTicketFotoInvalida extends Failure {
+  const FailureTicketFotoInvalida()
+    : super(
+        mensaje: 'La foto del ticket está vacía o pesa más de 2 MB. Sacala de nuevo.',
+        codigo: 'TICKET_FOTO_INVALIDA',
+      );
+}
+
+/// El cobro al que se quiere ligar el ticket no existe en este teléfono o ya tiene otro ticket.
+final class FailureTicketCobroInvalido extends Failure {
+  const FailureTicketCobroInvalido()
+    : super(
+        mensaje: 'No encontramos ese cobro para ligarle el ticket.',
+        codigo: 'TICKET_COBRO_INVALIDO',
+      );
+}
+
+/// Se quiso borrar la copia local de una foto que todavía no subió: borrarla perdería el ticket.
+final class FailureTicketCopiaSinSubir extends Failure {
+  const FailureTicketCopiaSinSubir()
+    : super(
+        mensaje: 'Esta foto todavía no subió. Cuando haya conexión sube sola y ahí podés borrarla.',
+        codigo: 'TICKET_COPIA_SIN_SUBIR',
+      );
+}
+
+/// No hay ticket con ese id en el teléfono.
+final class FailureTicketNoEncontrado extends Failure {
+  const FailureTicketNoEncontrado()
+    : super(mensaje: 'No encontramos ese ticket.', codigo: 'TICKET_NO_ENCONTRADO');
+}
+
+// --- Pedidos a la casa editora (HU-STK-009, vista 37, #387) --------------------------------------
+
+/// El pedido no se pudo guardar en el teléfono (37A·07). No se guardó ni se encoló nada: se puede reintentar
+/// con lo mismo. El canvas dice «Quedó guardado acá», pero eso solo es verdad si la falla es posterior al
+/// guardado: cuando falla la escritura, lo verdadero es que no se envió nada (texto a confirmar, «mapa §2:
+/// texto»).
+final class FailurePedidoNoGuardado extends Failure {
+  const FailurePedidoNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos enviar el pedido. No se envió nada: probá de nuevo.',
+        codigo: 'PEDIDO_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// El pedido no tiene la forma que el servidor acepta (vacío, cantidad que no sirve, producto repetido o que
+/// no se puede pedir). La pantalla no deja llegar hasta acá: es la red de seguridad.
+final class FailurePedidoInvalido extends Failure {
+  const FailurePedidoInvalido()
+    : super(mensaje: 'Sumá al menos un producto para enviar el pedido.', codigo: 'PEDIDO_INVALIDO');
+}
+
+/// El pedido ya no se puede cancelar: no es de la colportora o su coordinador ya lo decidió (decisión
+/// «Cancelar ped»: solo quien lo pidió, solo mientras está por autorizar).
+final class FailurePedidoNoCancelable extends Failure {
+  const FailurePedidoNoCancelable()
+    : super(
+        mensaje: 'Este pedido ya no se puede cancelar: tu coordinador ya lo decidió.',
+        codigo: 'PEDIDO_NO_CANCELABLE',
+      );
+}
+
+/// La cancelación no se pudo guardar en el teléfono: el pedido sigue como estaba.
+final class FailurePedidoNoCancelado extends Failure {
+  const FailurePedidoNoCancelado({this.causa})
+    : super(
+        mensaje: 'No pudimos cancelar el pedido. Sigue por autorizar: probá de nuevo.',
+        codigo: 'PEDIDO_NO_CANCELADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudieron leer los pedidos (37B·06): la base local no se pudo leer. Es otra cosa que «todavía no
+/// pediste nada».
+final class FailurePedidosNoDisponibles extends Failure {
+  const FailurePedidosNoDisponibles()
+    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'PEDIDOS_NO_DISPONIBLES');
 }

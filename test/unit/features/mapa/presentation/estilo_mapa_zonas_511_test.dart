@@ -1,7 +1,6 @@
 // Las zonas en el estilo del mapa (#511): van por debajo de las casas, no reciben toques, la propia se
 // resalta y todo lo que depende del color tiene otra señal.
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:colportores_mobile/features/mapa/domain/services/fuente_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/camara_mapa.dart';
@@ -11,6 +10,8 @@ import 'package:colportores_mobile/features/mapa/presentation/mapa_base/modelo_m
 import 'package:colportores_mobile/features/mapa/presentation/mapa_base/zonas_mapa.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../../helpers/assets_de_lib_mapa.dart';
 
 const _montevideo = Coordenadas(lat: -34.88761, lon: -56.13024);
 const _recursos = '/data/user/0/uy.colportores/files/mapa/basemaps-5.7.2-1';
@@ -64,7 +65,7 @@ ConfigVistaMapa _config({
 void main() {
   late String estiloBase;
 
-  setUpAll(() => estiloBase = File('assets/mapa/estilo/colportores.json').readAsStringSync());
+  setUpAll(() => estiloBase = estiloDeLibMapa());
 
   Map<String, dynamic> construir(ConfigVistaMapa config) =>
       jsonDecode(
@@ -100,8 +101,6 @@ void main() {
   ];
 
   const capasDeZonas = [
-    ConstructorEstiloMapa.capaZonasOtrasRelleno,
-    ConstructorEstiloMapa.capaZonasOtrasBorde,
     ConstructorEstiloMapa.capaZonaPropiaHalo,
     ConstructorEstiloMapa.capaZonaPropiaRelleno,
     ConstructorEstiloMapa.capaZonaPropiaBorde,
@@ -163,51 +162,43 @@ void main() {
       }
     });
 
-    test('la propia se separa de las demás por un filtro sobre la propiedad `propia`', () {
+    test('solo hay capas de zonas propias: las ajenas no tienen ni contorno (#654)', () {
+      final estilo = construir(_config(zonas: [_zona('a', propia: true), _zona('b')]));
+      final deZonas = ids(estilo).where((id) => id.startsWith('colportores:zonas-')).toList();
+
+      expect(deZonas, [...capasDeZonas, ConstructorEstiloMapa.capaZonasRotulo]);
+      expect(deZonas.where((id) => id.contains('otras')), isEmpty);
+    });
+
+    test('toda capa de zonas filtra por `propia == true`, el nombre incluido (#654)', () {
+      // Defensa en profundidad: si una zona ajena llegara hasta el estilo, ninguna capa la dibuja
+      // ni la rotula.
       final estilo = construir(_config(zonas: [_zona('a', propia: true), _zona('b')]));
 
-      for (final id in [
-        ConstructorEstiloMapa.capaZonaPropiaHalo,
-        ConstructorEstiloMapa.capaZonaPropiaRelleno,
-        ConstructorEstiloMapa.capaZonaPropiaBorde,
-      ]) {
+      for (final id in [...capasDeZonas, ConstructorEstiloMapa.capaZonasRotulo]) {
         expect(capa(estilo, id)['filter'], [
           '==',
           ['get', 'propia'],
           true,
-        ]);
-      }
-      for (final id in [
-        ConstructorEstiloMapa.capaZonasOtrasRelleno,
-        ConstructorEstiloMapa.capaZonasOtrasBorde,
-      ]) {
-        expect(capa(estilo, id)['filter'], [
-          '==',
-          ['get', 'propia'],
-          false,
-        ]);
+        ], reason: id);
       }
     });
   });
 
-  group('la zona propia resaltada y las demás tenues', () {
-    test('el borde de la propia es más grueso y más firme que el de las demás', () {
-      final estilo = construir(_config(zonas: [_zona('a', propia: true), _zona('b')]));
-      final propia = capa(estilo, ConstructorEstiloMapa.capaZonaPropiaBorde)['paint'] as Map;
-      final otra = capa(estilo, ConstructorEstiloMapa.capaZonasOtrasBorde)['paint'] as Map;
+  group('la zona propia resaltada', () {
+    test('el borde es grueso y opaco', () {
+      final estilo = construir(_config(zonas: [_zona('a', propia: true)]));
+      final borde = capa(estilo, ConstructorEstiloMapa.capaZonaPropiaBorde)['paint'] as Map;
 
-      expect(propia['line-width'] as num, greaterThan((otra['line-width'] as num) * 1.5));
-      expect(propia.containsKey('line-opacity'), isFalse, reason: 'la propia es opaca');
-      expect(otra['line-opacity'] as num, lessThan(.5));
+      expect(borde['line-width'] as num, greaterThanOrEqualTo(4));
+      expect(borde.containsKey('line-opacity'), isFalse, reason: 'la propia es opaca');
     });
 
-    test('el relleno de la propia es más firme que el de las demás, que es casi nada', () {
-      final estilo = construir(_config(zonas: [_zona('a', propia: true), _zona('b')]));
-      final propia = capa(estilo, ConstructorEstiloMapa.capaZonaPropiaRelleno)['paint'] as Map;
-      final otra = capa(estilo, ConstructorEstiloMapa.capaZonasOtrasRelleno)['paint'] as Map;
+    test('el relleno es translúcido: deja ver el mapa de abajo', () {
+      final estilo = construir(_config(zonas: [_zona('a', propia: true)]));
+      final relleno = capa(estilo, ConstructorEstiloMapa.capaZonaPropiaRelleno)['paint'] as Map;
 
-      expect(propia['fill-opacity'] as num, greaterThan(otra['fill-opacity'] as num));
-      expect(otra['fill-opacity'] as num, lessThanOrEqualTo(.12));
+      expect(relleno['fill-opacity'] as num, inInclusiveRange(.1, .3));
     });
 
     test(
@@ -227,20 +218,6 @@ void main() {
       },
     );
 
-    test('la propia se dibuja arriba de las demás', () {
-      final todas = ids(construir(_config(zonas: [_zona('a', propia: true), _zona('b')])));
-
-      for (final otra in [
-        ConstructorEstiloMapa.capaZonasOtrasRelleno,
-        ConstructorEstiloMapa.capaZonasOtrasBorde,
-      ]) {
-        expect(
-          todas.indexOf(otra),
-          lessThan(todas.indexOf(ConstructorEstiloMapa.capaZonaPropiaHalo)),
-        );
-      }
-    });
-
     test('el color de cada zona viaja en la propiedad `color`, ya con contraste', () {
       final amarillo = ColoresZona.borde('#FFD966');
       final estilo = construir(_config(zonas: [_zona('a', color: amarillo)]));
@@ -254,12 +231,10 @@ void main() {
 
       expect(Color.fromARGB(255, r, g, b), amarillo);
       expect(ColoresZona.contraste(Color.fromARGB(255, r, g, b)), greaterThanOrEqualTo(3));
-      for (final id in [
-        ConstructorEstiloMapa.capaZonaPropiaBorde,
-        ConstructorEstiloMapa.capaZonasOtrasBorde,
-      ]) {
-        expect((capa(estilo, id)['paint'] as Map)['line-color'], ['get', 'color']);
-      }
+      expect(
+        (capa(estilo, ConstructorEstiloMapa.capaZonaPropiaBorde)['paint'] as Map)['line-color'],
+        ['get', 'color'],
+      );
     });
   });
 
@@ -273,24 +248,8 @@ void main() {
       expect(rotulo['source'], ConstructorEstiloMapa.fuenteZonasRotulos);
       expect(layout['text-field'], ['get', 'rotulo']);
       for (final fuente in layout['text-font'] as List<dynamic>) {
-        expect(Directory('assets/mapa/glyphs/$fuente').existsSync(), isTrue);
+        expect(carpetaDeLibMapa('glyphs/$fuente').existsSync(), isTrue);
       }
-    });
-
-    test('la propia se acomoda primero (gana si dos nombres se pisan)', () {
-      final layout =
-          capa(construir(_config()), ConstructorEstiloMapa.capaZonasRotulo)['layout'] as Map;
-
-      expect(layout['symbol-sort-key'], [
-        'case',
-        [
-          '==',
-          ['get', 'propia'],
-          true,
-        ],
-        0,
-        1,
-      ]);
     });
 
     test('sin glyphs ni sprites no hay capa de nombres, y las zonas se ven igual', () {

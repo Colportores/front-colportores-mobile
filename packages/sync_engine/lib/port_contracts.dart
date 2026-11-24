@@ -368,6 +368,52 @@ void runJobStoreContract(String nombre, JobStorePort Function() crear) {
         expect(versiones, {enVuelo: 7, pendiente: 7, alta: null, otra: 1});
       });
 
+      test(
+          'la unión de duplicados vuelve tal cual de la cola, y rebaseVersions '
+          'no le pone versión (§6.2)', () async {
+        final cola = crear();
+        await cola.append(SyncJob(
+          clientOpId: 'op-union',
+          entity: 'ubicacion',
+          op: Op.marcarComoDuplicado,
+          payload: const {'duplicada_id': 'u-b', 'conservada_id': 'u-a'},
+          createdAt: _t0,
+          rowPk: 'u-b',
+        ));
+
+        await cola.rebaseVersions('ubicacion', {'u-b': 7});
+
+        final [q] = await cola.claimPending(limit: 10);
+        expect(q.job.op, Op.marcarComoDuplicado);
+        expect(q.job.payload, {'duplicada_id': 'u-b', 'conservada_id': 'u-a'});
+        expect(q.job.rowPk, 'u-b');
+        expect(q.job.syncVersion, isNull);
+        expect(await cola.unsentFor('ubicacion', 'u-b'), isEmpty,
+            reason: 'ya salió');
+      });
+
+      test('withUnapplied dice qué filas tienen escrituras sin aplicar',
+          () async {
+        final cola = crear();
+        await cola.append(_deFila('op-1', 'u-1'));
+        final enVuelo = await cola.append(_deFila('op-2', 'u-2', minuto: 1));
+        final hecho = await cola.append(_deFila('op-3', 'u-3', minuto: 2));
+        final invalido = await cola.append(_deFila('op-4', 'u-4', minuto: 3));
+        await cola.claimPending(limit: 10);
+        await cola.markPending([
+          for (final q in await cola.unsentFor('ubicacion', 'u-1')) q.id
+        ]);
+        await cola.markDone([hecho], at: _t0);
+        await cola.markInvalid(invalido, code: 'X');
+
+        expect(
+            await cola.withUnapplied(
+                'ubicacion', ['u-1', 'u-2', 'u-3', 'u-4', 'u-5']),
+            {'u-1', 'u-2'},
+            reason: 'PENDING y IN_FLIGHT ($enVuelo) sí; DONE, INVALID y una '
+                'fila sin jobs, no');
+      });
+
       test('rebaseVersions no toca lo que ya terminó', () async {
         final cola = crear();
         final id = await cola.append(_deFila('op-1', 'u-1'));

@@ -17,6 +17,10 @@ enum ProblemaDeCuota {
 
   /// Menor que lo que ya se cobró de esa cuota (al modificar un plan con pagos parciales).
   menorQueLoPagado,
+
+  /// Se quiso escribir a mano la última cuota del plan: siempre es lo que falta (decisión del 03/11,
+  /// #608). Para cambiarla se cambian las anteriores.
+  ultimaCalculada,
 }
 
 /// El resultado de cambiar el monto de una cuota (30A-02B): los montos de todas y cuáles se ajustaron
@@ -84,9 +88,6 @@ final class AplicacionDePago extends Equatable {
     return partes.last;
   }
 
-  /// El número de la primera cuota a la que va el pago (lo que se guarda en `cobranza.numero_cuota`).
-  int? get primeraCuota => partes.isEmpty ? null : partes.first.cuota.numero;
-
   @override
   List<Object?> get props => [partes, sobranteCentavos];
 }
@@ -140,12 +141,31 @@ final class EstadoDeLasCuotas extends Equatable {
   /// Las cuotas vivas por fecha, con lo pagado de cada una. Las que el cobro cubrió figuran cubiertas.
   final List<Cuota> cuotas;
 
-  /// Los `agenda.id` de las citas que están cubiertas y todavía figuran `PROGRAMADA`: hay que
-  /// pasarlas a `CUMPLIDA`.
+  /// Los `agenda.id` de las citas que están cubiertas y todavía figuran abiertas (`PROGRAMADA`, o
+  /// `NO_CUMPLIDA` si es un dato viejo): hay que pasarlas a `CUMPLIDA`.
   final List<String> aCerrar;
 
   @override
   List<Object?> get props => [cuotas, aCerrar];
+}
+
+/// Qué cuotas del plan cubrió un cobro (vista 39, C·03: «Cuota 1 de 2»). Se calcula con los cobros de
+/// la venta hasta ese, en orden: el cobro no guarda la cuota (decisión del 03/11, #608).
+final class CuotasDeUnCobro extends Equatable {
+  /// Lleva al menos una cuota: [completas] o [aMedias].
+  const CuotasDeUnCobro({required this.deTotal, this.completas = const [], this.aMedias});
+
+  /// Cuántas cuotas tiene el plan (el «de m»).
+  final int deTotal;
+
+  /// Los números de las cuotas que este cobro dejó cubiertas, en el orden en que las cubrió.
+  final List<int> completas;
+
+  /// El número de la cuota que este cobro tocó sin cubrir (a lo sumo una: la última), o `null`.
+  final int? aMedias;
+
+  @override
+  List<Object?> get props => [deTotal, completas, aMedias];
 }
 
 /// Las reglas puras del plan de cuotas (HU-COB-004; decisiones de Cristian del 23/10, «Plan cuotas» y
@@ -201,8 +221,13 @@ abstract final class RepartoDeCuotas {
   }
 
   /// Cambia el monto de la cuota [indice] a [nuevoMonto]: las cuotas anteriores no se tocan y las
-  /// siguientes se reparten en partes iguales lo que queda del [saldo] (30A-02B). Si es la última,
-  /// no hay a quién ajustar: queda como se puso (siempre que no supere el saldo).
+  /// siguientes se reparten en partes iguales lo que queda del [saldo] (30A-02B), con la diferencia
+  /// del redondeo en la última.
+  ///
+  /// **La última cuota no se escribe a mano** (decisión del 03/11, #608): siempre es lo que falta del
+  /// [saldo]. Un [nuevoMonto] distinto del que tiene la última (el último lugar de [montos]) no se
+  /// acepta: queda el problema [ProblemaDeCuota.ultimaCalculada] en ese lugar y los montos no
+  /// cambian. Para cambiarla se cambian las anteriores.
   ///
   /// [pagados] (opcional, un monto por cuota) es lo ya cobrado de cada una: una cuota no baja de ahí.
   static MontosReajustados reajustar({
@@ -212,6 +237,15 @@ abstract final class RepartoDeCuotas {
     required int saldo,
     List<int>? pagados,
   }) {
+    if (indice == montos.length - 1) {
+      return MontosReajustados(
+        montos: [...montos],
+        ajustadas: const {},
+        problemas: nuevoMonto == montos[indice]
+            ? const {}
+            : {indice: ProblemaDeCuota.ultimaCalculada},
+      );
+    }
     final nuevos = [...montos];
     nuevos[indice] = nuevoMonto;
     final problemas = <int, ProblemaDeCuota>{};
@@ -228,24 +262,20 @@ abstract final class RepartoDeCuotas {
       problemas[indice] = ProblemaDeCuota.superaElSaldo;
     } else if (nuevoMonto < minimo) {
       problemas[indice] = ProblemaDeCuota.menorQueLoPagado;
-    } else if (siguientes > 0 && queda < siguientes) {
+    } else if (queda < siguientes) {
       problemas[indice] = ProblemaDeCuota.noDejaParaLasSiguientes;
-    } else if (siguientes == 0 && antes + nuevoMonto > saldo) {
-      problemas[indice] = ProblemaDeCuota.superaElSaldo;
     }
 
-    if (siguientes > 0) {
-      if (problemas.isEmpty) {
-        final partes = partesIguales(queda, siguientes);
-        for (var j = 0; j < siguientes; j++) {
-          final lugar = indice + 1 + j;
-          if (nuevos[lugar] != partes[j]) ajustadas.add(lugar);
-          nuevos[lugar] = partes[j];
-        }
-      } else {
-        for (var lugar = indice + 1; lugar < nuevos.length; lugar++) {
-          nuevos[lugar] = 0;
-        }
+    if (problemas.isEmpty) {
+      final partes = partesIguales(queda, siguientes);
+      for (var j = 0; j < siguientes; j++) {
+        final lugar = indice + 1 + j;
+        if (nuevos[lugar] != partes[j]) ajustadas.add(lugar);
+        nuevos[lugar] = partes[j];
+      }
+    } else {
+      for (var lugar = indice + 1; lugar < nuevos.length; lugar++) {
+        nuevos[lugar] = 0;
       }
     }
     return MontosReajustados(montos: nuevos, ajustadas: ajustadas, problemas: problemas);
@@ -281,10 +311,30 @@ abstract final class RepartoDeCuotas {
     return suma <= saldo;
   }
 
+  /// Si la última cuota es lo que falta: los montos de [montos] suman justo [total]. La última no se
+  /// escribe a mano (decisión del 03/11, #608), así que un reparto donde sobra o falta plata en ella
+  /// no es válido. [total] es el saldo al armar el plan, o lo que queda por repartir entre las
+  /// cuotas abiertas al modificarlo.
+  static bool ultimaEsLoQueFalta(List<int> montos, int total) =>
+      montos.isNotEmpty && montos.fold<int>(0, (a, b) => a + b) == total;
+
+  /// La última cuota del plan: la abierta (no cubierta) de mayor número. `null` si no queda ninguna
+  /// abierta. Con una sola abierta, esa es la última.
+  static Cuota? ultimaAbierta(Iterable<Cuota> cuotas) {
+    Cuota? ultima;
+    for (final c in cuotas) {
+      if (c.estaCubierta) continue;
+      if (ultima == null || c.numero > ultima.numero) ultima = c;
+    }
+    return ultima;
+  }
+
   /// Arma las cuotas vivas de una venta a partir de sus citas con monto y sus cobros, y dice cuáles
   /// quedan cubiertas.
   ///
-  /// Solo cuentan las citas `PROGRAMADA` y `CUMPLIDA` (una cancelada o no cumplida deja de ser cuota).
+  /// Solo deja de ser cuota la cita `CANCELADA`. Una `NO_CUMPLIDA` (dato viejo, de cuando «No
+  /// contestó» cerraba la cita) cuenta como cuota abierta: «No contestó» sobre una cuota no la cierra
+  /// (decisión del 03/11, #608), sigue en la lista y pasada la fecha se ve «Vencida».
   /// Lo cobrado para el plan es lo que se cobró desde que se armó (los cobros anteriores bajaron el
   /// saldo que se repartió). Los cobros, en el orden en que llegaron, van primero a las cuotas que ya
   /// estaban cubiertas y después a las abiertas en orden de fecha. Así nada se guarda de más: lo
@@ -296,11 +346,11 @@ abstract final class RepartoDeCuotas {
   }) {
     final vivas = [
       for (final c in citas)
-        if (c.estado == EstadoAgenda.programada || c.estado == EstadoAgenda.cumplida) c,
+        if (c.estado != EstadoAgenda.cancelada) c,
     ]..sort(_porFecha);
     final abiertas = [
       for (final c in vivas)
-        if (c.estado == EstadoAgenda.programada) c,
+        if (c.estado != EstadoAgenda.cumplida) c,
     ];
 
     final base = abiertas.isNotEmpty ? abiertas : vivas;
@@ -345,6 +395,73 @@ abstract final class RepartoDeCuotas {
       }
     }
     return EstadoDeLasCuotas(cuotas: cuotas, aCerrar: aCerrar);
+  }
+
+  /// Qué cuotas cubrió cada uno de [cobros] (C·03), en el mismo orden que [cobros]: `null` si la venta
+  /// no tiene plan, si el cobro es de antes del plan o si fue más allá de la última cuota.
+  ///
+  /// Sigue el mismo reparto que [estadoDe] (y que la vista 30 A): los cobros, en el orden en que
+  /// llegaron, van primero a las cuotas que ya estaban cubiertas y después a las abiertas por fecha,
+  /// cada una hasta su monto. Un cobro que completa una cuota empezada por otro la «cubre».
+  static List<CuotasDeUnCobro?> cuotasDeCadaCobro({
+    required Iterable<CitaDeCuota> citas,
+    required List<CobroDelPlan> cobros,
+  }) {
+    final salida = List<CuotasDeUnCobro?>.filled(cobros.length, null);
+    final vivas = [
+      for (final c in citas)
+        if (c.estado != EstadoAgenda.cancelada) c,
+    ]..sort(_porFecha);
+    if (vivas.isEmpty) return salida;
+    final abiertas = [
+      for (final c in vivas)
+        if (c.estado != EstadoAgenda.cumplida) c,
+    ];
+    final base = abiertas.isNotEmpty ? abiertas : vivas;
+    final desde = base.map((c) => c.creadaEn).reduce((a, b) => a.isBefore(b) ? a : b);
+
+    // El orden en que los cobros llenan las cuotas: (número de la cuota, monto). Una cuota sin monto no
+    // espera nada: no la cubre ningún cobro.
+    final orden = <(int, int)>[
+      for (var i = 0; i < vivas.length; i++)
+        if (vivas[i].estado == EstadoAgenda.cumplida && !vivas[i].creadaEn.isBefore(desde))
+          (i + 1, vivas[i].montoCentavos),
+      for (var i = 0; i < vivas.length; i++)
+        if (vivas[i].estado != EstadoAgenda.cumplida) (i + 1, vivas[i].montoCentavos),
+    ]..removeWhere((c) => c.$2 <= 0);
+
+    final indices =
+        [
+          for (var i = 0; i < cobros.length; i++)
+            if (!cobros[i].creadoEn.isBefore(desde)) i,
+        ]..sort((a, b) {
+          final porLlegada = cobros[a].creadoEn.compareTo(cobros[b].creadoEn);
+          return porLlegada != 0 ? porLlegada : a.compareTo(b);
+        });
+
+    var lugar = 0;
+    var falta = orden.isEmpty ? 0 : orden.first.$2;
+    for (final i in indices) {
+      var resta = cobros[i].montoCentavos;
+      final completas = <int>[];
+      int? aMedias;
+      while (resta > 0 && lugar < orden.length) {
+        final toma = resta < falta ? resta : falta;
+        resta -= toma;
+        falta -= toma;
+        if (falta <= 0) {
+          completas.add(orden[lugar].$1);
+          lugar++;
+          falta = lugar < orden.length ? orden[lugar].$2 : 0;
+        } else {
+          aMedias = orden[lugar].$1;
+        }
+      }
+      if (completas.isNotEmpty || aMedias != null) {
+        salida[i] = CuotasDeUnCobro(deTotal: vivas.length, completas: completas, aMedias: aMedias);
+      }
+    }
+    return salida;
   }
 
   /// Saca de [cola] hasta [necesita] centavos, del cobro más viejo al más nuevo.

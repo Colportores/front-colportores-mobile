@@ -75,6 +75,16 @@ void main() {
       },
     );
 
+    test('la venta sube cuántos renglones lleva para que el servidor exija el motivo del total '
+        'cambiado en los dos sentidos (#608, «Total arriba»)', () async {
+      await local.registrar(ventaDe('v-1'), [itemDe('i-1', 'v-1'), itemDe('i-2', 'v-1')]);
+
+      final venta = encolador.encolados.first;
+      expect(venta.entidad, 'venta');
+      expect(venta.payload['items_esperados'], 2);
+      expect((await ventas()).single.toJson().containsKey('items_esperados'), isFalse);
+    });
+
     test('un combo guarda lo que traía y sube como arreglo jsonb', () async {
       const componentes = [
         ComponenteVendido(productoId: 'libro-1'),
@@ -210,6 +220,44 @@ void main() {
       await local.registrar(ventaDe('v-2', talonario: '42'), [itemDe('i-2', 'v-2')]);
 
       expect(await ventas(), hasLength(2));
+    });
+
+    test('«t-100», «T-100 » y «T-100» son el mismo talonario (sin mayúsculas ni espacios de los '
+        'bordes, #608 «Talonario =»)', () async {
+      await local.registrar(ventaDe('v-t', talonario: 'T-100'), [itemDe('i-t', 'v-t')]);
+
+      for (final variante in ['t-100', 'T-100 ', ' t-100', 'T-100\n']) {
+        await expectLater(
+          local.registrar(ventaDe('v-x', talonario: variante), [itemDe('i-x', 'v-x')]),
+          throwsA(isA<TalonarioRepetidoException>()),
+          reason: 'la variante «$variante» es el mismo talonario',
+        );
+      }
+      expect((await ventas()).map((v) => v.id), ['v-1', 'v-t']);
+    });
+
+    test('las letras con tilde también se comparan sin mayúsculas ni minúsculas', () async {
+      await local.registrar(ventaDe('v-t', talonario: 'Ñ-7'), [itemDe('i-t', 'v-t')]);
+
+      final usado = await local.talonarioUsado(colportorId: 'col-1', numero: 'ñ-7', fecha: t0);
+
+      expect(usado?.ventaId, 'v-t');
+    });
+
+    test('«0100» y «100» siguen siendo distintos aunque cambien las mayúsculas', () async {
+      await local.registrar(ventaDe('v-t', talonario: '0100'), [itemDe('i-t', 'v-t')]);
+
+      final otro = await local.talonarioUsado(colportorId: 'col-1', numero: '100', fecha: t0);
+
+      expect(otro, isNull);
+    });
+
+    test('talonarioUsado avisa con otra escritura del mismo número', () async {
+      await local.registrar(ventaDe('v-t', talonario: 'T-100'), [itemDe('i-t', 'v-t')]);
+
+      final usado = await local.talonarioUsado(colportorId: 'col-1', numero: ' t-100 ', fecha: t0);
+
+      expect(usado?.ventaId, 'v-t');
     });
 
     test('una venta dada de baja libera su número', () async {

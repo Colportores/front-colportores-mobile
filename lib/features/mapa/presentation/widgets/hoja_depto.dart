@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/presentation/mensaje_para.dart';
 import '../../domain/entities/espacio.dart';
 import '../../domain/entities/motivo_rechazo_espacio.dart';
@@ -88,10 +89,9 @@ Future<SalidaHojaDepto?> mostrarHojaDepto(
   required Ubicacion ubicacion,
   required String colportorId,
   Espacio? espacio,
-}) => showModalBottomSheet<SalidaHojaDepto>(
+}) => mostrarHojaInferior<SalidaHojaDepto>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   // Sin arrastrar para cerrar: mientras guarda, la hoja no se puede cerrar de costado.
   enableDrag: false,
   backgroundColor: Colors.white,
@@ -719,58 +719,63 @@ class _CampoDepto extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        EtiquetaCampoUbicacion(etiqueta),
+        // La etiqueta visible no se lee aparte: va en el nombre del campo, así el lector dice
+        // «NÚMERO · OBLIGATORIO, cuadro de edición» y no «cuadro de edición» a secas (QA #211).
+        ExcludeSemantics(child: EtiquetaCampoUbicacion(etiqueta)),
         const SizedBox(height: 6),
-        TextField(
-          controller: controlador,
-          focusNode: foco,
-          autofocus: autofocus,
-          readOnly: bloqueado,
-          keyboardType: numerico ? TextInputType.number : TextInputType.text,
-          textInputAction: accion,
-          textCapitalization: TextCapitalization.characters,
-          onChanged: alCambiar,
-          onSubmitted: alEnviar,
-          inputFormatters: [
-            // Un número o un piso pegado en varias líneas queda en una.
-            FilteringTextInputFormatter.deny(RegExp(r'[\r\n  ]+'), replacementString: ' '),
-            LengthLimitingTextInputFormatter(limite),
-          ],
-          style: const TextStyle(fontSize: 15),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: Colors.white,
-            constraints: const BoxConstraints(minHeight: 48),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            errorText: error,
-            errorMaxLines: 6,
-            errorStyle: const TextStyle(color: ColoresAlta.rojo, fontSize: 13),
-            border: borde(colorBorde),
-            enabledBorder: borde(colorBorde),
-            focusedBorder: borde(
-              conBorde ? ColoresAlta.rojo : Theme.of(context).colorScheme.primary,
-            ),
-            errorBorder: borde(ColoresAlta.rojo),
-            focusedErrorBorder: borde(ColoresAlta.rojo),
-            suffixIcon: Semantics(
-              button: true,
-              label: numerico ? TextosEspacios.tecladoALetras : TextosEspacios.tecladoANumeros,
-              excludeSemantics: true,
-              onTap: bloqueado ? null : alAlternarTeclado,
-              child: TextButton(
-                key: claveAlternar,
-                onPressed: bloqueado ? null : alAlternarTeclado,
-                style: TextButton.styleFrom(
-                  foregroundColor: ColoresAlta.azul,
-                  minimumSize: const Size(48, 48),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  textStyle: const TextStyle(
-                    fontFamily: 'JetBrainsMono',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+        Semantics(
+          label: etiqueta,
+          child: TextField(
+            controller: controlador,
+            focusNode: foco,
+            autofocus: autofocus,
+            readOnly: bloqueado,
+            keyboardType: numerico ? TextInputType.number : TextInputType.text,
+            textInputAction: accion,
+            textCapitalization: TextCapitalization.characters,
+            onChanged: alCambiar,
+            onSubmitted: alEnviar,
+            inputFormatters: [
+              // Un número o un piso pegado en varias líneas queda en una.
+              FilteringTextInputFormatter.deny(RegExp(r'[\r\n  ]+'), replacementString: ' '),
+              LengthLimitingTextInputFormatter(limite),
+            ],
+            style: const TextStyle(fontSize: 15),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Colors.white,
+              constraints: const BoxConstraints(minHeight: 48),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              errorText: error,
+              errorMaxLines: 6,
+              errorStyle: const TextStyle(color: ColoresAlta.rojo, fontSize: 13),
+              border: borde(colorBorde),
+              enabledBorder: borde(colorBorde),
+              focusedBorder: borde(
+                conBorde ? ColoresAlta.rojo : Theme.of(context).colorScheme.primary,
+              ),
+              errorBorder: borde(ColoresAlta.rojo),
+              focusedErrorBorder: borde(ColoresAlta.rojo),
+              suffixIcon: Semantics(
+                button: true,
+                label: numerico ? TextosEspacios.tecladoALetras : TextosEspacios.tecladoANumeros,
+                excludeSemantics: true,
+                onTap: bloqueado ? null : alAlternarTeclado,
+                child: TextButton(
+                  key: claveAlternar,
+                  onPressed: bloqueado ? null : alAlternarTeclado,
+                  style: TextButton.styleFrom(
+                    foregroundColor: ColoresAlta.azul,
+                    minimumSize: const Size(48, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    textStyle: const TextStyle(
+                      fontFamily: 'JetBrainsMono',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
+                  child: Text(numerico ? TextosEspacios.teclaLetras : TextosEspacios.teclaNumeros),
                 ),
-                child: Text(numerico ? TextosEspacios.teclaLetras : TextosEspacios.teclaNumeros),
               ),
             ),
           ),

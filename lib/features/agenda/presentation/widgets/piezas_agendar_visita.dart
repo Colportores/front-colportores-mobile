@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../mapa/presentation/widgets/campos_ubicacion.dart';
 import '../../../mapa/presentation/widgets/piezas_alta.dart';
 import '../../domain/entities/franja_horaria.dart';
 import '../../domain/entities/tipo_agenda.dart';
+import '../formato_agenda.dart' show TextosAgenda;
 import '../formato_agendar_visita.dart';
 import '../textos_agendar_visita.dart';
 
@@ -30,6 +32,7 @@ abstract final class ClavesAgendarVisita {
   static Key franja(FranjaHoraria f) => Key('agendar_franja_${f.codigo}');
   static Key dia(int desdeHoy) => Key('agendar_dia_$desdeHoy');
   static const otroDia = Key('agendar_otro_dia');
+  static const hojaDiaFijo = Key('agendar_hoja_dia_fijo');
   static const diaElegido = Key('agendar_dia_elegido');
 
   // Vista 39, R·02 y R·03.
@@ -151,7 +154,8 @@ class _EsqueletoPersona extends StatelessWidget {
   }
 }
 
-/// «TIPO»: Entrevista o Cobranza.
+/// «TIPO»: Entrevista o Cobranza. La cita de una entrega (HU-VEN-003) se ve con su tipo y no se puede
+/// cambiar a otro: nace de una venta y su tipo no es una elección de quien la edita.
 class SelectorTipoAgenda extends StatelessWidget {
   const SelectorTipoAgenda({
     super.key,
@@ -189,15 +193,26 @@ class SelectorTipoAgenda extends StatelessWidget {
                   : ColoresAlta.tinta,
             ),
           ),
-          segments: const [
-            ButtonSegment(
-              value: TipoAgenda.entrevista,
-              label: Text(TextosAgendarVisita.entrevista),
-            ),
-            ButtonSegment(value: TipoAgenda.cobranza, label: Text(TextosAgendarVisita.cobranza)),
-          ],
+          // Una cita de entrega (HU-VEN-003) no cambia de tipo: se ve sola, elegida. Con tres
+          // segmentos, a 2,0× las etiquetas se parten a la mitad (QA #433); con uno entra siempre.
+          segments: tipo == TipoAgenda.entrega
+              ? const [
+                  ButtonSegment(value: TipoAgenda.entrega, label: Text(TextosAgenda.tagEntrega)),
+                ]
+              : const [
+                  ButtonSegment(
+                    value: TipoAgenda.entrevista,
+                    label: Text(TextosAgendarVisita.entrevista),
+                  ),
+                  ButtonSegment(
+                    value: TipoAgenda.cobranza,
+                    label: Text(TextosAgendarVisita.cobranza),
+                  ),
+                ],
           selected: {tipo},
-          onSelectionChanged: bloqueado || alCambiar == null ? null : (s) => alCambiar!(s.first),
+          onSelectionChanged: bloqueado || alCambiar == null || tipo == TipoAgenda.entrega
+              ? null
+              : (s) => alCambiar!(s.first),
         ),
       ],
     );
@@ -322,6 +337,14 @@ class TarjetaFechaAgendar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final gris = theme.extension<ColoresColportaje>()?.gris ?? ColoresAlta.gris;
+    final grande = MediaQuery.textScalerOf(context).scale(14) / 14 >= 1.5;
+    final cambiar = Text(
+      TextosAgendarVisita.cambiar,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        color: alTocar == null ? gris : ColoresAlta.azul,
+        fontWeight: FontWeight.w600,
+      ),
+    );
     return Semantics(
       button: true,
       label: TextosAgendarVisita.lectorTarjetaFecha(etiqueta, titulo, detalle),
@@ -376,17 +399,13 @@ class TarjetaFechaAgendar extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(detalle!, style: theme.textTheme.bodySmall?.copyWith(color: gris)),
                         ],
+                        // Con el texto grande «Cambiar» no le quita ancho al día: baja debajo
+                        // («Miércoles» se partía en «Miércol/es», QA #513).
+                        if (grande) ...[const SizedBox(height: 4), cambiar],
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    TextosAgendarVisita.cambiar,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: alTocar == null ? gris : ColoresAlta.azul,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  if (!grande) ...[const SizedBox(width: 8), cambiar],
                 ],
               ),
             ),
@@ -498,13 +517,20 @@ Future<DateTime?> mostrarHojaDiaYHora(
   required DateTime inicial,
   required DateTime ahora,
   bool conHora = true,
-}) => showModalBottomSheet<DateTime>(
+  bool conDia = true,
+  bool sinHoyNiManana = false,
+}) => mostrarHojaInferior<DateTime>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: _formaHoja,
-  builder: (_) => HojaDiaYHora(inicial: inicial, ahora: ahora, conHora: conHora),
+  builder: (_) => HojaDiaYHora(
+    inicial: inicial,
+    ahora: ahora,
+    conHora: conHora,
+    conDia: conDia,
+    sinHoyNiManana: sinHoyNiManana,
+  ),
 );
 
 /// Cuántos minutos suben o bajan los botones − y + de la hora.
@@ -514,13 +540,28 @@ const pasoDeLaHora = 5;
 const diasDeAtajo = 5;
 
 class HojaDiaYHora extends StatefulWidget {
-  const HojaDiaYHora({super.key, required this.inicial, required this.ahora, this.conHora = true});
+  const HojaDiaYHora({
+    super.key,
+    required this.inicial,
+    required this.ahora,
+    this.conHora = true,
+    this.conDia = true,
+    this.sinHoyNiManana = false,
+  });
 
   final DateTime inicial;
   final DateTime ahora;
 
   /// Si la hoja pide también la hora; `false`: solo el día.
   final bool conHora;
+
+  /// Si la hoja pide el día; `false`: solo la hora del día de [inicial] («Hoy» y «Mañana» de «¿Cuándo
+  /// volvés a cobrar?», 42B·01B, que ya dicen el día).
+  final bool conDia;
+
+  /// Sin los chips «Hoy» y «Mañana», que ya están en la pregunta de quien abre la hoja («Otro día» de
+  /// «¿Cuándo volvés a cobrar?», 42B·01C): los atajos arrancan pasado mañana.
+  final bool sinHoyNiManana;
 
   @override
   State<HojaDiaYHora> createState() => _HojaDiaYHoraState();
@@ -542,7 +583,10 @@ class _HojaDiaYHoraState extends State<HojaDiaYHora> {
     final total = _minutos + delta;
     final saltoDeDia = total >= dia ? 1 : (total < 0 ? -1 : 0);
     final nuevoDia = DateTime(_dia.year, _dia.month, _dia.day + saltoDeDia);
-    if (nuevoDia.isBefore(_hoy)) return;
+    // Solo se frena el salto hacia atrás a un día de antes de hoy. Con el día de la hoja ya vencido (la
+    // página quedó abierta de un día para otro) «+» y «−» siguen moviendo la hora dentro de ese día:
+    // frenarlos del todo los dejaba muertos sin decir por qué (QA #538).
+    if (saltoDeDia < 0 && nuevoDia.isBefore(_hoy)) return;
     setState(() {
       _dia = nuevoDia;
       _minutos = ((total % dia) + dia) % dia;
@@ -572,7 +616,10 @@ class _HojaDiaYHoraState extends State<HojaDiaYHora> {
     final theme = Theme.of(context);
     final gris = theme.extension<ColoresColportaje>()?.gris ?? ColoresAlta.gris;
     final esquema = theme.colorScheme;
-    final atajos = [for (var i = 0; i < diasDeAtajo; i++) _masDias(i)];
+    final desde = widget.sinHoyNiManana ? 2 : 0;
+    // Sin «Hoy» ni «Mañana» quedan cuatro días (de pasado mañana en adelante), como dibuja 42B·01C.
+    final cuantos = widget.sinHoyNiManana ? diasDeAtajo - 1 : diasDeAtajo;
+    final atajos = [for (var i = desde; i < desde + cuantos; i++) _masDias(i)];
     final fueraDeAtajo = !atajos.any((d) => FormatoAgendarVisita.mismoDia(d, _dia));
     final franja = FranjaHoraria.sugeridaPara(_minutos);
 
@@ -610,43 +657,59 @@ class _HojaDiaYHoraState extends State<HojaDiaYHora> {
             Semantics(
               header: true,
               child: Text(
-                widget.conHora ? TextosAgendarVisita.hojaTitulo : TextosAgendarVisita.hojaTituloDia,
+                !widget.conDia
+                    ? TextosAgendarVisita.hojaTituloHora
+                    : widget.conHora
+                    ? TextosAgendarVisita.hojaTitulo
+                    : TextosAgendarVisita.hojaTituloDia,
                 style: theme.textTheme.titleLarge,
               ),
             ),
-            const SizedBox(height: 16),
-            const ExcludeSemantics(child: EtiquetaCampoUbicacion(TextosAgendarVisita.etiquetaDia)),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (var i = 0; i < atajos.length; i++)
-                  chipDia(
-                    switch (i) {
-                      0 => TextosAgendarVisita.hoy,
-                      1 => TextosAgendarVisita.manana,
-                      _ => FormatoAgendarVisita.diaCorto(atajos[i]),
-                    },
-                    atajos[i],
-                    ClavesAgendarVisita.dia(i),
+            if (!widget.conDia) ...[
+              const SizedBox(height: 4),
+              Text(
+                FormatoAgendarVisita.diaLargo(_dia),
+                key: ClavesAgendarVisita.hojaDiaFijo,
+                style: theme.textTheme.bodyMedium?.copyWith(color: gris),
+              ),
+            ],
+            if (widget.conDia) ...[
+              const SizedBox(height: 16),
+              const ExcludeSemantics(
+                child: EtiquetaCampoUbicacion(TextosAgendarVisita.etiquetaDia),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (var i = 0; i < atajos.length; i++)
+                    chipDia(
+                      switch (i + desde) {
+                        0 => TextosAgendarVisita.hoy,
+                        1 => TextosAgendarVisita.manana,
+                        _ => FormatoAgendarVisita.diaCorto(atajos[i]),
+                      },
+                      atajos[i],
+                      ClavesAgendarVisita.dia(i + desde),
+                    ),
+                  if (fueraDeAtajo)
+                    chipDia(
+                      '${FormatoAgendarVisita.diaCorto(_dia)}/${_dia.month}',
+                      _dia,
+                      ClavesAgendarVisita.diaElegido,
+                    ),
+                  ActionChip(
+                    key: ClavesAgendarVisita.otroDia,
+                    label: const Text(TextosAgendarVisita.otroDia),
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: ColoresAlta.grisBorde),
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                    onPressed: _elegirOtroDia,
                   ),
-                if (fueraDeAtajo)
-                  chipDia(
-                    '${FormatoAgendarVisita.diaCorto(_dia)}/${_dia.month}',
-                    _dia,
-                    ClavesAgendarVisita.diaElegido,
-                  ),
-                ActionChip(
-                  key: ClavesAgendarVisita.otroDia,
-                  label: const Text(TextosAgendarVisita.otroDia),
-                  backgroundColor: Colors.white,
-                  side: const BorderSide(color: ColoresAlta.grisBorde),
-                  materialTapTargetSize: MaterialTapTargetSize.padded,
-                  onPressed: _elegirOtroDia,
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
             if (widget.conHora) ...[
               const SizedBox(height: 20),
               const ExcludeSemantics(
@@ -728,10 +791,9 @@ Future<bool?> mostrarHojaHoraPasada(
   BuildContext context, {
   required String texto,
   String confirmar = TextosAgendarVisita.agendarIgual,
-}) => showModalBottomSheet<bool>(
+}) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   backgroundColor: Colors.white,
   shape: _formaHoja,
   builder: (contexto) => SafeArea(

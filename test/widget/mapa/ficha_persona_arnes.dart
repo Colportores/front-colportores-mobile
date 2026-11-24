@@ -5,6 +5,9 @@ import 'dart:async';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/agenda/presentation/providers/agenda_providers.dart';
+import 'package:colportores_mobile/features/agenda/presentation/providers/consulta_agenda_providers.dart';
+import 'package:colportores_mobile/features/agenda/presentation/providers/detalle_agenda_providers.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/contexto_notas_persona.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ficha_de_persona.dart';
@@ -19,13 +22,18 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/ficha_pe
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/notas_persona_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
+import 'package:colportores_mobile/features/notificaciones/domain/entities/preferencias_recordatorios.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/agenda_items_falsos.dart';
+import '../../helpers/agendar_visita_arnes.dart' show AgendaRepositorioQueAgenda;
 import '../../helpers/ficha_persona_falsos.dart';
 import '../../helpers/nota_persona_falsos.dart';
+import '../../helpers/notificaciones_arnes.dart' show Telefono;
 import '../../helpers/persona_falsos.dart';
 import 'baja_persona_arnes.dart' show CuentasFalsas;
 
@@ -106,8 +114,30 @@ final class MundoFicha {
   final marcador = MarcadorFalso();
   final personas = PersonaRepositorioFalso();
 
+  /// La agenda de la persona (23A·05, «PRÓXIMA VISITA»): `per-1` tiene el vínculo `ep-per-1`.
+  final consultaAgendas = ConsultaAgendaFalsa()
+    ..vinculosDe = {
+      'per-1': {'ep-per-1'},
+    };
+
+  /// Las preferencias de los recordatorios; `null`: no se pudieron leer (valores de fábrica).
+  PreferenciasRecordatorios? preferencias;
+
+  /// Con destino para el detalle de una agenda (tocar la tarjeta): las agendas que abrió, y si espera
+  /// o falla.
+  var conDetalleDeAgenda = false;
+  final detallesAbiertos = <String>[];
+  Completer<void>? compuertaDetalle;
+  Object? fallaDelDetalle;
+
+  /// Más overrides, para los tests que montan otras pantallas encima de la ficha.
+  List<Override> extra = [];
+
   /// Las veces que se tocó «Editar persona» y con qué persona.
   final ediciones = <String>[];
+
+  /// El espacio con el que se abrió cada edición de [ediciones].
+  final espaciosDeEdicion = <String>[];
 
   /// Los destinos de «Registrar visita».
   final visitas = <ContextoDeVisitaFicha>[];
@@ -121,9 +151,27 @@ final class MundoFicha {
   /// Lo que devuelve el destino de la devolución, si queda esperando.
   Completer<void>? compuertaDevolucion;
 
+  /// Lo que recibió «Registrar entrega» (HU-VEN-005) cada vez que se tocó.
+  final entregas = <ContextoDeEntregaDeLaFicha>[];
+
+  /// Lo que devuelve el destino de «Registrar entrega», si queda esperando.
+  Completer<void>? compuertaEntrega;
+
+  /// Si no es `null`, el próximo «Registrar entrega» lanza esto en vez de abrirse.
+  Object? lanzarAlRegistrarEntrega;
+
+  /// La agenda y el teléfono con los que se abre «Agendar visita» desde «+ Agendar cobranza».
+  final agendas = AgendaRepositorioQueAgenda();
+  final telefono = Telefono();
+
   var conEdicion = false;
   var conRegistrarVisita = false;
   var conDevolucion = false;
+  var conRegistrarEntrega = false;
+
+  /// Con destino para tocar un cobro del historial (vista 30 B): guarda cada `id` que se abrió.
+  var conVerCobro = false;
+  final cobrosAbiertos = <String>[];
 }
 
 typedef ContextoDeVisitaFicha = ({String ubicacionId, String? espacioId, String? agendaId});
@@ -170,13 +218,29 @@ Future<void> montarFicha(
         movimientosDeCuentaProvider.overrideWithValue(mundo.movimientos),
         marcadorDeTelefonoProvider.overrideWithValue(mundo.marcador),
         personaRepositoryProvider.overrideWithValue(mundo.personas),
+        consultaAgendaRepositoryProvider.overrideWithValue(mundo.consultaAgendas),
+        preferenciasDelAvisoProvider.overrideWith((ref) async => mundo.preferencias),
+        if (mundo.conDetalleDeAgenda)
+          abrirDetalleDeAgendaProvider.overrideWithValue((id) async {
+            mundo.detallesAbiertos.add(id);
+            await mundo.compuertaDetalle?.future;
+            final falla = mundo.fallaDelDetalle;
+            if (falla != null) throw falla;
+            return null;
+          }),
         restaurarEspacioUseCaseProvider.overrideWithValue(RestaurarEspacioUseCase(mundo.espacios)),
         relojPersonaProvider.overrideWithValue(() => ahoraFicha),
         generadorIdPersonaProvider.overrideWithValue(() => 'nota-nueva-${++contador}'),
         if (mundo.conEdicion)
-          editarPersonaDesdeLaFichaProvider.overrideWithValue((id) async {
-            mundo.ediciones.add(id);
+          editarPersonaDesdeLaFichaProvider.overrideWithValue((c) async {
+            mundo.ediciones.add(c.personaId);
+            mundo.espaciosDeEdicion.add(c.espacioId);
             await mundo.compuertaEdicion?.future;
+            return null;
+          }),
+        if (mundo.conVerCobro)
+          verCobroDesdeLaFichaProvider.overrideWithValue((id) {
+            mundo.cobrosAbiertos.add(id);
             return null;
           }),
         if (mundo.conDevolucion)
@@ -185,11 +249,28 @@ Future<void> montarFicha(
             await mundo.compuertaDevolucion?.future;
             return true;
           }),
+        if (mundo.conRegistrarEntrega)
+          registrarEntregaDesdeLaFichaProvider.overrideWithValue((c) async {
+            mundo.entregas.add(c);
+            await mundo.compuertaEntrega?.future;
+            final error = mundo.lanzarAlRegistrarEntrega;
+            if (error != null) {
+              mundo.lanzarAlRegistrarEntrega = null;
+              throw error;
+            }
+            return true;
+          }),
+        agendaRepositoryProvider.overrideWithValue(mundo.agendas),
+        generadorIdVisitaProvider.overrideWithValue(() => 'cobranza-${++contador}'),
+        relojVisitaProvider.overrideWithValue(() => ahoraFicha),
+        ...mundo.telefono.overrides,
         if (mundo.conRegistrarVisita)
           registrarVisitaDesdeLaCasaProvider.overrideWithValue((c) {
             mundo.visitas.add(c);
             return null;
           }),
+        // Al final: lo que pone un test pisa a lo de arriba (p. ej. otra agenda para «Agendar visita»).
+        ...mundo.extra,
       ],
       child: MaterialApp(
         theme: temaClaro(),

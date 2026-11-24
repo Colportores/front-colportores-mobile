@@ -1,3 +1,4 @@
+import 'package:sync_engine/adapters.dart';
 import 'package:sync_engine/sync_engine.dart';
 
 import '../../../../core/database/app_database.dart';
@@ -15,9 +16,29 @@ import '../../domain/repositories/respaldo_drive_repository.dart';
 import '../../domain/services/respaldo_nocturno.dart';
 import '../../domain/services/servicio_respaldo.dart';
 import '../datasources/auditoria_backup_local.dart';
+import 'crypto_con_dek.dart';
+import 'envoltorio_en_drive.dart';
 import 'nivel_bateria_canal.dart';
 import 'servicio_google.dart';
 import 'servicio_respaldo_motor.dart';
+
+/// Los dos puertos que el respaldo de la noche le pide a Drive: la cadena de respaldos y la clave
+/// envuelta que viaja con ella.
+typedef DriveDelRespaldo = ({ArchivePort archivo, KeyEnvelopePort envoltorios});
+
+/// Cómo se arma el Drive del respaldo de la noche con el token y el hash del momento. El de la app es
+/// [driveDeGoogle]; los tests dan un Drive en memoria.
+typedef ArmadoDelDrive =
+    DriveDelRespaldo Function(Future<String?> Function() token, String Function(List<int>) digest);
+
+/// El Drive de la persona (`appDataFolder`): un solo cliente hace las dos cosas.
+DriveDelRespaldo driveDeGoogle(
+  Future<String?> Function() token,
+  String Function(List<int>) digest,
+) {
+  final google = GoogleDriveArchive(token: token, digest: digest);
+  return (archivo: google, envoltorios: google);
+}
 
 /// Arma, **sin pantalla**, lo que el respaldo de la noche necesita (HU-SYNC-005, ADR-009, #583): se
 /// ejecuta en el isolate que levanta el sistema con la app cerrada, donde no hay `ProviderScope`,
@@ -25,7 +46,10 @@ import 'servicio_respaldo_motor.dart';
 ///
 /// Los pasos, en este orden y cortando en el primero que no corresponde (devuelve `null`: hoy no
 /// hay nada para respaldar):
-/// 1. el usuario de la sesión guardada en el almacén seguro ([usuarioDeLaSesionGuardada]);
+/// 1. el usuario de la sesión guardada en el almacén seguro ([usuarioDeLaSesionGuardada]), aunque
+///    la sesión esté vencida (decisión del 04/11 en #583, HU-AUTH-007, #228). Si el almacén **no se
+///    deja leer** no es «sin sesión»: [abrir] lanza [SesionGuardadaIlegible] y la corrida pide
+///    reintentar, con la espera creciente del sistema (decisión del 04/11, QA P1 de #583; #691);
 /// 2. que ese usuario tenga Drive conectado y con permiso;
 /// 3. que exista la DB local y haya DEK en el Keystore (en iOS se lee con el equipo bloqueado,
 ///    `first_unlock_this_device`);
@@ -50,6 +74,7 @@ final class ArmadorDeRespaldoNocturno {
     required this._drive,
     required this._google,
     required this._conectividad,
+    this._armarDrive = driveDeGoogle,
     AppLogger? logger,
   }) : _log = logger ?? AppLogger.instance;
 
@@ -59,10 +84,15 @@ final class ArmadorDeRespaldoNocturno {
   final RespaldoDriveRepository _drive;
   final ServicioGoogle _google;
   final MonitorConectividad _conectividad;
+  final ArmadoDelDrive _armarDrive;
   final AppLogger _log;
 
+  /// La sesión de trabajo de esta noche, o `null` si no hay nada para respaldar. Lanza
+  /// [SesionGuardadaIlegible] si el almacén seguro no deja leer la sesión (un iPhone reiniciado que
+  /// todavía no se desbloqueó): [RespaldoNocturno] lo cuenta como falla y pide reintentar. En ese
+  /// punto todavía no se abrió la DB.
   Future<SesionDeRespaldoNocturno?> abrir() async {
-    final usuarioId = await usuarioDeLaSesionGuardada(_almacen);
+    final usuarioId = await _usuarioDeLaSesion();
     if (usuarioId == null) return null;
 
     final estado = (await _drive.estado(usuarioId)).fold((falla) => throw falla, (e) => e);
@@ -88,14 +118,25 @@ final class ArmadorDeRespaldoNocturno {
     }
 
     try {
+      final cripto = CryptoConDek(_custodia.leerDek);
+      final driveDeLaNoche = _armarDrive(_token, cripto.digest);
       final motor = armarMotorDeSync(
         db: db,
         leerDek: _custodia.leerDek,
         tokenDrive: _token,
         transporte: const TransporteSinBackend(),
         conectividad: ConectividadDelMotor(_conectividad),
+        archivo: driveDeLaNoche.archivo,
       );
       final auditoria = AuditoriaBackupLocal(db);
+      // La clave envuelta con la contraseña viaja con el respaldo (ADR-006, HU-SYNC-006): también el de
+      // la noche la deja en Drive si no estaba. Nunca lanza.
+      final envoltorio = EnvoltorioEnDrive(
+        envoltorios: () async => driveDeLaNoche.envoltorios,
+        keyId: cripto.keyId,
+        envoltorioLocal: _custodia.leerEnvoltorioCodificado,
+        desactualizado: () async => await _custodia.envoltorioDesactualizadoPara() != null,
+      );
       final servicio = ServicioRespaldoMotor(
         backup: () => motor.backup,
         estadoDrive: () async => (await _drive.estado(usuarioId)).fold((f) => throw f, (e) => e),
@@ -103,7 +144,10 @@ final class ArmadorDeRespaldoNocturno {
         bateria: const NivelBateriaDesconocido(),
         alPermisoRevocado: () => _drive.marcarPermisoRevocado(usuarioId),
         alSinEspacio: () => _drive.marcarSinEspacio(usuarioId),
-        alGuardado: () => _drive.marcarRespaldoGuardado(usuarioId),
+        alGuardado: () async {
+          await _drive.marcarRespaldoGuardado(usuarioId);
+          await envoltorio.sincronizar();
+        },
         alVerificar: (informe) async => auditoria.registrar(
           cuando: informe.checkedAt,
           hayProblema: informe.needsRebase,
@@ -113,6 +157,21 @@ final class ArmadorDeRespaldoNocturno {
       return _Sesion(servicio: servicio, auditoria: auditoria, motor: motor, base: _baseLocal);
     } on Object {
       await _baseLocal.cerrar();
+      rethrow;
+    }
+  }
+
+  /// El usuario de la sesión guardada, o `null` sin sesión. Si el almacén no se deja leer, lo anota
+  /// y relanza [SesionGuardadaIlegible]: la corrida pide reintentar.
+  Future<String?> _usuarioDeLaSesion() async {
+    try {
+      return await usuarioDeLaSesionGuardada(_almacen);
+    } on SesionGuardadaIlegible {
+      _log.warn(
+        LogModulo.backup,
+        'BACKUP_NOCTURNO_SESION',
+        'el almacén seguro no deja leer la sesión: se reintenta',
+      );
       rethrow;
     }
   }

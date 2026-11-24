@@ -57,6 +57,31 @@ void main() {
     },
   );
 
+  test('una entrevista sin persona (#669) se guarda y se lee sin persona', () async {
+    final entrevista = entrevistaDePrueba(espacioPersonaId: null);
+    await repo.guardar(entrevista);
+
+    final otraApp = EntrevistaEnCursoRepositoryAlmacen(almacen);
+    final leida = await otraApp.leer('col-1');
+    expect(leida, entrevista);
+    expect(leida!.espacioPersonaId, isNull);
+    final fila = guardado()['col-1'] as Map<String, dynamic>;
+    expect(fila.containsKey('espacioPersonaId'), isTrue);
+    expect(fila['espacioPersonaId'], isNull);
+  });
+
+  test(
+    'ponerle la persona a una entrevista sin persona reemplaza la fila y conserva los ids',
+    () async {
+      await repo.guardar(entrevistaDePrueba(espacioPersonaId: null));
+      await repo.guardar(entrevistaDePrueba(espacioPersonaId: 'ep-7'));
+
+      final leida = (await repo.leer('col-1'))!;
+      expect(leida.espacioPersonaId, 'ep-7');
+      expect(leida.ids.visita, 'vis-1');
+    },
+  );
+
   test('guarda solo ids y la hora de inicio: ningún nombre ni dirección', () async {
     await repo.guardar(entrevistaDePrueba());
 
@@ -132,6 +157,8 @@ void main() {
         ClaveSegura.entrevistaEnCurso,
         jsonEncode({
           'col-1': {'espacioId': 'e', 'espacioPersonaId': 'p', 'visitaId': 'v', 'notaId': 'n'},
+          // Sin la persona sí se entiende (#669), pero sin la hora, no.
+          'col-5': {'espacioId': 'e', 'visitaId': 'v', 'notaId': 'n'},
           'col-2': {
             'espacioId': 'e',
             'espacioPersonaId': 'p',
@@ -146,6 +173,7 @@ void main() {
       expect(await repo.leer('col-1'), isNull);
       expect(await repo.leer('col-2'), isNull);
       expect(await repo.leer('col-3'), isNull);
+      expect(await repo.leer('col-5'), isNull);
 
       await repo.guardar(entrevistaDePrueba(colportorId: 'col-4'));
       expect(guardado().keys, containsAll(<String>['col-1', 'col-4']));

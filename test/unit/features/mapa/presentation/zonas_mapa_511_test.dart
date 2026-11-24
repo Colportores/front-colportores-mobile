@@ -1,5 +1,6 @@
 // Cómo se ve una zona sobre el mapa (#511): el color del borde con contraste (AA), el nombre y lo que
 // se le dice al lector de pantalla.
+import 'package:colportores_mapa/colportores_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/zona_del_mapa.dart';
 import 'package:colportores_mobile/features/mapa/domain/value_objects/geometria_zona.dart';
 import 'package:colportores_mobile/features/mapa/presentation/formato_zonas_mapa.dart';
@@ -33,11 +34,12 @@ void main() {
       expect(ColoresZona.fondoLiso, ColoresMapa.fondo);
     });
 
-    test('sin color o con uno roto, el azul primario', () {
-      expect(ColoresZona.borde(null), ColoresZona.porDefecto);
-      expect(ColoresZona.borde('azul'), ColoresZona.porDefecto);
-      expect(ColoresZona.borde('#12345'), ColoresZona.porDefecto);
-      expect(ColoresZona.borde('#GGGGGG'), ColoresZona.porDefecto);
+    test('sin color o con uno roto, el gris sin color del token con su borde a 3:1 (#695)', () {
+      final sinColor = Color(ContrasteMapa.bordeDeZona(ColoresZona.porDefecto.toARGB32()));
+      expect(ColoresZona.borde(null), sinColor);
+      expect(ColoresZona.borde('azul'), sinColor);
+      expect(ColoresZona.borde('#12345'), sinColor);
+      expect(ColoresZona.borde('#GGGGGG'), sinColor);
     });
 
     test('un color que ya contrasta queda como lo eligió el coordinador', () {
@@ -105,28 +107,31 @@ void main() {
       expect(TextosMapaZonas.paraElLector(const []), isNull);
     });
 
-    test('la propia y cuántas más hay', () {
-      expect(
-        TextosMapaZonas.paraElLector([
-          _zona('a', 'Cerro Norte', propia: true),
-          _zona('b', 'La Teja'),
-        ]),
-        'Tu zona: Cerro Norte. Otra zona en el mapa.',
-      );
-      expect(
-        TextosMapaZonas.paraElLector([
-          _zona('a', 'Cerro Norte', propia: true),
-          _zona('b', 'La Teja'),
-          _zona('c', 'Belvedere'),
-        ]),
-        'Tu zona: Cerro Norte. 2 zonas más en el mapa.',
-      );
-    });
+    test(
+      'nombra solo la propia: las de otros colportores no se mencionan ni se cuentan (#654)',
+      () {
+        expect(
+          TextosMapaZonas.paraElLector([
+            _zona('a', 'Cerro Norte', propia: true),
+            _zona('b', 'La Teja'),
+          ]),
+          'Tu zona: Cerro Norte.',
+        );
+        expect(
+          TextosMapaZonas.paraElLector([
+            _zona('a', 'Cerro Norte', propia: true),
+            _zona('b', 'La Teja'),
+            _zona('c', 'Belvedere'),
+          ]),
+          'Tu zona: Cerro Norte.',
+        );
+      },
+    );
 
-    test('solo las demás: no se inventa una zona propia', () {
+    test('solo las demás: no se dice nada ni se inventa una zona propia (#654)', () {
       expect(
         TextosMapaZonas.paraElLector([_zona('b', 'La Teja'), _zona('c', 'Belvedere')]),
-        '2 zonas más en el mapa.',
+        isNull,
       );
     });
 

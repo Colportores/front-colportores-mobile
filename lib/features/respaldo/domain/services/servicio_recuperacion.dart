@@ -163,6 +163,7 @@ final class InformeRecuperacion {
     required this.trabajosReenviados,
     required this.filasTraidas,
     required this.ahora,
+    this.respaldosSinAbrir = 0,
   });
 
   /// De cuándo son los datos restaurados: hasta acá llega la copia. Si es [parcial], es la última
@@ -184,6 +185,11 @@ final class InformeRecuperacion {
 
   /// El momento de la recuperación.
   final DateTime ahora;
+
+  /// Cuántos de los respaldos pedidos no se pudieron abrir —la contraseña no los abre, no tienen su
+  /// clave envuelta en Drive o no tenían una base que leer— y quedaron afuera (decisión del 04/11,
+  /// #610 P1, «Varios resp.»). La recuperación no borra ni pisa ninguno: siguen en Drive, sin tocar.
+  final int respaldosSinAbrir;
 
   /// La ventana que no se pudo recuperar: lo creado entre el respaldo y la pérdida que tampoco
   /// llegó a subir. Existe siempre que hubo respaldo (contrato §7, «Lo que no se puede recuperar»).

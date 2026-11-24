@@ -384,27 +384,24 @@ void main() {
       expect(repo.escrituras.single.reduceAUnEspacio, isFalse);
     });
 
-    test('dado un EDIFICIO con 2 espacios activos, cuando lo pasa a NEGOCIO, sigue bloqueado '
-        '(igual que a CASA)', () async {
+    test('dado un EDIFICIO con 2 espacios activos, cuando lo pasa a NEGOCIO, se permite sin perder '
+        'ninguno (Cristian, 09/11, «Negocio mapa»): no toca los espacios', () async {
       conEdificio(2);
 
-      expect(
-        await falla(params(tipo: TipoUbicacion.negocio)),
-        const FailureUbicacionConEspacios(cantidadEspacios: 2),
-      );
-      expect(repo.escrituras, isEmpty);
+      expect(await ok(params(tipo: TipoUbicacion.negocio)), isA<UbicacionModificada>());
+
+      expect(repo.escrituras.single.nueva.tipo, TipoUbicacion.negocio);
+      expect(repo.escrituras.single.reduceAUnEspacio, isFalse);
     });
 
-    test('dado un EDIFICIO con 3 espacios activos, cuando lo pasa a CASA o NEGOCIO, se bloquea con '
-        'el texto literal y no se escribe', () async {
+    test('dado un EDIFICIO con 3 espacios activos, cuando lo pasa a CASA, se bloquea con el texto '
+        'literal y no se escribe', () async {
       conEdificio(3);
 
-      for (final tipo in [TipoUbicacion.casa, TipoUbicacion.negocio]) {
-        final f = await falla(params(tipo: tipo));
+      final f = await falla(params(tipo: TipoUbicacion.casa));
 
-        expect(f, const FailureUbicacionConEspacios(cantidadEspacios: 3));
-        expect(f.mensaje, 'Esta ubicación tiene 3 espacios. Borralos o reubicalos primero.');
-      }
+      expect(f, const FailureUbicacionConEspacios(cantidadEspacios: 3));
+      expect(f.mensaje, 'Esta ubicación tiene 3 espacios. Borralos o reubicalos primero.');
       expect(repo.escrituras, isEmpty);
     });
 
@@ -418,17 +415,23 @@ void main() {
       expect(repo.escrituras, isEmpty);
     });
 
-    test('dado un EDIFICIO con un solo espacio activo, cuando lo pasa a CASA o NEGOCIO, se permite '
-        'y le avisa al repositorio que deje de ser edificio', () async {
-      conEdificio(1);
+    test(
+      'dado un EDIFICIO con un solo espacio activo, cuando lo pasa a CASA se permite y le avisa al '
+      'repositorio que deje un solo espacio; a NEGOCIO, el depto sigue como está (con su número)',
+      () async {
+        conEdificio(1);
 
-      for (final tipo in [TipoUbicacion.casa, TipoUbicacion.negocio]) {
-        expect(await ok(params(tipo: tipo)), isA<UbicacionModificada>());
-      }
+        for (final tipo in [TipoUbicacion.casa, TipoUbicacion.negocio]) {
+          expect(await ok(params(tipo: tipo)), isA<UbicacionModificada>());
+        }
 
-      expect(repo.escrituras.map((e) => e.nueva.tipo), [TipoUbicacion.casa, TipoUbicacion.negocio]);
-      expect(repo.escrituras.map((e) => e.reduceAUnEspacio), [true, true]);
-    });
+        expect(repo.escrituras.map((e) => e.nueva.tipo), [
+          TipoUbicacion.casa,
+          TipoUbicacion.negocio,
+        ]);
+        expect(repo.escrituras.map((e) => e.reduceAUnEspacio), [true, false]);
+      },
+    );
 
     test('dado un EDIFICIO sin espacios activos, cuando lo pasa a CASA, se permite', () async {
       conEdificio(0);

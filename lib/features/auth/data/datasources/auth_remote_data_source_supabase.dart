@@ -86,12 +86,20 @@ final class AuthRemoteDataSourceSupabase
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) async {
     final respuesta = await _traduciendo(
       () => _auth.signUp(
         email: email,
         password: password,
-        data: {'nombre': nombre, 'apellido': apellido, 'cedula': cedula},
+        // `terminos_version`: la versión de los Términos que aceptó; el trigger del alta la guarda
+        // con la hora del servidor (backend-supabase#109, migración 0065).
+        data: {
+          'nombre': nombre,
+          'apellido': apellido,
+          'cedula': cedula,
+          'terminos_version': terminosVersion,
+        },
         // Enlace de verificación → vuelve a la app por el deep link (declarado en el manifest),
         // no al Site URL (localhost:3000 por default). Path propio `/verificado` (issue #84) para
         // poder distinguir, del lado de la app, esta confirmación de un login/registro normal.
@@ -195,12 +203,15 @@ final class AuthRemoteDataSourceSupabase
   Future<void> revocarSesion(String accessToken) =>
       _traduciendo(() => _auth.admin.signOut(accessToken, scope: SignOutScope.local));
 
+  // El mismo destino que el correo del registro (`/verificado`): con la base sola, el enlace del
+  // correo reenviado verificaba la cuenta en el servidor pero la app no lo reconocía como una
+  // verificación y quedaba en «El enlace expiró» (#679).
   @override
   Future<void> reenviarVerificacion(String email) => _traduciendo(
     () => _auth.resend(
       email: email,
       type: OtpType.signup,
-      emailRedirectTo: ConfigSupabase.redirectBase,
+      emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
     ),
   );
 

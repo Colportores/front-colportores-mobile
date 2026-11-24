@@ -35,6 +35,12 @@ import '../../helpers/mapa_base_falso.dart';
 /// Atajo: el GPS que no da ubicación por [motivo].
 GpsFalso _gpsSin(MotivoSinGps motivo) => GpsFalso(Left(FailureGpsNoDisponible(motivo: motivo)));
 
+/// El botón de tipo [etiqueta] cuando es el elegido (el que lleva el tilde).
+Finder _marcado(String etiqueta) => find.descendant(
+  of: find.ancestor(of: find.text(etiqueta), matching: find.byType(InkWell)).first,
+  matching: find.byIcon(Icons.check),
+);
+
 /// La pantalla que abre el alta y guarda cómo se cerró.
 class _Anfitrion extends StatelessWidget {
   const _Anfitrion({required this.salidas, this.puntoInicial});
@@ -228,14 +234,12 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('con GPS preciso se registra con un toque en «Casa» y otro en «Registrar»', (
+    testWidgets('con GPS preciso se registra con un solo toque en «Registrar»: «Casa» ya viene', (
       tester,
     ) async {
       final e = await _montar(tester);
-      expect(_habilitado(tester, _registrar), isFalse, reason: 'el tipo es obligatorio');
+      expect(_habilitado(tester, _registrar), isTrue, reason: '«Casa» viene elegida (#665)');
 
-      await _tocar(tester, find.text('Casa'));
-      expect(_habilitado(tester, _registrar), isTrue);
       await _tocar(tester, _registrar);
 
       final salida = e.salidas.single;
@@ -249,14 +253,38 @@ void main() {
       expect(find.text('abrir'), findsOneWidget, reason: 'vuelve al mapa');
     });
 
-    testWidgets('el tipo no viene elegido y el elegido se marca', (tester) async {
+    testWidgets('«Casa» viene elegida y el elegido se marca; cambiar y volver a «Casa» funciona', (
+      tester,
+    ) async {
       await _montar(tester);
 
-      expect(find.byIcon(Icons.check), findsNothing);
-      await _tocar(tester, find.text('Negocio'));
-
       expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(_marcado('Casa'), findsOneWidget, reason: '«Casa» al abrir');
+      expect(_marcado('Negocio'), findsNothing);
+      expect(_marcado('Edificio'), findsNothing);
+
+      await _tocar(tester, find.text('Negocio'));
+      expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(_marcado('Negocio'), findsOneWidget);
+      expect(_marcado('Casa'), findsNothing);
+
+      await _tocar(tester, find.text('Casa'));
+      expect(find.byIcon(Icons.check), findsOneWidget);
+      expect(_marcado('Casa'), findsOneWidget);
+      expect(_habilitado(tester, _registrar), isTrue);
     });
+
+    testWidgets(
+      'con el texto al 200 % la fila de tipos no desborda y «Casa» se sigue viendo elegida',
+      (tester) async {
+        await _montar(tester, escala: 2, tamano: const Size(360, 640));
+
+        expect(tester.takeException(), isNull, reason: 'sin overflow');
+        expect(_marcado('Casa'), findsOneWidget);
+        await _traer(tester, find.text('Casa'));
+        expect(find.text('Casa').hitTestable(), findsOneWidget);
+      },
+    );
 
     testWidgets('mientras guarda: «Registrando…», deshabilitado, y no se puede cerrar', (
       tester,
@@ -392,6 +420,11 @@ void main() {
       await _montar(tester, gps: gps);
       expect(find.text('Sin GPS'), findsOneWidget);
 
+      // «Activar GPS» lo manda a los ajustes (el fake no cambia nada); solo al volver de ahí se
+      // vuelve a leer (#651: volver de otra app no puede mostrarle el diálogo del permiso).
+      await tester.tap(find.text('Activar GPS'));
+      await _asentar(tester);
+      expect(gps.activaciones, [MotivoSinGps.servicioApagado]);
       gps.respuesta = Right(lecturaGps(5));
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -525,6 +558,65 @@ void main() {
       expect(find.text('Editado'), findsNothing);
       expect(find.text('Del mapa'), findsNWidgets(2));
     });
+
+    testWidgets(
+      'regresión #652: el mapa solo trae la calle, el número se escribe a mano y es el que se guarda',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          geocodificador: GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia')),
+        );
+        await _tocar(tester, find.text('Casa'));
+        await tester.enterText(find.widgetWithText(TextField, 'Nº'), '45');
+        await tester.pump();
+        expect(find.text('Editado'), findsOneWidget);
+
+        await _tocar(tester, _registrar);
+
+        expect(e.repo.llamadas.single.ubicacion.numero, '45');
+        expect(e.salidas.single, isA<UbicacionCreada>());
+        expect((e.salidas.single! as UbicacionCreada).ubicacion.numero, '45');
+      },
+    );
+
+    testWidgets(
+      'regresión #652: el número escrito a mano gana aunque la dirección del mapa llegue después y '
+      'distinta, y es el que se guarda',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          geocodificador: GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia')),
+        );
+        await _tocar(tester, find.text('Casa'));
+        await tester.enterText(find.widgetWithText(TextField, 'Nº'), '45');
+        await tester.pump();
+
+        e.geocodificador.respuesta = (_) =>
+            const DireccionDelPunto(calle: 'Av. Italia', numero: '1250');
+        await tester.drag(_mapa, const Offset(0, 80));
+        await _asentar(tester);
+        expect(find.widgetWithText(TextField, '45'), findsOneWidget);
+
+        await _tocar(tester, _registrar);
+
+        expect(e.repo.llamadas.single.ubicacion.numero, '45');
+      },
+    );
+
+    testWidgets(
+      'regresión #652: sin número en el mapa y sin escribir uno, se guarda sin número (no se inventa)',
+      (tester) async {
+        final e = await _montar(
+          tester,
+          geocodificador: GeocodificadorFalso((_) => const DireccionDelPunto(calle: 'Av. Italia')),
+        );
+        await _tocar(tester, find.text('Casa'));
+
+        await _tocar(tester, _registrar);
+
+        expect(e.repo.llamadas.single.ubicacion.numero, isNull);
+      },
+    );
 
     testWidgets('al moverse la calle que vino del mapa aparece «Calle actualizada» un rato', (
       tester,
@@ -1092,19 +1184,31 @@ void main() {
       expect(e.salidas, [null]);
     });
 
-    testWidgets('al reentrar arranca de cero: sin tipo y leyendo el GPS otra vez', (tester) async {
-      final e = await _montar(tester);
-      await _tocar(tester, find.text('Casa'));
-      await _tocar(tester, find.byTooltip('Cerrar'));
-      expect(e.gps.lecturas, 1);
+    testWidgets(
+      'al reentrar arranca de cero: «Casa» elegida aunque la anterior fuera otro tipo, y con '
+      'una lectura nueva del GPS único (#670: desde «Mapa libre» nunca parte de una vieja)',
+      (tester) async {
+        final e = await _montar(tester);
+        await _tocar(tester, find.text('Edificio'));
+        expect(_marcado('Edificio'), findsOneWidget);
+        await _tocar(tester, find.byTooltip('Cerrar'));
+        final antes = e.gps.lecturas;
 
-      await tester.tap(find.text('abrir'));
-      await _asentar(tester);
+        await tester.tap(find.text('abrir'));
+        await _asentar(tester);
 
-      expect(e.gps.lecturas, 2);
-      expect(find.byIcon(Icons.check), findsNothing);
-      expect(_habilitado(tester, _registrar), isFalse);
-    });
+        expect(
+          e.gps.lecturas,
+          antes + 1,
+          reason: 'una lectura nueva al abrir; el permiso ya estaba (#651)',
+        );
+        expect(find.text('GPS ±6 m'), findsOneWidget, reason: 'parte de la lectura nueva');
+        expect(find.byIcon(Icons.check), findsOneWidget);
+        expect(_marcado('Casa'), findsOneWidget, reason: 'no recuerda el tipo del alta anterior');
+        expect(_marcado('Edificio'), findsNothing);
+        expect(_habilitado(tester, _registrar), isTrue);
+      },
+    );
 
     testWidgets('un alta por tap largo arranca en ese punto con «Marcado a mano»', (tester) async {
       await _montar(

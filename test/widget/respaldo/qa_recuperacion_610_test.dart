@@ -156,6 +156,10 @@ void main() {
       for (var i = 0; i < 12; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
+      await tester.tap(find.byKey(const Key('configuracion_hoja_recuperar_empezar')));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
       final aviso = find.byKey(const Key('configuracion_recuperar_respaldo_no'));
       expect(aviso, findsOneWidget);
       expect(tester.takeException(), isNull);

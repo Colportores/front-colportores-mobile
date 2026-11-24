@@ -66,7 +66,6 @@ void main() {
         ProductosCompanion.insert(
           id: id,
           nombre: nombre,
-          tipo: 'LIBRO',
           createdAt: t0,
           updatedAt: t0,
           deletedAt: Value(baja ? t0 : null),
@@ -189,10 +188,7 @@ void main() {
       );
       expect(r.ventaPagada, isFalse);
       final fila = (await cobros()).single;
-      expect(
-        [fila.ventaId, fila.monto, fila.medio, fila.numeroCuota],
-        ['v-1', 50000, 'EFECTIVO', null],
-      );
+      expect([fila.ventaId, fila.monto, fila.medio], ['v-1', 50000, 'EFECTIVO']);
       expect(fila.fecha, t0);
       expect(cola(), ['cobranza:insert']);
       expect((await local.ventaConSaldo('v-1'))!.saldoCentavos, 100000);
@@ -225,12 +221,14 @@ void main() {
         'monto',
         'medio',
         'fecha',
-        'numero_cuota',
         'tarjeta_tipo',
         'tarjeta_marca',
         'numero_aprobacion',
         'referencia_transferencia',
         'banco_origen',
+        'ticket_id',
+        'anulado_at',
+        'motivo_anulacion',
         'created_at',
         'updated_at',
         'created_by',

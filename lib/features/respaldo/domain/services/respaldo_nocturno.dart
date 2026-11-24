@@ -40,7 +40,8 @@ final class RespaldoNocturno {
        _log = logger ?? AppLogger.instance;
 
   /// Arma la sesión de trabajo, o devuelve `null` si hoy no hay nada para respaldar (sin sesión
-  /// guardada, sin Drive conectado, sin DB o sin llave). Puede lanzar: se cuenta como falla.
+  /// guardada, sin Drive conectado, sin DB o sin llave). Puede lanzar: se cuenta como falla y se
+  /// reintenta (por ejemplo, el almacén seguro que no deja leer la sesión, #691).
   final Future<SesionDeRespaldoNocturno?> Function() abrir;
 
   final DateTime Function() _ahora;

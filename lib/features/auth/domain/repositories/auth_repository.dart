@@ -21,13 +21,15 @@ abstract interface class AuthRepository {
   Future<Either<Failure, Unit>> solicitarRecuperacionPassword({required String email});
 
   /// Registra una cuenta nueva. Deja la sesión iniciada si Supabase la devuelve, o `null` en
-  /// [ResultadoRegistro.sesion] si falta confirmar el email (HU-AUTH-001/002).
+  /// [ResultadoRegistro.sesion] si falta confirmar el email (HU-AUTH-001/002). [terminosVersion] es
+  /// la versión de los Términos que aceptó (`v1`): viaja con el registro y el servidor la guarda.
   Future<Either<Failure, ResultadoRegistro>> registrar({
     required String nombre,
     required String apellido,
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   });
 
   /// Sesión guardada en el dispositivo, o `null` si nunca hubo login o se cerró. No toca la red:

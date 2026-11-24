@@ -39,6 +39,9 @@ Future<void> _correr(WidgetTester tester, Duration d) async {
   }
 }
 
+/// Las cinco opciones del canvas C·06: «Vender» (decisión de Cristian, 04/11, #648) es de otra HU.
+final _delCanvas = OpcionQuePaso.values.where((o) => o != OpcionQuePaso.vender).toList();
+
 void main() {
   group('C·06 · ¿Qué pasó?: lo que se ve', () {
     testWidgets(
@@ -464,14 +467,14 @@ void main() {
     });
 
     testWidgets(
-      'dado un edificio sin depto elegido, cuando se abre, avisa que todavía no se puede y '
-      'no abre la hoja',
+      'dado un edificio sin depto elegido, cuando se abre, avisa que el depto se elige en la '
+      'lista del edificio (#452) y no abre la hoja',
       (tester) async {
         final a = await montarQuePaso(tester, espacioId: null);
 
         expect(_hoja, findsNothing);
         expect(
-          find.text('Todavía no se pueden registrar visitas en un edificio desde acá.'),
+          find.text('Elegí el depto en la lista del edificio para registrar la visita.'),
           findsOneWidget,
         );
         expect(a.resultados, [false]);
@@ -520,7 +523,7 @@ void main() {
         );
 
         expect(tester.takeException(), isNull);
-        for (final o in OpcionQuePaso.values) {
+        for (final o in _delCanvas) {
           await tester.ensureVisible(renglon(o));
           await tester.pump();
           expect(renglon(o), findsOneWidget);
@@ -705,7 +708,7 @@ void main() {
         await tester.tap(find.widgetWithText(FilledButton, 'Empezar entrevista'));
         await asentar(tester);
 
-        expect(a.enganches.entrevistas.single.persona.espacioPersonaId, 'ep-ana');
+        expect(a.enganches.entrevistas.single.persona?.espacioPersonaId, 'ep-ana');
         expect(a.resultados, [true]);
       },
     );

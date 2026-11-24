@@ -66,30 +66,29 @@ void main() {
       expect(find.text('No pudimos guardar a la persona. Probá de nuevo.'), findsNothing);
     });
 
-    testWidgets(
-      'dado nombre, apellido, teléfono y nota, cuando toca «Guardar persona», guarda todo '
-      'y vuelve con la persona',
-      (tester) async {
-        final repo = PersonaRepositorioFalso();
-        final resultado = await montarAlta(tester, repo: repo);
+    testWidgets('dado nombre, apellido, teléfono y nota, cuando toca «Guardar persona», guarda todo '
+        'y vuelve con la persona', (tester) async {
+      final repo = PersonaRepositorioFalso();
+      final resultado = await montarAlta(tester, repo: repo);
 
-        await _escribir(tester, _nombre, 'Ana');
-        await _escribir(tester, _apellido, 'Martínez');
-        await _escribir(tester, _telefono, '099 123 456');
-        await _escribir(tester, _nota, 'Prefiere de tarde');
-        await _tocarGuardar(tester);
+      await _escribir(tester, _nombre, 'Ana');
+      await _escribir(tester, _apellido, 'Martínez');
+      await _escribir(tester, _telefono, '099 123 456');
+      await _escribir(tester, _nota, 'Prefiere de tarde');
+      await _tocarGuardar(tester);
 
-        final alta = repo.recibidas.single;
-        expect(alta.persona.nombre, 'Ana');
-        expect(alta.persona.apellido, 'Martínez');
-        expect(alta.persona.telefono, '099 123 456');
-        expect(alta.nota?.texto, 'Prefiere de tarde');
-        expect(alta.vinculo.espacioId, 'esp-1');
-        expect(alta.persona.auditoria.createdBy, 'col-1');
-        expect(resultado.persona?.nombre, 'Ana');
-        expect(find.text('Nueva persona'), findsNothing);
-      },
-    );
+      final alta = repo.recibidas.single;
+      expect(alta.persona.nombre, 'Ana');
+      expect(alta.persona.apellido, 'Martínez');
+      expect(alta.persona.telefono, '099 123 456');
+      expect(alta.nota?.texto, 'Prefiere de tarde');
+      expect(alta.vinculo.espacioId, 'esp-1');
+      expect(alta.persona.auditoria.createdBy, 'col-1');
+      expect(resultado.persona?.nombre, 'Ana');
+      // Vuelve también el vínculo que el alta creó, para quien lo necesita sin releer el espacio (#671).
+      expect(resultado.vinculoId, alta.vinculo.id);
+      expect(find.text('Nueva persona'), findsNothing);
+    });
   });
 
   group('A·02 · solo el nombre', () {
@@ -305,6 +304,11 @@ void main() {
       expect(repo.recibidas[1].vinculo.id, repo.recibidas[0].vinculo.id);
       expect(repo.recibidas[1].nota!.id, repo.recibidas[0].nota!.id);
       expect(resultado.persona?.nombre, 'Ana');
+      expect(
+        resultado.vinculoId,
+        repo.recibidas[0].vinculo.id,
+        reason: 'el mismo vínculo del primer intento',
+      );
       expect(resultado.cierres, 1);
       expect(find.text('Nueva persona'), findsNothing);
     });
@@ -437,6 +441,8 @@ void main() {
 
       await tester.tap(find.byTooltip('Cerrar'));
       await asentar(tester);
+      await tester.tap(find.text('Descartar'));
+      await asentar(tester);
       expect(resultado.persona, isNull);
       expect(resultado.cierres, 1);
 
@@ -555,6 +561,120 @@ void main() {
       final tamano = tester.getSize(find.byTooltip('Cerrar'));
       expect(tamano.width, greaterThanOrEqualTo(48));
       expect(tamano.height, greaterThanOrEqualTo(48));
+    });
+  });
+
+  // #679: el alta de persona pregunta antes de perder lo escrito, con el mismo aviso que las notas
+  // (HU-UBI-011, «¿Descartar lo que escribiste?»).
+  group('salir con lo escrito sin guardar', () {
+    const titulo = '¿Descartar lo que escribiste?';
+
+    testWidgets('dado el formulario vacío, cuando toca la ✕, cierra sin preguntar', (tester) async {
+      final resultado = await montarAlta(tester);
+
+      await tester.tap(find.byTooltip('Cerrar'));
+      await asentar(tester);
+
+      expect(find.text(titulo), findsNothing);
+      expect(resultado.cierres, 1);
+    });
+
+    testWidgets('dado solo espacios, cuando sale con el atrás del sistema, cierra sin preguntar', (
+      tester,
+    ) async {
+      final resultado = await montarAlta(tester);
+      await _escribir(tester, _apellido, '   ');
+
+      await tester.binding.handlePopRoute();
+      await asentar(tester);
+
+      expect(find.text(titulo), findsNothing);
+      expect(resultado.cierres, 1);
+    });
+
+    for (final (campo, sugerencia) in [
+      ('nombre', _nombre),
+      ('apellido', _apellido),
+      ('teléfono', _telefono),
+      ('nota', _nota),
+    ]) {
+      testWidgets(
+        'dado algo escrito en el $campo, cuando toca la ✕, pregunta y «Seguir escribiendo» '
+        'deja todo como estaba',
+        (tester) async {
+          final resultado = await montarAlta(tester);
+          await _escribir(tester, sugerencia, '0991');
+
+          await tester.tap(find.byTooltip('Cerrar'));
+          await asentar(tester);
+          expect(find.text(titulo), findsOneWidget);
+          expect(find.text('Si salís ahora, lo que escribiste no se guarda.'), findsOneWidget);
+
+          await tester.tap(find.text('Seguir escribiendo'));
+          await asentar(tester);
+
+          expect(find.text(titulo), findsNothing);
+          expect(resultado.cierres, 0);
+          expect(find.text('0991'), findsOneWidget);
+        },
+      );
+    }
+
+    testWidgets('dado un nombre escrito, cuando sale con el atrás del sistema y elige «Descartar», '
+        'cierra sin guardar', (tester) async {
+      final repo = PersonaRepositorioFalso();
+      final resultado = await montarAlta(tester, repo: repo);
+      await _escribir(tester, _nombre, 'Ana');
+
+      await tester.binding.handlePopRoute();
+      await asentar(tester);
+      expect(find.text(titulo), findsOneWidget);
+
+      await tester.tap(find.text('Descartar'));
+      await asentar(tester);
+
+      expect(resultado.cierres, 1);
+      expect(resultado.persona, isNull);
+      expect(repo.recibidas, isEmpty);
+    });
+
+    testWidgets('dado un doble toque en la ✕ con texto, cuando pregunta, hay un solo aviso', (
+      tester,
+    ) async {
+      await montarAlta(tester);
+      await _escribir(tester, _nombre, 'Ana');
+
+      await tester.tap(find.byTooltip('Cerrar'));
+      await tester.tap(find.byTooltip('Cerrar'), warnIfMissed: false);
+      await asentar(tester);
+
+      expect(find.text(titulo), findsOneWidget);
+    });
+
+    testWidgets('dado lo escrito y borrado, cuando toca la ✕, cierra sin preguntar', (
+      tester,
+    ) async {
+      final resultado = await montarAlta(tester);
+      await _escribir(tester, _nombre, 'Ana');
+      await _escribir(tester, _nombre, '');
+
+      await tester.tap(find.byTooltip('Cerrar'));
+      await asentar(tester);
+
+      expect(find.text(titulo), findsNothing);
+      expect(resultado.cierres, 1);
+    });
+
+    testWidgets('dado un guardado que sale bien con texto escrito, cuando vuelve, no pregunta', (
+      tester,
+    ) async {
+      final resultado = await montarAlta(tester);
+      await _escribir(tester, _nombre, 'Ana');
+
+      await _tocarGuardar(tester);
+
+      expect(find.text(titulo), findsNothing);
+      expect(resultado.persona, isNotNull);
     });
   });
 }

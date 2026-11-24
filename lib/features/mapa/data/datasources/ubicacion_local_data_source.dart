@@ -18,6 +18,27 @@ typedef UnionLocal = ({
   bool conservadaPasoAEdificio,
 });
 
+/// Una unión de duplicados que `UbicacionLocalDataSourceDrift.deshacerUnionesRechazadas` deshizo
+/// porque el servidor rechazó su trabajo con [codigo] (#679). [sinVolver] cuenta lo que no volvió a
+/// su lugar porque ya no estaba donde lo dejó la unión (se movió después).
+final class UnionDeshecha {
+  const UnionDeshecha({
+    required this.conservadaId,
+    required this.duplicadaId,
+    required this.codigo,
+    required this.duplicadaReactivada,
+    required this.conservadaVolvioACasa,
+    required this.sinVolver,
+  });
+
+  final String conservadaId;
+  final String duplicadaId;
+  final String codigo;
+  final bool duplicadaReactivada;
+  final bool conservadaVolvioACasa;
+  final int sinVolver;
+}
+
 /// Una ubicación con la cantidad de espacios sin baja que tiene, el color de su fila de
 /// `house_status` (`null` si no tiene: la casa es «Sin visita») y, si está de baja, el motivo con que
 /// se dio de baja (`audit_log` local) y la hora de su próxima entrevista agendada (`null` si no tiene),
@@ -212,7 +233,7 @@ final class UbicacionCambioException implements Exception {
   String toString() => 'UbicacionCambioException';
 }
 
-/// Se quiso reducir una ubicación a un solo espacio (de `EDIFICIO` a `CASA` o `NEGOCIO`, o de
+/// Se quiso reducir una ubicación a un solo espacio (de `EDIFICIO` a `CASA`, o de
 /// `NEGOCIO` a `CASA`) teniendo [cantidad] espacios activos (dos o más, S17); el repositorio la
 /// traduce a `FailureUbicacionConEspacios`.
 final class UbicacionConEspaciosException implements Exception {

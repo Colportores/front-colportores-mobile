@@ -28,6 +28,10 @@ abstract final class TextosConQuien {
   static const todaviaNoSe = 'Todavía no sé con quién';
 
   static const empezar = 'Empezar entrevista';
+
+  /// La acción de «¿Con quién?» cuando viene de «Vender» (la casa tiene más de una persona entrevistada).
+  /// Texto propuesto (mapa §2: texto/aviso).
+  static const vender = 'Vender';
   static const volver = 'Volver';
   static const alguienNuevo = '+ Alguien nuevo';
   static const alguienNuevoAyuda = 'Con el nombre alcanza';

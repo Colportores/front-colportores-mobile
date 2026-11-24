@@ -170,6 +170,7 @@ void main() {
         cedula: '12345678',
         email: 'lucia.silva@correo.com',
         password: 'Secreto123',
+        terminosVersion: 'v1',
       );
 
       await _montarApp(tester, remote: remote);
@@ -202,6 +203,7 @@ void main() {
         cedula: '12345678',
         email: 'lucia.silva@correo.com',
         password: 'Secreto123',
+        terminosVersion: 'v1',
       );
       final local = _LocalConDemora(null);
 
@@ -239,6 +241,7 @@ void main() {
           cedula: '12345678',
           email: 'lucia.silva@correo.com',
           password: 'Secreto123',
+          terminosVersion: 'v1',
         );
 
         await _montarApp(tester, remote: remote);
@@ -275,6 +278,7 @@ void main() {
           cedula: '12345678',
           email: 'lucia.silva@correo.com',
           password: 'Secreto123',
+          terminosVersion: 'v1',
         );
 
         await _montarApp(tester, remote: remote);

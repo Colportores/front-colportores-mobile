@@ -24,6 +24,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/alta_ubicacion_falsos.dart';
 import '../../helpers/precios_falsos.dart';
+import '../../helpers/ubicacion_colportor_falsos.dart';
 
 /// Miércoles 28/10/2026, 10:00 (hora local).
 final _ahora = DateTime(2026, 10, 28, 10);
@@ -38,6 +39,7 @@ final class _Entorno {
     DateTime? bajada,
     this.conexion = TipoConexion.wifi,
     this.dias = 15,
+    this.mapaAbierto = true,
   }) : repo = repo ?? ConsultaDePreciosFalsa(),
        ciudades = ciudades ?? FuenteDeCiudadesFalsa(),
        gps = gps ?? GpsFalso(),
@@ -51,6 +53,9 @@ final class _Entorno {
   final FechaDeLosPreciosFalsa fecha;
   TipoConexion conexion;
   int dias;
+
+  /// El colportor ya pasó por el mapa (que es quien pide el GPS): hay una lectura, o el motivo.
+  final bool mapaAbierto;
   DateTime ahora = _ahora;
 
   List<Override> get overrides => [
@@ -59,8 +64,9 @@ final class _Entorno {
     fechaDeLosPreciosProvider.overrideWithValue(fecha),
     diasDeAntiguedadDePreciosProvider.overrideWithValue(DiasFalsos(dias)),
     relojPreciosProvider.overrideWithValue(() => ahora),
-    esperaDelGpsPreciosProvider.overrideWithValue(const Duration(milliseconds: 200)),
     proveedorGpsProvider.overrideWithValue(gps),
+    // Precios no pide el GPS (#651): usa la última lectura del GPS del colportor, si el mapa la tiene.
+    ubicacionColportorDeGps(gps, mapaAbierto: mapaAbierto),
     ciudadesParaAltaProvider.overrideWithValue(alta),
     conexionProvider.overrideWith((ref) => Stream.value(conexion)),
   ];
@@ -529,15 +535,23 @@ void main() {
       expect(_verOtra, findsOneWidget);
     });
 
-    testWidgets('un GPS que no contesta no cuelga la pantalla', (tester) async {
-      final gps = GpsFalso()..bloqueo = Completer<void>();
-      await _montar(tester, _Entorno(gps: gps), asentar: false);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
-      await _asentar(tester);
+    testWidgets('si el mapa todavía no leyó el GPS, Precios no lo pide ni abre el permiso', (
+      tester,
+    ) async {
+      final gps = GpsFalso();
+      await _montar(tester, _Entorno(gps: gps, mapaAbierto: false));
       expect(find.text('CIUDAD DE TU ZONA · SIN GPS'), findsOneWidget);
-      gps.bloqueo!.complete();
-      await tester.pump();
+      expect(gps.lecturas, 0);
+      expect(gps.activaciones, isEmpty);
+    });
+
+    testWidgets('con GPS tampoco lo vuelve a leer: usa la última lectura del colportor', (
+      tester,
+    ) async {
+      final gps = GpsFalso();
+      await _montar(tester, _Entorno(gps: gps));
+      expect(find.text('SEGÚN DÓNDE ESTÁS'), findsOneWidget);
+      expect(gps.lecturas, 0);
     });
 
     testWidgets('un GPS fuera de todas sus ciudades también abre con la de su zona', (
@@ -698,7 +712,6 @@ void main() {
         ProviderScope(
           overrides: [
             fechaDeLosPreciosProvider.overrideWithValue(FechaDeLosPreciosFalsa(null)),
-            esperaDelGpsPreciosProvider.overrideWithValue(const Duration(milliseconds: 50)),
             conexionProvider.overrideWith((ref) => Stream.value(TipoConexion.wifi)),
           ],
           child: MaterialApp(

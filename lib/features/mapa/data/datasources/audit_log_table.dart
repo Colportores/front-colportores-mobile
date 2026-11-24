@@ -2,12 +2,23 @@ import 'package:drift/drift.dart';
 
 import '../../../../core/database/fecha_utc_converter.dart';
 
-/// Eventos del `audit_log` local. Hoy la baja de una ubicación (HU-UBI-005); «marcar como duplicado»
+/// Eventos del `audit_log` local. La baja de una ubicación (HU-UBI-005), la edición de una persona
+/// (HU-UBI-010); «marcar como duplicado»
 /// (`duplicado_de_A`, HU-UBI-006) y la justificación de «Crear igual» (HU-UBI-001, #282) escriben acá
 /// con su propio evento.
 abstract final class EventoAuditoriaLocal {
   /// La baja de una ubicación, con el motivo que eligió el colportor.
   static const ubicacionBaja = 'ubicacion_baja';
+
+  /// Se modificó el nombre, el apellido o el teléfono de una persona (HU-UBI-010). Lleva solo el `uuid`
+  /// de la persona: nunca el valor viejo ni el nuevo (son datos personales, R-UB01) y sin motivo.
+  static const personaModificada = 'persona_modificada';
+
+  /// La unión de duplicados que puso la baja `duplicado_de_<A>` de esta ubicación (B) se deshizo
+  /// porque el servidor rechazó su trabajo (#679): `uuid` es B, `motivo` el código del rechazo
+  /// (`UB003`…) y `creado_en` el instante en que se deshizo. Desde ahí la marca de la unión ya no
+  /// cuenta como motivo de una baja de B.
+  static const ubicacionUnionDeshecha = 'ubicacion_union_deshecha';
 
   /// La justificación de «Crear igual» (HU-UBI-001, #282): `uuid` es el `id` de la ubicación nueva
   /// (o la que se está editando y se deja igual, HU-UBI-004), `motivo` lo que escribió el colportor y
@@ -45,6 +56,11 @@ abstract final class EventoAuditoriaLocal {
   /// en el depósito mismo y no se copian acá.
   static const depositoRegistrado = 'deposito_registrado';
 
+  /// Un ticket de tarjeta o de depósito registrado (HU-COB-007, «Audit log local»): `uuid` es el `id` del
+  /// ticket y `creado_en` el instante en que se registró. Sin motivo: el monto, la autorización y la
+  /// tarjeta viajan en el ticket mismo y no se copian acá.
+  static const ticketRegistrado = 'ticket_registrado';
+
   /// La verificación semanal del backup en Drive encontró la cadena entera (HU-SYNC-009). `uuid` es
   /// [uuidBackup] y `creado_en` el instante de la verificación. Sin motivo.
   static const backupIntegridadOk = 'backup_integrity_ok';
@@ -52,6 +68,12 @@ abstract final class EventoAuditoriaLocal {
   /// La verificación encontró un problema y se regenera la base (HU-SYNC-009). `motivo` son los
   /// problemas por nombre (`corrupt`, `brokenLink`…), nunca contenido del backup.
   static const backupIntegridadProblema = 'backup_integrity_problem';
+
+  /// Un cobro anulado (HU-COB-006, «Audit log»): `uuid` es el `id` del cobro, `creado_en` la hora de la
+  /// anulación (el mismo `anulado_at` del cobro) y `motivo` lo que se eligió: el texto que escribió la
+  /// colportora con «Otro» («Justificar», solo local) o, con otro motivo, el de la lista. Nunca el monto
+  /// ni el nombre del cliente.
+  static const cobroAnulado = 'cobro_anulado';
 
   /// El `uuid` de los eventos del backup: no hay una fila afectada, es el backup en su conjunto.
   static const uuidBackup = 'backup';

@@ -59,7 +59,7 @@ void main() {
         '18 min',
         '¿HUBO VENTA?',
         'Sí, registrar la venta',
-        'No, guardar y volver al mapa',
+        'No hubo venta', // decisión del 10/11 (42B·08A, QA #432 P2)
       ]) {
         expect(find.text(texto), findsOneWidget, reason: texto);
       }

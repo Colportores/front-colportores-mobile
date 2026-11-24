@@ -88,7 +88,6 @@ void main() {
         montoCentavos: 50000,
         medio: MedioCobranza.efectivo,
         fecha: local,
-        numeroCuota: 1,
         auditoria: auditoria,
       );
       final jornada = Jornada(

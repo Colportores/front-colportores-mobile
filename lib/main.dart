@@ -2,11 +2,12 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
+import 'core/arranque/cierre_de_la_raiz.dart';
+import 'core/arranque/reinicio_de_raiz.dart';
 import 'core/conectividad/conectividad_providers.dart';
 import 'core/conectividad/monitor_conectividad_plus.dart';
 import 'core/config/config_google.dart';
@@ -17,17 +18,24 @@ import 'core/dispositivo/dispositivo_providers.dart';
 import 'core/dispositivo/orientacion_app.dart';
 import 'core/dispositivo/seguridad_dispositivo_canal.dart';
 import 'core/logging/app_logger.dart';
+import 'core/notificaciones/canal_avisos_campania.dart';
 import 'core/notificaciones/notificaciones_providers.dart';
 import 'core/notificaciones/permiso_alarmas_exactas.dart';
 import 'core/notificaciones/permiso_notificaciones_sistema.dart';
+import 'core/notificaciones/push_remotas_firebase.dart';
 import 'core/secure_storage/almacen_seguro_keystore.dart';
 import 'core/secure_storage/archivo_envoltorio_dek.dart';
 import 'core/secure_storage/secure_storage_providers.dart';
+import 'core/sync/modo_ahorro_providers.dart';
 import 'core/sync/sync_providers.dart';
 import 'features/agenda/data/recordatorios/motor_de_avisos_plugin.dart';
 import 'features/agenda/data/recordatorios/recordatorios_locales.dart';
 import 'features/agenda/presentation/flujo_agendar_visita.dart';
 import 'features/agenda/presentation/flujo_detalle_agenda.dart';
+import 'features/agenda/presentation/flujo_entrevista_dada.dart';
+import 'features/agenda/presentation/flujo_vender_desde_la_casa.dart';
+import 'features/agenda/presentation/flujo_venta_que_crece.dart';
+import 'features/agenda/presentation/providers/consulta_agenda_providers.dart';
 import 'features/agenda/presentation/providers/recordatorios_providers.dart';
 import 'features/auth/data/datasources/almacen_sesion_supabase.dart';
 import 'features/auth/data/datasources/fakes/auth_data_sources_en_memoria.dart';
@@ -43,13 +51,22 @@ import 'features/auth/presentation/providers/avisos_zona_providers.dart';
 import 'features/auth/presentation/providers/sesion_notifier.dart';
 import 'features/cobranzas/presentation/flujo_cobrar_desde_la_casa.dart';
 import 'features/cobranzas/presentation/pages/cobro_efectivo_page.dart';
+import 'features/cobranzas/presentation/pages/detalle_del_cobro_page.dart';
 import 'features/cobranzas/presentation/providers/cobranzas_providers.dart';
 import 'features/configuracion/data/repositories/aviso_privacidad_repository_impl.dart';
 import 'features/configuracion/presentation/providers/aviso_privacidad_providers.dart';
+import 'features/mapa/presentation/flujo_agendar_desde_la_agenda.dart';
+import 'features/mapa/presentation/flujo_editar_persona_desde_la_ficha.dart';
+import 'features/mapa/presentation/flujo_ficha_desde_la_casa.dart';
 import 'features/mapa/presentation/flujo_registrar_visita.dart';
+import 'features/mapa/presentation/flujo_ver_venta_desde_la_casa.dart';
+import 'features/mapa/presentation/providers/baja_ubicacion_providers.dart';
+import 'features/mapa/presentation/providers/ficha_persona_providers.dart';
+import 'features/mapa/presentation/providers/historial_de_la_casa_providers.dart';
 import 'features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'features/mapa/presentation/providers/lugar_de_trabajo_providers.dart';
 import 'features/mapa/presentation/providers/personas_providers.dart';
+import 'features/mapa/presentation/widgets/pestana_historial_de_la_casa.dart';
 import 'features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
 import 'features/notificaciones/data/repositories/marca_conciliacion_recordatorios_impl.dart';
 import 'features/notificaciones/data/repositories/permiso_notificaciones_repository_impl.dart';
@@ -58,6 +75,7 @@ import 'features/notificaciones/presentation/enganches_push_remotas.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/preferencias_recordatorios_providers.dart';
+import 'features/notificaciones/presentation/providers/registro_token_push_providers.dart';
 import 'features/respaldo/data/repositories/recuperacion_resuelta_repository_impl.dart';
 import 'features/respaldo/data/repositories/respaldo_drive_repository_impl.dart';
 import 'features/respaldo/data/services/nivel_bateria_canal.dart';
@@ -68,9 +86,15 @@ import 'features/respaldo/domain/services/programador_respaldo_nocturno.dart';
 import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_drive_providers.dart';
+import 'features/sincronizacion/data/repositories/modo_ahorro_repository_impl.dart';
+import 'features/tickets/data/services/almacen_de_fotos_en_disco.dart';
+import 'features/tickets/data/services/capturador_image_picker.dart';
+import 'features/tickets/data/services/compresor_flutter_image_compress.dart';
+import 'features/tickets/presentation/providers/tickets_providers.dart';
 import 'features/tiles/data/composicion_tiles.dart';
 import 'features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'features/tiles/presentation/providers/tiles_providers.dart';
+import 'features/ventas/presentation/flujo_entregar_desde_la_ficha.dart';
 import 'features/ventas/presentation/pages/devolucion_page.dart';
 import 'features/ventas/presentation/providers/ventas_providers.dart'
     show cobrarDespuesDeLaVentaProvider;
@@ -126,6 +150,9 @@ Future<void> main() async {
   // El sobre del sync (contrato-sync-engine §5.3): el id de la instalación sale del almacén seguro,
   // que es asincrónico, y el transporte lo necesita sincrónico.
   final sobreSync = await sobreDeEstaInstalacion(almacenSeguro);
+  // El modo ahorro de datos (HU-SYNC-008): el motor lo necesita al armarse, no después.
+  final modoAhorroGuardado = ModoAhorroRepositoryImpl(almacenSeguro);
+  final modoAhorroInicial = await modoAhorroGuardado.leer();
 
   final conectividad = MonitorConectividadPlus();
   ComposicionTiles? tiles;
@@ -163,21 +190,55 @@ Future<void> main() async {
   );
   await recordatorios.iniciar();
 
+  // Push remotas (HU-NOT-003, ADR-014): Firebase Cloud Messaging. Sin el archivo de configuración
+  // de Firebase para este build (`flutter run` en local, un applicationId sin registrar) no arranca
+  // y la app sigue sin push: queda el fake que no recibe nada. Con la app cerrada el aviso lo dibuja
+  // el sistema con el título fijo del servidor (decisión de Cristian del 04/11, «Push fondo»).
+  final pushRemotas = await PushRemotasFirebase.iniciar();
+  // Con push, su canal de Android («Avisos de tu campaña»), el que el manifest le da a FCM por
+  // defecto. Se crea al arrancar: si no existe cuando llega una push con la app cerrada, Android la
+  // pone en el canal de reserva de FCM.
+  if (pushRemotas != null) {
+    await CanalAvisosCampania.crear(
+      FlutterLocalNotificationsPlugin()
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel,
+    );
+  }
+
   final respaldoNocturno = await _prepararRespaldoNocturno();
 
+  // Los `overrides` de cada arranque de la raíz se arman sin esperar nada (son una función síncrona):
+  // lo que se lee de la plataforma va acá, antes.
+  final carpetaDeLaApp = (await getApplicationSupportDirectory()).path;
+
+  // Cada arranque de la raíz arma sus `overrides` (con un `DatabaseHelper` nuevo): «Recuperar mi
+  // respaldo» reinicia la app por dentro (`reiniciarRaizProvider`) y arranca como la primera vez, sin
+  // nada vivo del anterior (decisión de Cristian, 04/11, «Motor vivo»). El `ProviderScope` lo arma
+  // `ReiniciadorDeRaiz` en cada arranque.
+  //
+  // Tirar el `ProviderScope` NO cierra la base: el `DatabaseHelper` entra por `overrideWithValue` y
+  // nadie lo suelta por él. Por eso `CierreDeLaRaiz` lo recuerda y `alTirar` lo cierra (esperando antes
+  // al ciclo en curso del motor) después de sacar el árbol viejo y antes de armar el nuevo; si no, la
+  // raíz nueva abriría una segunda conexión al mismo archivo con la clave vieja todavía viva.
+  final cierreDeLaRaiz = CierreDeLaRaiz();
+  // ignore: riverpod_lint_plugin/missing_provider_scope
   runApp(
-    ProviderScope(
+    ReiniciadorDeRaiz(
+      alTirar: cierreDeLaRaiz.alTirar,
       // Composición de la app: acá se eligen las implementaciones de infraestructura.
       // AuthRemoteDataSource: lo elige `authRemoteDataSourceProvider` según `ConfigSupabase`
       // (Supabase real o fake con la cuenta demo@colportores.app / demo1234).
       // Sprint 2: AuthLocalDataSource sobre secure_storage (pendiente; hoy en memoria).
-      overrides: [
+      overrides: () => [
         authLocalDataSourceProvider.overrideWithValue(AuthLocalDataSourceEnMemoria()),
         // Keystore/Keychain reales, con las opciones de ADR-006: la misma instancia que guarda la
         // sesión de Supabase. Construirlo no toca la plataforma: recién en la primera lectura o
         // escritura se cruza al canal nativo.
         almacenSeguroProvider.overrideWithValue(almacenSeguro),
         sobreSyncProvider.overrideWithValue(sobreSync),
+        modoAhorroRepositoryProvider.overrideWithValue(modoAhorroGuardado),
+        modoAhorroInicialProvider.overrideWithValue(modoAhorroInicial),
         relojSesionProvider.overrideWithValue(relojSesion),
         // Solo el correo de la última cuenta, para «Sesión vencida» tras un arranque en frío.
         ultimoCorreoRepositoryProvider.overrideWithValue(UltimoCorreoRepositoryImpl(almacenSeguro)),
@@ -251,6 +312,12 @@ Future<void> main() async {
         archivoEnvoltorioDekProvider.overrideWithValue(
           ArchivoEnvoltorioDek(directorio: getApplicationDocumentsDirectory),
         ),
+        // La copia local de la foto de cada ticket (HU-COB-007): carpeta privada de la app.
+        almacenDeFotosDeTicketProvider.overrideWithValue(AlmacenDeFotosEnDisco(carpetaDeLaApp)),
+        // La cámara y la galería, y el que achica la foto del ticket (decisión de Cristian del 03/11
+        // en #169: `image_picker` + `flutter_image_compress`).
+        capturadorDeFotoProvider.overrideWithValue(CapturadorImagePicker()),
+        compresorDeImagenProvider.overrideWithValue(CompresorFlutterImageCompress()),
         // Bloqueo de pantalla y nivel del Keystore: canal nativo propio (MainActivity.kt,
         // AppDelegate.swift).
         seguridadDispositivoProvider.overrideWithValue(SeguridadDispositivoCanal()),
@@ -259,9 +326,20 @@ Future<void> main() async {
         saldosDePersonasProvider.overrideWith(
           (ref) => SaldosDePersonasLocal(ref.watch(cobranzaLocalProvider)),
         ),
+        // La cuota que toca de cada persona que debe («Debe $ 1.200 · cuota sáb 26/10»): sale de las
+        // citas de cobranza de sus ventas (HU-COB-004).
+        cuotasDePersonasProvider.overrideWith(
+          (ref) => CuotasDePersonasLocal(ref.watch(cobranzaLocalProvider)),
+        ),
+        // La hoja de la casa vuelve a leer lo que debe cada persona cuando cambia una venta, un cobro
+        // o una cuota (HU-COB-005): el saldo y la cuota quedan al día después de cobrar, sin recargar.
+        cambiosDeLoQueSeDebeProvider.overrideWith(
+          (ref) =>
+              () => ref.read(cobranzaLocalProvider).alCambiarLoQueSeDebe(),
+        ),
         // «Registrar visita» de la hoja de la casa (vista 39, #411): «¿Qué pasó?» y el aviso
         // «Guardado» con «Deshacer». Se abre sobre el navegador de la app, no sobre la hoja que se
-        // cierra. «Entrevista dada» y «Cobranza» se enganchan con sus HU.
+        // cierra.
         registrarVisitaDesdeLaCasaProvider.overrideWith(
           (ref) => (datos) {
             final contexto = navigatorKeyColportores.currentContext;
@@ -288,6 +366,20 @@ Future<void> main() async {
             );
           },
         ),
+        // Tocar una persona de la pestaña Personas de la hoja de la casa (vista 39 C·02 → vista 32 B,
+        // HU-UBI-009, #650): su ficha, con la persona, el depto y el nombre que la fila ya tiene. La hoja
+        // sigue abierta debajo. Sin navegador o sin sesión lanza: la hoja lo avisa y la fila se habilita.
+        fichaDePersonaDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) throw StateError('No hay navegador donde abrir la ficha');
+            return FlujoFichaDesdeLaCasa.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
         // Tocar una venta en la ficha de la persona (vista 32 B → vista 31, HU-VEN-004): la devolución
         // de esa venta, con la venta, la casa y la persona ya resueltas. Devuelve `true` si se registró.
         devolverVentaDesdeLaFichaProvider.overrideWith(
@@ -304,9 +396,27 @@ Future<void> main() async {
             );
           },
         ),
+        // «Registrar entrega» y «Entregar» de la ficha de la persona (vista 32, 32B·01 → 27C·03, #429 y
+        // #435): «Marcar entregado» de la venta de la fila o, desde el chip, «¿Qué venta?» si hay más
+        // de una con algo pendiente. Devuelve `true` si se marcó algo.
+        registrarEntregaDesdeLaFichaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoEntregarDesdeLaFicha.abrir(
+              contexto,
+              personaId: datos.personaId,
+              espacioId: datos.espacioId,
+              ventaId: datos.ventaId,
+              fechaPrevista: datos.fechaPrevista,
+            );
+          },
+        ),
         // «$ Cobrar» de la hoja de la casa y «Cobranza» de «¿Qué pasó?» (vista 39, C·01 y C·06, #440):
         // «¿Qué venta?» (C·08, se salta con una sola) y el cobro en efectivo (vista 28). Devuelve
-        // `true` si se cobró; la visita «Cobranza» la guarda `FlujoRegistrarVisita`, no esto.
+        // `true` si se cobró (la visita «Cobranza» la guarda `FlujoRegistrarVisita`, no esto),
+        // `CobranzaAnotadaSinCobro` si canceló sin cobrar y contestó «Sí» a «¿María no te pagó?» (esa
+        // visita ya la guardó el flujo, decisión del 03/11) o `false` si no se cobró ni se anotó nada.
         cobrarDesdeLaCasaProvider.overrideWith(
           (ref) => (datos) {
             final contexto = navigatorKeyColportores.currentContext;
@@ -315,6 +425,113 @@ Future<void> main() async {
               contexto,
               datos,
               colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «Entrevista dada» de «¿Qué pasó?» (vista 39, R·04 → R·05, #648): «Empezar entrevista» guarda la
+        // entrevista en curso con la hora del toque y abre «Entrevista en curso»; de ahí «¿Hubo venta?»
+        // y la venta. Devuelve `true` si la entrevista quedó guardada o en curso.
+        entrevistaDadaDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoEntrevistaDada.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «Vender» de «¿Qué pasó?» (vista 39, decisión de Cristian del 04/11, #648): la venta (vista 27)
+        // de la casa y la persona de la última entrevista dada. Solo se ofrece si ya hubo una.
+        venderDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoVenderDesdeLaCasa.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «Sumar un libro» de la hoja de la casa y de la ficha (vista 42, 42B·09A a 09D, #693, «Venta
+        // crece»): la venta abierta de la persona («¿A qué venta lo sumás?» con más de una), el libro
+        // nuevo sin otro talonario, su entrega y su cobro. Devuelve `VentaRegistradaEnLaCasa` si se sumó.
+        sumarUnLibroDesdeLaCasaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoVentaQueCrece.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «Ir a la cobranza» de la baja bloqueada (vista 09·02, #330): el cobro en efectivo (vista 28) de
+        // la venta que se debe. Devuelve `true` si se cobró; la baja se puede volver a intentar.
+        irALaCobranzaDesdeLaBajaProvider.overrideWith(
+          (ref) => (cobranza) {
+            final contexto = navigatorKeyColportores.currentContext;
+            final colportorId = ref.read(sesionProvider).value?.usuarioId;
+            final ventaId = cobranza.ventaId;
+            final espacioId = cobranza.espacioId;
+            if (contexto == null ||
+                ventaId == null ||
+                espacioId == null ||
+                colportorId == null ||
+                colportorId.trim().isEmpty) {
+              return false;
+            }
+            return CobroEfectivoPage.abrir(
+              contexto,
+              ventaId: ventaId,
+              colportorId: colportorId,
+              espacioId: espacioId,
+              espacioPersonaId: cobranza.espacioPersonaId,
+            );
+          },
+        ),
+        // «Editar persona» y «Agregar» teléfono de la ficha (vista 32 B): la edición (vista 32 C, HU-UBI-010)
+        // y, con «Dar de baja y crear nueva», el alta de la persona nueva y la baja de la original
+        // (R6, #405).
+        editarPersonaDesdeLaFichaProvider.overrideWith(
+          (ref) => (datos) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoEditarPersonaDesdeLaFicha.abrir(
+              contexto,
+              datos,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // Un cobro del historial de la ficha (vista 32 B) abre su detalle y «Anular cobro» (vista 30 B,
+        // HU-COB-006, #424).
+        verCobroDesdeLaFichaProvider.overrideWith(
+          (ref) => (cobranzaId) {
+            final contexto = navigatorKeyColportores.currentContext;
+            final colportorId = ref.read(sesionProvider).value?.usuarioId;
+            if (contexto == null || colportorId == null) return false;
+            return DetalleDelCobroPage.abrir(
+              contexto,
+              cobranzaId: cobranzaId,
+              colportorId: colportorId,
+            );
+          },
+        ),
+        // Un cobro del Historial de la casa (vista 39, C·04, #446) abre el mismo detalle y «Anular cobro»
+        // (vista 30 B, decisión de Cristian del 30/10, casilla de #168 en #446).
+        verCobroDesdeLaCasaProvider.overrideWith(
+          (ref) => (cobranzaId) {
+            final contexto = navigatorKeyColportores.currentContext;
+            final colportorId = ref.read(sesionProvider).value?.usuarioId;
+            if (contexto == null || colportorId == null) return false;
+            return DetalleDelCobroPage.abrir(
+              contexto,
+              cobranzaId: cobranzaId,
+              colportorId: colportorId,
             );
           },
         ),
@@ -332,16 +549,53 @@ Future<void> main() async {
             );
           },
         ),
+        // «+ Agendar» de la pestaña Agenda (vista 23B, #568): elegir la casa en la lista de ubicaciones y,
+        // con ella, «¿Con quién?» y «Agendar visita» (23A·01). Devuelve `true` si se agendó.
+        agendarDesdeLaAgendaProvider.overrideWith(
+          (ref) => () {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoAgendarDesdeLaAgenda.abrir(
+              contexto,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+            );
+          },
+        ),
+        // «+ Agendar» del rótulo de un día futuro (23B·01, #568): lo mismo, con ese día ya puesto.
+        agendarEnUnDiaDesdeLaAgendaProvider.overrideWith(
+          (ref) => (dia) {
+            final contexto = navigatorKeyColportores.currentContext;
+            if (contexto == null) return false;
+            return FlujoAgendarDesdeLaAgenda.abrir(
+              contexto,
+              colportorId: ref.read(sesionProvider).value?.usuarioId,
+              dia: dia,
+            );
+          },
+        ),
         // El detalle de una agenda (vista 23, 23C·01, #409): lo abren el recordatorio tocado, el aviso
         // del centro de notificaciones y la fila de la pestaña Agenda.
         ...FlujoDetalleAgenda.enganches(navigatorKeyColportores),
         // HU-NOT-003: tocar el aviso de una push (el de arriba con la app abierta o el del sistema)
-        // lo marca como leído y lleva a su destino. El adaptador de `firebase_messaging` que las
-        // recibe de verdad va con el proyecto de Firebase (pendiente): `pushRemotasProvider` no
-        // recibe nada hasta entonces.
+        // lo marca como leído y lleva a su destino. Las recibe `firebase_messaging` si Firebase
+        // arrancó; si no, `pushRemotasProvider` se queda con el fake que no recibe nada.
+        if (pushRemotas != null) pushRemotasProvider.overrideWithValue(pushRemotas),
+        // HU-NOT-001 («Token FCM»): al cerrar sesión, el token del teléfono se vacía en el servidor.
+        retiroTokenPushProvider.overrideWith(retirarTokenPush),
         ...EnganchesPushRemotas.enganches(navigatorKeyColportores),
+        // Pestaña Historial de la hoja de la casa (vista 39, C·03 y C·04, #446): las visitas, las ventas
+        // y los cobros del lugar, todos en el teléfono. Un cobro abre su detalle (vista 30 B) por
+        // `verCobroDesdeLaCasaProvider`, enganchado más arriba. «Ver la venta» del detalle de una
+        // venta abre las cuotas de esa venta (vista 30 A, decisión del 10/11, P2 de #446).
+        FlujoVerVentaDesdeLaCasa.enganche(navigatorKeyColportores),
+        pestanaHistorialDeLaCasaProvider.overrideWithValue(
+          (context, contexto) => PestanaHistorialDeLaCasa(
+            espacioId: contexto.espacioId,
+            direccion: contexto.direccion,
+          ),
+        ),
         // Pestaña Notas de la hoja de la casa (vista 39, C·05, #447): las notas del lugar, todas en
-        // el teléfono. La pestaña Historial se engancha con su HU (#446).
+        // el teléfono.
         pestanaNotasDeLaCasaProvider.overrideWithValue(
           (context, contexto) => PestanaNotasDeLaCasa(
             ubicacionId: contexto.ubicacionId,
@@ -366,11 +620,15 @@ Future<void> main() async {
         // de la app (default de drift_flutter); nombre y ruta no están fijados por la doc del
         // proyecto.
         databaseHelperProvider.overrideWithValue(
-          DatabaseHelper(
-            directorio: getApplicationDocumentsDirectory,
-            directorioTemporal: getTemporaryDirectory,
+          cierreDeLaRaiz.adoptar(
+            DatabaseHelper(
+              directorio: getApplicationDocumentsDirectory,
+              directorioTemporal: getTemporaryDirectory,
+            ),
           ),
         ),
+        // Los cierres que la raíz vieja deja en vuelo (el ciclo del motor): `alTirar` los espera.
+        cierreDeLaRaizProvider.overrideWithValue(cierreDeLaRaiz),
       ],
       child: const ColportoresApp(),
     ),

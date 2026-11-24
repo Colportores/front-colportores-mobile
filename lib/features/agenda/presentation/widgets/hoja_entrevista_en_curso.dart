@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../jornada/presentation/formato_jornada.dart';
 import 'textos_entrevista.dart';
@@ -16,10 +17,9 @@ Future<bool?> mostrarHojaEntrevistaEnCurso(
   required String notaInicial,
   required ValueChanged<String> alEscribirNota,
   DateTime Function()? reloj,
-}) => showModalBottomSheet<bool>(
+}) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: false,
   barrierColor: Colors.transparent,
   backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -176,8 +176,16 @@ class _HojaEntrevistaEnCursoState extends State<HojaEntrevistaEnCurso> {
                 maxLines: 5,
                 textCapitalization: TextCapitalization.sentences,
                 // `label` y no `labelText`: el rótulo flotante de `labelText` se corta con «…» en una línea
-                // y a 200 % de letra pierde «OPCIONAL» (QA #450); como `Text` común se parte en dos.
-                decoration: const InputDecoration(label: Text(TextosEntrevista.campoNota)),
+                // y a 200 % de letra pierde «OPCIONAL» (QA #450). Como `Text` común se parte en dos
+                // renglones y el campo le reserva uno: el segundo pisaba la nota (QA #538). Con el
+                // `FittedBox` el rótulo queda en un solo renglón, entero, y se achica si no entra.
+                decoration: const InputDecoration(
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(TextosEntrevista.campoNota),
+                  ),
+                ),
                 onChanged: widget.alEscribirNota,
               ),
             ],

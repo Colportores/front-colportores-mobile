@@ -72,14 +72,13 @@ void main() {
       expect(find.text('Raúl Castro · desde 01/10'), findsNothing);
     });
 
-    testWidgets('«Registrar depósito» y «Mis tickets» no se dibujan: esperan su pantalla', (
-      tester,
-    ) async {
+    testWidgets('«Registrar depósito» va al pie con «En mano» abierta (33C·01, HU-CTA-004); «Mis '
+        'tickets» no se dibuja: espera su pantalla', (tester) async {
       await montarMiPlata(tester, RepositorioDeDetalleControlable(inicial: detalleDelCanvas));
 
-      for (final texto in ['Registrar depósito', 'Mis tickets']) {
-        expect(find.textContaining(texto), findsNothing, reason: texto);
-      }
+      expect(find.byKey(const Key('mi_plata_registrar_deposito')), findsOneWidget);
+      expect(find.text('Registrar depósito'), findsOneWidget);
+      expect(find.textContaining('Mis tickets'), findsNothing);
       expect(find.textContaining('Próximamente'), findsNothing);
     });
 

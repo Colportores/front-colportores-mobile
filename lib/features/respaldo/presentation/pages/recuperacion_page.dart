@@ -458,6 +458,12 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
             hasta,
           ),
         ),
+        if (informe != null && informe.respaldosSinAbrir > 0)
+          AvisoDrive(
+            key: const Key('recuperacion_sin_abrir'),
+            clase: ClaseAvisoDrive.advertencia,
+            texto: TextosRecuperacion.respaldosSinAbrir(informe.respaldosSinAbrir),
+          ),
         _Filas(
           filas: [
             (TextosRecuperacion.quedoAfuera, TextosRecuperacion.loPosteriorA(dia)),
@@ -507,6 +513,12 @@ class _RecuperacionPageState extends ConsumerState<RecuperacionPage> {
               : TextosRecuperacion.comoElDia(TextosRecuperacion.diaYHora(informe.fechaDelRespaldo)),
         ),
         if (resumen != null) _FilasDeResumen(resumen: resumen),
+        if (informe != null && informe.respaldosSinAbrir > 0)
+          AvisoDrive(
+            key: const Key('recuperacion_sin_abrir'),
+            clase: ClaseAvisoDrive.advertencia,
+            texto: TextosRecuperacion.respaldosSinAbrir(informe.respaldosSinAbrir),
+          ),
       ],
       cta: _Accion(
         TextosRecuperacion.irAMiInicio,
@@ -893,27 +905,32 @@ class _Hero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Centrado como el bloque `hero` del canvas (QA #175): la columna mide lo que mide su hijo más
+    // ancho y, sin el `Center`, la pantalla la dejaba pegada a la izquierda.
     return Semantics(
       container: true,
-      child: Column(
-        key: const Key('recuperacion_hero'),
-        spacing: 12,
-        children: [
-          ExcludeSemantics(
-            child: Container(
-              width: 64,
-              height: 64,
-              decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFDDE8D3)),
-              child: const Icon(Icons.check, size: 34, color: Color(0xFF1F6E3A)),
+      child: Center(
+        child: Column(
+          key: const Key('recuperacion_hero'),
+          mainAxisSize: MainAxisSize.min,
+          spacing: 12,
+          children: [
+            ExcludeSemantics(
+              child: Container(
+                width: 64,
+                height: 64,
+                decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFDDE8D3)),
+                child: const Icon(Icons.check, size: 34, color: Color(0xFF1F6E3A)),
+              ),
             ),
-          ),
-          Text(
-            texto,
-            key: const Key('recuperacion_hero_texto'),
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleMedium,
-          ),
-        ],
+            Text(
+              texto,
+              key: const Key('recuperacion_hero_texto'),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium,
+            ),
+          ],
+        ),
       ),
     );
   }

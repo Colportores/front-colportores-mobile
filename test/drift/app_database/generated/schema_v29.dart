@@ -18448,170 +18448,206 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
   }
 }
 
-class UbicacionUnida extends Table
-    with TableInfo<UbicacionUnida, UbicacionUnidaData> {
+class DeudaCasaCache extends Table
+    with TableInfo<DeudaCasaCache, DeudaCasaCacheData> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  UbicacionUnida(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> ubicacionId = GeneratedColumn<String>(
-    'ubicacion_id',
+  DeudaCasaCache(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<String> colportorId = GeneratedColumn<String>(
+    'colportor_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<String> unidaAId = GeneratedColumn<String>(
-    'unida_a_id',
+  late final GeneratedColumn<String> respuesta = GeneratedColumn<String>(
+    'respuesta',
     aliasedName,
     false,
     type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> leidaEn = GeneratedColumn<int>(
+    'leida_en',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
   @override
-  List<GeneratedColumn> get $columns => [ubicacionId, unidaAId];
+  List<GeneratedColumn> get $columns => [colportorId, respuesta, leidaEn];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'ubicacion_unida';
+  static const String $name = 'deuda_casa_cache';
   @override
-  Set<GeneratedColumn> get $primaryKey => {ubicacionId};
+  Set<GeneratedColumn> get $primaryKey => {colportorId};
   @override
-  UbicacionUnidaData map(Map<String, dynamic> data, {String? tablePrefix}) {
+  DeudaCasaCacheData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return UbicacionUnidaData(
-      ubicacionId: attachedDatabase.typeMapping.read(
+    return DeudaCasaCacheData(
+      colportorId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}ubicacion_id'],
+        data['${effectivePrefix}colportor_id'],
       )!,
-      unidaAId: attachedDatabase.typeMapping.read(
+      respuesta: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}unida_a_id'],
+        data['${effectivePrefix}respuesta'],
+      )!,
+      leidaEn: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}leida_en'],
       )!,
     );
   }
 
   @override
-  UbicacionUnida createAlias(String alias) {
-    return UbicacionUnida(attachedDatabase, alias);
+  DeudaCasaCache createAlias(String alias) {
+    return DeudaCasaCache(attachedDatabase, alias);
   }
 
   @override
-  List<String> get customConstraints => const ['PRIMARY KEY(ubicacion_id)'];
+  List<String> get customConstraints => const ['PRIMARY KEY(colportor_id)'];
   @override
   bool get dontWriteConstraints => true;
 }
 
-class UbicacionUnidaData extends DataClass
-    implements Insertable<UbicacionUnidaData> {
-  final String ubicacionId;
-  final String unidaAId;
-  const UbicacionUnidaData({required this.ubicacionId, required this.unidaAId});
+class DeudaCasaCacheData extends DataClass
+    implements Insertable<DeudaCasaCacheData> {
+  final String colportorId;
+  final String respuesta;
+  final int leidaEn;
+  const DeudaCasaCacheData({
+    required this.colportorId,
+    required this.respuesta,
+    required this.leidaEn,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    map['ubicacion_id'] = Variable<String>(ubicacionId);
-    map['unida_a_id'] = Variable<String>(unidaAId);
+    map['colportor_id'] = Variable<String>(colportorId);
+    map['respuesta'] = Variable<String>(respuesta);
+    map['leida_en'] = Variable<int>(leidaEn);
     return map;
   }
 
-  UbicacionUnidaCompanion toCompanion(bool nullToAbsent) {
-    return UbicacionUnidaCompanion(
-      ubicacionId: Value(ubicacionId),
-      unidaAId: Value(unidaAId),
+  DeudaCasaCacheCompanion toCompanion(bool nullToAbsent) {
+    return DeudaCasaCacheCompanion(
+      colportorId: Value(colportorId),
+      respuesta: Value(respuesta),
+      leidaEn: Value(leidaEn),
     );
   }
 
-  factory UbicacionUnidaData.fromJson(
+  factory DeudaCasaCacheData.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return UbicacionUnidaData(
-      ubicacionId: serializer.fromJson<String>(json['ubicacionId']),
-      unidaAId: serializer.fromJson<String>(json['unidaAId']),
+    return DeudaCasaCacheData(
+      colportorId: serializer.fromJson<String>(json['colportorId']),
+      respuesta: serializer.fromJson<String>(json['respuesta']),
+      leidaEn: serializer.fromJson<int>(json['leidaEn']),
     );
   }
   @override
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'ubicacionId': serializer.toJson<String>(ubicacionId),
-      'unidaAId': serializer.toJson<String>(unidaAId),
+      'colportorId': serializer.toJson<String>(colportorId),
+      'respuesta': serializer.toJson<String>(respuesta),
+      'leidaEn': serializer.toJson<int>(leidaEn),
     };
   }
 
-  UbicacionUnidaData copyWith({String? ubicacionId, String? unidaAId}) =>
-      UbicacionUnidaData(
-        ubicacionId: ubicacionId ?? this.ubicacionId,
-        unidaAId: unidaAId ?? this.unidaAId,
-      );
-  UbicacionUnidaData copyWithCompanion(UbicacionUnidaCompanion data) {
-    return UbicacionUnidaData(
-      ubicacionId: data.ubicacionId.present
-          ? data.ubicacionId.value
-          : this.ubicacionId,
-      unidaAId: data.unidaAId.present ? data.unidaAId.value : this.unidaAId,
+  DeudaCasaCacheData copyWith({
+    String? colportorId,
+    String? respuesta,
+    int? leidaEn,
+  }) => DeudaCasaCacheData(
+    colportorId: colportorId ?? this.colportorId,
+    respuesta: respuesta ?? this.respuesta,
+    leidaEn: leidaEn ?? this.leidaEn,
+  );
+  DeudaCasaCacheData copyWithCompanion(DeudaCasaCacheCompanion data) {
+    return DeudaCasaCacheData(
+      colportorId: data.colportorId.present
+          ? data.colportorId.value
+          : this.colportorId,
+      respuesta: data.respuesta.present ? data.respuesta.value : this.respuesta,
+      leidaEn: data.leidaEn.present ? data.leidaEn.value : this.leidaEn,
     );
   }
 
   @override
   String toString() {
-    return (StringBuffer('UbicacionUnidaData(')
-          ..write('ubicacionId: $ubicacionId, ')
-          ..write('unidaAId: $unidaAId')
+    return (StringBuffer('DeudaCasaCacheData(')
+          ..write('colportorId: $colportorId, ')
+          ..write('respuesta: $respuesta, ')
+          ..write('leidaEn: $leidaEn')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(ubicacionId, unidaAId);
+  int get hashCode => Object.hash(colportorId, respuesta, leidaEn);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is UbicacionUnidaData &&
-          other.ubicacionId == this.ubicacionId &&
-          other.unidaAId == this.unidaAId);
+      (other is DeudaCasaCacheData &&
+          other.colportorId == this.colportorId &&
+          other.respuesta == this.respuesta &&
+          other.leidaEn == this.leidaEn);
 }
 
-class UbicacionUnidaCompanion extends UpdateCompanion<UbicacionUnidaData> {
-  final Value<String> ubicacionId;
-  final Value<String> unidaAId;
+class DeudaCasaCacheCompanion extends UpdateCompanion<DeudaCasaCacheData> {
+  final Value<String> colportorId;
+  final Value<String> respuesta;
+  final Value<int> leidaEn;
   final Value<int> rowid;
-  const UbicacionUnidaCompanion({
-    this.ubicacionId = const Value.absent(),
-    this.unidaAId = const Value.absent(),
+  const DeudaCasaCacheCompanion({
+    this.colportorId = const Value.absent(),
+    this.respuesta = const Value.absent(),
+    this.leidaEn = const Value.absent(),
     this.rowid = const Value.absent(),
   });
-  UbicacionUnidaCompanion.insert({
-    required String ubicacionId,
-    required String unidaAId,
+  DeudaCasaCacheCompanion.insert({
+    required String colportorId,
+    required String respuesta,
+    required int leidaEn,
     this.rowid = const Value.absent(),
-  }) : ubicacionId = Value(ubicacionId),
-       unidaAId = Value(unidaAId);
-  static Insertable<UbicacionUnidaData> custom({
-    Expression<String>? ubicacionId,
-    Expression<String>? unidaAId,
+  }) : colportorId = Value(colportorId),
+       respuesta = Value(respuesta),
+       leidaEn = Value(leidaEn);
+  static Insertable<DeudaCasaCacheData> custom({
+    Expression<String>? colportorId,
+    Expression<String>? respuesta,
+    Expression<int>? leidaEn,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
-      if (ubicacionId != null) 'ubicacion_id': ubicacionId,
-      if (unidaAId != null) 'unida_a_id': unidaAId,
+      if (colportorId != null) 'colportor_id': colportorId,
+      if (respuesta != null) 'respuesta': respuesta,
+      if (leidaEn != null) 'leida_en': leidaEn,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
-  UbicacionUnidaCompanion copyWith({
-    Value<String>? ubicacionId,
-    Value<String>? unidaAId,
+  DeudaCasaCacheCompanion copyWith({
+    Value<String>? colportorId,
+    Value<String>? respuesta,
+    Value<int>? leidaEn,
     Value<int>? rowid,
   }) {
-    return UbicacionUnidaCompanion(
-      ubicacionId: ubicacionId ?? this.ubicacionId,
-      unidaAId: unidaAId ?? this.unidaAId,
+    return DeudaCasaCacheCompanion(
+      colportorId: colportorId ?? this.colportorId,
+      respuesta: respuesta ?? this.respuesta,
+      leidaEn: leidaEn ?? this.leidaEn,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -18619,11 +18655,14 @@ class UbicacionUnidaCompanion extends UpdateCompanion<UbicacionUnidaData> {
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    if (ubicacionId.present) {
-      map['ubicacion_id'] = Variable<String>(ubicacionId.value);
+    if (colportorId.present) {
+      map['colportor_id'] = Variable<String>(colportorId.value);
     }
-    if (unidaAId.present) {
-      map['unida_a_id'] = Variable<String>(unidaAId.value);
+    if (respuesta.present) {
+      map['respuesta'] = Variable<String>(respuesta.value);
+    }
+    if (leidaEn.present) {
+      map['leida_en'] = Variable<int>(leidaEn.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -18633,9 +18672,10 @@ class UbicacionUnidaCompanion extends UpdateCompanion<UbicacionUnidaData> {
 
   @override
   String toString() {
-    return (StringBuffer('UbicacionUnidaCompanion(')
-          ..write('ubicacionId: $ubicacionId, ')
-          ..write('unidaAId: $unidaAId, ')
+    return (StringBuffer('DeudaCasaCacheCompanion(')
+          ..write('colportorId: $colportorId, ')
+          ..write('respuesta: $respuesta, ')
+          ..write('leidaEn: $leidaEn, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -18682,7 +18722,7 @@ class DatabaseAtV29 extends GeneratedDatabase {
   late final Entrega entrega = Entrega(this);
   late final Devolucion devolucion = Devolucion(this);
   late final Deposito deposito = Deposito(this);
-  late final UbicacionUnida ubicacionUnida = UbicacionUnida(this);
+  late final DeudaCasaCache deudaCasaCache = DeudaCasaCache(this);
   late final Index jornadaColportorIdx = Index(
     'jornada_colportor_idx',
     'CREATE INDEX jornada_colportor_idx ON jornada (colportor_id, inicio)',
@@ -18867,7 +18907,7 @@ class DatabaseAtV29 extends GeneratedDatabase {
     entrega,
     devolucion,
     deposito,
-    ubicacionUnida,
+    deudaCasaCache,
     jornadaColportorIdx,
     ubicacionCiudadIdx,
     espacioUbicacionIdx,

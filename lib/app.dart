@@ -32,16 +32,20 @@ import 'features/inicio/presentation/pages/inicio_page.dart';
 import 'features/jornada/presentation/pages/jornadas_por_cerrar_page.dart';
 import 'features/jornada/presentation/providers/jornadas_por_cerrar_providers.dart';
 import 'features/mapa/presentation/providers/limpieza_notas_borradas_providers.dart';
+import 'features/mapa/presentation/providers/pantallas_sobre_el_mapa.dart';
+import 'features/mapa/presentation/providers/uniones_rechazadas_providers.dart';
 import 'features/notificaciones/presentation/pages/pedido_permiso_notificaciones_page.dart';
 import 'features/notificaciones/presentation/providers/alarmas_exactas_providers.dart';
 import 'features/notificaciones/presentation/providers/conciliacion_recordatorios_providers.dart';
 import 'features/notificaciones/presentation/providers/notificaciones_providers.dart';
 import 'features/notificaciones/presentation/providers/push_remotas_providers.dart';
 import 'features/notificaciones/presentation/providers/recordatorios_por_baja_providers.dart';
+import 'features/notificaciones/presentation/providers/registro_token_push_providers.dart';
 import 'features/notificaciones/presentation/widgets/aviso_push_en_app.dart';
 import 'features/respaldo/presentation/pages/recuperacion_page.dart';
 import 'features/respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import 'features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
+import 'features/tickets/presentation/providers/tickets_providers.dart';
 
 /// Navegador raíz de la app — hace falta como referencia estable para poder navegar desde fuera
 /// del árbol de widgets (el listener de deep link de verificación de email, más abajo), ya que
@@ -113,7 +117,7 @@ class ColportoresApp extends ConsumerWidget {
     return _RevisionAlVolver(
       child: MaterialApp(
         navigatorKey: navigatorKeyColportores,
-        navigatorObservers: [routeObserverColportores],
+        navigatorObservers: [routeObserverColportores, ref.read(pantallasSobreElMapaProvider)],
         title: 'Colportores',
         theme: temaClaro(),
         // HU-NOT-003 (24C·08): el aviso de una push que llega con la app abierta va arriba de
@@ -368,13 +372,21 @@ class _PrincipalState extends ConsumerState<_Principal> with RouteAware {
     ref.watch(conciliacionRecordatoriosProvider);
     // HU-NOT-003: las push remotas se guardan en el historial y, con la app al frente, se avisan.
     ref.watch(escuchaPushRemotasProvider);
+    // HU-NOT-001 («Token FCM»): con el permiso dado, el token del teléfono sube al servidor y se
+    // vuelve a subir si el sistema lo cambia.
+    ref.watch(mantenerTokenPushProvider);
     // HU-NOT-002 («Aviso exacto»): el permiso «Alarmas y recordatorios» se lee al abrir y al volver a la
     // app, y si cambió se reprograman los recordatorios (exactos o no).
     ref.watch(reprogramacionPorAlarmasProvider);
     // HU-UBI-012: las notas de persona borradas hace más de 90 días se borran para siempre.
     ref.watch(limpiezaNotasBorradasProvider);
+    // HU-UBI-006 (#679): una unión de duplicados que el servidor rechazó se deshace en el teléfono y el
+    // par vuelve a «Posibles duplicados» con su aviso.
+    ref.watch(unionesRechazadasProvider);
     // HU-VIS-002 («Agenda baja»): la agenda de una casa o un depto dados de baja no suena.
     ref.watch(recordatoriosPorBajaProvider);
+    // HU-COB-007: las fotos de los tickets suben cuando hay red y el ticket ya llegó al servidor.
+    ref.watch(colaDeSubidaDeFotosProvider);
     ref.listen(estadoCuentaProvider, _alCambiarEstado);
     final estado = ref.watch(estadoCuentaProvider);
     if (estado case AsyncData(value: EstadoCuenta.pendienteAsignacion)) _vioPendiente = true;

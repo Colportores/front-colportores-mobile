@@ -142,6 +142,34 @@ void main() {
     expect((await archivo.list()).map((x) => x.keyId), ['abc123', null]);
   });
 
+  test('la firma viaja en appProperties, vuelve en list y entra en el tope de 124 bytes', () async {
+    final firma = await AesGcmCrypto(List<int>.generate(32, (i) => i)).sign('anotaciones');
+    final e = await archivo.upload(
+      payload: const [1, 2],
+      parentId: 'p' * 33,
+      watermark: 'w',
+      exportedAt: DateTime.utc(2026, 11, 3, 22, 15, 30, 123, 456),
+      keyId: 'k' * 32,
+      firma: firma,
+    );
+
+    final props = drive.archivos[e.id]!['appProperties']! as Map<String, Object?>;
+    expect(props, containsPair('firma', firma));
+    // Drive limita cada par de appProperties a 124 bytes (clave y valor juntos).
+    for (final par in props.entries) {
+      expect(utf8.encode('${par.key}${par.value}').length, lessThanOrEqualTo(124), reason: par.key);
+    }
+    expect(e.firma, firma);
+    expect((await archivo.list()).single.firma, firma);
+  });
+
+  test('un archivo subido sin firma vuelve sin firma, no con una vacía', () async {
+    final e = await archivo.upload(payload: const [1], parentId: null, watermark: 'w');
+
+    expect(drive.archivos[e.id]!['appProperties'], isNot(contains('firma')));
+    expect((await archivo.list()).single.firma, isNull);
+  });
+
   test('el hash que calculó Drive viene en la entrada y coincide con el subido', () async {
     final e = await archivo.upload(
         payload: const [9, 8, 7], parentId: null, watermark: 'w');
@@ -299,5 +327,70 @@ void main() {
     final nueva = await service.backupNow(watermark: 'w-4');
     expect(nueva.isBase, isTrue);
     expect((await archivo.list()).map((e) => e.id), [nueva.id]);
+  });
+
+  group('el envoltorio de la clave (ADR-006)', () {
+    test('se guarda aparte de la cadena, con la llave que envuelve', () async {
+      await archivo.putEnvelope('llave-a', const [1, 2, 3]);
+
+      final guardado = drive.archivos.values.single;
+      expect(guardado['appProperties'],
+          {'kind': 'dek_envelope', 'key_id': 'llave-a'});
+      expect(guardado['description'], isNull);
+      expect(await archivo.getEnvelope('llave-a'), const [1, 2, 3]);
+      expect(await archivo.envelopeKeyIds(), {'llave-a'});
+    });
+
+    test('no es un eslabón: la cadena lo ignora y sigue entera', () async {
+      final base = await archivo.upload(
+          payload: const [1], parentId: null, watermark: 'w', keyId: 'llave-a');
+      await archivo.putEnvelope('llave-a', const [9, 9]);
+      final inc = await archivo.upload(
+          payload: const [2], parentId: base.id, watermark: 'w', keyId: 'llave-a');
+
+      expect((await archivo.list()).map((e) => e.id), [base.id, inc.id]);
+      expect(buildChain(await archivo.list()).ok, isTrue);
+    });
+
+    test('volver a subirlo reemplaza el de esa llave y deja el de las demás',
+        () async {
+      await archivo.putEnvelope('llave-a', const [1]);
+      await archivo.putEnvelope('llave-b', const [2]);
+      await archivo.putEnvelope('llave-a', const [3, 3]);
+
+      expect(await archivo.getEnvelope('llave-a'), const [3, 3]);
+      expect(await archivo.getEnvelope('llave-b'), const [2]);
+      expect(drive.archivos, hasLength(2),
+          reason: 'el anterior de la llave a se borró');
+    });
+
+    test('el anterior se borra después de confirmar el nuevo', () async {
+      await archivo.putEnvelope('llave-a', const [1]);
+      drive.pedidos.clear();
+      await archivo.putEnvelope('llave-a', const [2]);
+
+      final metodos = [
+        for (final p in drive.pedidos)
+          if (p.method != 'GET') p.method,
+      ];
+      expect(metodos, ['POST', 'DELETE'],
+          reason: 'si la subida falla no se pierde el que abre');
+    });
+
+    test('si la subida falla, el envoltorio anterior sigue', () async {
+      await archivo.putEnvelope('llave-a', const [1]);
+      // Sin token no hay subida: el que ya estaba no se toca.
+      drive.token = null;
+      await expectLater(
+          archivo.putEnvelope('llave-a', const [2]), throwsA(isA<ArchiveSinToken>()));
+      drive.token = 'token-1';
+
+      expect(await archivo.getEnvelope('llave-a'), const [1]);
+    });
+
+    test('una llave sin envoltorio devuelve null', () async {
+      expect(await archivo.getEnvelope('nadie'), isNull);
+      expect(await archivo.envelopeKeyIds(), isEmpty);
+    });
   });
 }

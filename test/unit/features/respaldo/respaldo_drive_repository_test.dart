@@ -185,6 +185,27 @@ void main() {
       expect(_estado(await con.repo.estado('u-1')), isA<DriveConectada>());
     });
 
+    test('dado que se conecta para recuperar (#707), cuando conecta, no hace el primer respaldo '
+        'pero la cuenta queda conectada', () async {
+      final primero = PrimerRespaldoFalso();
+      final con = RespaldoDriveArmado(primerRespaldo: primero);
+
+      final c = (await con.repo.conectar(
+        'u-1',
+        conPrimerRespaldo: false,
+      )).fold((f) => throw StateError('$f'), (c) => c);
+
+      expect(primero.llamadas, 0, reason: 'el teléfono vacío no se sube');
+      expect(c.primerRespaldoHecho, isFalse);
+      expect(c.estado, isA<DriveConectada>());
+      expect(_estado(await con.repo.estado('u-1')), isA<DriveConectada>());
+
+      // Conectar desde la fila «Cuenta Drive» (sin el parámetro) sigue haciéndolo.
+      final otra = (await con.repo.conectar('u-1')).fold((f) => throw StateError('$f'), (c) => c);
+      expect(primero.llamadas, 1);
+      expect(otra.primerRespaldoHecho, isTrue);
+    });
+
     test('sin motor de respaldo todavía, el primer respaldo no se dice hecho', () async {
       final c = (await a.repo.conectar('u-1')).fold((f) => throw StateError('$f'), (c) => c);
       expect(c.primerRespaldoHecho, isFalse);
@@ -236,15 +257,27 @@ void main() {
       expect(roto.almacen.contenido[ClaveSegura.respaldoDrive], isNull);
     });
 
-    test('reconectar pisa el estado «Sin permiso» y la cuenta anterior', () async {
+    test('reconectar con la misma cuenta pisa el estado «Sin permiso»', () async {
       await a.repo.conectar('u-1');
       await a.repo.marcarPermisoRevocado('u-1');
-      a.google.cuenta = const CuentaGoogle(id: 'g-200', email: 'otra@gmail.com');
 
       final c = (await a.repo.conectar('u-1')).fold((f) => throw StateError('$f'), (c) => c);
-      expect(c.estado.email, 'otra@gmail.com');
+      expect(c.estado.email, 'ana.gomez@gmail.com');
       expect(_estado(await a.repo.estado('u-1')), isA<DriveConectada>());
     });
+
+    test(
+      'reconectar con OTRA cuenta no pisa la anterior: queda por confirmar (16E, #550)',
+      () async {
+        await a.repo.conectar('u-1');
+        await a.repo.marcarPermisoRevocado('u-1');
+        a.google.cuenta = const CuentaGoogle(id: 'g-200', email: 'otra@gmail.com');
+
+        final c = (await a.repo.conectar('u-1')).fold((f) => throw StateError('$f'), (c) => c);
+        expect(c.estado.email, 'otra@gmail.com');
+        expect(_estado(await a.repo.estado('u-1')), isA<DriveCuentaPorConfirmar>());
+      },
+    );
 
     test('el valor ilegible se pisa al conectar', () async {
       await a.almacen.escribir(ClaveSegura.respaldoDrive, 'basura');

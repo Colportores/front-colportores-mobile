@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/arranque/reinicio_de_raiz.dart';
 import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../auth/presentation/providers/sesion_notifier.dart';
@@ -43,7 +44,7 @@ final recuperacionPendienteProvider = AsyncNotifierProvider<RecuperacionPendient
 
 /// Cómo terminó el intento de volver a abrir el asistente desde Configuración.
 enum ReaperturaDeLaRecuperacion {
-  /// El asistente quedó abierto.
+  /// Se reinició la app, que abre en el asistente.
   abierta,
 
   /// El teléfono ya tiene datos: la recuperación no los pisa.
@@ -87,10 +88,14 @@ class RecuperacionPendiente extends AsyncNotifier<bool> {
   /// mientras el teléfono no tenga nada cargado. Dice si lo abrió o por qué no: la recuperación nunca
   /// se ofrece sobre algo que no se pudo mirar ni pisa lo que hay. Nunca lanza.
   ///
-  /// Reemplaza la raíz por el asistente, igual que en el primer arranque: una recuperación cambia la
-  /// base y no puede haber nada escuchándola.
+  /// Abrirlo es **reiniciar la app por dentro** (decisión de Cristian, 04/11, «Motor vivo»): se quita
+  /// la marca de «resuelto» de esta persona y se reinicia la raíz (`reiniciarRaizProvider`); la app
+  /// arranca como la primera vez, sin sync ni lecturas andando, y abre directo en el asistente. La
+  /// marca quitada es lo que hace que el arranque nuevo lo ofrezca; si no se pudo quitar, no se
+  /// reinicia (devuelve [ReaperturaDeLaRecuperacion.noDisponible]).
   Future<ReaperturaDeLaRecuperacion> reabrir() async {
-    if (!ref.read(asistenteDeRecuperacionHabilitadoProvider) || _usuarioId == null) {
+    final usuarioId = _usuarioId;
+    if (!ref.read(asistenteDeRecuperacionHabilitadoProvider) || usuarioId == null) {
       return ReaperturaDeLaRecuperacion.noDisponible;
     }
     try {
@@ -107,7 +112,19 @@ class RecuperacionPendiente extends AsyncNotifier<bool> {
       return ReaperturaDeLaRecuperacion.noSePudoMirar;
     }
     if (!ref.mounted) return ReaperturaDeLaRecuperacion.noDisponible;
-    state = const AsyncData(true);
+    try {
+      await ref.read(recuperacionResueltaRepositoryProvider).desmarcarResuelta(usuarioId);
+    } on Object catch (e) {
+      AppLogger.instance.warn(
+        LogModulo.backup,
+        'RECUPERACION_REABRIR',
+        'no se pudo quitar la marca de «resuelto»: no se reinicia',
+        {'error': e.runtimeType.toString()},
+      );
+      return ReaperturaDeLaRecuperacion.noDisponible;
+    }
+    if (!ref.mounted) return ReaperturaDeLaRecuperacion.noDisponible;
+    ref.read(reiniciarRaizProvider)();
     return ReaperturaDeLaRecuperacion.abierta;
   }
 
@@ -133,16 +150,34 @@ class RecuperacionPendiente extends AsyncNotifier<bool> {
   }
 }
 
-/// Si Configuración muestra «Recuperar mi respaldo» (#610, «Recup. luego»): mientras el teléfono no
-/// tenga nada cargado y el asistente no esté abierto. Se vuelve a mirar cada vez que se abre
-/// Configuración. Si no se pudo mirar, no se muestra.
-final recuperarDespuesDisponibleProvider = FutureProvider.autoDispose<bool>((ref) async {
-  if (!ref.watch(asistenteDeRecuperacionHabilitadoProvider)) return false;
+/// Cómo se ve la fila «Recuperar mi respaldo» de Configuración (vista 16, artboards 16G; #610, #691).
+enum FilaRecuperarRespaldo {
+  /// No se muestra: no hay asistente, ni sesión, o no se pudo mirar la base (la recuperación nunca
+  /// se ofrece sobre algo que no se pudo mirar).
+  oculta,
+
+  /// El teléfono no tiene nada cargado: la fila abre la recuperación (16G·01 a 16G·03).
+  disponible,
+
+  /// Ya hay datos cargados: la fila queda apagada y dice por qué (16G·04, decidido el 10/11), para
+  /// que no la busque sin encontrarla.
+  apagadaConDatos,
+}
+
+/// Cómo muestra Configuración «Recuperar mi respaldo» (#610, «Recup. luego»; 16G): disponible
+/// mientras el teléfono no tenga nada cargado, apagada con el motivo después. Se vuelve a mirar cada
+/// vez que se abre Configuración. Si no se pudo mirar, no se muestra.
+final recuperarDespuesDisponibleProvider = FutureProvider.autoDispose<FilaRecuperarRespaldo>((
+  ref,
+) async {
+  if (!ref.watch(asistenteDeRecuperacionHabilitadoProvider)) return FilaRecuperarRespaldo.oculta;
   final usuarioId = ref.watch(sesionProvider.select((s) => s.value?.usuarioId));
-  if (usuarioId == null) return false;
+  if (usuarioId == null) return FilaRecuperarRespaldo.oculta;
   try {
-    return await ref.read(lectorDeLoRecuperadoProvider).baseSinDatos();
+    return await ref.read(lectorDeLoRecuperadoProvider).baseSinDatos()
+        ? FilaRecuperarRespaldo.disponible
+        : FilaRecuperarRespaldo.apagadaConDatos;
   } on Object {
-    return false;
+    return FilaRecuperarRespaldo.oculta;
   }
 }, retry: _sinReintentos);

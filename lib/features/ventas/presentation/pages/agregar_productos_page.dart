@@ -25,10 +25,18 @@ final class AgregoProductos extends LoAgregado {
 
 /// «Agregar productos» (27A·07 y 27A·08): se abre desde «+ Agregar» de una venta que ya tiene algo.
 class AgregarProductosPage extends StatelessWidget {
-  const AgregarProductosPage({super.key, required this.items, required this.actual});
+  const AgregarProductosPage({
+    super.key,
+    required this.items,
+    required this.actual,
+    this.eyebrow = TextosVenta.eyebrowAgregar,
+  });
 
   final List<ItemDePrecio> items;
   final NuevaVentaState actual;
+
+  /// El rótulo de arriba; al sumar a una venta abierta, el de esa venta (42B·09C).
+  final String eyebrow;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +47,7 @@ class AgregarProductosPage extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
           children: [
             CabeceraVenta(
-              eyebrow: TextosVenta.eyebrowAgregar,
+              eyebrow: eyebrow,
               titulo: TextosVenta.tituloAgregar,
               alVolver: () => Navigator.of(context).maybePop(),
             ),

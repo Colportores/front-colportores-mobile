@@ -47,7 +47,8 @@ class SyncQueue extends Table {
   /// Nombre remoto de la entidad.
   TextColumn get entity => text()();
 
-  /// `insert`, `update` o `delete` (el `Op` del motor).
+  /// `insert`, `update`, `delete` o `marcar_como_duplicado` (el `Op.wireName` del motor; la unión
+  /// de duplicados, contrato-sync-engine §6.2, desde el esquema 34).
   TextColumn get op => text()();
 
   /// La fila en JSON, con los nombres de columna del cloud.
@@ -82,7 +83,7 @@ class SyncQueue extends Table {
 
   @override
   List<String> get customConstraints => const [
-    "CHECK (op IN ('insert', 'update', 'delete'))",
+    "CHECK (op IN ('insert', 'update', 'delete', 'marcar_como_duplicado'))",
     "CHECK (state IN ('PENDING', 'IN_FLIGHT', 'INVALID', 'DONE', 'BLOCKED', 'WAITING'))",
   ];
 }

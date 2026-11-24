@@ -74,7 +74,8 @@ final class PlanArmado extends Equatable {
 /// 2. Reparte las fechas (semanal: cada 7 días; mensual: el mismo día de cada mes).
 /// 3. Agenda una cobranza por cuota por [PlanDeCuotasRepository.crear], que escribe todo o nada, las
 ///    encola para el sync y recalcula el color de la casa. Ninguna cuota supera el saldo y entre
-///    todas no lo superan (la base lo vuelve a medir, dentro de la transacción).
+///    todas no lo superan, y la última es justo lo que falta: no se escribe a mano (decisión del
+///    03/11, #608). La base lo vuelve a medir, dentro de la transacción.
 /// 4. Programa el recordatorio de cada cobranza que no haya pasado. Programar nunca hace fallar el
 ///    plan: lo que no se pudo se cuenta en [PlanArmado.sinRecordatorio].
 ///

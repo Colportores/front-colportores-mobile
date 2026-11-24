@@ -108,6 +108,20 @@ void main() {
       expect(FormatoFicha.subtitulo(visita), isNull);
     });
 
+    // 42B·08E (P7 del PR #681): la visita en la que se dejaron misioneros dice cuántos.
+    test('la visita con misioneros dice «✦ N misioneros» (singular con uno)', () {
+      VisitaEnFicha con(int n) => VisitaEnFicha(
+        id: 'i',
+        fecha: DateTime(2026, 10, 5, 12),
+        resultado: TipoResultadoVisita.entrevista,
+        misioneros: n,
+      );
+      expect(FormatoFicha.subtitulo(con(3)), '✦ 3 misioneros');
+      expect(FormatoFicha.subtitulo(con(1)), '✦ 1 misionero');
+      expect(FormatoFicha.subtitulo(con(0)), isNull);
+      expect(FormatoFicha.paraLector(con(3), ahora), endsWith('. 3 misioneros'));
+    });
+
     test('cada resultado de visita tiene su texto', () {
       for (final r in TipoResultadoVisita.values) {
         expect(FormatoFicha.resultadoDeVisita(r), isNotEmpty);

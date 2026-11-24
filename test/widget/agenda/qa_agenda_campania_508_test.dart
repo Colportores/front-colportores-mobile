@@ -280,6 +280,27 @@ void main() {
       await llegarA508(tester, Estado508.canceladas, tamano: telefonoGrande);
       expect(find.text('+ Agendar'), findsNothing);
     });
+
+    // QA #508 r2 — el año aparece en la fecha de las filas de otro año, sin desborde, a cada tamaño.
+    for (final tamano in tamanos) {
+      probar('fila de 2025 y de 2024 lleva el año; la actual, no · ${tamano.width.toInt()}', (
+        tester,
+      ) async {
+        await llegarA508(tester, Estado508.otroAnio, tamano: tamano);
+        expect(find.text('30/12\n2025\n09:00'), findsOneWidget);
+        expect(find.text('05/01\n2024\n18:30'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+      probar('con el texto al 200 % el año va en la misma línea · ${tamano.width.toInt()}', (
+        tester,
+      ) async {
+        await llegarA508(tester, Estado508.otroAnio, escala: 2, tamano: tamano);
+        expect(find.text('30/12/2025 · 09:00'), findsOneWidget);
+        await irAlFinal(tester); // lista perezosa: la tercera fila queda bajo el pliegue a 2,0×
+        expect(find.text('05/01/2024 · 18:30'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   group(

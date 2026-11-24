@@ -4717,12 +4717,12 @@
       "references": [],
       "type": "table",
       "data": {
-        "name": "ubicacion_unida",
+        "name": "deuda_casa_cache",
         "was_declared_in_moor": false,
         "columns": [
           {
-            "name": "ubicacion_id",
-            "getter_name": "ubicacionId",
+            "name": "colportor_id",
+            "getter_name": "colportorId",
             "moor_type": "string",
             "nullable": false,
             "customConstraints": null,
@@ -4731,21 +4731,35 @@
             "dsl_features": []
           },
           {
-            "name": "unida_a_id",
-            "getter_name": "unidaAId",
+            "name": "respuesta",
+            "getter_name": "respuesta",
             "moor_type": "string",
             "nullable": false,
             "customConstraints": null,
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": []
+          },
+          {
+            "name": "leida_en",
+            "getter_name": "leidaEn",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
           }
         ],
         "is_virtual": false,
         "without_rowid": false,
         "constraints": [],
         "explicit_pk": [
-          "ubicacion_id"
+          "colportor_id"
         ]
       }
     },
@@ -5799,11 +5813,11 @@
       ]
     },
     {
-      "name": "ubicacion_unida",
+      "name": "deuda_casa_cache",
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"ubicacion_unida\" (\"ubicacion_id\" TEXT NOT NULL, \"unida_a_id\" TEXT NOT NULL, PRIMARY KEY (\"ubicacion_id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"deuda_casa_cache\" (\"colportor_id\" TEXT NOT NULL, \"respuesta\" TEXT NOT NULL, \"leida_en\" INTEGER NOT NULL, PRIMARY KEY (\"colportor_id\"));"
         }
       ]
     },

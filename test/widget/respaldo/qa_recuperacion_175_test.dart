@@ -2,7 +2,6 @@
 // cada artboard y de cada escenario de la HU, los casos límite de cada flujo, el tamaño de la
 // pantalla con texto grande, el lector de pantalla y la privacidad de la contraseña.
 //
-// Los casos que dejan un hallazgo van con `skip` (se corren con `--dart-define=QA_HALLAZGOS=true`).
 // Las capturas solo con `--dart-define=QA_CAPTURAS=true` (van a `.dart_tool/qa_capturas`).
 import 'dart:async';
 
@@ -17,8 +16,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/qa_recuperacion_175_arnes.dart';
-
-const verHallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 /// ¿Algún nodo de semántica por encima de [texto] es una región viva (se anuncia solo)?
 bool esRegionViva(WidgetTester tester, Finder texto) {
@@ -41,6 +38,11 @@ final class ResueltaQueFalla implements RecuperacionResueltaRepository {
   @override
   Future<void> marcarResuelta(String usuarioId) async {
     marcas++;
+    throw StateError('el almacén seguro no deja escribir');
+  }
+
+  @override
+  Future<void> desmarcarResuelta(String usuarioId) async {
     throw StateError('el almacén seguro no deja escribir');
   }
 }
@@ -596,10 +598,8 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------------------------
-  // 4 · Hallazgos (el estado actual de la rama; con skip hasta que se arreglen).
+  // 4 · Hallazgos (arreglados en #626).
   group('Hallazgos', () {
-    // skip: QA #175: si el almacén seguro no deja anotar «resuelto» después de restaurar, la
-    // pantalla dice «No pudimos recuperar… No se tocó nada de tu teléfono» con los datos ya traídos.
     testWidgets('H1: restaurar bien pero fallar al anotar «resuelto» no dice que no se tocó nada', (
       tester,
     ) async {
@@ -635,8 +635,6 @@ void main() {
         await liberar175(tester, a);
       },
     );
-    // skip: QA #175: 34·08 «Listo» pinta el círculo con la tilde y «Como el 22/10…» pegados a la
-    // izquierda; en el canvas (bloque `hero`) van centrados en la pantalla.
     testWidgets('H3: 34·08 el círculo y «Como el…» van centrados, como en el canvas', (
       tester,
     ) async {
@@ -649,7 +647,7 @@ void main() {
         reason: 'hero en $centro, la pantalla tiene su centro en $mitad',
       );
       await liberar175(tester, a);
-    }, skip: !verHallazgos);
+    });
   });
 
   // ---------------------------------------------------------------------------------------------

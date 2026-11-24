@@ -44,9 +44,14 @@
         android:dataExtractionRules="@xml/data_extraction_rules">
         <!-- Solo vertical (decisión de Cristian del 07/10, #301): la misma regla que Info.plist y
              que SystemChrome.setPreferredOrientations en main.dart. Android 16 la ignora en
-             pantallas de 600 dp o más (tablets); los teléfonos la respetan. -->
+             pantallas de 600 dp o más (tablets); los teléfonos la respetan.
+             Atrás del sistema a la antigua (#679): con el atrás predictivo, que Android 16 prende
+             solo, el sistema decide si cerrar la app según lo último que avisó Flutter, y con un
+             campo enfocado en «Nueva ubicación» el atrás sacaba de la app en vez de volver al
+             mapa. Así cada atrás llega a Flutter y lo resuelve la pila de pantallas (PopScope). -->
         <activity
             android:name=".MainActivity"
+            android:enableOnBackInvokedCallback="false"
             android:exported="true"
             android:launchMode="singleTop"
             android:screenOrientation="portrait"
@@ -96,6 +101,12 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+        <!-- Push remotas (HU-NOT-003, #614): con la app cerrada o en segundo plano, FCM dibuja el
+             título fijo del servidor en este canal («Avisos de tu campaña»), que la app crea al
+             arrancar (CanalAvisosCampania). El servidor (push-fcm) no manda canal. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="avisos_campania" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
@@ -111,6 +122,12 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- url_launcher: abrir una página https en el navegador (términos de uso, #386); sin esto,
+             en Android 11+ el sistema oculta los navegadores a la app. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

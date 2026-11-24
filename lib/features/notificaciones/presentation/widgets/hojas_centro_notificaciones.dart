@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hoja_inferior.dart';
 import '../../../../core/theme/colores_colportaje.dart';
+import '../../domain/entities/tipo_notificacion.dart';
 import 'textos_centro_notificaciones.dart';
+import 'textos_filtro_tipo_notificacion.dart';
 
 const _rojo = Color(0xFFA8312A);
 const _fondoRojo = Color(0xFFFBEDEC);
@@ -23,10 +26,9 @@ ShapeBorder get _formaDeLaHoja =>
 Future<AccionMenuCentro?> mostrarMenuCentroNotificaciones(
   BuildContext context, {
   required bool haySinLeer,
-}) => showModalBottomSheet<AccionMenuCentro>(
+}) => mostrarHojaInferior<AccionMenuCentro>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   showDragHandle: false,
   backgroundColor: Colors.white,
   shape: _formaDeLaHoja,
@@ -40,15 +42,29 @@ Future<bool?> mostrarHojaBorrarTodasLasNotificaciones(
   BuildContext context, {
   required int cantidad,
   required Future<bool> Function() borrar,
-}) => showModalBottomSheet<bool>(
+}) => mostrarHojaInferior<bool>(
   context: context,
   isScrollControlled: true,
-  useSafeArea: true,
   enableDrag: false,
   showDragHandle: false,
   backgroundColor: Colors.white,
   shape: _formaDeLaHoja,
   builder: (_) => HojaBorrarTodasLasNotificaciones(cantidad: cantidad, borrar: borrar),
+);
+
+/// La hoja «Ver avisos de» (24D·02): «Todos» y los 7 tipos como opciones de a una, y «Listo». Devuelve
+/// el tipo elegido (`tipo: null` es «Todos») o `null` si se cerró sin elegir (arrastrándola o tocando
+/// afuera): ahí el filtro queda como estaba. Con el texto muy grande la hoja crece y se desplaza.
+Future<({TipoNotificacion? tipo})?> mostrarHojaTipoDeAviso(
+  BuildContext context, {
+  required TipoNotificacion? actual,
+}) => mostrarHojaInferior<({TipoNotificacion? tipo})>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: false,
+  backgroundColor: Colors.white,
+  shape: _formaDeLaHoja,
+  builder: (_) => HojaTipoDeAviso(actual: actual),
 );
 
 class _MarcoDeLaHoja extends StatelessWidget {
@@ -382,6 +398,119 @@ class BotonPildora extends StatelessWidget {
         disabledForegroundColor: Colors.white,
       ),
       child: contenido,
+    );
+  }
+}
+
+/// El contenido de «Ver avisos de» (24D·02). Elegir una opción solo la marca; «Listo» la confirma.
+class HojaTipoDeAviso extends StatefulWidget {
+  const HojaTipoDeAviso({super.key, required this.actual});
+
+  final TipoNotificacion? actual;
+
+  @override
+  State<HojaTipoDeAviso> createState() => _HojaTipoDeAvisoState();
+}
+
+class _HojaTipoDeAvisoState extends State<HojaTipoDeAviso> {
+  late TipoNotificacion? _elegido = widget.actual;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return _MarcoDeLaHoja(
+      hijos: [
+        Semantics(
+          header: true,
+          child: Text(
+            TextosFiltroTipoNotificacion.hojaTitulo,
+            key: const Key('filtro_hoja_titulo'),
+            style: theme.textTheme.headlineSmall,
+          ),
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final tipo in [null, ...TextosFiltroTipoNotificacion.orden])
+              _OpcionTipo(
+                clave: Key('filtro_opcion_${tipo?.codigo ?? 'TODOS'}'),
+                texto: TextosFiltroTipoNotificacion.nombre(tipo),
+                elegida: tipo == _elegido,
+                onTap: () => setState(() => _elegido = tipo),
+              ),
+          ],
+        ),
+        BotonPildora(
+          clave: const Key('filtro_hoja_listo'),
+          texto: TextosFiltroTipoNotificacion.listo,
+          estilo: EstiloBotonPildora.principal,
+          onPressed: () => _cerrarHoja<({TipoNotificacion? tipo})>(context, (tipo: _elegido)),
+        ),
+      ],
+    );
+  }
+}
+
+/// Una opción de la hoja del filtro: una pastilla de 48 dp como mínimo que, con el texto muy grande,
+/// se parte en renglones en vez de cortarse.
+class _OpcionTipo extends StatelessWidget {
+  const _OpcionTipo({
+    required this.clave,
+    required this.texto,
+    required this.elegida,
+    required this.onTap,
+  });
+
+  final Key clave;
+  final String texto;
+  final bool elegida;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colores = theme.extension<ColoresColportaje>() ?? ColoresColportaje.unica;
+    final primario = theme.colorScheme.primary;
+    return Semantics(
+      button: true,
+      selected: elegida,
+      inMutuallyExclusiveGroup: true,
+      container: true,
+      label: texto,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: Material(
+        key: clave,
+        color: elegida ? primario : Colors.white,
+        shape: StadiumBorder(side: BorderSide(color: elegida ? primario : colores.bordeInput)),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const StadiumBorder(),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: 6,
+                children: [
+                  if (elegida) const Icon(Icons.check, size: 16, color: Colors.white),
+                  Flexible(
+                    child: Text(
+                      texto,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: elegida ? Colors.white : theme.colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

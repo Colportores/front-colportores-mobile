@@ -64,15 +64,7 @@ final class RegistrarVentaUseCase implements UseCase<VentaGuardada, RegistrarVen
     final calculado = ReglasDeVenta.totalCalculado(v.lineas);
     final cobradoAMano = ReglasDeVenta.soloMisioneros(v.lineas) ? null : v.totalCobradoCentavos;
 
-    final errorDeLasLineas = v.lineas.isEmpty
-        ? 'Agregá al menos un producto a la venta'
-        : v.lineas.any(_cantidadInvalida)
-        ? 'Revisá las cantidades de la venta'
-        : v.lineas.any(_precioInvalido)
-        ? 'Un precio de la venta no es válido'
-        : v.lineas.any(_comboSinComponentes)
-        ? 'Un combo no tiene sus productos'
-        : null;
+    final errorDeLasLineas = problemaDeLasLineas(v.lineas);
     final errorDelTotal = calculado > maximoCentavos
         ? 'El total de la venta es demasiado grande'
         : cobradoAMano != null && (cobradoAMano < 0 || cobradoAMano > maximoCentavos)
@@ -154,11 +146,41 @@ final class RegistrarVentaUseCase implements UseCase<VentaGuardada, RegistrarVen
     );
   }
 
+  /// Lo que está mal en [lineas] (ninguna, una cantidad, un precio o un combo sin sus productos), o
+  /// `null` si están bien. Lo usa también «Venta crece» (`SumarALaVentaUseCase`).
+  static String? problemaDeLasLineas(List<LineaDeVenta> lineas) => lineas.isEmpty
+      ? 'Agregá al menos un producto a la venta'
+      : lineas.any(_cantidadInvalida) || _productoPasaDelMaximo(lineas)
+      ? 'Revisá las cantidades de la venta'
+      : lineas.any(_precioInvalido)
+      ? 'Un precio de la venta no es válido'
+      : lineas.any(_comboSinComponentes)
+      ? 'Un combo no tiene sus productos'
+      : null;
+
   static bool _cantidadInvalida(LineaDeVenta l) =>
       l.cantidad < 1 ||
       l.cantidad > maximoPorLinea ||
       (l is LineaDeCombo &&
           l.componentes.any((c) => c.cantidad < 1 || c.cantidad > maximoPorLinea));
+
+  /// Las unidades de un mismo producto, sumando sus líneas sueltas y lo que lleva cada combo (unidades
+  /// del combo × lo que trae una), no pueden pasar de [maximoPorLinea]: es lo que después se entrega
+  /// (QA #430: 99.999 × 99.999 no entra en el `integer` de `entrega.cantidad`).
+  static bool _productoPasaDelMaximo(List<LineaDeVenta> lineas) {
+    final unidades = <String, int>{};
+    for (final l in lineas) {
+      switch (l) {
+        case LineaDeProducto():
+          unidades[l.productoId] = (unidades[l.productoId] ?? 0) + l.cantidad;
+        case LineaDeCombo():
+          for (final c in l.componentes) {
+            unidades[c.productoId] = (unidades[c.productoId] ?? 0) + c.cantidad * l.cantidad;
+          }
+      }
+    }
+    return unidades.values.any((u) => u > maximoPorLinea);
+  }
 
   static bool _precioInvalido(LineaDeVenta l) =>
       l.precioCentavos < 0 || l.precioCentavos > maximoCentavos;

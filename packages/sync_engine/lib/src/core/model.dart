@@ -5,7 +5,40 @@
 // lib/src/adapters/ (R-A1).
 
 /// Qué le pasó a una fila en la DB local (§3, `engine.stage`).
-enum Op { insert, update, delete }
+///
+/// [wireName] es como viaja en el cable (`op` del job, §6.1) y como se guarda
+/// en la cola persistida.
+enum Op {
+  insert('insert'),
+  update('update'),
+  delete('delete'),
+
+  /// La unión de duplicados (§6.2, HU-UBI-006): **no es un upsert** sino un
+  /// trabajo que el servidor aplica como `marcar_como_duplicado(B, A)`. Su
+  /// payload es `{duplicada_id, conservada_id}`, sin la fila; no espera
+  /// `sync_version` y no se funde con otras escrituras (`SyncEngine.stage`).
+  /// Su `rowPk` es la duplicada (B): la `sync_version` que devuelven
+  /// `accepted` y `duplicate` es la de B.
+  marcarComoDuplicado('marcar_como_duplicado');
+
+  const Op(this.wireName);
+
+  /// El nombre en el cable (§6.1, §6.2).
+  final String wireName;
+
+  /// Si el job viaja con la `sync_version` esperada de la fila (§5.4): un
+  /// `update` o un `delete`. Un alta no tiene versión previa, y la unión de
+  /// duplicados no compara versiones (§6.2).
+  bool get esperaVersion => this == Op.update || this == Op.delete;
+
+  /// El [Op] de un [wireName]. Lanza [FormatException] si no es ninguno.
+  static Op fromWireName(String valor) {
+    for (final op in Op.values) {
+      if (op.wireName == valor) return op;
+    }
+    throw FormatException('op inválida: $valor');
+  }
+}
 
 /// Estados de un job en `sync_queue` (§5.1). **Sin retry counter**: un error
 /// transitorio deja el job en [pending] y se reintenta indefinidamente al
@@ -66,7 +99,8 @@ class SyncJob {
   /// Lo que devolvió `toSyncJson()`. Incluye la PK.
   final Map<String, Object?> payload;
 
-  /// Versión esperada de la fila (§5.4). `null` en [Op.insert].
+  /// Versión esperada de la fila (§5.4). `null` en [Op.insert] y en
+  /// [Op.marcarComoDuplicado].
   /// Si el servidor tiene una más nueva: 409 → LWW.
   final int? syncVersion;
 
@@ -225,9 +259,17 @@ class JobResult {
 
 /// Respuesta de un push. Aceptación por job: un `INVALID` no tumba el lote.
 class PushResult {
-  const PushResult({required this.serverTime, required this.results});
+  const PushResult({
+    required this.serverTime,
+    required this.results,
+    this.serverTimeEsDelServidor = true,
+  });
 
   final DateTime serverTime;
+
+  /// `false` si el servidor no mandó `server_time` o mandó uno ilegible, y [serverTime] es el
+  /// reloj del equipo puesto de relleno: no sirve como hora del servidor.
+  final bool serverTimeEsDelServidor;
   final List<JobResult> results;
 
   Iterable<JobResult> byOutcome(JobOutcome o) =>
@@ -247,9 +289,16 @@ class PullDelta {
     required this.watermark,
     required this.hasMore,
     required this.rows,
+    this.outOfArea = const {},
+    this.areaReset = const {},
+    this.serverTimeEsDelServidor = true,
   });
 
   final DateTime serverTime;
+
+  /// `false` si el servidor no mandó `server_time` o mandó uno ilegible, y [serverTime] es el
+  /// reloj del equipo puesto de relleno: no sirve como hora del servidor.
+  final bool serverTimeEsDelServidor;
 
   /// Opaco para el motor: se guarda tal cual y se devuelve tal cual.
   ///
@@ -263,6 +312,48 @@ class PullDelta {
   /// Entidad → filas. Una entidad ausente significa "sin cambios": el motor no
   /// borra nada por ausencia.
   final Map<String, List<Map<String, Object?>>> rows;
+
+  /// Entidad → ids de las filas que salieron del área del colportor en este
+  /// tramo (§2.1, `out_of_area` de backend 0016): otro las movió adonde él no
+  /// trabaja. **No se borran**: la app las marca «fuera del área».
+  final Map<String, List<String>> outOfArea;
+
+  /// Las entidades que este pull arrancó de cero porque cambió el área (§2.1,
+  /// `area_reset` de backend 0016): le asignaron o cambiaron la zona, o empezó
+  /// o terminó una campaña. Lo que el teléfono tenía de ellas y no vuelva a
+  /// bajar hasta el final de la descarga (`hasMore` en `false`) quedó fuera
+  /// del área nueva. El motor lo deduce; el servidor no guarda el área vieja
+  /// (decisión de Cristian, 02/10, backend-supabase#37).
+  final Set<String> areaReset;
+}
+
+/// Lo que acompaña a las filas de una página del pull, para que el store lleve
+/// la cuenta de qué quedó fuera del área (§2.1).
+class PullNotices {
+  const PullNotices({
+    this.outOfArea = const {},
+    this.areaReset = const {},
+    this.complete = true,
+  });
+
+  /// Sin avisos y sin concluir nada: lo que aplica el LWW de un push (§5.4).
+  /// No es `complete` a propósito, porque puede caer en medio de una descarga
+  /// cortada después de un `areaReset`, y confirmaría afuera lo que todavía no
+  /// volvió a bajar.
+  static const none = PullNotices(complete: false);
+
+  /// Ver [PullDelta.outOfArea].
+  final Map<String, List<String>> outOfArea;
+
+  /// Ver [PullDelta.areaReset]. Llega en la primera página de la descarga que
+  /// arranca de cero.
+  final Set<String> areaReset;
+
+  /// Es la última página (`hasMore` en `false`): lo que estaba a la espera de
+  /// volver a bajar desde un [areaReset] y no bajó, quedó fuera del área.
+  final bool complete;
+
+  bool get isEmpty => outOfArea.isEmpty && areaReset.isEmpty;
 }
 
 /// La única clasificación que el motor hace de un error (§5.1).

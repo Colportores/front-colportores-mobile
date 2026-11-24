@@ -22,7 +22,9 @@ final class ModificarCuotasParams extends Equatable {
 
 /// HU-COB-004: modifica las cuotas que no están cerradas (30A-09). Las cubiertas no se tocan; los
 /// montos que no entran (cero, más de lo que falta repartir, menos de lo ya cobrado de una cuota) se
-/// rechazan sin guardar nada. Al guardar se reprograman las cobranzas de esas cuotas: cada cita se
+/// rechazan sin guardar nada. La última cuota abierta es lo que falta: si los montos no suman justo lo
+/// que hay por repartir (alguien escribió la última a mano o no la recalculó), también se rechaza
+/// (`MotivoPlanDeCuotas.ultimaCuota`, decisión del 03/11, #608). Al guardar se reprograman las cobranzas de esas cuotas: cada cita se
 /// actualiza y sube por el motor.
 final class ModificarCuotasUseCase implements UseCase<PlanDeCuotas, ModificarCuotasParams> {
   ModificarCuotasUseCase(this._repository, {DateTime Function()? ahora})

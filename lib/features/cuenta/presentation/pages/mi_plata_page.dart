@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../depositos/presentation/pages/registrar_deposito_page.dart';
+import '../../../depositos/presentation/textos_deposito.dart';
+import '../../../ventas/presentation/widgets/piezas_venta.dart' show BotonDeVenta;
 import '../../domain/entities/detalle_de_mi_plata.dart';
 import '../providers/cuenta_providers.dart';
 import '../textos_cuenta.dart';
@@ -12,8 +17,9 @@ import '../widgets/piezas_mi_plata.dart';
 ///
 /// En V1 son **Depositado**, **En mano** y **Por cobrar**. «Depositado» suma solo lo que el coordinador
 /// validó y muestra aparte lo que espera su validación; no se dibuja mientras el teléfono no bajó nada
-/// del servidor. «Registrar depósito» llega con HU-CTA-004: no se dibuja lo que no se puede hacer. Todo
-/// sale del teléfono: sin conexión se ve igual. Cargando y error son los de Mi Cuenta (33A·03, 33A·05).
+/// del servidor. Con «En mano» o «Por cobrar» abiertos y efectivo en la mano, «Registrar depósito» al pie
+/// (33C·01 y 33C·02, HU-CTA-004) abre la vista 33 D; sin efectivo (33C·03) no se dibuja. Todo sale del
+/// teléfono: sin conexión se ve igual. Cargando y error son los de Mi Cuenta (33A·03, 33A·05).
 class MiPlataPage extends ConsumerStatefulWidget {
   const MiPlataPage({super.key, required this.colportorId, required this.abierta});
 
@@ -45,6 +51,27 @@ class _MiPlataPageState extends ConsumerState<MiPlataPage> {
     if (!_abiertas.remove(categoria)) _abiertas.add(categoria);
   });
 
+  /// Ya se está abriendo «Registrar depósito»: un segundo toque no abre otra encima.
+  var _abriendoDeposito = false;
+
+  Future<void> _registrarDeposito() async {
+    if (_abriendoDeposito) return;
+    _abriendoDeposito = true;
+    try {
+      await RegistrarDepositoPage.abrir(context, colportorId: widget.colportorId);
+    } finally {
+      _abriendoDeposito = false;
+    }
+  }
+
+  /// «Registrar depósito» va al pie con «En mano» o «Por cobrar» abiertos (33C·01 y 33C·02) y algo de
+  /// efectivo en la mano; sin efectivo (33C·03) no hay nada que depositar.
+  bool _conDeposito(DetalleDeMiPlata? d) =>
+      d != null &&
+      d.enManoCentavos > 0 &&
+      (_abiertas.contains(CategoriaDeMiPlata.enMano) ||
+          _abiertas.contains(CategoriaDeMiPlata.porCobrar));
+
   @override
   Widget build(BuildContext context) {
     final provider = detalleDeMiPlataProvider(widget.colportorId);
@@ -68,7 +95,25 @@ class _MiPlataPageState extends ConsumerState<MiPlataPage> {
           slivers: [
             SliverToBoxAdapter(child: CabeceraMiPlata(alVolver: () => Navigator.maybePop(context))),
             ...cuerpo,
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            // «Registrar depósito» va al pie: abajo de todo si la lista es corta y después de la
+            // última fila si es larga (con el texto grande no le quita lugar a la lista).
+            if (_conDeposito(detalle.asData?.value))
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+                    child: BotonDeVenta(
+                      key: const Key('mi_plata_registrar_deposito'),
+                      texto: TextosDeposito.registrar,
+                      alPresionar: () => unawaited(_registrarDeposito()),
+                    ),
+                  ),
+                ),
+              )
+            else
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
           ],
         ),
       ),

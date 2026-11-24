@@ -161,8 +161,8 @@ void main() {
       });
     });
 
-    test('dada una contraseña que Supabase rechaza por larga (72 bytes), lo dice (#265; el tope '
-        'en el formulario es #296)', () async {
+    test('dada una contraseña que Supabase rechaza por larga (72 bytes), lo dice (#265; el '
+        'formulario la corta antes, #296)', () async {
       remoto.fallaAlActualizar = const PasswordDemasiadoLargaException();
 
       expect(

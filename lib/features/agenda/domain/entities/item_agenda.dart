@@ -1,21 +1,33 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../mapa/domain/entities/ubicacion.dart';
+import '../../../mapa/domain/value_objects/coordenadas.dart';
 import 'agenda.dart';
 import 'estado_agenda.dart';
 
 /// La dirección de una ubicación tal como la muestra la agenda: calle y número, sin coordenadas ni
-/// nada más.
+/// nada más. [deBaja] es que la ubicación está dada de baja (solo se mira en la alternativa de una
+/// cobranza: la casa de la cita dada de baja oculta la agenda entera). [coordenadas] es el punto de
+/// la ubicación (la distancia de la hoja «Agendados» del mapa, 06C·03); `null` si no se leyó.
 class DireccionDeAgenda extends Equatable {
-  const DireccionDeAgenda({required this.ubicacionId, required this.tipo, this.calle, this.numero});
+  const DireccionDeAgenda({
+    required this.ubicacionId,
+    required this.tipo,
+    this.calle,
+    this.numero,
+    this.deBaja = false,
+    this.coordenadas,
+  });
 
   final String ubicacionId;
   final TipoUbicacion tipo;
   final String? calle;
   final String? numero;
+  final bool deBaja;
+  final Coordenadas? coordenadas;
 
   @override
-  List<Object?> get props => [ubicacionId, tipo, calle, numero];
+  List<Object?> get props => [ubicacionId, tipo, calle, numero, deBaja, coordenadas];
 }
 
 /// Una fila de la agenda del colportor (HU-VIS-002): la [agenda] y lo que hace falta para
@@ -56,6 +68,10 @@ class ItemAgenda extends Equatable {
 
   /// La dirección a la que hay que ir: la alternativa de la cobranza si la tiene; si no, la casa.
   DireccionDeAgenda? get lugar => alternativa ?? casa;
+
+  /// La cobranza va a una dirección alternativa que se dio de baja (la cita sigue y suena, pero la
+  /// dirección se ve marcada: «Alt. de baja»).
+  bool get lugarDadoDeBaja => lugar?.deBaja ?? false;
 
   /// La cita sigue esperando su visita y su hora ya pasó (23B·02): se muestra en «Pendientes» con
   /// «Registrar» hasta que se registre qué pasó (decisión de Cristian, 23/10, «Los de la HU»: la

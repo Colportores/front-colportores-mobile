@@ -7,8 +7,7 @@
 //     jornada que ya no está;
 //  4. el rótulo «OPCIONAL» y «+ Agendar» a 200 % en 360×640.
 //
-// Los hallazgos viven con `skip` (se corren con `--dart-define=QA_HALLAZGOS=true`); las capturas,
-// con `--dart-define=QA_CAPTURAS=true` (a `.dart_tool/qa_capturas/`, ignorado por git).
+// Las capturas, con `--dart-define=QA_CAPTURAS=true` (a `.dart_tool/qa_capturas/`, ignorado por git).
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -41,7 +40,6 @@ import '../../helpers/persona_falsos.dart';
 import '../../helpers/qa_agenda_148_arnes.dart' as a148;
 import '../../helpers/qa_vista39_450_arnes.dart';
 
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 const _capturas = bool.fromEnvironment('QA_CAPTURAS');
 
 const _chico = Size(360, 640);
@@ -357,8 +355,6 @@ void main() {
           reason: 'el botón «−» quedó muerto con un día viejo',
         );
       },
-      skip:
-          !_hallazgos, // skip: QA #538 — con el día de la hoja anterior a hoy, «+» y «−» no hacen nada.
     );
   });
 
@@ -680,7 +676,7 @@ void main() {
               entrada: entrada,
               salida: salida,
               entradaInferida: inferida,
-              alGuardar: (_, _) async => null,
+              alGuardar: (_, _, _) async => null,
               reloj: () => DateTime(2026, 10, 23, 15),
             ),
           ),
@@ -861,8 +857,6 @@ void main() {
           reason: 'rótulo en $rotulo y la nota empieza en ${texto.top}',
         );
       },
-      skip:
-          !_hallazgos, // skip: QA #538 — el rótulo de dos renglones toca el texto de la nota a 200 %.
     );
   });
 

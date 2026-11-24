@@ -57,7 +57,7 @@ final class Cuota extends Equatable {
   /// Lo que se espera cobrar en la cuota (`monto_previsto`).
   final int montoCentavos;
 
-  /// `PROGRAMADA` (abierta) o `CUMPLIDA` (cubierta).
+  /// `PROGRAMADA` (abierta) o `CUMPLIDA` (cubierta). Una cita `NO_CUMPLIDA` vieja figura abierta.
   final EstadoAgenda estado;
 
   /// Lo que ya se cobró de esta cuota (los pagos se aplican a la más próxima). Una cuota cubierta
@@ -126,7 +126,7 @@ final class PlanDeCuotas extends Equatable {
 
   final String colportorId;
 
-  /// Las cuotas vivas del plan, `PROGRAMADA` o `CUMPLIDA`, por fecha.
+  /// Las cuotas vivas del plan (todas menos las canceladas), por fecha.
   final List<Cuota> cuotas;
 
   bool get tienePlan => cuotas.isNotEmpty;

@@ -94,7 +94,11 @@ void main() {
         'columna', () {
       expect(
         {for (final t in TipoAgenda.values) t: t.codigo},
-        {TipoAgenda.entrevista: 'ENTREVISTA', TipoAgenda.cobranza: 'COBRANZA'},
+        {
+          TipoAgenda.entrevista: 'ENTREVISTA',
+          TipoAgenda.cobranza: 'COBRANZA',
+          TipoAgenda.entrega: 'ENTREGA',
+        },
       );
       expect(
         {for (final e in EstadoAgenda.values) e: e.codigo},

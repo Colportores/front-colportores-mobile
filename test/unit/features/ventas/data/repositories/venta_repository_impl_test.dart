@@ -142,7 +142,10 @@ void main() {
         itemDe('i-1', 'v-1'),
       ])).getOrElse(() => throw StateError('falló'));
 
-      expect(VentaModel.toJson(guardada.venta), encolador.encolados.first.payload);
+      expect(
+        VentaModel.toJson(guardada.venta, itemsEsperados: guardada.items.length),
+        encolador.encolados.first.payload,
+      );
       expect(VentaItemModel.toJson(guardada.items.single), encolador.encolados[1].payload);
     });
   });

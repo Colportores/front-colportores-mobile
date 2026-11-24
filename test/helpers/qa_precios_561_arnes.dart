@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'alta_ubicacion_falsos.dart';
 import 'precios_falsos.dart';
+import 'ubicacion_colportor_falsos.dart';
 
 const conCapturas561 = bool.fromEnvironment('QA_CAPTURAS');
 
@@ -167,8 +168,8 @@ final class Entorno561 {
     fechaDeLosPreciosProvider.overrideWithValue(fecha),
     diasDeAntiguedadDePreciosProvider.overrideWithValue(DiasFalsos(15)),
     relojPreciosProvider.overrideWithValue(() => DateTime(2026, 10, 28, 10)),
-    esperaDelGpsPreciosProvider.overrideWithValue(const Duration(milliseconds: 200)),
     proveedorGpsProvider.overrideWithValue(gps),
+    ubicacionColportorDeGps(gps),
     ciudadesParaAltaProvider.overrideWithValue(alta),
     conexionProvider.overrideWith((ref) => Stream.value(TipoConexion.wifi)),
   ];

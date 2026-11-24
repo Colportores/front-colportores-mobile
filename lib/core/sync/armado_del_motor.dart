@@ -20,6 +20,8 @@ import '../secure_storage/clave_db.dart';
 /// DEK antes de salir, hacia el `appDataFolder`. La DEK se pide con [leerDek] en cada cifrado (no se
 /// guarda acá) y el token de Drive con [tokenDrive] en cada pedido: sin Drive conectado el respaldo
 /// simplemente no corre (`ServicioRespaldo` lo mira antes), y armar esto no toca el almacén.
+///
+/// [archivo] reemplaza al Drive de Google (los tests le dan un Drive en memoria); en la app no se pasa.
 SyncEngine armarMotorDeSync({
   required AppDatabase db,
   required Future<ClaveDb?> Function() leerDek,
@@ -27,12 +29,13 @@ SyncEngine armarMotorDeSync({
   required SyncTransport transporte,
   required ConnectivityPort conectividad,
   RealtimePort? realtime,
+  ArchivePort? archivo,
 }) {
   final cripto = CryptoConDek(leerDek);
   return SyncEngine(
     specs: registroDeLaApp(db.allTables.map((t) => t.actualTableName)),
     backup: BackupService(
-      archive: GoogleDriveArchive(token: tokenDrive, digest: cripto.digest),
+      archive: archivo ?? GoogleDriveArchive(token: tokenDrive, digest: cripto.digest),
       crypto: cripto,
       snapshot: DriftSnapshot(db, tablas: entidadesDelBackup),
     ),

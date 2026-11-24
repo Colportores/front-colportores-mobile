@@ -38,6 +38,7 @@ InformeRecuperacion informeDePrueba({
   int restauradas = 15,
   int totales = 15,
   DateTime? fecha,
+  int sinAbrir = 0,
 }) => InformeRecuperacion(
   fechaDelRespaldo: fecha ?? DateTime(2026, 10, 22, 3, 10),
   parcial: parcial,
@@ -46,6 +47,7 @@ InformeRecuperacion informeDePrueba({
   trabajosReenviados: 0,
   filasTraidas: const {},
   ahora: DateTime(2026, 10, 25, 9),
+  respaldosSinAbrir: sinAbrir,
 );
 
 /// [ServicioRecuperacion] que hace lo que el test le diga.
@@ -150,7 +152,9 @@ final class LectorFalso implements LectorDeLoRecuperado {
 final class ResueltaEnMemoria implements RecuperacionResueltaRepository {
   final Set<String> usuarios = {};
   Object? errorAlLeer;
+  Object? errorAlDesmarcar;
   int marcas = 0;
+  int desmarcas = 0;
 
   /// Si no es `null`, `marcarResuelta` espera a que el test la complete.
   Completer<void>? compuertaMarcar;
@@ -166,6 +170,13 @@ final class ResueltaEnMemoria implements RecuperacionResueltaRepository {
     marcas++;
     await compuertaMarcar?.future;
     usuarios.add(usuarioId);
+  }
+
+  @override
+  Future<void> desmarcarResuelta(String usuarioId) async {
+    desmarcas++;
+    if (errorAlDesmarcar case final e?) throw e;
+    usuarios.remove(usuarioId);
   }
 }
 
@@ -219,7 +230,11 @@ final class ArnesRecuperacion {
 
   /// Perezoso a propósito: el repositorio arma una cola de `Future`s, y si se creara en un `setUp`
   /// (fuera del reloj falso de `testWidgets`) sus pasos no avanzarían con `tester.pump`.
-  late final RespaldoDriveArmado drive = RespaldoDriveArmado();
+  late final RespaldoDriveArmado drive = RespaldoDriveArmado(primerRespaldo: primerRespaldo);
+
+  /// El primer respaldo al conectar Drive: cuenta cuántas veces se pidió (#707). Por defecto no
+  /// sale, como sin motor; un test pone `resultado = true` para verlo hecho.
+  final primerRespaldo = PrimerRespaldoFalso()..resultado = false;
 
   /// Lo del asistente solo: sirve para armar la app entera, que trae su propia sesión y conexión.
   List<Override> get overridesDelAsistente => [
@@ -310,4 +325,31 @@ Future<void> abrirAsistente(
   );
   await tester.pump();
   await tester.pump();
+}
+
+// «Recuperar mi respaldo» de Configuración (vista 16, 16G, #691).
+final filaRecuperarRespaldo = find.byKey(const Key('configuracion_recuperar_respaldo'));
+final hojaRecuperarRespaldo = find.byKey(const Key('configuracion_hoja_recuperar'));
+final hojaRecuperarEmpezar = find.byKey(const Key('configuracion_hoja_recuperar_empezar'));
+final hojaRecuperarAhoraNo = find.byKey(const Key('configuracion_hoja_recuperar_ahora_no'));
+
+/// Conecta el Drive de la persona con la sesión de la app abierta (16G·01): así la fila «Recuperar
+/// mi respaldo» pasa por la hoja «Recuperar tu respaldo» (16G·02) y no por la conexión con Google
+/// (16G·03). El Drive queda conectado también después del reinicio de la raíz (es el almacén).
+Future<void> conectarDriveDeLaApp(WidgetTester tester) async {
+  final contenedor = ProviderScope.containerOf(tester.element(find.byType(MaterialApp).first));
+  final resultado = await contenedor.read(estadoRespaldoDriveProvider.notifier).conectar();
+  expect(resultado, isA<DriveQuedoConectado>());
+  await tester.pump();
+}
+
+/// Toca «Recuperar mi respaldo» y, en la hoja de 16G·02, «Empezar».
+Future<void> recuperarDesdeConfiguracion(WidgetTester tester) async {
+  await tester.ensureVisible(filaRecuperarRespaldo);
+  await tester.tap(filaRecuperarRespaldo);
+  await _cuadros(tester);
+  expect(hojaRecuperarRespaldo, findsOneWidget, reason: '16G·02 antes de reiniciar');
+  await tester.ensureVisible(hojaRecuperarEmpezar);
+  await tester.tap(hojaRecuperarEmpezar);
+  await _cuadros(tester);
 }

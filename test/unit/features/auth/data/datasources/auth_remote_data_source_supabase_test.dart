@@ -424,15 +424,22 @@ void main() {
       cedula: '12345678',
       email: 'ana@example.com',
       password: 'secreto123',
+      terminosVersion: 'v1',
     );
 
     test('dado un email nuevo, cuando registra, manda el perfil y el emailRedirectTo propio de '
-        'verificación (issue #84), y devuelve la sesión', () async {
+        'verificación (issue #84) y la versión de los términos aceptada (#386), y devuelve la '
+        'sesión', () async {
       when(
         () => auth.signUp(
           email: 'ana@example.com',
           password: 'secreto123',
-          data: {'nombre': 'Ana', 'apellido': 'Pérez', 'cedula': '12345678'},
+          data: {
+            'nombre': 'Ana',
+            'apellido': 'Pérez',
+            'cedula': '12345678',
+            'terminos_version': 'v1',
+          },
           emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
         ),
       ).thenAnswer((_) async => respuestaCon(sesion: sesionSupabase()));
@@ -443,6 +450,7 @@ void main() {
         cedula: '12345678',
         email: 'ana@example.com',
         password: 'secreto123',
+        terminosVersion: 'v1',
       );
 
       expect(sesion?.usuarioId, usuarioId);
@@ -750,25 +758,30 @@ void main() {
   });
 
   group('AuthRemoteDataSourceSupabase.reenviarVerificacion', () {
-    test('cuando reenvía, llama a resend con type signup y el emailRedirectTo', () async {
-      when(
-        () => auth.resend(
-          email: 'ana@example.com',
-          type: OtpType.signup,
-          emailRedirectTo: ConfigSupabase.redirectBase,
-        ),
-      ).thenAnswer((_) async => ResendResponse());
+    // #679: el enlace reenviado vuelve a `/verificado`, como el del registro; con la base sola la
+    // app no lo reconocía y quedaba en «El enlace expiró».
+    test(
+      'cuando reenvía, llama a resend con type signup y el emailRedirectTo de la verificación',
+      () async {
+        when(
+          () => auth.resend(
+            email: 'ana@example.com',
+            type: OtpType.signup,
+            emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
+          ),
+        ).thenAnswer((_) async => ResendResponse());
 
-      await dataSource().reenviarVerificacion('ana@example.com');
+        await dataSource().reenviarVerificacion('ana@example.com');
 
-      verify(
-        () => auth.resend(
-          email: 'ana@example.com',
-          type: OtpType.signup,
-          emailRedirectTo: ConfigSupabase.redirectBase,
-        ),
-      ).called(1);
-    });
+        verify(
+          () => auth.resend(
+            email: 'ana@example.com',
+            type: OtpType.signup,
+            emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
+          ),
+        ).called(1);
+      },
+    );
 
     test('dado el límite de emails de Supabase, lanza ServidorException con mensaje', () {
       when(
@@ -825,6 +838,7 @@ void main() {
           cedula: '12345678',
           email: 'lucia@gmial.com',
           password: 'secreto123',
+          terminosVersion: 'v1',
         ),
         throwsA(isA<EmailInvalidoException>()),
       );

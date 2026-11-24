@@ -88,16 +88,54 @@ void main() {
       expect(await ids(), ['activa']);
     });
 
-    test('dadas notas de otros objetivos borradas hace más de 90 días, no se tocan', () async {
-      await sembrar('ubicacion', tipo: TipoObjetivoNota.ubicacion, borrada: hace91);
-      await sembrar('visita', tipo: TipoObjetivoNota.visita, borrada: hace91);
-      await sembrar('agenda', tipo: TipoObjetivoNota.agenda, borrada: hace91);
+    test(
+      'dadas notas de una visita o una agenda borradas hace más de 90 días, no se tocan',
+      () async {
+        await sembrar('visita', tipo: TipoObjetivoNota.visita, borrada: hace91);
+        await sembrar('agenda', tipo: TipoObjetivoNota.agenda, borrada: hace91);
+        await sembrar('persona', borrada: hace91);
+
+        final borradas = await local.purgarVencidas(ahora: ahora);
+
+        expect(borradas, 1);
+        expect(await ids(), ['agenda', 'visita']);
+      },
+    );
+
+    test('dada una nota de un lugar borrada hace 91 días, cuando se limpia, se borra', () async {
+      await sembrar('lugar', tipo: TipoObjetivoNota.ubicacion, borrada: hace91);
+
+      expect(await local.purgarVencidas(ahora: ahora), 1);
+      expect(await ids(), isEmpty);
+    });
+
+    test(
+      'dada una nota de un lugar borrada hace 89 o justo 90 días, todavía no se borra',
+      () async {
+        await sembrar('lugar89', tipo: TipoObjetivoNota.ubicacion, borrada: hace89);
+        await sembrar('lugar90', tipo: TipoObjetivoNota.ubicacion, borrada: hace90);
+
+        expect(await local.purgarVencidas(ahora: ahora), 0);
+        expect(await ids(), ['lugar89', 'lugar90']);
+      },
+    );
+
+    test('dada una nota de un lugar activa muy vieja, o restaurada, no se toca', () async {
+      await sembrar('activa', tipo: TipoObjetivoNota.ubicacion);
+      await sembrar('restaurada', tipo: TipoObjetivoNota.ubicacion, borrada: hace91);
+      await marcarBorrada('restaurada', null);
+
+      expect(await local.purgarVencidas(ahora: ahora), 0);
+      expect(await ids(), ['activa', 'restaurada']);
+    });
+
+    test('dadas notas de persona y de lugar vencidas, una sola limpieza borra las dos', () async {
       await sembrar('persona', borrada: hace91);
+      await sembrar('lugar', tipo: TipoObjetivoNota.ubicacion, borrada: hace91);
+      await sembrar('lugar-nueva', tipo: TipoObjetivoNota.ubicacion, borrada: hace89);
 
-      final borradas = await local.purgarVencidas(ahora: ahora);
-
-      expect(borradas, 1);
-      expect(await ids(), ['agenda', 'ubicacion', 'visita']);
+      expect(await local.purgarVencidas(ahora: ahora), 2);
+      expect(await ids(), ['lugar-nueva']);
     });
 
     test('dadas varias notas, borra solo las vencidas y es idempotente', () async {

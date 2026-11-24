@@ -22,6 +22,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 
 import 'alta_ubicacion_falsos.dart';
 import 'baja_ubicacion_falsos.dart';
+import 'ubicacion_colportor_falsos.dart';
 import 'ubicacion_sin_modificar.dart';
 
 /// Hoy para los tests de la lista: las filas dicen «hace 2 h», «ayer»… respecto de este momento.
@@ -75,6 +76,9 @@ final class RepoListaFalso with UbicacionRepositorySinModificar implements Ubica
 
   List<UbicacionConResumen> _filas;
   final _activos = <MultiStreamController<List<UbicacionConResumen>>>[];
+
+  /// El alta sobre el mapa (vista 41) registra acá: sin él, `registrar` no está implementado.
+  RepoAltaFalso? alta;
 
   /// Cuántas veces se pidió la lista, con lo que se pidió.
   final pedidos = <({String colportorId, bool incluirBajas})>[];
@@ -214,7 +218,17 @@ final class RepoListaFalso with UbicacionRepositorySinModificar implements Ubica
     required OrigenCoordenadas origen,
     CriterioDuplicadoUbicacion? duplicados,
     String? justificacion,
-  }) => throw UnimplementedError();
+  }) {
+    final repoAlta = alta;
+    if (repoAlta == null) throw UnimplementedError();
+    return repoAlta.registrar(
+      ubicacion,
+      espacio: espacio,
+      origen: origen,
+      duplicados: duplicados,
+      justificacion: justificacion,
+    );
+  }
 
   @override
   Stream<List<Ubicacion>> observarDelColportor({
@@ -237,11 +251,16 @@ List<Override> overridesLista({
   CiudadesParaAlta? ciudades,
   DateTime? ahora,
   ConsultorPendientesUbicacion? pendientes,
+  bool gpsAbierto = false,
 }) {
   final gpsFalso = gps ?? GpsFalso();
   return [
     ubicacionRepositoryProvider.overrideWithValue(repo),
     proveedorGpsProvider.overrideWithValue(gpsFalso),
+    seguidorGpsProvider.overrideWithValue(gpsFalso),
+    // Solo el mapa pide el GPS (#651): la Lista lo lee. Con [gpsAbierto] el colportor ya pasó por el
+    // mapa; sin él, nadie lo lee hasta que el test lo pida (o monte la pestaña Mapa).
+    if (gpsAbierto) ubicacionColportorYaAbierta(),
     activadorGpsProvider.overrideWithValue(gpsFalso),
     ciudadesParaAltaProvider.overrideWithValue(ciudades ?? CiudadesFalsas()),
     relojListaUbicacionesProvider.overrideWithValue(() => ahora ?? ahoraLista),

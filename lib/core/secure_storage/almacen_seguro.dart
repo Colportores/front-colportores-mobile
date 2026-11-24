@@ -153,7 +153,13 @@ enum ClaveSegura {
   /// `respaldoDrive`, para no sumar otro almacenamiento; se conserva al reconstruir el almacén (la DB
   /// sigue) y se borra con el borrado de datos locales (HU-AUTH-010): un teléfono sin datos vuelve a
   /// ofrecer recuperarlos.
-  recuperacionResuelta('recovery_resolved');
+  recuperacionResuelta('recovery_resolved'),
+
+  /// Si el colportor activó el modo ahorro de datos (HU-SYNC-008, vista 25): `1` activo; sin la
+  /// clave, apagado. Es una preferencia del teléfono, no un secreto: vive acá, junto a
+  /// `ultimoCorreo`, para no sumar otro almacenamiento, y el borrado de datos locales
+  /// (HU-AUTH-010) también la borra.
+  modoAhorroDatos('data_saver_mode');
 
   const ClaveSegura(this.id);
 

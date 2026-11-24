@@ -51,7 +51,7 @@ Finder get _elegir => find.byKey(ClavesEstadosHojaCasa.elegirUbicacion);
 
 /// Mueve el mapa falso al zoom máximo, donde acercar más ya no separa las ubicaciones.
 void _alZoomMaximo(MontajeMapaUbicaciones m) =>
-    m.mapa.moverPorGesto(CamaraMapa(centro: puntoItalia, zoom: MapaAlta.zoomMaximo));
+    m.mapa.moverPorGesto(const CamaraMapa(centro: puntoItalia, zoom: MapaAlta.zoomMaximo));
 
 Future<void> _drenar(WidgetTester tester) => asentarLista(tester);
 
@@ -241,7 +241,7 @@ void main() {
       'antes del zoom máximo no se pide elegir: se abre la más cercana y se acerca con los dedos',
       (tester) async {
         final m = await montarMapaUbicaciones(tester, repo: RepoListaFalso(_tresEnElMismoPunto()));
-        m.mapa.moverPorGesto(CamaraMapa(centro: puntoItalia, zoom: MapaAlta.zoomMaximo - 2));
+        m.mapa.moverPorGesto(const CamaraMapa(centro: puntoItalia, zoom: MapaAlta.zoomMaximo - 2));
 
         m.mapa.tocarPunto('u-2');
         await _drenar(tester);

@@ -271,25 +271,38 @@ void main() {
 
   group('Par local: el alta de B todavía está PENDING', () {
     test(
-      'se une en el teléfono sin encolar la unión: B no sube viva y lo suyo sube en A',
+      'se une en el teléfono sin encolar la unión: el alta de B sale de la cola, B no sube nunca y '
+      'lo suyo sube en A (P3, 04/11)',
       () async {
         await sembrarAEnElServidor();
         await cargarB();
+        // El color de B, que nombra a B con su misma PK: tampoco puede subir.
+        await motor.stage('house_status', Op.insert, {'ubicacion_id': 'ub-b', 'color': 'VERDE'});
         expect(await sinConfirmar(), {'ub-b': EstadoAltaUbicacion.soloEnTelefono});
 
         final r = await unir(const UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: 'ub-b'));
 
         expect(r.isRight(), isTrue);
         expect(marcador.encolados, isEmpty);
-        expect((await fila('ub-b')).deletedAt, ahora);
+        expect((await fila('ub-b')).deletedAt, ahora, reason: 'B queda de baja, sin borrarse');
+        final deBEnLaCola = await (db.select(
+          db.syncQueue,
+        )..where((q) => q.rowPk.equals('ub-b'))).get();
+        expect(
+          deBEnLaCola,
+          isEmpty,
+          reason: 'el alta pendiente de B (y su color) se descarta: no se funde con la baja',
+        );
+        expect(await sinConfirmar(), isEmpty);
+        expect(
+          await db.select(db.unionesLocales).get(),
+          isEmpty,
+          reason: 'sin trabajo en el servidor no hay unión que deshacer',
+        );
 
         expect((await motor.syncNow()).ok, isTrue);
-        final deB = servidor.filas['ub-b'];
-        expect(
-          deB == null || deB['deleted_at'] != null,
-          isTrue,
-          reason: 'B no queda viva en el servidor',
-        );
+        expect(servidor.filas.containsKey('ub-b'), isFalse, reason: 'B nunca sube, ni como baja');
+        expect(servidor.filas.containsKey('esp-b'), isFalse, reason: 'el único de B se fundió');
         expect(servidor.filas['ep-b1']!['espacio_id'], 'esp-a');
         expect(await retenidos(), isEmpty);
         expect((await DriftJobStore(db).status()).pending, 0);

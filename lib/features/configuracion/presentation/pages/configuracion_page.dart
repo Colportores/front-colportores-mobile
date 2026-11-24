@@ -16,12 +16,16 @@ import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../../inicio/presentation/widgets/barra_pestanas_inicio.dart';
 import '../../../notificaciones/presentation/pages/notificaciones_page.dart';
 import '../../../notificaciones/presentation/widgets/aviso_notificaciones.dart';
+import '../../../respaldo/domain/entities/estado_respaldo_drive.dart';
 import '../../../respaldo/presentation/providers/recuperacion_pendiente_providers.dart';
 import '../../../respaldo/presentation/providers/respaldo_drive_providers.dart';
 import '../../../respaldo/presentation/textos_recuperacion.dart';
 import '../../../respaldo/presentation/textos_respaldo_drive.dart';
+import '../../../respaldo/presentation/widgets/hoja_recuperar_respaldo.dart';
 import '../../../respaldo/presentation/widgets/hojas_drive.dart';
 import '../../../respaldo/presentation/widgets/seccion_respaldo_drive.dart';
+import '../../../sincronizacion/presentation/pages/sincronizacion_page.dart';
+import '../../../sincronizacion/presentation/textos_sincronizacion.dart';
 import '../../../tiles/presentation/pages/mapas_offline_page.dart';
 import '../../../tiles/presentation/providers/resumen_mapas_providers.dart';
 import '../../../tiles/presentation/textos_mapas_offline.dart';
@@ -93,6 +97,9 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
               ),
             ),
           );
+        case DriveQuedoEnOtraCuenta(:final estado):
+          // Google devolvió otra cuenta que la del respaldo anterior (16E·01).
+          await _elegirCuentaDrive(estado);
         case DriveNoQuedoConectado():
           avisoCancelado.mostrar();
         case DriveOcupado() || null:
@@ -103,47 +110,105 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     }
   }
 
-  /// «Recuperar mi respaldo» (#610, «Recup. luego»): vuelve a abrir el asistente de recuperación si el
-  /// teléfono sigue sin nada cargado. El asistente reemplaza la raíz (no puede haber nada escuchando
-  /// la base mientras se recupera): recién con él abierto se sacan las pantallas de la pila. Si ya
-  /// hay datos, lo dice y la fila desaparece.
+  /// La hoja «Esta no es la cuenta de tu respaldo» (16E·01 a 16E·04) y lo que avisa al volver. Quien la
+  /// llama ya tiene tomada su guarda de «abriendo una hoja»: un segundo toque no abre otra.
+  Future<void> _elegirCuentaDrive(DriveCuentaPorConfirmar cuenta) async {
+    final salida = await mostrarHojaOtraCuentaDrive(context, cuenta: cuenta);
+    if (!mounted) return;
+    // Cerró la hoja sin elegir: la fila queda pendiente y tocarla la vuelve a abrir. Si desconectó,
+    // la fila ya dice «Sin conectar».
+    final aviso = avisoDeOtraCuenta(salida);
+    if (aviso == null) return;
+    final mensajero = ScaffoldMessenger.of(context)..clearSnackBars();
+    recordarAviso(
+      mensajero.showSnackBar(SnackBar(key: Key(aviso.clave), content: Text(aviso.texto))),
+    );
+  }
+
+  /// «Recuperar mi respaldo» (#610, «Recup. luego»; vista 16, 16G, #691): vuelve a abrir el
+  /// asistente de recuperación si el teléfono sigue sin nada cargado.
+  ///
+  /// - Con una cuenta de Drive (16G·02): primero la hoja «Recuperar tu respaldo», que dice de qué
+  ///   cuenta se trae; «Ahora no» no hace nada más.
+  /// - Sin Drive conectado (16G·03): primero la conexión con Google (16D·02), sin el respaldo de
+  ///   confirmación (#707), y, si quedó conectado, el asistente. Si no se conectó, el aviso de «no conectamos tu Drive» (16D·07), como la fila
+  ///   «Cuenta Drive».
+  ///
+  /// No puede haber nada escuchando la base mientras se recupera, así que la app se reinicia por
+  /// dentro y abre directo en la vista 34, como en el primer arranque (decisión de Cristian, 04/11,
+  /// «Motor vivo»): con la raíz reiniciada, esta pantalla ya no existe y no queda nada que sacar de
+  /// la pila. Si ya hay datos, lo dice y la fila queda apagada (16G·04).
+  ///
+  /// Todo el recorrido cuenta como un solo toque: un segundo toque, mientras tanto, no hace nada.
   Future<void> _recuperarMiRespaldo() async {
     if (_abriendoRecuperacion) return;
     _abriendoRecuperacion = true;
-    final navigator = Navigator.of(context);
     final mensajero = ScaffoldMessenger.of(context);
+    var reiniciando = false;
     try {
-      final resultado = await ref.read(recuperacionPendienteProvider.notifier).reabrir();
-      if (resultado == ReaperturaDeLaRecuperacion.abierta) {
-        navigator.popUntil((ruta) => ruta.isFirst);
+      final EstadoRespaldoDrive drive;
+      try {
+        drive = await ref.read(estadoRespaldoDriveProvider.future);
+      } on Object {
+        // No se sabe si hay Drive: no se abre nada sobre algo que no se pudo mirar.
+        if (mounted) _avisarRecuperacion(mensajero, TextosRecuperacion.noPudimosVerTuDrive);
         return;
       }
       if (!mounted) return;
+      switch (drive) {
+        case DriveCuentaPorConfirmar():
+          // Antes de traer un respaldo hay que elegir de qué cuenta es: el respaldo está frenado.
+          await _elegirCuentaDrive(drive);
+          return;
+        case DriveConCuenta(:final email):
+          final empezar = await mostrarHojaRecuperarRespaldo(context, cuentaDrive: email);
+          if (empezar != true || !mounted) return;
+        case DriveSinConectar():
+          final avisoCancelado = ref.read(avisoDriveCanceladoProvider.notifier)..ocultar();
+          // Sin el respaldo de confirmación del teléfono vacío (#707, decisión de Cristian del
+          // 11/11, «Resp. vacío»): el asistente encuentra solo los respaldos viejos.
+          final conexion = await mostrarHojaConectarDrive(context, conPrimerRespaldo: false);
+          if (!mounted) return;
+          if (conexion is DriveNoQuedoConectado) avisoCancelado.mostrar();
+          if (conexion is! DriveQuedoConectado) return;
+      }
+      final resultado = await ref.read(recuperacionPendienteProvider.notifier).reabrir();
+      // La app se está reiniciando: esta pantalla se va, y un segundo toque no pide otro reinicio.
+      reiniciando = resultado == ReaperturaDeLaRecuperacion.abierta;
+      if (reiniciando || !mounted) return;
       ref.invalidate(recuperarDespuesDisponibleProvider);
-      mensajero.clearSnackBars();
-      recordarAviso(
-        mensajero.showSnackBar(
-          SnackBar(
-            key: const Key('configuracion_recuperar_respaldo_no'),
-            content: Text(
-              resultado == ReaperturaDeLaRecuperacion.hayDatos
-                  ? TextosRecuperacion.yaNoSePuedeRecuperar
-                  : TextosRecuperacion.noSePudoRevisar,
-            ),
-          ),
-        ),
+      _avisarRecuperacion(
+        mensajero,
+        resultado == ReaperturaDeLaRecuperacion.hayDatos
+            ? TextosRecuperacion.yaNoSePuedeRecuperar
+            : TextosRecuperacion.noSePudoRevisar,
       );
     } finally {
-      _abriendoRecuperacion = false;
+      if (!reiniciando) _abriendoRecuperacion = false;
     }
   }
 
-  /// Tocar la fila con Drive conectado: la hoja para desconectar.
-  Future<void> _desconectarDrive() async {
+  void _avisarRecuperacion(ScaffoldMessengerState mensajero, String texto) {
+    mensajero.clearSnackBars();
+    recordarAviso(
+      mensajero.showSnackBar(
+        SnackBar(key: const Key('configuracion_recuperar_respaldo_no'), content: Text(texto)),
+      ),
+    );
+  }
+
+  /// Tocar la fila con Drive conectado: la hoja para desconectar. Con otra cuenta por confirmar
+  /// (16E·01), la hoja para elegir con cuál seguir.
+  Future<void> _verCuentaDrive() async {
     if (_abriendoHojaDrive) return;
     _abriendoHojaDrive = true;
     try {
-      await mostrarHojaDesconectarDrive(context);
+      final estado = ref.read(estadoRespaldoDriveProvider).value;
+      if (estado is DriveCuentaPorConfirmar) {
+        await _elegirCuentaDrive(estado);
+      } else {
+        await mostrarHojaDesconectarDrive(context);
+      }
     } finally {
       _abriendoHojaDrive = false;
     }
@@ -245,15 +310,10 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     if (_revisando) return; // Doble tap: idempotente (HU-AUTH-006, casos borde).
     setState(() => _revisando = true);
 
-    // Si no se puede contar, se cierra igual con la confirmación común: cerrar sesión no borra
-    // nada, lo pendiente se sube en el próximo login.
-    var pendientes = 0;
-    try {
-      final resumen = await ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
-      pendientes = resumen.fold((_) => 0, (r) => r.operacionesSinSincronizar ?? 0);
-    } on Object {
-      pendientes = 0;
-    }
+    // Si no se puede contar, la hoja no dice «Todo sincronizado»: dice que no pudo revisar y deja
+    // reintentar o cerrar igual (cerrar sesión no borra nada; lo pendiente se sube en el próximo
+    // login).
+    final pendientes = await _contarPendientes();
     if (!mounted) return;
     setState(() => _revisando = false);
 
@@ -261,6 +321,7 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     await mostrarHojaCerrarSesion(
       context,
       pendientes: pendientes,
+      contar: _contarPendientes,
       cerrar: () async {
         final Either<Failure, ResultadoCierreSesion> resultado;
         try {
@@ -281,6 +342,16 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
         return true;
       },
     );
+  }
+
+  /// Las operaciones que faltan subir, o `null` si no se pudieron contar.
+  Future<int?> _contarPendientes() async {
+    try {
+      final resumen = await ref.read(obtenerResumenDatosLocalesUseCaseProvider)(const NoParams());
+      return resumen.fold((_) => null, (r) => r.operacionesSinSincronizar);
+    } on Object {
+      return null;
+    }
   }
 
   @override
@@ -308,8 +379,10 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
     final estadoDrive = ref.watch(estadoRespaldoDriveProvider);
     final driveCancelado = ref.watch(avisoDriveCanceladoProvider);
     final ultimoRespaldo = ref.watch(ultimoRespaldoDriveProvider).value;
-    // «Recuperar mi respaldo» (#610): mientras el teléfono no tenga nada cargado.
-    final puedeRecuperar = ref.watch(recuperarDespuesDisponibleProvider).value ?? false;
+    // «Recuperar mi respaldo» (#610, 16G): disponible mientras el teléfono no tenga nada cargado,
+    // apagada con el motivo después.
+    final filaRecuperar =
+        ref.watch(recuperarDespuesDisponibleProvider).value ?? FilaRecuperarRespaldo.oculta;
     final conBarra = estadoCuenta is! AsyncLoading;
     final estado = estadoCuenta.value;
     final accede = estadoCuenta is AsyncData && (estado == null || estado.accedeAModulosDeCampo);
@@ -429,26 +502,45 @@ class _ConfiguracionPageState extends ConsumerState<ConfiguracionPage>
                         ultimoRespaldo: ultimoRespaldo,
                         ahora: DateTime.now(),
                         alConectar: () => unawaited(_conectarDrive()),
-                        alVerCuenta: () => unawaited(_desconectarDrive()),
+                        alVerCuenta: () => unawaited(_verCuentaDrive()),
                         alReintentar: () =>
                             unawaited(ref.read(estadoRespaldoDriveProvider.notifier).recargar()),
                       ),
-                      if (puedeRecuperar) ...[
+                      if (filaRecuperar != FilaRecuperarRespaldo.oculta) ...[
                         const SizedBox(height: 12),
                         _Tarjeta(
                           children: [
-                            ListTile(
-                              key: const Key('configuracion_recuperar_respaldo'),
-                              minVerticalPadding: 12,
-                              leading: const Icon(Icons.cloud_download_outlined),
-                              title: const Text(TextosRecuperacion.filaConfiguracion),
-                              subtitle: const Text(TextosRecuperacion.filaConfiguracionDetalle),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () => unawaited(_recuperarMiRespaldo()),
+                            _FilaRecuperarRespaldo(
+                              apagada: filaRecuperar == FilaRecuperarRespaldo.apagadaConDatos,
+                              sinDrive: estadoDrive.value is DriveSinConectar,
+                              alTocar: () => unawaited(_recuperarMiRespaldo()),
                             ),
                           ],
                         ),
                       ],
+                      const SizedBox(height: 24),
+                      // Estado de la sincronización, «Actualizar ahora» y modo ahorro de datos
+                      // (HU-SYNC-007 y HU-SYNC-008, vista 25).
+                      const _TituloSeccion(TextosSincronizacion.seccionConfiguracion),
+                      const SizedBox(height: 8),
+                      _Tarjeta(
+                        children: [
+                          ListTile(
+                            key: const Key('configuracion_sincronizacion'),
+                            minVerticalPadding: 12,
+                            // Con el texto al 200 % en 360 dp «Sincronización» no entra entre el ícono
+                            // y la flecha con el hueco de siempre: se achica el hueco en vez de
+                            // partir la palabra (mismo hallazgo que QA #153, menor 1).
+                            horizontalTitleGap: 8,
+                            leading: const Icon(Icons.sync),
+                            title: const Text(TextosSincronizacion.filaConfiguracion),
+                            subtitle: const Text(TextosSincronizacion.filaConfiguracionDetalle),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () =>
+                                unawaited(Navigator.of(context).push(SincronizacionPage.ruta())),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 24),
                       const _TituloSeccion('Privacidad y datos'),
                       const SizedBox(height: 8),
@@ -715,6 +807,51 @@ class _CorreoQueSeParte extends StatelessWidget {
           child: Text(texto, key: const Key('configuracion_email')),
         );
       },
+    );
+  }
+}
+
+/// La fila «Recuperar mi respaldo» (vista 16, 16G), con el patrón de las demás filas de
+/// Configuración:
+/// - 16G·01: disponible, con una cuenta de Drive.
+/// - 16G·03: disponible, sin Drive conectado: el detalle pide conectarlo.
+/// - 16G·04: apagada, con el motivo y sin flecha (decidido el 10/11). El motivo va en el gris de los
+///   textos chicos y no en el gris de lo apagado: es el aviso que explica por qué no se puede, y se
+///   tiene que poder leer (AA) aunque la fila esté apagada.
+class _FilaRecuperarRespaldo extends StatelessWidget {
+  const _FilaRecuperarRespaldo({
+    required this.apagada,
+    required this.sinDrive,
+    required this.alTocar,
+  });
+
+  final bool apagada;
+  final bool sinDrive;
+  final VoidCallback alTocar;
+
+  @override
+  Widget build(BuildContext context) {
+    final colores = Theme.of(context).extension<ColoresColportaje>()!;
+    return ListTile(
+      key: const Key('configuracion_recuperar_respaldo'),
+      enabled: !apagada,
+      minVerticalPadding: 12,
+      leading: const Icon(Icons.cloud_download_outlined),
+      title: const Text(TextosRecuperacion.filaConfiguracion),
+      subtitle: apagada
+          ? Text(
+              TextosRecuperacion.filaConfiguracionApagada,
+              key: const Key('configuracion_recuperar_respaldo_motivo'),
+              style: TextStyle(color: colores.gris),
+            )
+          : Text(
+              sinDrive
+                  ? TextosRecuperacion.filaConfiguracionSinDrive
+                  : TextosRecuperacion.filaConfiguracionDetalle,
+              key: const Key('configuracion_recuperar_respaldo_detalle'),
+            ),
+      trailing: apagada ? null : const Icon(Icons.chevron_right),
+      onTap: apagada ? null : alTocar,
     );
   }
 }

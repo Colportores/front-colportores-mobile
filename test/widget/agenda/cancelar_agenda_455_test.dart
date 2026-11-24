@@ -14,6 +14,7 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/detalle_de_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/item_agenda.dart';
+import 'package:colportores_mobile/features/agenda/domain/entities/motivo_rechazo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/recordatorio_de_visita.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/tipo_agenda.dart';
 import 'package:colportores_mobile/features/agenda/presentation/pages/agenda_page.dart';
@@ -452,6 +453,48 @@ void main() {
       expect(find.byKey(ClavesDetalleAgenda.modificar), findsOneWidget);
       await _desmontar(tester);
     });
+  });
+
+  group('#608 · La última cuota del plan no se cancela, se reprograma', () {
+    const mensaje =
+        'Esta es la última cuota del plan y siempre es lo que falta: no se cancela. Reprogramala '
+        'con «Modificar» o cambiá las cuotas anteriores desde la lista de cuotas.';
+
+    for (final escala in [1.0, 2.0]) {
+      testWidgets('dada la última cuota abierta (texto al ${escala * 100}%), cuando confirmo, el '
+          'aviso guía a reprogramarla y queda solo «Volver»; la cuota sigue agendada', (
+        tester,
+      ) async {
+        final m = await _montar(tester, tipo: TipoAgenda.cobranza, escala: escala);
+        await _abrirHoja(tester);
+        m.repo.fallasAlCancelar.add(
+          FailureValidacion(
+            campos: {
+              MotivoRechazoAgenda.ultimaCuotaDelPlan.campo:
+                  MotivoRechazoAgenda.ultimaCuotaDelPlan.mensaje,
+            },
+          ),
+        );
+
+        await _confirmarCancelacion(tester);
+
+        expect(find.text(mensaje), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        expect(_confirmar, findsNothing);
+        expect(find.text('Reintentar'), findsNothing);
+        expect(_volver, findsOneWidget);
+        expect(find.text(_canceladaOk), findsNothing);
+
+        await tester.ensureVisible(_volver);
+        await tester.tap(_volver);
+        await asentarDetalle(tester);
+
+        expect(_hoja, findsNothing);
+        expect(find.byKey(ClavesDetalleAgenda.modificar), findsOneWidget);
+        expect(find.text('Cancelar agenda'), findsOneWidget);
+        await _desmontar(tester);
+      });
+    }
   });
 
   group('Doble toque, dos acciones seguidas y volver atrás', () {
