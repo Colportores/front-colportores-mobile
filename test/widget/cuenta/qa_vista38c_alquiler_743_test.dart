@@ -48,7 +48,7 @@ final _estados = <_Estado>[
     repo: () => RepositorioDeAlquilerControlable(
       inicial: alquilerCon([
         campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
-      ]),
+      ], trasladado: 500),
     ),
     conexion: TipoConexion.wifi,
   ),
