@@ -28,7 +28,7 @@ final _estados = <String, (RepositorioDeAlquilerControlable Function(), TipoCone
     () => RepositorioDeAlquilerControlable(
       inicial: alquilerCon([
         campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
-      ]),
+      ], trasladado: 500),
     ),
     TipoConexion.wifi,
   ),
