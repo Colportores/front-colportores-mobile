@@ -26,6 +26,10 @@ abstract final class TextosAnularCobro {
   static const noVolver = 'No, volver';
   static const reintentar = 'Reintentar';
   static const ticketValidado = 'El ticket de este cobro ya lo validó tu coordinador.';
+
+  /// La marca del cobro con tarjeta sin ticket (decisión P4 de #169): «Falta el ticket» y qué hacer.
+  static const faltaElTicket =
+      'Falta el ticket. Guardá el ticket de la tarjeta: tu coordinador te lo va a pedir.';
   static const errorAlAnular = 'No pudimos anular el cobro. Sigue registrado como estaba.';
 
   /// 30B-06, con la decisión de Cristian del 23/10 («Anular 72 h»): pasadas las 72 h no anula nadie, ni
