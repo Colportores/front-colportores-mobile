@@ -22,6 +22,8 @@ import 'package:colportores_mobile/datos/drift_local_store.dart';
 import 'package:colportores_mobile/datos/drift_sync_meta.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/pages/deuda_casa_page.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/cuenta_providers.dart';
+import 'package:colportores_mobile/features/pedidos/domain/entities/pedido.dart';
+import 'package:colportores_mobile/features/pedidos/presentation/providers/pedidos_providers.dart';
 import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -205,6 +207,9 @@ void main() {
         dbLocalProvider.overrideWithValue(db),
         relojCuentaProvider.overrideWithValue(() => DateTime(2026, 11, 12, 12)),
         monitorConectividadProvider.overrideWithValue(monitor),
+        // El enlace «Mis pedidos» de Mi Cuenta (#387) no es lo que se prueba acá: sin esto su consulta a la
+        // DB real queda abierta en el reloj falso del test y la sincronización no termina.
+        pedidosProvider.overrideWith((ref, colportorId) => Stream.value(const <Pedido>[])),
       ],
     );
     await asentar(tester);

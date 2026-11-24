@@ -207,10 +207,13 @@ class AppDatabase extends _$AppDatabase {
   ///   pull de lo propio (0124) y por ahora solo reciben lo que baja; con ellas el teléfono calcula la deuda,
   ///   el saldo por pedido y la variación semanal sin llamar al servidor. `deuda_casa_cache`, la última
   ///   respuesta de la RPC, se quita: ya nadie la llena (se vuelve a calcular de lo que baja).
+  /// - 42: `campania` suma `limite_deuda`, el límite de deuda de la campaña en centavos (backend-supabase 0120,
+  ///   «Límite ped.» del 25/10), para que el pedido a la casa editora avise sin conexión cuando lo pasa
+  ///   (HU-STK-009, #387). Vacía hasta que el pull trae la campaña de nuevo: sin límite no hay aviso.
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 41;
+  static const int versionEsquema = 42;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -593,6 +596,12 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(esquema.pedidoItemPedidoIdx);
       await m.deleteTable('deuda_casa_cache');
       await m.database.customStatement("DELETE FROM sync_meta WHERE clave = 'last_pull_at'");
+    },
+    // Suma `limite_deuda` a `campania`, vacía: ninguna campaña que ya estaba cambia. Cada una recibe su
+    // límite cuando el servidor la vuelve a mandar (agregar la columna no mueve el cursor del delta). Nada
+    // de lo guardado por la colportora cambia ni se encola al migrar.
+    from41To42: (m, esquema) async {
+      await m.addColumn(esquema.campania, esquema.campania.limiteDeuda);
     },
   );
 }

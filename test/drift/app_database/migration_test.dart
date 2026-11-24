@@ -48,6 +48,7 @@ import 'generated/schema_v39.dart' as v39;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v40.dart' as v40;
 import 'generated/schema_v41.dart' as v41;
+import 'generated/schema_v42.dart' as v42;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
@@ -2671,6 +2672,63 @@ void main() {
             (await nuevo.customSelect("SELECT name FROM sqlite_master WHERE type = 'table'").get())
                 .map((f) => f.read<String>('name'));
         expect(tablas, isNot(contains('deuda_casa_cache')));
+      },
+    );
+  });
+  test('dado lo guardado en la versión 41, cuando migra a la 42, `campania` suma `limite_deuda` vacío y se '
+      'conserva todo (#387)', () async {
+    // #387: el límite de deuda de la campaña baja con el pull para que el pedido avise sin conexión. La
+    // columna llega vacía (`null` = sin límite): una campaña ya bajada no cambia y el cursor del delta
+    // tampoco; la cola de sync y los watermarks no se tocan (convenciones §9).
+    const campania = v41.CampaniaData(
+      id: 'camp-1',
+      nombre: 'Primavera 2026',
+      fechaInicio: '2026-09-01',
+      fechaFin: '2026-12-15',
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      syncVersion: 3,
+      alquilerMonto: 150000,
+    );
+    const job = v41.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'pedido_casa_editora',
+      op: 'insert',
+      payload: '{"id":"p-1"}',
+      rowPk: 'p-1',
+      createdAt: 1758700000000,
+      state: 'PENDING',
+      code: '',
+      message: '',
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 41,
+      newVersion: 42,
+      createOld: v41.DatabaseAtV41.new,
+      createNew: v42.DatabaseAtV42.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.campania, campania)
+          ..insert(viejo.syncQueue, job);
+      },
+      validateItems: (nuevo) async {
+        final campanias = await nuevo.select(nuevo.campania).get();
+        expect(campanias, hasLength(1));
+        expect(campanias.single.id, 'camp-1');
+        expect(campanias.single.nombre, 'Primavera 2026');
+        expect(campanias.single.syncVersion, 3);
+        expect(campanias.single.alquilerMonto, 150000);
+        expect(campanias.single.limiteDeuda, isNull, reason: 'null = sin límite hasta que baje');
+        final jobs = await nuevo.select(nuevo.syncQueue).get();
+        expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+
+        await nuevo.customStatement(
+          "UPDATE campania SET limite_deuda = 3000000 WHERE id = 'camp-1'",
+        );
+        expect((await nuevo.select(nuevo.campania).getSingle()).limiteDeuda, 3000000);
       },
     );
   });

@@ -8,6 +8,10 @@ import '../../../depositos/presentation/pages/registrar_deposito_page.dart';
 import '../../../depositos/presentation/providers/depositos_providers.dart'
     show ticketsDeDepositoRechazadosProvider, ticketsDeDepositoSinSubirProvider;
 import '../../../depositos/presentation/widgets/aviso_tickets_sin_subir.dart';
+import '../../../pedidos/presentation/pages/mis_pedidos_page.dart';
+import '../../../pedidos/presentation/pages/pedir_pedido_page.dart';
+import '../../../pedidos/presentation/textos_pedidos.dart';
+import '../../../pedidos/presentation/widgets/enlace_a_mis_pedidos.dart';
 import '../../../tickets/presentation/pages/historial_de_tickets_page.dart';
 import '../../../tickets/presentation/providers/tickets_providers.dart'
     show historialDeTicketsProvider;
@@ -38,8 +42,8 @@ import 'mi_plata_page.dart';
 /// teléfono con lo que bajó con la sincronización (HU-CTA-002, #671): se muestra con la hora de esa bajada y
 /// su toque abre el detalle por pedido (33B).
 /// Las tres cifras se tocan y abren su detalle en «Mi plata» (HU-CTA-003, 33C). Debajo, «ACCIONES» con
-/// «Cargar ticket» y «Registrar depósito» (HU-CTA-004, vistas 38 A y 33 D) y la fila «Mis tickets»
-/// (HU-COB-009, vista 38B).
+/// «+ Hacer un pedido» (HU-STK-009, 37A), «Cargar ticket» y «Registrar depósito» (HU-CTA-004, vistas 38 A
+/// y 33 D) y las filas «Mis pedidos» (37B) y «Mis tickets» (HU-COB-009, vista 38B).
 class CuentaPage extends ConsumerStatefulWidget {
   const CuentaPage({super.key, required this.colportorId, this.activa = true});
 
@@ -107,6 +111,19 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       await AlquilerPage.abrir(context, colportorId: widget.colportorId);
     } finally {
       _abriendoAlquiler = false;
+    }
+  }
+
+  /// Ya se está abriendo «Nuevo pedido» o «Mis pedidos».
+  var _abriendoPedido = false;
+
+  Future<void> _abrirPedido(Future<void> Function() abrir) async {
+    if (_abriendoPedido) return;
+    _abriendoPedido = true;
+    try {
+      await abrir();
+    } finally {
+      _abriendoPedido = false;
     }
   }
 
@@ -203,6 +220,16 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                     ),
                 AccionesDeCuenta(
                   acciones: [
+                    // El orden de 33A·01: «+ Hacer un pedido», «Cargar ticket», «Registrar depósito».
+                    AccionDeCuenta(
+                      texto: TextosPedidos.hacerUnPedido,
+                      clave: const Key('cuenta_hacer_un_pedido'),
+                      alTocar: () => unawaited(
+                        _abrirPedido(
+                          () => PedirPedidoPage.abrir(context, colportorId: widget.colportorId),
+                        ),
+                      ),
+                    ),
                     // «Cargar ticket» (vista 38): el mismo formulario que «Registrar depósito» (desde
                     // «Paso ticket» el ticket y el depósito se cargan juntos).
                     AccionDeCuenta(
@@ -223,6 +250,15 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                           : TextosCuenta.sinPlataParaDepositar,
                     ),
                   ],
+                ),
+                // «Mis pedidos · N por autorizar ›» (33A·01, HU-STK-009).
+                EnlaceAMisPedidos(
+                  colportorId: widget.colportorId,
+                  alAbrir: () => unawaited(
+                    _abrirPedido(
+                      () => MisPedidosPage.abrir(context, colportorId: widget.colportorId),
+                    ),
+                  ),
                 ),
                 // 33A·01: la puerta de «Mis tickets» (vista 38B), con cuántos esperan validación.
                 FilaDeEnlaceDeCuenta(
