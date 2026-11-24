@@ -225,9 +225,29 @@ void main() {
         expect(item.id, 't-1');
         expect(item.estado, EstadoDelItem.rechazado);
         expect(item.motivoRechazo, 'No se ve el número');
-        expect(item.sePuedeCargarDeNuevo, isFalse);
+        expect(item.sePuedeCargarDeNuevo, isFalse, reason: 'sin cobro ligado no hay a quién');
       },
     );
+
+    test('rechazado y ligado a su cobro se puede cargar de nuevo (#728, regla R7)', () {
+      final rechazado = ItemDelHistorial.deTicket(
+        _ticket(tipo: TipoDeTicket.cobroTarjeta, estado: EstadoDeTicket.rechazado),
+        cobroId: 'c-1',
+      );
+      final pendiente = ItemDelHistorial.deTicket(
+        _ticket(tipo: TipoDeTicket.cobroTarjeta),
+        cobroId: 'c-1',
+      );
+      final validado = ItemDelHistorial.deTicket(
+        _ticket(tipo: TipoDeTicket.cobroTarjeta, estado: EstadoDeTicket.validado),
+        cobroId: 'c-1',
+      );
+
+      expect(rechazado.cobroId, 'c-1');
+      expect(rechazado.sePuedeCargarDeNuevo, isTrue);
+      expect(pendiente.sePuedeCargarDeNuevo, isFalse);
+      expect(validado.sePuedeCargarDeNuevo, isFalse);
+    });
 
     test('pendiente: «en cola» sin versión y «por validar» con ella', () {
       expect(ItemDelHistorial.deTicket(_ticket(syncVersion: 0)).estado, EstadoDelItem.enCola);

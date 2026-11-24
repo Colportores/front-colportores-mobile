@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../catalogo/presentation/formato_precios.dart' show FormatoPrecios;
+import '../../../cobranzas/domain/entities/cobranza.dart';
 import '../../../cuenta/presentation/textos_cuenta.dart' show FormatoCuenta;
 import '../../../depositos/presentation/pages/registrar_deposito_page.dart';
 import '../../../ventas/presentation/widgets/piezas_venta.dart' show BotonDeVenta, CabeceraVenta;
 import '../../domain/entities/item_del_historial.dart';
 import '../../domain/services/visor_de_fotos.dart';
+import '../flujo_ticket_de_tarjeta.dart';
 import '../providers/tickets_providers.dart';
 import '../textos_tickets.dart';
 import '../widgets/piezas_tickets.dart';
@@ -18,7 +20,8 @@ import '../widgets/piezas_tickets.dart';
 ///
 /// - **Rechazado** (38B·02): el motivo con las palabras del coordinador y «Cargar de nuevo», que abre
 ///   el formulario con lo mismo cargado (hay que sacar la foto otra vez). El ticket rechazado no se
-///   edita ni se borra: queda en el historial.
+///   edita ni se borra: queda en el historial. En el ticket de un cobro con tarjeta, «Cargar de nuevo»
+///   abre la foto del ticket (vista 29 C) con ese cobro precargado.
 /// - **Validado** (38B·03): cuándo se validó y a qué se acreditó.
 /// - **Por validar** y **en cola**: lo que falta para que se acredite.
 ///
@@ -53,10 +56,17 @@ class _DetalleDeTicketPageState extends ConsumerState<DetalleDeTicketPage> {
   /// Ya se está abriendo el formulario: un segundo toque no abre otro encima.
   var _abriendo = false;
 
+  /// Por qué no se pudo abrir el cobro del ticket (se dice arriba, junto al estado); `null` si no pasó.
+  String? _avisoDelCobro;
+
   Future<void> _cargarDeNuevo(ItemDelHistorial item) async {
     if (_abriendo) return;
     _abriendo = true;
     try {
+      if (item.lugar == LugarDelTicket.cobroConTarjeta) {
+        await _cargarDeNuevoDelCobro(item);
+        return;
+      }
       final registrado = await RegistrarDepositoPage.abrir(
         context,
         colportorId: widget.colportorId,
@@ -68,6 +78,32 @@ class _DetalleDeTicketPageState extends ConsumerState<DetalleDeTicketPage> {
     } finally {
       _abriendo = false;
     }
+  }
+
+  /// El ticket rechazado de un cobro con tarjeta: abre la foto del ticket con el cobro ya resuelto (no
+  /// vuelve a pedir persona ni venta). Cargado el nuevo, se vuelve a la lista; si se cierra la cámara
+  /// sin sacar nada, el rechazado sigue a la vista con su botón.
+  Future<void> _cargarDeNuevoDelCobro(ItemDelHistorial item) async {
+    final cobroId = item.cobroId;
+    if (cobroId == null) return;
+    if (_avisoDelCobro != null) setState(() => _avisoDelCobro = null);
+    Cobranza? cobro;
+    try {
+      cobro = await ref.read(historialDeTicketsRepositoryProvider).cobroConTarjeta(cobroId);
+    } on Object {
+      cobro = null;
+    }
+    if (!mounted) return;
+    if (cobro == null) {
+      setState(() => _avisoDelCobro = TextosTickets.cobroNoSePudoAbrir);
+      return;
+    }
+    final resultado = await FlujoTicketDeTarjeta.abrir(
+      context,
+      cobro: cobro,
+      colportorId: widget.colportorId,
+    );
+    if (resultado == ResultadoDelFlujoDeTicket.cargado && mounted) Navigator.of(context).pop();
   }
 
   @override
@@ -100,6 +136,17 @@ class _DetalleDeTicketPageState extends ConsumerState<DetalleDeTicketPage> {
                 ],
               ),
             ),
+            // Fijo arriba del botón, fuera del scroll: quien toca el botón ve por qué no pasó nada, con
+            // cualquier tamaño de letra y con un motivo largo (QA #760).
+            if (_avisoDelCobro != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                child: AvisoDeTicket(
+                  key: const Key('ticket_aviso_cobro'),
+                  texto: _avisoDelCobro!,
+                  tipo: TipoDeAviso.error,
+                ),
+              ),
             if (item.sePuedeCargarDeNuevo)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),

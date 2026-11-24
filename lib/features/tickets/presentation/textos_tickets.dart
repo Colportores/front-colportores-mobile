@@ -155,6 +155,11 @@ abstract final class TextosTickets {
   static const filaTarjeta = 'Tarjeta';
   static const cargarDeNuevo = 'Cargar de nuevo';
 
+  /// «Cargar de nuevo» de un cobro con tarjeta cuando el cobro ya no se puede leer del teléfono (no está
+  /// en el canvas: texto provisorio, pendiente P1 de #728).
+  static const cobroNoSePudoAbrir =
+      'No pudimos abrir el cobro de este ticket. Volvé a «Mis tickets» y probá de nuevo.';
+
   /// 38B·02: «Tu coordinador lo rechazó: «La foto no se lee». No se acreditó.» Sin motivo se dice solo lo que
   /// pasó.
   static String rechazado(String? motivo) => motivo == null

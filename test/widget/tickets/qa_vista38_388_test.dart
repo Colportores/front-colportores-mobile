@@ -236,7 +236,7 @@ void main() {
 
   group('ticket rechazado de un cobro con tarjeta', () {
     testWidgets(
-      'se ve el motivo y no hay «Cargar de nuevo» (el ticket del cobro se carga desde el cobro)',
+      'se ve el motivo y hay «Cargar de nuevo» (abre la foto del ticket del cobro, #728)',
       (tester) async {
         final repo = HistorialControlable(
           inicial: historialCon([
@@ -253,7 +253,7 @@ void main() {
         await _abrirFila(tester, 'c1');
 
         expect(_texto('Tu coordinador lo rechazó: «No se lee». No se acreditó.'), findsOneWidget);
-        expect(find.byKey(const Key('ticket_cargar_de_nuevo')), findsNothing);
+        expect(find.byKey(const Key('ticket_cargar_de_nuevo')), findsOneWidget);
       },
     );
   });
