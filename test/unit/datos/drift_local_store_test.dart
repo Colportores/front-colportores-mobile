@@ -5,6 +5,7 @@
 import 'package:colportores_mobile/catalogo.dart';
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
+import 'package:colportores_mobile/datos/columnas_heredadas.dart';
 import 'package:colportores_mobile/datos/drift_local_store.dart';
 import 'package:colportores_mobile/features/agenda/data/datasources/agenda_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/agenda/data/models/agenda_model.dart';
@@ -52,6 +53,26 @@ const _jornada = {
   'created_at': '2026-10-16T08:00:00.000Z',
   'updated_at': '2026-10-16T08:00:00.000Z',
   'created_by': 'col-1',
+  'deleted_at': null,
+  'sync_version': 1,
+};
+
+/// Un producto como lo manda el pull desde backend-supabase 0198: `tipo` ya no es columna del
+/// servidor, se calcula de la categoría, y la limpieza siguiente lo saca del pull.
+Map<String, Object?> _producto(String id, {String categoria = 'ESPIRITUALES'}) => {
+  'id': id,
+  'nombre': 'Libro $id',
+  'descripcion': null,
+  'categoria': categoria,
+  'es_bonificable': false,
+  'es_misionero': false,
+  'precio_base_compra': 18000,
+  'casa_editora': null,
+  'imagen_url': null,
+  'codigo_editor': null,
+  'created_at': '2026-11-20T12:00:00.000Z',
+  'updated_at': '2026-11-20T12:00:00.000Z',
+  'created_by': null,
   'deleted_at': null,
   'sync_version': 1,
 };
@@ -426,6 +447,111 @@ void main() {
 
     expect(await db.select(db.ubicaciones).get(), isEmpty);
     expect(await store.watermarkOf('mirror'), isNull);
+  });
+
+  group('producto sin tipo (backend-supabase 0198): el pull no se frena', () {
+    Future<String?> tipoDe(String id) async =>
+        (await (db.select(db.productos)..where((p) => p.id.equals(id))).getSingleOrNull())?.tipo;
+
+    test('con tipo: se guarda el que manda el servidor', () async {
+      await store.applyDelta(
+        {
+          'producto': [
+            {..._producto('p-1', categoria: 'REVISTAS'), 'tipo': 'REVISTA'},
+          ],
+        },
+        scope: 'mirror',
+        watermark: 'w1',
+      );
+
+      expect(await tipoDe('p-1'), 'REVISTA');
+      expect(await store.watermarkOf('mirror'), 'w1');
+    });
+
+    test('sin la clave tipo: se completa desde la categoría y el watermark avanza', () async {
+      await store.applyDelta(
+        {
+          'producto': [
+            _producto('p-1', categoria: 'MISIONEROS'),
+            _producto('p-2', categoria: 'MATERIAL'),
+            _producto('p-3', categoria: 'BONIFICABLES'),
+          ],
+        },
+        scope: 'mirror',
+        watermark: 'w1',
+      );
+
+      expect(await tipoDe('p-1'), 'MISIONERO');
+      expect(await tipoDe('p-2'), 'MATERIAL');
+      expect(await tipoDe('p-3'), 'LIBRO');
+      expect(await store.watermarkOf('mirror'), 'w1');
+    });
+
+    test('con tipo: null: se completa igual, sin romper el NOT NULL', () async {
+      await store.applyDelta(
+        {
+          'producto': [
+            {..._producto('p-1', categoria: 'REVISTAS'), 'tipo': null},
+          ],
+        },
+        scope: 'mirror',
+        watermark: 'w1',
+      );
+
+      expect(await tipoDe('p-1'), 'REVISTA');
+      expect(await store.watermarkOf('mirror'), 'w1');
+    });
+
+    test('una fila que ya estaba se actualiza aunque la nueva no traiga tipo', () async {
+      await store.applyDelta(
+        {
+          'producto': [
+            {..._producto('p-1'), 'tipo': 'LIBRO'},
+          ],
+        },
+        scope: 'mirror',
+        watermark: 'w1',
+      );
+      await store.applyDelta(
+        {
+          'producto': [
+            {..._producto('p-1', categoria: 'REVISTAS'), 'nombre': 'Revista', 'sync_version': 2},
+          ],
+        },
+        scope: 'mirror',
+        watermark: 'w2',
+      );
+
+      final fila = await db.select(db.productos).getSingle();
+      expect(fila.nombre, 'Revista');
+      expect(fila.categoria, 'REVISTAS');
+      expect(fila.tipo, 'REVISTA');
+      expect(await store.watermarkOf('mirror'), 'w2');
+    });
+  });
+
+  group('completarColumnasHeredadas', () {
+    test('cada categoría da el tipo de public.tipo_de_categoria', () {
+      expect(tipoHeredadoDeCategoria('BONIFICABLES'), 'LIBRO');
+      expect(tipoHeredadoDeCategoria('ESPIRITUALES'), 'LIBRO');
+      expect(tipoHeredadoDeCategoria('MISIONEROS'), 'MISIONERO');
+      expect(tipoHeredadoDeCategoria('REVISTAS'), 'REVISTA');
+      expect(tipoHeredadoDeCategoria('MATERIAL'), 'MATERIAL');
+    });
+
+    test('sin categoría conocida queda el valor por defecto', () {
+      expect(tipoHeredadoDeCategoria(null), tipoHeredadoPorDefecto);
+      expect(tipoHeredadoDeCategoria('NUEVA'), tipoHeredadoPorDefecto);
+      expect(completarColumnasHeredadas('producto', {'id': 'p'})['tipo'], 'LIBRO');
+    });
+
+    test('con tipo, o en otra entidad, la fila no cambia', () {
+      final conTipo = {'id': 'p', 'tipo': 'REVISTA', 'categoria': 'MATERIAL'};
+      expect(completarColumnasHeredadas('producto', conTipo), same(conTipo));
+      final ticket = <String, Object?>{'id': 't', 'tipo': null};
+      expect(completarColumnasHeredadas('ticket', ticket), same(ticket));
+      expect(completarColumnasHeredadas('coleccion', {'id': 'c'}), isNot(contains('tipo')));
+    });
   });
 
   test('el registro de la app cubre cada tabla de la DB local', () {

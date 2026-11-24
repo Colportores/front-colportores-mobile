@@ -3,6 +3,7 @@ import 'package:sync_engine/sync_engine.dart';
 
 import '../core/database/app_database.dart';
 import '../core/database/fecha_utc_converter.dart';
+import 'columnas_heredadas.dart';
 import 'sync_queue_table.dart';
 
 part 'drift_local_store.g.dart';
@@ -41,7 +42,11 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
       for (final fila in filas) {
         // `<Never>`: la tabla llega como `TableInfo<Table, Object?>` y Drift verifica en runtime
         // el tipo de su fila; un insertable de `Never` es subtipo de cualquiera.
-        await into(tabla).insertOnConflictUpdate(RawValuesInsertable<Never>(_valores(tabla, fila)));
+        // `completarColumnasHeredadas`: un producto sin `tipo` (backend-supabase 0198) no frena el
+        // pull entero por el NOT NULL de la tabla local.
+        await into(tabla).insertOnConflictUpdate(
+          RawValuesInsertable<Never>(_valores(tabla, completarColumnasHeredadas(entidad, fila))),
+        );
       }
     }
     // Sin watermark (la `server_row` de un LWW) se deja el que había.
