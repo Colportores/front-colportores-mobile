@@ -1424,6 +1424,7 @@ class SyncEngine {
             switch (r.outcome) {
               case JobOutcome.accepted:
               case JobOutcome.duplicate:
+              case JobOutcome.merged:
                 final job = jobPorId[id]!;
                 // También la de un `delete`: la baja de esta app es lógica (`deleted_at`), la
                 // fila sigue en el teléfono y, si se reactiva, su próximo `update` tiene que
