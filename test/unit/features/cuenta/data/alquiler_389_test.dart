@@ -1,6 +1,6 @@
 // «Mi alquiler» (HU-CTA-007, vista 38C, #389) contra la base real: AppDatabase en memoria con las
 // réplicas `campania`, `campania_colportor` y `deposito`. Qué campañas cuentan, cuánto se pagó, lo que
-// espera validación, lo rechazado y lo devuelto, lo pagado de más, y el `Stream` que avisa cuando baja
+// espera validación, lo rechazado y lo devuelto, lo pagado de más (que dice el servidor), y el `Stream` que avisa cuando baja
 // un pago o cambia el monto.
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -52,6 +52,17 @@ void main() {
         "deleted_at) VALUES ('cc-$campaniaId-$usuario', '$campaniaId', '$usuario', 1, 1, "
         '${baja ? _ms(_ahora) : 'NULL'})',
       );
+
+  /// La cuenta de [usuario] como la baja el pull, con lo que el servidor dice que trasladó (centavos).
+  Future<void> cuenta(
+    int trasladado, {
+    String usuario = 'col-1',
+    bool baja = false,
+    String id = 'cu-1',
+  }) => db.customStatement(
+    'INSERT INTO cuenta_colportor (id, usuario_id, alquiler_trasladado, created_at, updated_at, '
+    "deleted_at) VALUES ('$id', '$usuario', $trasladado, 1, 1, ${baja ? 9 : 'NULL'})",
+  );
 
   var n = 0;
 
@@ -261,24 +272,97 @@ void main() {
     expect(c.pagadoCentavos, 250000);
   });
 
-  test(
-    'dado que pagó \$U 3.000 de un alquiler de \$U 2.500, cuando se lee, el alquiler queda en 0 y '
-    'los \$U 500 de más figuran aparte',
-    () async {
+  test('dado que pagó \$U 3.000 de un alquiler de \$U 2.500 y el servidor trasladó \$U 500, cuando '
+      'se lee, el alquiler queda en 0 y los \$U 500 de más salen de la cuenta', () async {
+    await campania('c-1', monto: 250000);
+    await inscripcion('c-1');
+    await pago('c-1', 300000, validado: true);
+    await cuenta(50000);
+
+    final alquiler = await fuente.leer('col-1');
+    final c = alquiler.campanias.single;
+
+    expect(c.saldoCentavos, 0);
+    expect(c.estaPago, isTrue);
+    expect(alquiler.trasladadoCentavos, 50000);
+    expect(alquiler.hayTraslado, isTrue);
+    expect(alquiler.saldoCentavos, 0);
+  });
+
+  group('lo trasladado sale del servidor, no de los pagos (#753)', () {
+    test(
+      'pagado sobre el monto pero la cuenta todavía no bajó: no se calcula, queda en 0',
+      () async {
+        await campania('c-1', monto: 250000);
+        await inscripcion('c-1');
+        await pago('c-1', 300000, validado: true);
+
+        final alquiler = await fuente.leer('col-1');
+
+        expect(alquiler.campanias.single.saldoCentavos, 0);
+        expect(alquiler.trasladadoCentavos, 0);
+        expect(alquiler.hayTraslado, isFalse);
+      },
+    );
+
+    test('el servidor manda aunque los pagos digan otra cosa', () async {
       await campania('c-1', monto: 250000);
       await inscripcion('c-1');
-      await pago('c-1', 300000, validado: true);
+      await pago('c-1', 100000, validado: true);
+      await cuenta(70000);
 
-      final alquiler = await fuente.leer('col-1');
-      final c = alquiler.campanias.single;
+      expect((await fuente.leer('col-1')).trasladadoCentavos, 70000);
+    });
 
-      expect(c.saldoCentavos, 0);
-      expect(c.estaPago, isTrue);
-      expect(c.pagadoDeMasCentavos, 50000);
-      expect(alquiler.pagadoDeMasCentavos, 50000);
-      expect(alquiler.saldoCentavos, 0);
-    },
-  );
+    test(
+      'quien se dio de baja y ya no tiene campañas con alquiler igual lee lo trasladado',
+      () async {
+        await campania('c-1', monto: 250000);
+        await inscripcion('c-1', baja: true);
+        await cuenta(250000);
+
+        final alquiler = await fuente.leer('col-1');
+
+        expect(alquiler.hayAlquiler, isFalse);
+        expect(alquiler.trasladadoCentavos, 250000);
+      },
+    );
+
+    test('la cuenta de otra colportora, una dada de baja o un valor negativo no cuentan', () async {
+      await cuenta(40000, usuario: 'col-2', id: 'cu-2');
+      expect((await fuente.leer('col-1')).trasladadoCentavos, 0);
+
+      await cuenta(30000, baja: true);
+      expect((await fuente.leer('col-1')).trasladadoCentavos, 0);
+
+      await db.customStatement(
+        "UPDATE cuenta_colportor SET deleted_at = NULL, alquiler_trasladado = -5 WHERE id = 'cu-1'",
+      );
+      expect((await fuente.leer('col-1')).trasladadoCentavos, 0);
+    });
+
+    test(
+      'el Stream avisa cuando el pull baja el traslado y cuando se deshace (reactivación)',
+      () async {
+        await campania('c-1', monto: 250000);
+        await inscripcion('c-1');
+        await cuenta(0);
+        final emitidos = <int>[];
+        final sub = fuente.observar('col-1').listen((a) => emitidos.add(a.trasladadoCentavos));
+        addTearDown(sub.cancel);
+        await pumpEventQueue();
+
+        await db.customStatement('UPDATE cuenta_colportor SET alquiler_trasladado = 50000');
+        db.markTablesUpdated({db.cuentasColportor});
+        await pumpEventQueue();
+        await db.customStatement('UPDATE cuenta_colportor SET alquiler_trasladado = 0');
+        db.markTablesUpdated({db.cuentasColportor});
+        await pumpEventQueue();
+
+        expect(emitidos, [0, 50000, 0]);
+      },
+    );
+  });
 
   test('dado que el coordinador cambió el monto después de un pago, cuando se lee, el saldo se '
       'recalcula', () async {
@@ -291,7 +375,6 @@ void main() {
 
     final c = (await fuente.leer('col-1')).campanias.single;
     expect(c.saldoCentavos, 0);
-    expect(c.pagadoDeMasCentavos, 100000);
   });
 
   test(

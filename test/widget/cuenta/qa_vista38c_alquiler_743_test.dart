@@ -48,7 +48,7 @@ final _estados = <_Estado>[
     repo: () => RepositorioDeAlquilerControlable(
       inicial: alquilerCon([
         campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
-      ]),
+      ], trasladado: 500),
     ),
     conexion: TipoConexion.wifi,
   ),
@@ -233,7 +233,7 @@ void main() {
               pagoDe(3000),
             ],
           ),
-        ]),
+        ], trasladado: 500),
       );
       await montarAlquiler(tester, repo);
       expect(find.textContaining('Pagaste \$ 500 de más'), findsOneWidget);

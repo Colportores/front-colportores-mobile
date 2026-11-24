@@ -20,6 +20,7 @@ import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/datos/drift_job_store.dart';
 import 'package:colportores_mobile/datos/drift_local_store.dart';
 import 'package:colportores_mobile/datos/drift_sync_meta.dart';
+import 'package:colportores_mobile/features/cuenta/data/repositories/alquiler_repository_impl.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/pages/deuda_casa_page.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/cuenta_providers.dart';
 import 'package:colportores_mobile/features/pedidos/domain/entities/pedido.dart';
@@ -180,6 +181,10 @@ void main() {
           dbLocalProvider.overrideWithValue(db),
           relojCuentaProvider.overrideWithValue(() => DateTime(2026, 11, 12, 12)),
           monitorConectividadProvider.overrideWithValue(monitor),
+          // La nota del alquiler de 33B (#753) lee `cuenta_colportor`, que esta sincronización escribe: su
+          // consulta a la DB real quedaría abierta en el reloj falso del test y la sincronización no
+          // terminaría (mismo motivo que `pedidosProvider` en 33A). Acá no es lo que se prueba.
+          alquilerRepositoryProvider.overrideWithValue(const AlquilerSinBase()),
         ],
         child: MaterialApp(
           theme: temaClaro(),
@@ -210,6 +215,8 @@ void main() {
         // El enlace «Mis pedidos» de Mi Cuenta (#387) no es lo que se prueba acá: sin esto su consulta a la
         // DB real queda abierta en el reloj falso del test y la sincronización no termina.
         pedidosProvider.overrideWith((ref, colportorId) => Stream.value(const <Pedido>[])),
+        // La línea «Alquiler» de Mi Cuenta lee `cuenta_colportor` (#753): mismo motivo.
+        alquilerRepositoryProvider.overrideWithValue(const AlquilerSinBase()),
       ],
     );
     await asentar(tester);

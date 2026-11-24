@@ -45,7 +45,7 @@ void main() {
         expect(find.text('Cargar pago de alquiler'), findsOneWidget);
         // Sin pago por validar ni de más: ningún aviso.
         expect(find.byKey(const Key('alquiler_por_validar_0')), findsNothing);
-        expect(find.byKey(const Key('alquiler_de_mas_0')), findsNothing);
+        expect(find.byKey(const Key('alquiler_de_mas')), findsNothing);
       },
     );
 
@@ -158,18 +158,18 @@ void main() {
       expect(cifra.style?.color, const Color(0xFF1F6E3A));
       expect(find.text('Cargar pago de alquiler'), findsNothing);
       expect(find.text('Pagado (validado)'), findsOneWidget);
-      expect(find.byKey(const Key('alquiler_de_mas_0')), findsNothing);
+      expect(find.byKey(const Key('alquiler_de_mas')), findsNothing);
     });
 
     testWidgets(
-      'dado que pagué \$ 3.000 de un alquiler de \$ 2.500, el alquiler queda en \$ 0 y dice '
-      'que los \$ 500 de más bajaron mi deuda con la casa editora',
+      'dado que pagué \$ 3.000 de un alquiler de \$ 2.500 y el servidor trasladó \$ 500, el '
+      'alquiler queda en \$ 0 y dice que los \$ 500 de más bajaron mi deuda con la casa editora',
       (tester) async {
         await _con(
           tester,
           alquilerCon([
             campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
-          ]),
+          ], trasladado: 500),
         );
 
         expect(tester.widget<Text>(find.byKey(const Key('alquiler_te_falta_0'))).data, r'$ 0');
@@ -182,12 +182,28 @@ void main() {
       },
     );
 
+    testWidgets(
+      'el pagado de más sale del servidor: sin traslado no hay aviso aunque los pagos pasen '
+      'el monto',
+      (tester) async {
+        await _con(
+          tester,
+          alquilerCon([
+            campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
+          ]),
+        );
+
+        expect(find.byKey(const Key('alquiler_de_mas')), findsNothing);
+        expect(find.textContaining('de más'), findsNothing);
+      },
+    );
+
     testWidgets('lo pagado de más no se muestra como «a favor»', (tester) async {
       await _con(
         tester,
         alquilerCon([
           campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
-        ]),
+        ], trasladado: 500),
       );
 
       expect(find.textContaining('a favor'), findsNothing);
@@ -500,21 +516,47 @@ void main() {
       expect(find.byKey(const Key('alquiler_pago_1_0')), findsOneWidget);
     });
 
-    testWidgets('el pago de más de una campaña no se mezcla con el saldo de la otra', (
-      tester,
-    ) async {
+    testWidgets('el pago de más (un total del servidor) se dice una sola vez y no se mezcla con el '
+        'saldo de la otra campaña', (tester) async {
       await _con(
         tester,
         alquilerCon([
           campaniaCon(id: 'c-1', nombre: 'A', monto: 1000, pagos: [pagoDe(1500)]),
           campaniaCon(id: 'c-2', nombre: 'B', monto: 2000, pagos: [pagoDe(500)]),
-        ]),
+        ], trasladado: 500),
       );
 
       expect(tester.widget<Text>(find.byKey(const Key('alquiler_te_falta_0'))).data, r'$ 0');
       expect(tester.widget<Text>(find.byKey(const Key('alquiler_te_falta_1'))).data, r'$ 1.500');
-      expect(find.byKey(const Key('alquiler_de_mas_0')), findsOneWidget);
-      expect(find.byKey(const Key('alquiler_de_mas_1')), findsNothing);
+      expect(find.byKey(const Key('alquiler_de_mas')), findsOneWidget);
+      expect(find.textContaining('de más'), findsOneWidget);
+    });
+
+    testWidgets('quien se dio de baja y ya no tiene campañas con alquiler igual ve lo trasladado', (
+      tester,
+    ) async {
+      await _con(tester, const AlquilerDelColportor(campanias: [], trasladadoCentavos: 50000));
+
+      expect(
+        find.text(r'Pagaste $ 500 de más. Se descontaron de tu deuda con la casa editora.'),
+        findsOneWidget,
+      );
+      expect(find.text('Cargar pago de alquiler'), findsNothing);
+    });
+
+    testWidgets('el aviso aparece cuando el sync baja el traslado, sin recargar, y se va si se '
+        'deshace', (tester) async {
+      final repo = RepositorioDeAlquilerControlable(inicial: alquilerDelCanvas);
+      await montarAlquiler(tester, repo);
+      expect(find.byKey(const Key('alquiler_de_mas')), findsNothing);
+
+      repo.emitir(alquilerCon(alquilerDelCanvas.campanias, trasladado: 500));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('alquiler_de_mas')), findsOneWidget);
+
+      repo.emitir(alquilerCon(alquilerDelCanvas.campanias));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('alquiler_de_mas')), findsNothing);
     });
   });
 
