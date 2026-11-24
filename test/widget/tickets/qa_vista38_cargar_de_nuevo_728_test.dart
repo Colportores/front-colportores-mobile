@@ -2,7 +2,7 @@
 // 29 C): criterios, estados alcanzables × 360×640 y 412×915 × texto 1,0 y 2,0 (guías de toque y de
 // rótulo, sin overflow), el aviso de «no pudimos abrir el cobro» a la vista, casos límite y
 // privacidad. Con `--dart-define=QA_CAPTURAS=true` guarda una captura de cada celda en
-// `.dart_tool/qa_capturas/`; con `--dart-define=QA_HALLAZGOS=true` corre los tests con `skip`.
+// `.dart_tool/qa_capturas/`.
 import 'package:colportores_mobile/features/tickets/domain/entities/item_del_historial.dart';
 import 'package:colportores_mobile/features/tickets/presentation/textos_tickets.dart';
 import 'package:flutter/material.dart';
@@ -11,8 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/qa_vista38_388_arnes.dart';
 import '../../helpers/qa_vista38_728_arnes.dart';
 import '../../helpers/ticket_tarjeta_arnes.dart';
-
-const _hallazgos = bool.fromEnvironment('QA_HALLAZGOS');
 
 void main() {
   group('Criterios (R7 del 23/11, 38B·02)', () {
@@ -117,32 +115,27 @@ void main() {
         for (final escala in escalas388) {
           final sufijo = '${largo ? 'motivo_largo' : 'motivo_corto'}_${sufijo388(tamano, escala)}';
 
-          // El botón está fijo abajo y el aviso va arriba de la foto, debajo del motivo del rechazo: con
-          // letra grande o con un motivo largo queda cortado o fuera de la pantalla. QA #760: hallazgo 1.
-          // skip: QA #760 — el aviso del cobro queda cortado o fuera de vista (se corre con QA_HALLAZGOS).
-          testWidgets(
-            'con el detalle arriba, el aviso queda a la vista: $sufijo',
-            (tester) async {
-              final e = await abrirDetalle728(
-                tester,
-                items: [rechazado728(motivo: largo ? motivoLargo728 : 'No se lee el número')],
-                tamano: tamano,
-                escala: escala,
-              );
-              e.repo.fallaAlLeerElCobro = StateError('sin base');
-              await tocarCargarDeNuevo728(tester);
+          // El aviso va fijo arriba del botón (no dentro del scroll): con letra grande o con un motivo
+          // largo sigue entero a la vista. QA #760: hallazgo 1.
+          testWidgets('con el detalle arriba, el aviso queda a la vista: $sufijo', (tester) async {
+            final e = await abrirDetalle728(
+              tester,
+              items: [rechazado728(motivo: largo ? motivoLargo728 : 'No se lee el número')],
+              tamano: tamano,
+              escala: escala,
+            );
+            e.repo.fallaAlLeerElCobro = StateError('sin base');
+            await tocarCargarDeNuevo728(tester);
 
-              await capturar388(tester, '728_aviso_$sufijo');
-              // Armado y dentro del área que se desplaza (con un motivo largo ni se arma: está lejos).
-              expect(
-                avisoCobro728.evaluate().isNotEmpty && seVeEnLaLista728(tester, avisoCobro728),
-                isTrue,
-                reason: 'el aviso quedó cortado o fuera de vista',
-              );
-              expect(botonHabilitado728(tester), isTrue);
-            },
-            skip: !_hallazgos && _avisoQuedaCortado(largo, tamano, escala),
-          );
+            await capturar388(tester, '728_aviso_$sufijo');
+            // Armado, entero en la pantalla y sin pisar el botón.
+            expect(
+              avisoCobro728.evaluate().isNotEmpty && seVeFijoSobreElBoton728(tester, avisoCobro728),
+              isTrue,
+              reason: 'el aviso quedó cortado o fuera de vista',
+            );
+            expect(botonHabilitado728(tester), isTrue);
+          });
         }
       }
     }
@@ -163,7 +156,7 @@ void main() {
         await tocarCargarDeNuevo728(tester);
 
         expect(
-          avisoCobro728.evaluate().isNotEmpty && seVeEnLaLista728(tester, avisoCobro728),
+          avisoCobro728.evaluate().isNotEmpty && seVeFijoSobreElBoton728(tester, avisoCobro728),
           isTrue,
           reason: 'el error quedó fuera de vista',
         );
@@ -294,7 +287,3 @@ void main() {
     });
   });
 }
-
-/// Las celdas donde el aviso del cobro no se ve entero (se completa con la corrida de QA).
-bool _avisoQuedaCortado(bool largo, Size tamano, double escala) =>
-    tamano == t360x640 && escala == 2.0;

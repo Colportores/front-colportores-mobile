@@ -174,6 +174,14 @@ bool seVeEnLaLista728(WidgetTester tester, Finder f) {
   return r.top >= area.top - 0.5 && r.bottom <= area.bottom + 0.5;
 }
 
+/// ¿El [f] se ve entero en la pantalla, fuera del scroll y sin pisar el botón fijo de abajo?
+bool seVeFijoSobreElBoton728(WidgetTester tester, Finder f) {
+  final r = rectDe728(tester, f);
+  final pantalla = tester.view.physicalSize / tester.view.devicePixelRatio;
+  final b = rectDe728(tester, boton728);
+  return r.top >= -0.5 && r.bottom <= b.top + 0.5 && r.right <= pantalla.width + 0.5;
+}
+
 bool botonHabilitado728(WidgetTester tester) =>
     tester
         .widget<FilledButton>(find.descendant(of: boton728, matching: find.byType(FilledButton)))
