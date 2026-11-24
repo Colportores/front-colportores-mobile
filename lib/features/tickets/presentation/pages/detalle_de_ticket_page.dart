@@ -130,20 +130,23 @@ class _DetalleDeTicketPageState extends ConsumerState<DetalleDeTicketPage> {
                   ),
                   const SizedBox(height: 4),
                   _aviso(item),
-                  if (_avisoDelCobro != null) ...[
-                    const SizedBox(height: 8),
-                    AvisoDeTicket(
-                      key: const Key('ticket_aviso_cobro'),
-                      texto: _avisoDelCobro!,
-                      tipo: TipoDeAviso.error,
-                    ),
-                  ],
                   if (ticketId != null) ...[const SizedBox(height: 12), _foto(item, ticketId)],
                   const SizedBox(height: 8),
                   ..._datos(item),
                 ],
               ),
             ),
+            // Fijo arriba del botón, fuera del scroll: quien toca el botón ve por qué no pasó nada, con
+            // cualquier tamaño de letra y con un motivo largo (QA #760).
+            if (_avisoDelCobro != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                child: AvisoDeTicket(
+                  key: const Key('ticket_aviso_cobro'),
+                  texto: _avisoDelCobro!,
+                  tipo: TipoDeAviso.error,
+                ),
+              ),
             if (item.sePuedeCargarDeNuevo)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
