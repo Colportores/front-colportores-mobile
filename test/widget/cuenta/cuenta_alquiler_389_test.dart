@@ -221,7 +221,7 @@ void main() {
         ),
       );
 
-      expect(find.text(r'Incluye $ 500 que pagaste de más en el alquiler.'), findsOneWidget);
+      expect(find.text(r'Ya descontamos $ 500 que pagaste de más en el alquiler.'), findsOneWidget);
     });
 
     testWidgets('sin alquiler pagado de más, o sin alquiler, la deuda no dice nada', (
@@ -259,7 +259,7 @@ void main() {
         ),
       );
 
-      expect(find.text(r'Incluye $ 500 que pagaste de más en el alquiler.'), findsOneWidget);
+      expect(find.text(r'Ya descontamos $ 500 que pagaste de más en el alquiler.'), findsOneWidget);
     });
 
     testWidgets('si el alquiler no se puede leer, la deuda se ve igual, sin la nota', (
