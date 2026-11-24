@@ -217,6 +217,62 @@ void main() {
       });
     }
 
+    const porConfirmar = DriveCuentaPorConfirmar(
+      email: 'otra@b.c',
+      cuentaId: 'g-2',
+      anteriorEmail: 'a@b.c',
+      anteriorCuentaId: 'g-1',
+    );
+
+    testWidgets(
+      'con otra cuenta por confirmar (respaldo frenado) también cuenta los días (R7, #550)',
+      (tester) async {
+        await _montar(tester, servicio: _Servicio(), estado: porConfirmar, ultimo: _haceDias(20));
+
+        expect(_aviso, findsOneWidget);
+        expect(
+          find.text('Llevás 20 días sin respaldo. Revisá tu conexión y reintentá.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('con otra cuenta por confirmar y sin ningún respaldo, cuenta desde que conectó', (
+      tester,
+    ) async {
+      await _montar(
+        tester,
+        servicio: _Servicio(),
+        estado: porConfirmar,
+        conectadaDesde: _haceDias(10),
+      );
+
+      expect(
+        find.text('Llevás 10 días sin respaldo. Revisá tu conexión y reintentá.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('con otra cuenta por confirmar «Reintentar» dice qué hacer: elegir cuenta', (
+      tester,
+    ) async {
+      final servicio = _Servicio()..resultado = const RespaldoOmitido(MotivoOmision.sinDrive);
+      await _montar(tester, servicio: servicio, estado: porConfirmar, ultimo: _haceDias(20));
+
+      await tester.tap(_reintentar);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Tu respaldo está frenado: elegí con qué cuenta de Google seguir.'),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget<TextButton>(_reintentar).onPressed,
+        isNotNull,
+        reason: 'no queda trabado',
+      );
+    });
+
     testWidgets('si el respaldo se pone al día mientras está abierto, se va solo', (tester) async {
       final cambios = StreamController<DateTime?>();
       addTearDown(cambios.close);

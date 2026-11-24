@@ -8,6 +8,7 @@ import 'package:colportores_mobile/core/domain/transaccion_local.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/cuenta_providers.dart';
+import 'package:colportores_mobile/features/depositos/domain/entities/campania_para_el_pago.dart';
 import 'package:colportores_mobile/features/depositos/domain/entities/deposito.dart';
 import 'package:colportores_mobile/features/depositos/domain/entities/totales_de_depositos.dart';
 import 'package:colportores_mobile/features/depositos/domain/repositories/deposito_repository.dart';
@@ -87,6 +88,15 @@ final class TicketsFalsos implements TicketRepository {
     );
   }
 
+  /// Las copias de fotos que siguen en el teléfono, por id de ticket (el detalle de «Mis tickets»).
+  final fotosLocales = <String, Uint8List>{};
+
+  @override
+  Future<Either<Failure, Uint8List?>> bytesDeLaFoto(String ticketId) async {
+    final registrada = guardados.where((g) => g.ticket.id == ticketId).firstOrNull;
+    return Right(fotosLocales[ticketId] ?? registrada?.foto);
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -121,6 +131,14 @@ final class CapturadorGuionado implements CapturadorDeFoto {
   Future<void> abrirLosAjustes() async {}
 }
 
+/// Las campañas en curso que ve la pantalla: las del arnés, o la sola [ArnesDeDeposito.campania].
+List<CampaniaParaElPago> campaniasDelArnes(ArnesDeDeposito arnes, {String? campania}) {
+  final lista = arnes.campanias;
+  if (lista != null) return lista;
+  final id = campania ?? arnes.campania;
+  return id == null ? const [] : [CampaniaParaElPago(id: id, nombre: 'Campaña $id')];
+}
+
 /// Todo lo que el test toca de la pantalla.
 final class ArnesDeDeposito {
   ArnesDeDeposito({
@@ -128,6 +146,7 @@ final class ArnesDeDeposito {
     CapturadorDeFoto? capturador,
     this.sinCamara = false,
     this.campania = 'camp-1',
+    this.campanias,
     this.conexion = TipoConexion.wifi,
     this.legible = true,
     RepositorioDeCuentaControlable? cuenta,
@@ -143,6 +162,10 @@ final class ArnesDeDeposito {
 
   /// La campaña en curso para el alquiler; `null` = no está en ninguna.
   final String? campania;
+
+  /// Las campañas en curso para el alquiler cuando son dos o más (el colportor elige); si no se pasa,
+  /// sale de [campania].
+  final List<CampaniaParaElPago>? campanias;
   final TipoConexion conexion;
 
   /// El compresor puede leer la foto.
@@ -172,7 +195,7 @@ final class ArnesDeDeposito {
     generadorIdTicketProvider.overrideWithValue(() => 't-${++_ticketIds}'),
     capturadorDeFotoProvider.overrideWithValue(sinCamara ? null : capturador),
     compresorDeImagenProvider.overrideWithValue(CompresorDePrueba([900], legible: legible)),
-    campaniaDelAlquilerProvider.overrideWith((ref, _) async => campania),
+    campaniasParaElAlquilerProvider.overrideWith((ref, _) async => campaniasDelArnes(this)),
     conexionProvider.overrideWith((ref) => Stream.value(conexion)),
     ...extras,
   ];
@@ -186,6 +209,8 @@ Future<List<bool>> montarDeposito(
   Size tamano = const Size(390, 844),
   double escala = 1,
   bool abrir = true,
+  ConceptoDeDeposito concepto = ConceptoDeDeposito.casaEditora,
+  String? campaniaId,
 }) async {
   tester.view.physicalSize = tamano;
   tester.view.devicePixelRatio = 1;
@@ -206,7 +231,12 @@ Future<List<bool>> montarDeposito(
               child: TextButton(
                 key: const Key('abrir_deposito'),
                 onPressed: () async => resultados.add(
-                  await RegistrarDepositoPage.abrir(context, colportorId: 'col-1'),
+                  await RegistrarDepositoPage.abrir(
+                    context,
+                    colportorId: 'col-1',
+                    concepto: concepto,
+                    campaniaId: campaniaId,
+                  ),
                 ),
                 child: const Text('Abrir'),
               ),

@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
-import '../providers/cuenta_providers.dart' show relojCuentaProvider;
+import '../providers/cuenta_providers.dart' show alquilerDelColportorProvider, relojCuentaProvider;
 import '../providers/deuda_casa_providers.dart';
+import '../textos_alquiler.dart';
 import '../textos_deuda.dart';
 import '../widgets/piezas_cuenta.dart';
 import '../widgets/piezas_deuda.dart';
@@ -44,14 +45,21 @@ class DeudaCasaPage extends ConsumerWidget {
     } else if (lectura == null) {
       cuerpo = [
         SliverToBoxAdapter(
-          child: BannerErrorCuenta(
-            // Todavía no se sincronizó nunca: sin red, hace falta conexión; con red, los datos están por
-            // bajar (decisión del 23/11, #671).
-            texto: estado.fallo == FalloDeLaDeuda.sinConexion
-                ? TextosDeuda.sinNadaBajado(sinConexion: sinRed)
-                : TextosDeuda.errorTraer,
-            alReintentar: () => ref.read(provider.notifier).actualizar(),
-          ),
+          child: estado.fallo == FalloDeLaDeuda.sinConexion
+              // Todavía no se sincronizó nunca: sin red, hace falta conexión; con red, los datos están por
+              // bajar (decisión del 23/11, #671). No es un error: aviso neutro de 33A·02 con «Reintentar»
+              // (decisión del 23/11 sobre el QA, P2); el rojo queda para el error de verdad.
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                  child: AvisoSinConexionCuenta(
+                    texto: TextosDeuda.sinNadaBajado(sinConexion: sinRed),
+                    alReintentar: () => ref.read(provider.notifier).actualizar(),
+                  ),
+                )
+              : BannerErrorCuenta(
+                  texto: TextosDeuda.errorTraer,
+                  alReintentar: () => ref.read(provider.notifier).actualizar(),
+                ),
         ),
       ];
     } else {
@@ -104,6 +112,16 @@ class DeudaCasaPage extends ConsumerWidget {
         ],
         if (deuda.saldosNoDanElTotal)
           const SliverToBoxAdapter(child: NotaDeLaDeuda(texto: TextosDeuda.saldosNoDanElTotal)),
+        // Lo pagado de más del alquiler bajó esta deuda (decisión «Alquiler fav», 28/10, HU-CTA-007): la
+        // pantalla dice de dónde viene ese descuento.
+        if (ref.watch(alquilerDelColportorProvider(colportorId)).asData?.value.pagadoDeMasCentavos
+            case final deMas? when deMas > 0)
+          SliverToBoxAdapter(
+            child: NotaDeLaDeuda(
+              claveDelTexto: const Key('deuda_nota_alquiler'),
+              texto: TextosAlquiler.descontadoPorAlquiler(deMas),
+            ),
+          ),
       ];
     }
 

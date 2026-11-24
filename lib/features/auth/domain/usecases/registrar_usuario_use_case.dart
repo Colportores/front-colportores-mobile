@@ -5,6 +5,7 @@ import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../entities/politica_password.dart';
 import '../entities/resultado_registro.dart';
+import '../entities/terminos_de_uso.dart';
 import '../repositories/auth_repository.dart';
 import '../services/validador_email.dart';
 
@@ -118,6 +119,7 @@ final class RegistrarUsuarioUseCase implements UseCase<ResultadoRegistro, Regist
       cedula: cedulaNormalizada,
       email: email,
       password: params.password,
+      terminosVersion: TerminosDeUso.versionVigente,
     );
   }
 }

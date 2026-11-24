@@ -93,43 +93,42 @@ void main() {
   });
 
   group('dos cambios seguidos de cuentas distintas, sin que nadie entre en el medio', () {
-    // Hallazgo menor: la marca es una sola. Un segundo cambio (de beto) la pisa: si beto revoca
-    // bien la baja a `null` y si falla la reemplaza por la suya. En los dos casos ana pierde el
-    // reintento que le prometió su pantalla de éxito.
-    test(
-      'dado que ana quedó pendiente, cuando beto cambia la suya y la revocación sale bien, la '
-      'marca de ana sigue y se reintenta cuando ana entra',
-      () async {
-        await cambiarContrasena(_ana, revocaBien: false);
-        await cambiarContrasena(_beto, revocaBien: true);
+    // Hallazgo menor, resuelto en #571: la marca era una sola y un segundo cambio (de beto) la
+    // pisaba, así que ana perdía el reintento que le prometió su pantalla de éxito.
+    test('dado que ana quedó pendiente, cuando beto cambia la suya y la revocación sale bien, la '
+        'marca de ana sigue y se reintenta cuando ana entra', () async {
+      await cambiarContrasena(_ana, revocaBien: false);
+      await cambiarContrasena(_beto, revocaBien: true);
 
-        expect(await repo.cerrarOtrasSesionesPendientes(_ana), _ok);
+      expect(await repo.cerrarOtrasSesionesPendientes(_ana), _ok);
 
-        expect(remoto.otrasSesionesCerradas, 1, reason: 'ana tenía sesiones sin cerrar');
-      },
-      skip:
-          'QA #542: la marca es una sola; un cambio de otra cuenta (que revoca bien) borra la de '
-          'ana y ella pierde el reintento que le prometió su pantalla',
-    );
+      expect(remoto.otrasSesionesCerradas, 1, reason: 'ana tenía sesiones sin cerrar');
+    });
 
-    test(
-      'dado que ana quedó pendiente, cuando beto cambia la suya y la revocación también falla, '
-      'cada cuenta reintenta al entrar',
-      () async {
-        await cambiarContrasena(_ana, revocaBien: false);
-        await cambiarContrasena(_beto, revocaBien: false);
-        remoto
-          ..fallaAlCerrarSesiones = null
-          ..fallaAlCerrarLasOtras = null;
+    test('dado que ana quedó pendiente, cuando beto cambia la suya y la revocación también falla, '
+        'cada cuenta reintenta al entrar', () async {
+      await cambiarContrasena(_ana, revocaBien: false);
+      await cambiarContrasena(_beto, revocaBien: false);
+      remoto
+        ..fallaAlCerrarSesiones = null
+        ..fallaAlCerrarLasOtras = null;
 
-        await repo.cerrarOtrasSesionesPendientes(_ana);
-        await repo.cerrarOtrasSesionesPendientes(_beto);
+      await repo.cerrarOtrasSesionesPendientes(_ana);
+      await repo.cerrarOtrasSesionesPendientes(_beto);
 
-        expect(remoto.otrasSesionesCerradas, 2);
-      },
-      skip:
-          'QA #542: la marca es una sola; la de beto reemplaza a la de ana y ella pierde el '
-          'reintento',
-    );
+      expect(remoto.otrasSesionesCerradas, 2);
+    });
+
+    test('dado que ana quedó pendiente, cuando beto cambia la suya y la revocación sale bien, el '
+        'éxito de beto no avisa de sesiones sin cerrar y el de ana sí', () async {
+      await cambiarContrasena(_ana, revocaBien: false);
+      expect(repo.otrasSesionesSinCerrar, isTrue);
+
+      await cambiarContrasena(_beto, revocaBien: true);
+      expect(repo.otrasSesionesSinCerrar, isFalse);
+
+      await cambiarContrasena(_ana, revocaBien: false);
+      expect(repo.otrasSesionesSinCerrar, isTrue);
+    });
   });
 }

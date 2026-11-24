@@ -229,7 +229,7 @@ Future<void> _confirmarEnLaHoja(WidgetTester tester) async {
   await tocar(tester, find.byKey(const Key('devolucion_hoja_registrar')));
 }
 
-String _m(int centavos) => FormatoVenta.monto(centavos);
+String _m(int centavos) => FormatoVenta.montoSinQuiebre(centavos);
 
 void main() {
   group('31-01 elegir qué devuelve', () {

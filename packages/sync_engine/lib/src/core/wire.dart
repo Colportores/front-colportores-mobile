@@ -185,6 +185,7 @@ Map<String, Object?> pushResponseToJson(PushResult result) => {
 
 PushResult pushResponseFromJson(Map<String, Object?> json) => PushResult(
       serverTime: _fecha(json['server_time']),
+      serverTimeEsDelServidor: _fechaLegible(json['server_time']),
       results: [
         for (final crudo in (json['results'] as List? ?? const []))
           _resultFromJson(_mapa(crudo, 'result')),
@@ -245,6 +246,7 @@ PullDelta pullResponseFromJson(
 
   return PullDelta(
     serverTime: _fecha(json['server_time']),
+    serverTimeEsDelServidor: _fechaLegible(json['server_time']),
     // Si el servidor no manda uno nuevo, se conserva el que había: inventar uno
     // acá sería adelantar el cursor sin datos.
     watermark: _watermark(json['watermark']) ?? watermarkPrevio ?? '',
@@ -302,3 +304,6 @@ JobOutcome _outcome(Object? valor) => switch (valor) {
 
 DateTime _fecha(Object? valor) =>
     DateTime.tryParse('$valor')?.toUtc() ?? DateTime.now().toUtc();
+
+/// `false` cuando [_fecha] tuvo que inventar la hora con el reloj del equipo.
+bool _fechaLegible(Object? valor) => DateTime.tryParse('$valor') != null;

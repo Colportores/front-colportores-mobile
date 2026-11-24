@@ -106,6 +106,9 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
   /// instantáneo y no hay ventana de carrera real que probar).
   Completer<void>? demoraRegistrar;
 
+  /// La versión de los Términos que mandó cada registro que entró (para probar que viaja).
+  final List<String> terminosVersionesRegistradas = [];
+
   @override
   Future<SesionModel?> registrar({
     required String nombre,
@@ -113,12 +116,14 @@ final class AuthRemoteDataSourceEnMemoria implements AuthRemoteDataSource {
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) async {
     llamadasRegistrar++;
     await demoraRegistrar?.future;
     if (simularSinConexion) throw const SinConexionException();
     if (_credenciales.containsKey(email)) throw const EmailYaRegistradoException();
 
+    terminosVersionesRegistradas.add(terminosVersion);
     _credenciales[email] = password;
     final usuarioId = _uuidDesde(email);
     _usuarios[email] = Usuario(

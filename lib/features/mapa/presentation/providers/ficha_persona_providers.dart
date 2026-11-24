@@ -71,12 +71,18 @@ final fichaDePersonaProvider = StreamProvider.autoDispose.family<FichaDePersona?
   retry: _sinReintentos,
 );
 
-/// A dónde lleva «Editar persona» del menú «⋯» (y «Agregar» cuando no tiene teléfono): recibe el `id` de
-/// la persona y devuelve cuando la edición terminó. **Sin destino** (la edición de personas, HU-UBI-010,
-/// todavía no está en esta rama): mientras sea `null` esas opciones no se muestran.
-final editarPersonaDesdeLaFichaProvider = Provider<FutureOr<Object?> Function(String personaId)?>(
-  (ref) => null,
-);
+/// Lo que recibe «Editar persona» de la ficha (HU-UBI-010): la persona y el espacio desde el que se abrió
+/// la ficha (en un edificio, el depto). El espacio hace falta para «Dar de baja y crear nueva»: la
+/// persona nueva se registra en el mismo lugar que la original.
+typedef ContextoDeEdicionDeLaFicha = ({String personaId, String espacioId});
+
+/// A dónde lleva «Editar persona» del menú «⋯» (y «Agregar» cuando no tiene teléfono): la edición de la
+/// persona (vista 32 C, HU-UBI-010) y, si en ella se elige «Dar de baja y crear nueva», el alta de la
+/// persona nueva y la baja de la original (R6, #405). Devuelve cuando todo terminó; la ficha, que lee en
+/// vivo, ya muestra lo guardado. **Sin destino** (sin sesión iniciada): mientras sea `null` esas
+/// opciones no se muestran.
+final editarPersonaDesdeLaFichaProvider =
+    Provider<FutureOr<Object?> Function(ContextoDeEdicionDeLaFicha)?>((ref) => null);
 
 /// Lo que recibe «Registrar entrega» de la ficha (HU-VEN-005): la persona y el espacio ya puestos. Del
 /// chip llega sin [ventaId] y el destino resuelve qué venta se entrega («¿Qué venta?» si hay más de

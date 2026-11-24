@@ -35,7 +35,6 @@ void main() {
         ProductosCompanion.insert(
           id: id,
           nombre: nombre,
-          tipo: 'LIBRO',
           esBonificable: Value(bonificable),
           precioBaseCompra: Value(precio),
           categoria: Value(categoria),

@@ -32854,10 +32854,7 @@ final class Schema39 extends i0.VersionedSchema {
     deposito,
     ticket,
     ticketFotoLocal,
-    cuentaColportor,
-    cuentaDeudaHistorial,
-    pedidoCasaEditora,
-    pedidoItem,
+    deudaCasaCache,
     ubicacionUnionLocal,
     syncFueraDelArea,
     jornadaColportorIdx,
@@ -32897,10 +32894,6 @@ final class Schema39 extends i0.VersionedSchema {
     entregaVentaIdx,
     devolucionVentaIdx,
     depositoTicketIdx,
-    cuentaColportorUsuarioIdx,
-    cuentaDeudaHistorialUsuarioIdx,
-    pedidoCasaEditoraColportorIdx,
-    pedidoItemPedidoIdx,
   ];
   late final Shape49 jornada = Shape49(
     source: i0.VersionedTable(
@@ -33567,7 +33560,7 @@ final class Schema39 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape28 campania = Shape28(
+  late final Shape58 campania = Shape58(
     source: i0.VersionedTable(
       entityName: 'campania',
       withoutRowId: false,
@@ -33581,6 +33574,7 @@ final class Schema39 extends i0.VersionedSchema {
         _column_8,
         _column_9,
         _column_10,
+        _column_187,
         _column_11,
         _column_12,
       ],
@@ -33753,7 +33747,7 @@ final class Schema39 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape40 deposito = Shape40(
+  late final Shape59 deposito = Shape59(
     source: i0.VersionedTable(
       entityName: 'deposito',
       withoutRowId: false,
@@ -33779,6 +33773,7 @@ final class Schema39 extends i0.VersionedSchema {
         _column_146,
         _column_147,
         _column_148,
+        _column_185,
         _column_8,
         _column_9,
         _column_10,
@@ -33852,104 +33847,13 @@ final class Schema39 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape58 cuentaColportor = Shape58(
+  late final Shape44 deudaCasaCache = Shape44(
     source: i0.VersionedTable(
-      entityName: 'cuenta_colportor',
+      entityName: 'deuda_casa_cache',
       withoutRowId: false,
       isStrict: false,
-      tableConstraints: ['PRIMARY KEY(id)'],
-      columns: [
-        _column_0,
-        _column_41,
-        _column_187,
-        _column_188,
-        _column_189,
-        _column_190,
-        _column_191,
-        _column_192,
-        _column_193,
-        _column_8,
-        _column_9,
-        _column_10,
-        _column_11,
-        _column_12,
-      ],
-      attachedDatabase: database,
-    ),
-    alias: null,
-  );
-  late final Shape59 cuentaDeudaHistorial = Shape59(
-    source: i0.VersionedTable(
-      entityName: 'cuenta_deuda_historial',
-      withoutRowId: false,
-      isStrict: false,
-      tableConstraints: ['PRIMARY KEY(id)'],
-      columns: [
-        _column_0,
-        _column_41,
-        _column_194,
-        _column_195,
-        _column_8,
-        _column_9,
-        _column_10,
-        _column_11,
-        _column_12,
-      ],
-      attachedDatabase: database,
-    ),
-    alias: null,
-  );
-  late final Shape60 pedidoCasaEditora = Shape60(
-    source: i0.VersionedTable(
-      entityName: 'pedido_casa_editora',
-      withoutRowId: false,
-      isStrict: false,
-      tableConstraints: ['PRIMARY KEY(id)'],
-      columns: [
-        _column_0,
-        _column_1,
-        _column_196,
-        _column_197,
-        _column_198,
-        _column_199,
-        _column_200,
-        _column_201,
-        _column_202,
-        _column_203,
-        _column_204,
-        _column_148,
-        _column_205,
-        _column_8,
-        _column_9,
-        _column_10,
-        _column_11,
-        _column_12,
-      ],
-      attachedDatabase: database,
-    ),
-    alias: null,
-  );
-  late final Shape61 pedidoItem = Shape61(
-    source: i0.VersionedTable(
-      entityName: 'pedido_item',
-      withoutRowId: false,
-      isStrict: false,
-      tableConstraints: ['PRIMARY KEY(id)'],
-      columns: [
-        _column_0,
-        _column_206,
-        _column_99,
-        _column_119,
-        _column_207,
-        _column_208,
-        _column_209,
-        _column_210,
-        _column_8,
-        _column_9,
-        _column_10,
-        _column_11,
-        _column_12,
-      ],
+      tableConstraints: ['PRIMARY KEY(colportor_id)'],
+      columns: [_column_1, _column_150, _column_151],
       attachedDatabase: database,
     ),
     alias: null,
@@ -34136,50 +34040,26 @@ final class Schema39 extends i0.VersionedSchema {
     'deposito_ticket_idx',
     'CREATE INDEX deposito_ticket_idx ON deposito (ticket_id)',
   );
-  final i1.Index cuentaColportorUsuarioIdx = i1.Index(
-    'cuenta_colportor_usuario_idx',
-    'CREATE INDEX cuenta_colportor_usuario_idx ON cuenta_colportor (usuario_id)',
-  );
-  final i1.Index cuentaDeudaHistorialUsuarioIdx = i1.Index(
-    'cuenta_deuda_historial_usuario_idx',
-    'CREATE INDEX cuenta_deuda_historial_usuario_idx ON cuenta_deuda_historial (usuario_id, desde)',
-  );
-  final i1.Index pedidoCasaEditoraColportorIdx = i1.Index(
-    'pedido_casa_editora_colportor_idx',
-    'CREATE INDEX pedido_casa_editora_colportor_idx ON pedido_casa_editora (colportor_id)',
-  );
-  final i1.Index pedidoItemPedidoIdx = i1.Index(
-    'pedido_item_pedido_idx',
-    'CREATE INDEX pedido_item_pedido_idx ON pedido_item (pedido_id)',
-  );
 }
 
 class Shape58 extends i0.VersionedTable {
   Shape58({required super.source, required super.alias}) : super.aliased();
   i1.GeneratedColumn<String> get id =>
       columnsByName['id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<String> get usuarioId =>
-      columnsByName['usuario_id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get deudaTotal =>
-      columnsByName['deuda_total']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get dineroDepositado =>
-      columnsByName['dinero_depositado']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get dineroEnMano =>
-      columnsByName['dinero_en_mano']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get dineroPorCobrar =>
-      columnsByName['dinero_por_cobrar']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get deudaAlquiler =>
-      columnsByName['deuda_alquiler']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get alquilerTrasladado =>
-      columnsByName['alquiler_trasladado']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get actualizadoEn =>
-      columnsByName['actualizado_en']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get nombre =>
+      columnsByName['nombre']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get fechaInicio =>
+      columnsByName['fecha_inicio']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get fechaFin =>
+      columnsByName['fecha_fin']! as i1.GeneratedColumn<String>;
   i1.GeneratedColumn<int> get createdAt =>
       columnsByName['created_at']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get updatedAt =>
       columnsByName['updated_at']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<String> get createdBy =>
       columnsByName['created_by']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get alquilerMonto =>
+      columnsByName['alquiler_monto']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get deletedAt =>
       columnsByName['deleted_at']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get syncVersion =>
@@ -34188,61 +34068,7 @@ class Shape58 extends i0.VersionedTable {
 
 i1.GeneratedColumn<int> _column_187(String aliasedName) =>
     i1.GeneratedColumn<int>(
-      'deuda_total',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL DEFAULT 0',
-      defaultValue: const i1.CustomExpression('0'),
-    );
-i1.GeneratedColumn<int> _column_188(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'dinero_depositado',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL DEFAULT 0',
-      defaultValue: const i1.CustomExpression('0'),
-    );
-i1.GeneratedColumn<int> _column_189(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'dinero_en_mano',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL DEFAULT 0',
-      defaultValue: const i1.CustomExpression('0'),
-    );
-i1.GeneratedColumn<int> _column_190(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'dinero_por_cobrar',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL DEFAULT 0',
-      defaultValue: const i1.CustomExpression('0'),
-    );
-i1.GeneratedColumn<int> _column_191(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'deuda_alquiler',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL DEFAULT 0',
-      defaultValue: const i1.CustomExpression('0'),
-    );
-i1.GeneratedColumn<int> _column_192(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'alquiler_trasladado',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL DEFAULT 0',
-      defaultValue: const i1.CustomExpression('0'),
-    );
-i1.GeneratedColumn<int> _column_193(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'actualizado_en',
+      'alquiler_monto',
       aliasedName,
       true,
       type: i1.DriftSqlType.int,
@@ -34253,12 +34079,28 @@ class Shape59 extends i0.VersionedTable {
   Shape59({required super.source, required super.alias}) : super.aliased();
   i1.GeneratedColumn<String> get id =>
       columnsByName['id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<String> get usuarioId =>
-      columnsByName['usuario_id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get deuda =>
-      columnsByName['deuda']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get desde =>
-      columnsByName['desde']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get monto =>
+      columnsByName['monto']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get fecha =>
+      columnsByName['fecha']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get destino =>
+      columnsByName['destino']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get concepto =>
+      columnsByName['concepto']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get campaniaId =>
+      columnsByName['campania_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get ticketId =>
+      columnsByName['ticket_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get validadoEn =>
+      columnsByName['validado_en']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get validadoPor =>
+      columnsByName['validado_por']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get rechazadoEn =>
+      columnsByName['rechazado_en']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get motivoRechazo =>
+      columnsByName['motivo_rechazo']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get anuladoAt =>
+      columnsByName['anulado_at']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get createdAt =>
       columnsByName['created_at']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get updatedAt =>
@@ -34271,51 +34113,1254 @@ class Shape59 extends i0.VersionedTable {
       columnsByName['sync_version']! as i1.GeneratedColumn<int>;
 }
 
-i1.GeneratedColumn<int> _column_194(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'deuda',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL',
-    );
-i1.GeneratedColumn<int> _column_195(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'desde',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL',
-    );
+final class Schema40 extends i0.VersionedSchema {
+  Schema40({required super.database}) : super(version: 40);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    jornada,
+    ubicacion,
+    espacio,
+    ubicacionParDecidido,
+    campaniaCiudad,
+    zona,
+    zonaVertice,
+    sesionUsuario,
+    auditLog,
+    syncQueue,
+    syncWatermark,
+    syncMeta,
+    persona,
+    espacioPersona,
+    nota,
+    agenda,
+    visita,
+    visitaMisionero,
+    houseStatus,
+    notificacionHistorial,
+    producto,
+    coleccion,
+    productoColeccion,
+    precioPorCiudad,
+    precioGeneral,
+    parametroGlobal,
+    stock,
+    ciudad,
+    pais,
+    campania,
+    campaniaColportor,
+    venta,
+    ventaItem,
+    cobranza,
+    entrega,
+    devolucion,
+    deposito,
+    ticket,
+    ticketFotoLocal,
+    deudaCasaCache,
+    ubicacionUnionLocal,
+    syncFueraDelArea,
+    jornadaColportorIdx,
+    ubicacionCiudadIdx,
+    espacioUbicacionIdx,
+    campaniaCiudadCiudadIdIdx,
+    zonaCampaniaCiudadIdx,
+    zonaVerticeZonaIdx,
+    auditLogEventoUuidIdx,
+    syncQueueEstadoOrden,
+    syncQueueFila,
+    syncQueueDoneAt,
+    espacioPersonaEspacioIdx,
+    espacioPersonaPersonaIdx,
+    notaObjetivoIdx,
+    agendaColportorIdx,
+    agendaEspacioPersonaIdx,
+    agendaEspacioIdx,
+    agendaVentaIdx,
+    visitaColportorIdx,
+    visitaEspacioPersonaIdx,
+    visitaEspacioIdx,
+    visitaMisioneroVisitaIdx,
+    notificacionHistorialRecibidaIdx,
+    productoColeccionColeccionIdx,
+    precioPorCiudadCampaniaCiudadIdx,
+    precioPorCiudadProductoIdx,
+    precioPorCiudadColeccionIdx,
+    precioGeneralProductoIdx,
+    precioGeneralColeccionIdx,
+    stockUsuarioIdx,
+    campaniaColportorUsuarioIdx,
+    ventaColportorIdx,
+    ventaEspacioPersonaIdx,
+    ventaItemVentaIdx,
+    cobranzaVentaIdx,
+    entregaVentaIdx,
+    devolucionVentaIdx,
+    depositoTicketIdx,
+  ];
+  late final Shape49 jornada = Shape49(
+    source: i0.VersionedTable(
+      entityName: 'jornada',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(total_visitas >= 0)',
+        'CHECK(total_ventas >= 0)',
+        'CHECK(fin IS NULL OR fin >= inicio)',
+      ],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_2,
+        _column_3,
+        _column_4,
+        _column_6,
+        _column_7,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape1 ubicacion = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'ubicacion',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo IN (\'CASA\', \'NEGOCIO\', \'EDIFICIO\'))',
+        'CHECK(lat BETWEEN -90 AND 90)',
+        'CHECK(lon BETWEEN -180 AND 180)',
+      ],
+      columns: [
+        _column_0,
+        _column_13,
+        _column_14,
+        _column_15,
+        _column_16,
+        _column_17,
+        _column_18,
+        _column_19,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape2 espacio = Shape2(
+    source: i0.VersionedTable(
+      entityName: 'espacio',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_20,
+        _column_21,
+        _column_22,
+        _column_23,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape3 ubicacionParDecidido = Shape3(
+    source: i0.VersionedTable(
+      entityName: 'ubicacion_par_decidido',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(ubicacion_a_id, ubicacion_b_id)',
+        'CHECK(decision IN (\'CONSERVAR_AMBOS\', \'IGNORAR\'))',
+        'CHECK(ubicacion_a_id < ubicacion_b_id)',
+      ],
+      columns: [_column_24, _column_25, _column_26, _column_27],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape4 campaniaCiudad = Shape4(
+    source: i0.VersionedTable(
+      entityName: 'campania_ciudad',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_28,
+        _column_18,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape5 zona = Shape5(
+    source: i0.VersionedTable(
+      entityName: 'zona',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo_forma IN (\'RADIAL\', \'ESQUINAS\'))',
+        'CHECK(tipo_forma <> \'RADIAL\' OR(centro_lat IS NOT NULL AND centro_lon IS NOT NULL AND radio_m IS NOT NULL))',
+        'CHECK(radio_m IS NULL OR radio_m BETWEEN 1 AND 3000)',
+        'CHECK((centro_lat IS NULL OR centro_lat BETWEEN -90 AND 90)AND(centro_lon IS NULL OR centro_lon BETWEEN -180 AND 180))',
+        'CHECK(color IS NULL OR color GLOB \'#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]\')',
+      ],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_30,
+        _column_31,
+        _column_32,
+        _column_33,
+        _column_34,
+        _column_35,
+        _column_36,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape6 zonaVertice = Shape6(
+    source: i0.VersionedTable(
+      entityName: 'zona_vertice',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(lat BETWEEN -90 AND 90)',
+        'CHECK(lon BETWEEN -180 AND 180)',
+      ],
+      columns: [
+        _column_0,
+        _column_37,
+        _column_38,
+        _column_16,
+        _column_17,
+        _column_39,
+        _column_40,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape7 sesionUsuario = Shape7(
+    source: i0.VersionedTable(
+      entityName: 'sesion_usuario',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(usuario_id)'],
+      columns: [_column_41, _column_29],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape8 auditLog = Shape8(
+    source: i0.VersionedTable(
+      entityName: 'audit_log',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [_column_42, _column_43, _column_44, _column_45, _column_46],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape9 syncQueue = Shape9(
+    source: i0.VersionedTable(
+      entityName: 'sync_queue',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(op IN (\'insert\', \'update\', \'delete\', \'marcar_como_duplicado\'))',
+        'CHECK(state IN (\'PENDING\', \'IN_FLIGHT\', \'INVALID\', \'DONE\', \'BLOCKED\', \'WAITING\'))',
+      ],
+      columns: [
+        _column_0,
+        _column_47,
+        _column_48,
+        _column_49,
+        _column_50,
+        _column_51,
+        _column_52,
+        _column_8,
+        _column_53,
+        _column_54,
+        _column_55,
+        _column_56,
+        _column_57,
+        _column_58,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape10 syncWatermark = Shape10(
+    source: i0.VersionedTable(
+      entityName: 'sync_watermark',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(scope)'],
+      columns: [_column_59, _column_60],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape20 syncMeta = Shape20(
+    source: i0.VersionedTable(
+      entityName: 'sync_meta',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(clave)'],
+      columns: [_column_91, _column_92],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape11 persona = Shape11(
+    source: i0.VersionedTable(
+      entityName: 'persona',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_61,
+        _column_62,
+        _column_63,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape12 espacioPersona = Shape12(
+    source: i0.VersionedTable(
+      entityName: 'espacio_persona',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_64,
+        _column_65,
+        _column_66,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape13 nota = Shape13(
+    source: i0.VersionedTable(
+      entityName: 'nota',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_67,
+        _column_68,
+        _column_69,
+        _column_70,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape50 agenda = Shape50(
+    source: i0.VersionedTable(
+      entityName: 'agenda',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo IN (\'ENTREVISTA\', \'COBRANZA\', \'ENTREGA\'))',
+        'CHECK(estado IN (\'PROGRAMADA\', \'CUMPLIDA\', \'NO_CUMPLIDA\', \'CANCELADA\'))',
+        'CHECK(monto_previsto IS NULL OR(monto_previsto > 0 AND tipo = \'COBRANZA\' AND venta_id IS NOT NULL))',
+        'CHECK(entrega_id IS NULL OR tipo = \'ENTREGA\')',
+      ],
+      columns: [
+        _column_0,
+        _column_64,
+        _column_84,
+        _column_13,
+        _column_72,
+        _column_73,
+        _column_74,
+        _column_75,
+        _column_85,
+        _column_1,
+        _column_77,
+        _column_143,
+        _column_144,
+        _column_168,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape52 visita = Shape52(
+    source: i0.VersionedTable(
+      entityName: 'visita',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo_resultado IN (\'VENTA\', \'NO_CONTESTO\', \'RECHAZO\', \'ENTREVISTA\', \'COBRANZA\'))',
+      ],
+      columns: [
+        _column_0,
+        _column_64,
+        _column_84,
+        _column_78,
+        _column_79,
+        _column_1,
+        _column_80,
+        _column_170,
+        _column_171,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape53 visitaMisionero = Shape53(
+    source: i0.VersionedTable(
+      entityName: 'visita_misionero',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(cantidad >= 1)'],
+      columns: [
+        _column_0,
+        _column_172,
+        _column_99,
+        _column_119,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape16 houseStatus = Shape16(
+    source: i0.VersionedTable(
+      entityName: 'house_status',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(ubicacion_id)',
+        'CHECK(tipo_ubicacion IN (\'CASA\', \'NEGOCIO\', \'EDIFICIO\'))',
+        'CHECK(color IN (\'ENTREGA_Y_COBRANZA_PENDIENTE\', \'COBRANZA_PENDIENTE\', \'ENTREVISTA_PROGRAMADA\', \'VENTA_COMPLETA\', \'ENTREVISTA_SIN_VENTA\', \'SIN_CONTESTAR\', \'RECHAZO\'))',
+        'CHECK(prioridad BETWEEN 1 AND 7)',
+        'CHECK(prioridad = CASE color WHEN \'ENTREGA_Y_COBRANZA_PENDIENTE\' THEN 1 WHEN \'COBRANZA_PENDIENTE\' THEN 2 WHEN \'ENTREVISTA_PROGRAMADA\' THEN 3 WHEN \'VENTA_COMPLETA\' THEN 4 WHEN \'ENTREVISTA_SIN_VENTA\' THEN 5 WHEN \'SIN_CONTESTAR\' THEN 6 WHEN \'RECHAZO\' THEN 7 END)',
+      ],
+      columns: [
+        _column_20,
+        _column_16,
+        _column_17,
+        _column_81,
+        _column_82,
+        _column_83,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape19 notificacionHistorial = Shape19(
+    source: i0.VersionedTable(
+      entityName: 'notificacion_historial',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_13,
+        _column_86,
+        _column_87,
+        _column_88,
+        _column_89,
+        _column_90,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape60 producto = Shape60(
+    source: i0.VersionedTable(
+      entityName: 'producto',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(precio_base_compra IS NULL OR precio_base_compra >= 0)',
+      ],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_23,
+        _column_93,
+        _column_94,
+        _column_95,
+        _column_96,
+        _column_97,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+        _column_123,
+        _column_70,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape22 coleccion = Shape22(
+    source: i0.VersionedTable(
+      entityName: 'coleccion',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(libros_a_elegir >= 0)'],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_98,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape23 productoColeccion = Shape23(
+    source: i0.VersionedTable(
+      entityName: 'producto_coleccion',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(cantidad > 0)'],
+      columns: [
+        _column_0,
+        _column_99,
+        _column_100,
+        _column_101,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape24 precioPorCiudad = Shape24(
+    source: i0.VersionedTable(
+      entityName: 'precio_por_ciudad',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK((producto_id IS NULL)<>(coleccion_id IS NULL))',
+        'CHECK(precio_venta >= 0)',
+        'CHECK(valido_hasta IS NULL OR valido_hasta >= valido_desde)',
+      ],
+      columns: [
+        _column_0,
+        _column_102,
+        _column_103,
+        _column_30,
+        _column_104,
+        _column_105,
+        _column_106,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape25 precioGeneral = Shape25(
+    source: i0.VersionedTable(
+      entityName: 'precio_general',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK((producto_id IS NULL)<>(coleccion_id IS NULL))',
+        'CHECK(precio_venta >= 0)',
+        'CHECK(valido_hasta IS NULL OR valido_hasta >= valido_desde)',
+      ],
+      columns: [
+        _column_0,
+        _column_102,
+        _column_103,
+        _column_104,
+        _column_105,
+        _column_106,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape33 parametroGlobal = Shape33(
+    source: i0.VersionedTable(
+      entityName: 'parametro_global',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_91,
+        _column_124,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape26 stock = Shape26(
+    source: i0.VersionedTable(
+      entityName: 'stock',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(cantidad_reservada >= 0)'],
+      columns: [
+        _column_0,
+        _column_41,
+        _column_99,
+        _column_107,
+        _column_108,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape43 ciudad = Shape43(
+    source: i0.VersionedTable(
+      entityName: 'ciudad',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_109,
+        _column_110,
+        _column_149,
+        _column_111,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape55 pais = Shape55(
+    source: i0.VersionedTable(
+      entityName: 'pais',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_181,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape58 campania = Shape58(
+    source: i0.VersionedTable(
+      entityName: 'campania',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_112,
+        _column_113,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_187,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape29 campaniaColportor = Shape29(
+    source: i0.VersionedTable(
+      entityName: 'campania_colportor',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(meta_libros IS NULL OR meta_libros >= 0)',
+      ],
+      columns: [
+        _column_0,
+        _column_28,
+        _column_41,
+        _column_19,
+        _column_114,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape30 venta = Shape30(
+    source: i0.VersionedTable(
+      entityName: 'venta',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(monto_total >= 0)'],
+      columns: [
+        _column_0,
+        _column_71,
+        _column_115,
+        _column_116,
+        _column_78,
+        _column_1,
+        _column_77,
+        _column_117,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape31 ventaItem = Shape31(
+    source: i0.VersionedTable(
+      entityName: 'venta_item',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(cantidad > 0)',
+        'CHECK(precio_unitario >= 0)',
+        'CHECK(subtotal = cantidad * precio_unitario)',
+        'CHECK((producto_id IS NULL)<>(coleccion_id IS NULL))',
+        'CHECK((coleccion_id IS NULL)=(componentes IS NULL))',
+      ],
+      columns: [
+        _column_0,
+        _column_118,
+        _column_102,
+        _column_103,
+        _column_119,
+        _column_120,
+        _column_121,
+        _column_122,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape57 cobranza = Shape57(
+    source: i0.VersionedTable(
+      entityName: 'cobranza',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(monto > 0)',
+        'CHECK(medio IN (\'EFECTIVO\', \'TARJETA\', \'TRANSFERENCIA\'))',
+      ],
+      columns: [
+        _column_0,
+        _column_118,
+        _column_125,
+        _column_126,
+        _column_78,
+        _column_128,
+        _column_129,
+        _column_130,
+        _column_131,
+        _column_132,
+        _column_142,
+        _column_185,
+        _column_186,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape51 entrega = Shape51(
+    source: i0.VersionedTable(
+      entityName: 'entrega',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(cantidad > 0)'],
+      columns: [
+        _column_0,
+        _column_118,
+        _column_99,
+        _column_119,
+        _column_169,
+        _column_133,
+        _column_134,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape41 devolucion = Shape41(
+    source: i0.VersionedTable(
+      entityName: 'devolucion',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(motivo IS NULL OR length(motivo) BETWEEN 1 AND 500)',
+      ],
+      columns: [
+        _column_0,
+        _column_118,
+        _column_135,
+        _column_45,
+        _column_138,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape59 deposito = Shape59(
+    source: i0.VersionedTable(
+      entityName: 'deposito',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(monto > 0)',
+        'CHECK(destino IN (\'BANCO\', \'OFICINA\', \'RETIRO_COORDINADOR\'))',
+        'CHECK(concepto IN (\'CASA_EDITORA\', \'ALQUILER\'))',
+        'CHECK(destino <> \'RETIRO_COORDINADOR\' OR ticket_id IS NULL)',
+        'CHECK(destino = \'RETIRO_COORDINADOR\' OR ticket_id IS NOT NULL)',
+        'CHECK(concepto <> \'ALQUILER\' OR campania_id IS NOT NULL)',
+      ],
+      columns: [
+        _column_0,
+        _column_125,
+        _column_78,
+        _column_139,
+        _column_140,
+        _column_141,
+        _column_142,
+        _column_145,
+        _column_146,
+        _column_147,
+        _column_148,
+        _column_185,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape46 ticket = Shape46(
+    source: i0.VersionedTable(
+      entityName: 'ticket',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo IN (\'COBRO_TARJETA\', \'DEPOSITO\', \'OTRO\'))',
+        'CHECK(estado IN (\'PENDIENTE\', \'VALIDADO\', \'RECHAZADO\'))',
+        'CHECK(monto IS NULL OR monto > 0)',
+        'CHECK(tarjeta_tipo IS NULL OR tarjeta_tipo IN (\'CREDITO\', \'DEBITO\'))',
+      ],
+      columns: [
+        _column_0,
+        _column_152,
+        _column_13,
+        _column_153,
+        _column_154,
+        _column_155,
+        _column_156,
+        _column_157,
+        _column_158,
+        _column_159,
+        _column_128,
+        _column_129,
+        _column_76,
+        _column_148,
+        _column_160,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape47 ticketFotoLocal = Shape47(
+    source: i0.VersionedTable(
+      entityName: 'ticket_foto_local',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(ticket_id)',
+        'CHECK(bytes > 0)',
+        'CHECK(estado IN (\'PENDIENTE\', \'SUBIDA\', \'RECHAZADA\'))',
+        'CHECK(intentos >= 0)',
+      ],
+      columns: [
+        _column_161,
+        _column_162,
+        _column_163,
+        _column_76,
+        _column_164,
+        _column_165,
+        _column_166,
+        _column_167,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape44 deudaCasaCache = Shape44(
+    source: i0.VersionedTable(
+      entityName: 'deuda_casa_cache',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(colportor_id)'],
+      columns: [_column_1, _column_150, _column_151],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape54 ubicacionUnionLocal = Shape54(
+    source: i0.VersionedTable(
+      entityName: 'ubicacion_union_local',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(trabajo_id)',
+        'CHECK(estado IN (\'APLICADA\', \'DESHECHA\'))',
+      ],
+      columns: [
+        _column_173,
+        _column_174,
+        _column_175,
+        _column_176,
+        _column_177,
+        _column_178,
+        _column_179,
+        _column_180,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape56 syncFueraDelArea = Shape56(
+    source: i0.VersionedTable(
+      entityName: 'sync_fuera_del_area',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(entidad, fila_id)'],
+      columns: [_column_182, _column_183, _column_184],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Index jornadaColportorIdx = i1.Index(
+    'jornada_colportor_idx',
+    'CREATE INDEX jornada_colportor_idx ON jornada (colportor_id, inicio)',
+  );
+  final i1.Index ubicacionCiudadIdx = i1.Index(
+    'ubicacion_ciudad_idx',
+    'CREATE INDEX ubicacion_ciudad_idx ON ubicacion (ciudad_id, lat)',
+  );
+  final i1.Index espacioUbicacionIdx = i1.Index(
+    'espacio_ubicacion_idx',
+    'CREATE INDEX espacio_ubicacion_idx ON espacio (ubicacion_id)',
+  );
+  final i1.Index campaniaCiudadCiudadIdIdx = i1.Index(
+    'campania_ciudad_ciudad_id_idx',
+    'CREATE INDEX campania_ciudad_ciudad_id_idx ON campania_ciudad (ciudad_id)',
+  );
+  final i1.Index zonaCampaniaCiudadIdx = i1.Index(
+    'zona_campania_ciudad_idx',
+    'CREATE INDEX zona_campania_ciudad_idx ON zona (campania_ciudad_id)',
+  );
+  final i1.Index zonaVerticeZonaIdx = i1.Index(
+    'zona_vertice_zona_idx',
+    'CREATE INDEX zona_vertice_zona_idx ON zona_vertice (zona_id, orden)',
+  );
+  final i1.Index auditLogEventoUuidIdx = i1.Index(
+    'audit_log_evento_uuid_idx',
+    'CREATE INDEX audit_log_evento_uuid_idx ON audit_log (evento, uuid)',
+  );
+  final i1.Index syncQueueEstadoOrden = i1.Index(
+    'sync_queue_estado_orden',
+    'CREATE INDEX sync_queue_estado_orden ON sync_queue (state, created_at, id)',
+  );
+  final i1.Index syncQueueFila = i1.Index(
+    'sync_queue_fila',
+    'CREATE INDEX sync_queue_fila ON sync_queue (entity, row_pk)',
+  );
+  final i1.Index syncQueueDoneAt = i1.Index(
+    'sync_queue_done_at',
+    'CREATE INDEX sync_queue_done_at ON sync_queue (state, done_at)',
+  );
+  final i1.Index espacioPersonaEspacioIdx = i1.Index(
+    'espacio_persona_espacio_idx',
+    'CREATE INDEX espacio_persona_espacio_idx ON espacio_persona (espacio_id)',
+  );
+  final i1.Index espacioPersonaPersonaIdx = i1.Index(
+    'espacio_persona_persona_idx',
+    'CREATE INDEX espacio_persona_persona_idx ON espacio_persona (persona_id)',
+  );
+  final i1.Index notaObjetivoIdx = i1.Index(
+    'nota_objetivo_idx',
+    'CREATE INDEX nota_objetivo_idx ON nota (target_type, target_id)',
+  );
+  final i1.Index agendaColportorIdx = i1.Index(
+    'agenda_colportor_idx',
+    'CREATE INDEX agenda_colportor_idx ON agenda (colportor_id, fecha_programada)',
+  );
+  final i1.Index agendaEspacioPersonaIdx = i1.Index(
+    'agenda_espacio_persona_idx',
+    'CREATE INDEX agenda_espacio_persona_idx ON agenda (espacio_persona_id)',
+  );
+  final i1.Index agendaEspacioIdx = i1.Index(
+    'agenda_espacio_idx',
+    'CREATE INDEX agenda_espacio_idx ON agenda (espacio_id)',
+  );
+  final i1.Index agendaVentaIdx = i1.Index(
+    'agenda_venta_idx',
+    'CREATE INDEX agenda_venta_idx ON agenda (venta_id)',
+  );
+  final i1.Index visitaColportorIdx = i1.Index(
+    'visita_colportor_idx',
+    'CREATE INDEX visita_colportor_idx ON visita (colportor_id, fecha)',
+  );
+  final i1.Index visitaEspacioPersonaIdx = i1.Index(
+    'visita_espacio_persona_idx',
+    'CREATE INDEX visita_espacio_persona_idx ON visita (espacio_persona_id)',
+  );
+  final i1.Index visitaEspacioIdx = i1.Index(
+    'visita_espacio_idx',
+    'CREATE INDEX visita_espacio_idx ON visita (espacio_id)',
+  );
+  final i1.Index visitaMisioneroVisitaIdx = i1.Index(
+    'visita_misionero_visita_idx',
+    'CREATE INDEX visita_misionero_visita_idx ON visita_misionero (visita_id)',
+  );
+  final i1.Index notificacionHistorialRecibidaIdx = i1.Index(
+    'notificacion_historial_recibida_idx',
+    'CREATE INDEX notificacion_historial_recibida_idx ON notificacion_historial (recibida_en)',
+  );
+  final i1.Index productoColeccionColeccionIdx = i1.Index(
+    'producto_coleccion_coleccion_idx',
+    'CREATE INDEX producto_coleccion_coleccion_idx ON producto_coleccion (coleccion_id)',
+  );
+  final i1.Index precioPorCiudadCampaniaCiudadIdx = i1.Index(
+    'precio_por_ciudad_campania_ciudad_idx',
+    'CREATE INDEX precio_por_ciudad_campania_ciudad_idx ON precio_por_ciudad (campania_ciudad_id)',
+  );
+  final i1.Index precioPorCiudadProductoIdx = i1.Index(
+    'precio_por_ciudad_producto_idx',
+    'CREATE INDEX precio_por_ciudad_producto_idx ON precio_por_ciudad (producto_id)',
+  );
+  final i1.Index precioPorCiudadColeccionIdx = i1.Index(
+    'precio_por_ciudad_coleccion_idx',
+    'CREATE INDEX precio_por_ciudad_coleccion_idx ON precio_por_ciudad (coleccion_id)',
+  );
+  final i1.Index precioGeneralProductoIdx = i1.Index(
+    'precio_general_producto_idx',
+    'CREATE INDEX precio_general_producto_idx ON precio_general (producto_id)',
+  );
+  final i1.Index precioGeneralColeccionIdx = i1.Index(
+    'precio_general_coleccion_idx',
+    'CREATE INDEX precio_general_coleccion_idx ON precio_general (coleccion_id)',
+  );
+  final i1.Index stockUsuarioIdx = i1.Index(
+    'stock_usuario_idx',
+    'CREATE INDEX stock_usuario_idx ON stock (usuario_id)',
+  );
+  final i1.Index campaniaColportorUsuarioIdx = i1.Index(
+    'campania_colportor_usuario_idx',
+    'CREATE INDEX campania_colportor_usuario_idx ON campania_colportor (usuario_id)',
+  );
+  final i1.Index ventaColportorIdx = i1.Index(
+    'venta_colportor_idx',
+    'CREATE INDEX venta_colportor_idx ON venta (colportor_id, fecha)',
+  );
+  final i1.Index ventaEspacioPersonaIdx = i1.Index(
+    'venta_espacio_persona_idx',
+    'CREATE INDEX venta_espacio_persona_idx ON venta (espacio_persona_id)',
+  );
+  final i1.Index ventaItemVentaIdx = i1.Index(
+    'venta_item_venta_idx',
+    'CREATE INDEX venta_item_venta_idx ON venta_item (venta_id)',
+  );
+  final i1.Index cobranzaVentaIdx = i1.Index(
+    'cobranza_venta_idx',
+    'CREATE INDEX cobranza_venta_idx ON cobranza (venta_id)',
+  );
+  final i1.Index entregaVentaIdx = i1.Index(
+    'entrega_venta_idx',
+    'CREATE INDEX entrega_venta_idx ON entrega (venta_id)',
+  );
+  final i1.Index devolucionVentaIdx = i1.Index(
+    'devolucion_venta_idx',
+    'CREATE INDEX devolucion_venta_idx ON devolucion (venta_id)',
+  );
+  final i1.Index depositoTicketIdx = i1.Index(
+    'deposito_ticket_idx',
+    'CREATE INDEX deposito_ticket_idx ON deposito (ticket_id)',
+  );
+}
 
 class Shape60 extends i0.VersionedTable {
   Shape60({required super.source, required super.alias}) : super.aliased();
   i1.GeneratedColumn<String> get id =>
       columnsByName['id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<String> get colportorId =>
-      columnsByName['colportor_id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<String> get coordinadorId =>
-      columnsByName['coordinador_id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get fechaPedido =>
-      columnsByName['fecha_pedido']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<String> get estado =>
-      columnsByName['estado']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get montoTotal =>
-      columnsByName['monto_total']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<String> get origen =>
-      columnsByName['origen']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get excedeLimite =>
-      columnsByName['excede_limite']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get montoAutorizado =>
-      columnsByName['monto_autorizado']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<String> get decididoPor =>
-      columnsByName['decidido_por']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get decididoEn =>
-      columnsByName['decidido_en']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<String> get motivoRechazo =>
-      columnsByName['motivo_rechazo']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get numero =>
-      columnsByName['numero']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get nombre =>
+      columnsByName['nombre']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get descripcion =>
+      columnsByName['descripcion']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get esBonificable =>
+      columnsByName['es_bonificable']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get esMisionero =>
+      columnsByName['es_misionero']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get precioBaseCompra =>
+      columnsByName['precio_base_compra']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get casaEditora =>
+      columnsByName['casa_editora']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get imagenUrl =>
+      columnsByName['imagen_url']! as i1.GeneratedColumn<String>;
   i1.GeneratedColumn<int> get createdAt =>
       columnsByName['created_at']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get updatedAt =>
@@ -34326,165 +35371,14 @@ class Shape60 extends i0.VersionedTable {
       columnsByName['deleted_at']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get syncVersion =>
       columnsByName['sync_version']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get codigoEditor =>
+      columnsByName['codigo_editor']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get categoria =>
+      columnsByName['categoria']! as i1.GeneratedColumn<String>;
 }
 
-i1.GeneratedColumn<String> _column_196(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'coordinador_id',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<int> _column_197(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'fecha_pedido',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL',
-    );
-i1.GeneratedColumn<String> _column_198(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'estado',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NOT NULL',
-    );
-i1.GeneratedColumn<int> _column_199(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'monto_total',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL DEFAULT 0',
-      defaultValue: const i1.CustomExpression('0'),
-    );
-i1.GeneratedColumn<String> _column_200(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'origen',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NOT NULL DEFAULT \'COLPORTOR\'',
-      defaultValue: const i1.CustomExpression('\'COLPORTOR\''),
-    );
-i1.GeneratedColumn<int> _column_201(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'excede_limite',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL DEFAULT 0 CHECK (excede_limite IN (0, 1))',
-      defaultValue: const i1.CustomExpression('0'),
-    );
-i1.GeneratedColumn<int> _column_202(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'monto_autorizado',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<String> _column_203(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'decidido_por',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<int> _column_204(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'decidido_en',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<int> _column_205(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'numero',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NULL',
-    );
-
-class Shape61 extends i0.VersionedTable {
-  Shape61({required super.source, required super.alias}) : super.aliased();
-  i1.GeneratedColumn<String> get id =>
-      columnsByName['id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<String> get pedidoId =>
-      columnsByName['pedido_id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<String> get productoId =>
-      columnsByName['producto_id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get cantidad =>
-      columnsByName['cantidad']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get precioUnitario =>
-      columnsByName['precio_unitario']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get cantidadRecibida =>
-      columnsByName['cantidad_recibida']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<String> get colportorId =>
-      columnsByName['colportor_id']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get cantidadAutorizada =>
-      columnsByName['cantidad_autorizada']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get createdAt =>
-      columnsByName['created_at']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get updatedAt =>
-      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<String> get createdBy =>
-      columnsByName['created_by']! as i1.GeneratedColumn<String>;
-  i1.GeneratedColumn<int> get deletedAt =>
-      columnsByName['deleted_at']! as i1.GeneratedColumn<int>;
-  i1.GeneratedColumn<int> get syncVersion =>
-      columnsByName['sync_version']! as i1.GeneratedColumn<int>;
-}
-
-i1.GeneratedColumn<String> _column_206(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'pedido_id',
-      aliasedName,
-      false,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NOT NULL',
-    );
-i1.GeneratedColumn<int> _column_207(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'precio_unitario',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<int> _column_208(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'cantidad_recibida',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<String> _column_209(String aliasedName) =>
-    i1.GeneratedColumn<String>(
-      'colportor_id',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.string,
-      $customConstraints: 'NULL',
-    );
-i1.GeneratedColumn<int> _column_210(String aliasedName) =>
-    i1.GeneratedColumn<int>(
-      'cantidad_autorizada',
-      aliasedName,
-      true,
-      type: i1.DriftSqlType.int,
-      $customConstraints: 'NULL',
-    );
-
-final class Schema40 extends i0.VersionedSchema {
-  Schema40({required super.database}) : super(version: 40);
+final class Schema41 extends i0.VersionedSchema {
+  Schema41({required super.database}) : super(version: 41);
   @override
   late final List<i1.DatabaseSchemaEntity> entities = [
     jornada,
@@ -35025,7 +35919,7 @@ final class Schema40 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape42 producto = Shape42(
+  late final Shape60 producto = Shape60(
     source: i0.VersionedTable(
       entityName: 'producto',
       withoutRowId: false,
@@ -35038,7 +35932,6 @@ final class Schema40 extends i0.VersionedSchema {
         _column_0,
         _column_29,
         _column_23,
-        _column_13,
         _column_93,
         _column_94,
         _column_95,
@@ -35239,7 +36132,7 @@ final class Schema40 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape62 campania = Shape62(
+  late final Shape58 campania = Shape58(
     source: i0.VersionedTable(
       entityName: 'campania',
       withoutRowId: false,
@@ -35253,7 +36146,7 @@ final class Schema40 extends i0.VersionedSchema {
         _column_8,
         _column_9,
         _column_10,
-        _column_211,
+        _column_187,
         _column_11,
         _column_12,
       ],
@@ -35426,7 +36319,7 @@ final class Schema40 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape40 deposito = Shape40(
+  late final Shape59 deposito = Shape59(
     source: i0.VersionedTable(
       entityName: 'deposito',
       withoutRowId: false,
@@ -35452,6 +36345,7 @@ final class Schema40 extends i0.VersionedSchema {
         _column_146,
         _column_147,
         _column_148,
+        _column_185,
         _column_8,
         _column_9,
         _column_10,
@@ -35525,7 +36419,7 @@ final class Schema40 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape58 cuentaColportor = Shape58(
+  late final Shape61 cuentaColportor = Shape61(
     source: i0.VersionedTable(
       entityName: 'cuenta_colportor',
       withoutRowId: false,
@@ -35534,13 +36428,13 @@ final class Schema40 extends i0.VersionedSchema {
       columns: [
         _column_0,
         _column_41,
-        _column_187,
         _column_188,
         _column_189,
         _column_190,
         _column_191,
         _column_192,
         _column_193,
+        _column_194,
         _column_8,
         _column_9,
         _column_10,
@@ -35551,7 +36445,7 @@ final class Schema40 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape59 cuentaDeudaHistorial = Shape59(
+  late final Shape62 cuentaDeudaHistorial = Shape62(
     source: i0.VersionedTable(
       entityName: 'cuenta_deuda_historial',
       withoutRowId: false,
@@ -35560,8 +36454,8 @@ final class Schema40 extends i0.VersionedSchema {
       columns: [
         _column_0,
         _column_41,
-        _column_194,
         _column_195,
+        _column_196,
         _column_8,
         _column_9,
         _column_10,
@@ -35572,7 +36466,7 @@ final class Schema40 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape60 pedidoCasaEditora = Shape60(
+  late final Shape63 pedidoCasaEditora = Shape63(
     source: i0.VersionedTable(
       entityName: 'pedido_casa_editora',
       withoutRowId: false,
@@ -35581,7 +36475,6 @@ final class Schema40 extends i0.VersionedSchema {
       columns: [
         _column_0,
         _column_1,
-        _column_196,
         _column_197,
         _column_198,
         _column_199,
@@ -35590,8 +36483,9 @@ final class Schema40 extends i0.VersionedSchema {
         _column_202,
         _column_203,
         _column_204,
-        _column_148,
         _column_205,
+        _column_148,
+        _column_206,
         _column_8,
         _column_9,
         _column_10,
@@ -35602,7 +36496,7 @@ final class Schema40 extends i0.VersionedSchema {
     ),
     alias: null,
   );
-  late final Shape61 pedidoItem = Shape61(
+  late final Shape64 pedidoItem = Shape64(
     source: i0.VersionedTable(
       entityName: 'pedido_item',
       withoutRowId: false,
@@ -35610,13 +36504,13 @@ final class Schema40 extends i0.VersionedSchema {
       tableConstraints: ['PRIMARY KEY(id)'],
       columns: [
         _column_0,
-        _column_206,
+        _column_207,
         _column_99,
         _column_119,
-        _column_207,
         _column_208,
         _column_209,
         _column_210,
+        _column_211,
         _column_8,
         _column_9,
         _column_10,
@@ -35827,8 +36721,1682 @@ final class Schema40 extends i0.VersionedSchema {
   );
 }
 
+class Shape61 extends i0.VersionedTable {
+  Shape61({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get usuarioId =>
+      columnsByName['usuario_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get deudaTotal =>
+      columnsByName['deuda_total']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get dineroDepositado =>
+      columnsByName['dinero_depositado']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get dineroEnMano =>
+      columnsByName['dinero_en_mano']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get dineroPorCobrar =>
+      columnsByName['dinero_por_cobrar']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get deudaAlquiler =>
+      columnsByName['deuda_alquiler']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get alquilerTrasladado =>
+      columnsByName['alquiler_trasladado']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get actualizadoEn =>
+      columnsByName['actualizado_en']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get createdAt =>
+      columnsByName['created_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get updatedAt =>
+      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get createdBy =>
+      columnsByName['created_by']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get deletedAt =>
+      columnsByName['deleted_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get syncVersion =>
+      columnsByName['sync_version']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<int> _column_188(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'deuda_total',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL DEFAULT 0',
+      defaultValue: const i1.CustomExpression('0'),
+    );
+i1.GeneratedColumn<int> _column_189(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'dinero_depositado',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL DEFAULT 0',
+      defaultValue: const i1.CustomExpression('0'),
+    );
+i1.GeneratedColumn<int> _column_190(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'dinero_en_mano',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL DEFAULT 0',
+      defaultValue: const i1.CustomExpression('0'),
+    );
+i1.GeneratedColumn<int> _column_191(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'dinero_por_cobrar',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL DEFAULT 0',
+      defaultValue: const i1.CustomExpression('0'),
+    );
+i1.GeneratedColumn<int> _column_192(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'deuda_alquiler',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL DEFAULT 0',
+      defaultValue: const i1.CustomExpression('0'),
+    );
+i1.GeneratedColumn<int> _column_193(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'alquiler_trasladado',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL DEFAULT 0',
+      defaultValue: const i1.CustomExpression('0'),
+    );
+i1.GeneratedColumn<int> _column_194(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'actualizado_en',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+
 class Shape62 extends i0.VersionedTable {
   Shape62({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get usuarioId =>
+      columnsByName['usuario_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get deuda =>
+      columnsByName['deuda']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get desde =>
+      columnsByName['desde']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get createdAt =>
+      columnsByName['created_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get updatedAt =>
+      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get createdBy =>
+      columnsByName['created_by']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get deletedAt =>
+      columnsByName['deleted_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get syncVersion =>
+      columnsByName['sync_version']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<int> _column_195(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'deuda',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_196(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'desde',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+
+class Shape63 extends i0.VersionedTable {
+  Shape63({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get colportorId =>
+      columnsByName['colportor_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get coordinadorId =>
+      columnsByName['coordinador_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get fechaPedido =>
+      columnsByName['fecha_pedido']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get estado =>
+      columnsByName['estado']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get montoTotal =>
+      columnsByName['monto_total']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get origen =>
+      columnsByName['origen']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get excedeLimite =>
+      columnsByName['excede_limite']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get montoAutorizado =>
+      columnsByName['monto_autorizado']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get decididoPor =>
+      columnsByName['decidido_por']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get decididoEn =>
+      columnsByName['decidido_en']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get motivoRechazo =>
+      columnsByName['motivo_rechazo']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get numero =>
+      columnsByName['numero']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get createdAt =>
+      columnsByName['created_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get updatedAt =>
+      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get createdBy =>
+      columnsByName['created_by']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get deletedAt =>
+      columnsByName['deleted_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get syncVersion =>
+      columnsByName['sync_version']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<String> _column_197(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'coordinador_id',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_198(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'fecha_pedido',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<String> _column_199(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'estado',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_200(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'monto_total',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL DEFAULT 0',
+      defaultValue: const i1.CustomExpression('0'),
+    );
+i1.GeneratedColumn<String> _column_201(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'origen',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL DEFAULT \'COLPORTOR\'',
+      defaultValue: const i1.CustomExpression('\'COLPORTOR\''),
+    );
+i1.GeneratedColumn<int> _column_202(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'excede_limite',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL DEFAULT 0 CHECK (excede_limite IN (0, 1))',
+      defaultValue: const i1.CustomExpression('0'),
+    );
+i1.GeneratedColumn<int> _column_203(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'monto_autorizado',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_204(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'decidido_por',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_205(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'decidido_en',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_206(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'numero',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+
+class Shape64 extends i0.VersionedTable {
+  Shape64({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<String> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get pedidoId =>
+      columnsByName['pedido_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<String> get productoId =>
+      columnsByName['producto_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get cantidad =>
+      columnsByName['cantidad']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get precioUnitario =>
+      columnsByName['precio_unitario']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get cantidadRecibida =>
+      columnsByName['cantidad_recibida']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get colportorId =>
+      columnsByName['colportor_id']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get cantidadAutorizada =>
+      columnsByName['cantidad_autorizada']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get createdAt =>
+      columnsByName['created_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get updatedAt =>
+      columnsByName['updated_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get createdBy =>
+      columnsByName['created_by']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get deletedAt =>
+      columnsByName['deleted_at']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get syncVersion =>
+      columnsByName['sync_version']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<String> _column_207(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'pedido_id',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL',
+    );
+i1.GeneratedColumn<int> _column_208(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'precio_unitario',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_209(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'cantidad_recibida',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<String> _column_210(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'colportor_id',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NULL',
+    );
+i1.GeneratedColumn<int> _column_211(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'cantidad_autorizada',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NULL',
+    );
+
+final class Schema42 extends i0.VersionedSchema {
+  Schema42({required super.database}) : super(version: 42);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    jornada,
+    ubicacion,
+    espacio,
+    ubicacionParDecidido,
+    campaniaCiudad,
+    zona,
+    zonaVertice,
+    sesionUsuario,
+    auditLog,
+    syncQueue,
+    syncWatermark,
+    syncMeta,
+    persona,
+    espacioPersona,
+    nota,
+    agenda,
+    visita,
+    visitaMisionero,
+    houseStatus,
+    notificacionHistorial,
+    producto,
+    coleccion,
+    productoColeccion,
+    precioPorCiudad,
+    precioGeneral,
+    parametroGlobal,
+    stock,
+    ciudad,
+    pais,
+    campania,
+    campaniaColportor,
+    venta,
+    ventaItem,
+    cobranza,
+    entrega,
+    devolucion,
+    deposito,
+    ticket,
+    ticketFotoLocal,
+    cuentaColportor,
+    cuentaDeudaHistorial,
+    pedidoCasaEditora,
+    pedidoItem,
+    ubicacionUnionLocal,
+    syncFueraDelArea,
+    jornadaColportorIdx,
+    ubicacionCiudadIdx,
+    espacioUbicacionIdx,
+    campaniaCiudadCiudadIdIdx,
+    zonaCampaniaCiudadIdx,
+    zonaVerticeZonaIdx,
+    auditLogEventoUuidIdx,
+    syncQueueEstadoOrden,
+    syncQueueFila,
+    syncQueueDoneAt,
+    espacioPersonaEspacioIdx,
+    espacioPersonaPersonaIdx,
+    notaObjetivoIdx,
+    agendaColportorIdx,
+    agendaEspacioPersonaIdx,
+    agendaEspacioIdx,
+    agendaVentaIdx,
+    visitaColportorIdx,
+    visitaEspacioPersonaIdx,
+    visitaEspacioIdx,
+    visitaMisioneroVisitaIdx,
+    notificacionHistorialRecibidaIdx,
+    productoColeccionColeccionIdx,
+    precioPorCiudadCampaniaCiudadIdx,
+    precioPorCiudadProductoIdx,
+    precioPorCiudadColeccionIdx,
+    precioGeneralProductoIdx,
+    precioGeneralColeccionIdx,
+    stockUsuarioIdx,
+    campaniaColportorUsuarioIdx,
+    ventaColportorIdx,
+    ventaEspacioPersonaIdx,
+    ventaItemVentaIdx,
+    cobranzaVentaIdx,
+    entregaVentaIdx,
+    devolucionVentaIdx,
+    depositoTicketIdx,
+    cuentaColportorUsuarioIdx,
+    cuentaDeudaHistorialUsuarioIdx,
+    pedidoCasaEditoraColportorIdx,
+    pedidoItemPedidoIdx,
+  ];
+  late final Shape49 jornada = Shape49(
+    source: i0.VersionedTable(
+      entityName: 'jornada',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(total_visitas >= 0)',
+        'CHECK(total_ventas >= 0)',
+        'CHECK(fin IS NULL OR fin >= inicio)',
+      ],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_2,
+        _column_3,
+        _column_4,
+        _column_6,
+        _column_7,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape1 ubicacion = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'ubicacion',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo IN (\'CASA\', \'NEGOCIO\', \'EDIFICIO\'))',
+        'CHECK(lat BETWEEN -90 AND 90)',
+        'CHECK(lon BETWEEN -180 AND 180)',
+      ],
+      columns: [
+        _column_0,
+        _column_13,
+        _column_14,
+        _column_15,
+        _column_16,
+        _column_17,
+        _column_18,
+        _column_19,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape2 espacio = Shape2(
+    source: i0.VersionedTable(
+      entityName: 'espacio',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_20,
+        _column_21,
+        _column_22,
+        _column_23,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape3 ubicacionParDecidido = Shape3(
+    source: i0.VersionedTable(
+      entityName: 'ubicacion_par_decidido',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(ubicacion_a_id, ubicacion_b_id)',
+        'CHECK(decision IN (\'CONSERVAR_AMBOS\', \'IGNORAR\'))',
+        'CHECK(ubicacion_a_id < ubicacion_b_id)',
+      ],
+      columns: [_column_24, _column_25, _column_26, _column_27],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape4 campaniaCiudad = Shape4(
+    source: i0.VersionedTable(
+      entityName: 'campania_ciudad',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_28,
+        _column_18,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape5 zona = Shape5(
+    source: i0.VersionedTable(
+      entityName: 'zona',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo_forma IN (\'RADIAL\', \'ESQUINAS\'))',
+        'CHECK(tipo_forma <> \'RADIAL\' OR(centro_lat IS NOT NULL AND centro_lon IS NOT NULL AND radio_m IS NOT NULL))',
+        'CHECK(radio_m IS NULL OR radio_m BETWEEN 1 AND 3000)',
+        'CHECK((centro_lat IS NULL OR centro_lat BETWEEN -90 AND 90)AND(centro_lon IS NULL OR centro_lon BETWEEN -180 AND 180))',
+        'CHECK(color IS NULL OR color GLOB \'#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]\')',
+      ],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_30,
+        _column_31,
+        _column_32,
+        _column_33,
+        _column_34,
+        _column_35,
+        _column_36,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape6 zonaVertice = Shape6(
+    source: i0.VersionedTable(
+      entityName: 'zona_vertice',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(lat BETWEEN -90 AND 90)',
+        'CHECK(lon BETWEEN -180 AND 180)',
+      ],
+      columns: [
+        _column_0,
+        _column_37,
+        _column_38,
+        _column_16,
+        _column_17,
+        _column_39,
+        _column_40,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape7 sesionUsuario = Shape7(
+    source: i0.VersionedTable(
+      entityName: 'sesion_usuario',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(usuario_id)'],
+      columns: [_column_41, _column_29],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape8 auditLog = Shape8(
+    source: i0.VersionedTable(
+      entityName: 'audit_log',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [_column_42, _column_43, _column_44, _column_45, _column_46],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape9 syncQueue = Shape9(
+    source: i0.VersionedTable(
+      entityName: 'sync_queue',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(op IN (\'insert\', \'update\', \'delete\', \'marcar_como_duplicado\'))',
+        'CHECK(state IN (\'PENDING\', \'IN_FLIGHT\', \'INVALID\', \'DONE\', \'BLOCKED\', \'WAITING\'))',
+      ],
+      columns: [
+        _column_0,
+        _column_47,
+        _column_48,
+        _column_49,
+        _column_50,
+        _column_51,
+        _column_52,
+        _column_8,
+        _column_53,
+        _column_54,
+        _column_55,
+        _column_56,
+        _column_57,
+        _column_58,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape10 syncWatermark = Shape10(
+    source: i0.VersionedTable(
+      entityName: 'sync_watermark',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(scope)'],
+      columns: [_column_59, _column_60],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape20 syncMeta = Shape20(
+    source: i0.VersionedTable(
+      entityName: 'sync_meta',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(clave)'],
+      columns: [_column_91, _column_92],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape11 persona = Shape11(
+    source: i0.VersionedTable(
+      entityName: 'persona',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_61,
+        _column_62,
+        _column_63,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape12 espacioPersona = Shape12(
+    source: i0.VersionedTable(
+      entityName: 'espacio_persona',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_64,
+        _column_65,
+        _column_66,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape13 nota = Shape13(
+    source: i0.VersionedTable(
+      entityName: 'nota',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_67,
+        _column_68,
+        _column_69,
+        _column_70,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape50 agenda = Shape50(
+    source: i0.VersionedTable(
+      entityName: 'agenda',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo IN (\'ENTREVISTA\', \'COBRANZA\', \'ENTREGA\'))',
+        'CHECK(estado IN (\'PROGRAMADA\', \'CUMPLIDA\', \'NO_CUMPLIDA\', \'CANCELADA\'))',
+        'CHECK(monto_previsto IS NULL OR(monto_previsto > 0 AND tipo = \'COBRANZA\' AND venta_id IS NOT NULL))',
+        'CHECK(entrega_id IS NULL OR tipo = \'ENTREGA\')',
+      ],
+      columns: [
+        _column_0,
+        _column_64,
+        _column_84,
+        _column_13,
+        _column_72,
+        _column_73,
+        _column_74,
+        _column_75,
+        _column_85,
+        _column_1,
+        _column_77,
+        _column_143,
+        _column_144,
+        _column_168,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape52 visita = Shape52(
+    source: i0.VersionedTable(
+      entityName: 'visita',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo_resultado IN (\'VENTA\', \'NO_CONTESTO\', \'RECHAZO\', \'ENTREVISTA\', \'COBRANZA\'))',
+      ],
+      columns: [
+        _column_0,
+        _column_64,
+        _column_84,
+        _column_78,
+        _column_79,
+        _column_1,
+        _column_80,
+        _column_170,
+        _column_171,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape53 visitaMisionero = Shape53(
+    source: i0.VersionedTable(
+      entityName: 'visita_misionero',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(cantidad >= 1)'],
+      columns: [
+        _column_0,
+        _column_172,
+        _column_99,
+        _column_119,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape16 houseStatus = Shape16(
+    source: i0.VersionedTable(
+      entityName: 'house_status',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(ubicacion_id)',
+        'CHECK(tipo_ubicacion IN (\'CASA\', \'NEGOCIO\', \'EDIFICIO\'))',
+        'CHECK(color IN (\'ENTREGA_Y_COBRANZA_PENDIENTE\', \'COBRANZA_PENDIENTE\', \'ENTREVISTA_PROGRAMADA\', \'VENTA_COMPLETA\', \'ENTREVISTA_SIN_VENTA\', \'SIN_CONTESTAR\', \'RECHAZO\'))',
+        'CHECK(prioridad BETWEEN 1 AND 7)',
+        'CHECK(prioridad = CASE color WHEN \'ENTREGA_Y_COBRANZA_PENDIENTE\' THEN 1 WHEN \'COBRANZA_PENDIENTE\' THEN 2 WHEN \'ENTREVISTA_PROGRAMADA\' THEN 3 WHEN \'VENTA_COMPLETA\' THEN 4 WHEN \'ENTREVISTA_SIN_VENTA\' THEN 5 WHEN \'SIN_CONTESTAR\' THEN 6 WHEN \'RECHAZO\' THEN 7 END)',
+      ],
+      columns: [
+        _column_20,
+        _column_16,
+        _column_17,
+        _column_81,
+        _column_82,
+        _column_83,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape19 notificacionHistorial = Shape19(
+    source: i0.VersionedTable(
+      entityName: 'notificacion_historial',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_13,
+        _column_86,
+        _column_87,
+        _column_88,
+        _column_89,
+        _column_90,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape60 producto = Shape60(
+    source: i0.VersionedTable(
+      entityName: 'producto',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(precio_base_compra IS NULL OR precio_base_compra >= 0)',
+      ],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_23,
+        _column_93,
+        _column_94,
+        _column_95,
+        _column_96,
+        _column_97,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+        _column_123,
+        _column_70,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape22 coleccion = Shape22(
+    source: i0.VersionedTable(
+      entityName: 'coleccion',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(libros_a_elegir >= 0)'],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_98,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape23 productoColeccion = Shape23(
+    source: i0.VersionedTable(
+      entityName: 'producto_coleccion',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(cantidad > 0)'],
+      columns: [
+        _column_0,
+        _column_99,
+        _column_100,
+        _column_101,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape24 precioPorCiudad = Shape24(
+    source: i0.VersionedTable(
+      entityName: 'precio_por_ciudad',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK((producto_id IS NULL)<>(coleccion_id IS NULL))',
+        'CHECK(precio_venta >= 0)',
+        'CHECK(valido_hasta IS NULL OR valido_hasta >= valido_desde)',
+      ],
+      columns: [
+        _column_0,
+        _column_102,
+        _column_103,
+        _column_30,
+        _column_104,
+        _column_105,
+        _column_106,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape25 precioGeneral = Shape25(
+    source: i0.VersionedTable(
+      entityName: 'precio_general',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK((producto_id IS NULL)<>(coleccion_id IS NULL))',
+        'CHECK(precio_venta >= 0)',
+        'CHECK(valido_hasta IS NULL OR valido_hasta >= valido_desde)',
+      ],
+      columns: [
+        _column_0,
+        _column_102,
+        _column_103,
+        _column_104,
+        _column_105,
+        _column_106,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape33 parametroGlobal = Shape33(
+    source: i0.VersionedTable(
+      entityName: 'parametro_global',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_91,
+        _column_124,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape26 stock = Shape26(
+    source: i0.VersionedTable(
+      entityName: 'stock',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(cantidad_reservada >= 0)'],
+      columns: [
+        _column_0,
+        _column_41,
+        _column_99,
+        _column_107,
+        _column_108,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape43 ciudad = Shape43(
+    source: i0.VersionedTable(
+      entityName: 'ciudad',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_109,
+        _column_110,
+        _column_149,
+        _column_111,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape55 pais = Shape55(
+    source: i0.VersionedTable(
+      entityName: 'pais',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_181,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape65 campania = Shape65(
+    source: i0.VersionedTable(
+      entityName: 'campania',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_29,
+        _column_112,
+        _column_113,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_187,
+        _column_212,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape29 campaniaColportor = Shape29(
+    source: i0.VersionedTable(
+      entityName: 'campania_colportor',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(meta_libros IS NULL OR meta_libros >= 0)',
+      ],
+      columns: [
+        _column_0,
+        _column_28,
+        _column_41,
+        _column_19,
+        _column_114,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape30 venta = Shape30(
+    source: i0.VersionedTable(
+      entityName: 'venta',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(monto_total >= 0)'],
+      columns: [
+        _column_0,
+        _column_71,
+        _column_115,
+        _column_116,
+        _column_78,
+        _column_1,
+        _column_77,
+        _column_117,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape31 ventaItem = Shape31(
+    source: i0.VersionedTable(
+      entityName: 'venta_item',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(cantidad > 0)',
+        'CHECK(precio_unitario >= 0)',
+        'CHECK(subtotal = cantidad * precio_unitario)',
+        'CHECK((producto_id IS NULL)<>(coleccion_id IS NULL))',
+        'CHECK((coleccion_id IS NULL)=(componentes IS NULL))',
+      ],
+      columns: [
+        _column_0,
+        _column_118,
+        _column_102,
+        _column_103,
+        _column_119,
+        _column_120,
+        _column_121,
+        _column_122,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape57 cobranza = Shape57(
+    source: i0.VersionedTable(
+      entityName: 'cobranza',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(monto > 0)',
+        'CHECK(medio IN (\'EFECTIVO\', \'TARJETA\', \'TRANSFERENCIA\'))',
+      ],
+      columns: [
+        _column_0,
+        _column_118,
+        _column_125,
+        _column_126,
+        _column_78,
+        _column_128,
+        _column_129,
+        _column_130,
+        _column_131,
+        _column_132,
+        _column_142,
+        _column_185,
+        _column_186,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape51 entrega = Shape51(
+    source: i0.VersionedTable(
+      entityName: 'entrega',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)', 'CHECK(cantidad > 0)'],
+      columns: [
+        _column_0,
+        _column_118,
+        _column_99,
+        _column_119,
+        _column_169,
+        _column_133,
+        _column_134,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape41 devolucion = Shape41(
+    source: i0.VersionedTable(
+      entityName: 'devolucion',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(motivo IS NULL OR length(motivo) BETWEEN 1 AND 500)',
+      ],
+      columns: [
+        _column_0,
+        _column_118,
+        _column_135,
+        _column_45,
+        _column_138,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape59 deposito = Shape59(
+    source: i0.VersionedTable(
+      entityName: 'deposito',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(monto > 0)',
+        'CHECK(destino IN (\'BANCO\', \'OFICINA\', \'RETIRO_COORDINADOR\'))',
+        'CHECK(concepto IN (\'CASA_EDITORA\', \'ALQUILER\'))',
+        'CHECK(destino <> \'RETIRO_COORDINADOR\' OR ticket_id IS NULL)',
+        'CHECK(destino = \'RETIRO_COORDINADOR\' OR ticket_id IS NOT NULL)',
+        'CHECK(concepto <> \'ALQUILER\' OR campania_id IS NOT NULL)',
+      ],
+      columns: [
+        _column_0,
+        _column_125,
+        _column_78,
+        _column_139,
+        _column_140,
+        _column_141,
+        _column_142,
+        _column_145,
+        _column_146,
+        _column_147,
+        _column_148,
+        _column_185,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape46 ticket = Shape46(
+    source: i0.VersionedTable(
+      entityName: 'ticket',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(id)',
+        'CHECK(tipo IN (\'COBRO_TARJETA\', \'DEPOSITO\', \'OTRO\'))',
+        'CHECK(estado IN (\'PENDIENTE\', \'VALIDADO\', \'RECHAZADO\'))',
+        'CHECK(monto IS NULL OR monto > 0)',
+        'CHECK(tarjeta_tipo IS NULL OR tarjeta_tipo IN (\'CREDITO\', \'DEBITO\'))',
+      ],
+      columns: [
+        _column_0,
+        _column_152,
+        _column_13,
+        _column_153,
+        _column_154,
+        _column_155,
+        _column_156,
+        _column_157,
+        _column_158,
+        _column_159,
+        _column_128,
+        _column_129,
+        _column_76,
+        _column_148,
+        _column_160,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape47 ticketFotoLocal = Shape47(
+    source: i0.VersionedTable(
+      entityName: 'ticket_foto_local',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(ticket_id)',
+        'CHECK(bytes > 0)',
+        'CHECK(estado IN (\'PENDIENTE\', \'SUBIDA\', \'RECHAZADA\'))',
+        'CHECK(intentos >= 0)',
+      ],
+      columns: [
+        _column_161,
+        _column_162,
+        _column_163,
+        _column_76,
+        _column_164,
+        _column_165,
+        _column_166,
+        _column_167,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape61 cuentaColportor = Shape61(
+    source: i0.VersionedTable(
+      entityName: 'cuenta_colportor',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_41,
+        _column_188,
+        _column_189,
+        _column_190,
+        _column_191,
+        _column_192,
+        _column_193,
+        _column_194,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape62 cuentaDeudaHistorial = Shape62(
+    source: i0.VersionedTable(
+      entityName: 'cuenta_deuda_historial',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_41,
+        _column_195,
+        _column_196,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape63 pedidoCasaEditora = Shape63(
+    source: i0.VersionedTable(
+      entityName: 'pedido_casa_editora',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_1,
+        _column_197,
+        _column_198,
+        _column_199,
+        _column_200,
+        _column_201,
+        _column_202,
+        _column_203,
+        _column_204,
+        _column_205,
+        _column_148,
+        _column_206,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape64 pedidoItem = Shape64(
+    source: i0.VersionedTable(
+      entityName: 'pedido_item',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(id)'],
+      columns: [
+        _column_0,
+        _column_207,
+        _column_99,
+        _column_119,
+        _column_208,
+        _column_209,
+        _column_210,
+        _column_211,
+        _column_8,
+        _column_9,
+        _column_10,
+        _column_11,
+        _column_12,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape54 ubicacionUnionLocal = Shape54(
+    source: i0.VersionedTable(
+      entityName: 'ubicacion_union_local',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'PRIMARY KEY(trabajo_id)',
+        'CHECK(estado IN (\'APLICADA\', \'DESHECHA\'))',
+      ],
+      columns: [
+        _column_173,
+        _column_174,
+        _column_175,
+        _column_176,
+        _column_177,
+        _column_178,
+        _column_179,
+        _column_180,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape56 syncFueraDelArea = Shape56(
+    source: i0.VersionedTable(
+      entityName: 'sync_fuera_del_area',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(entidad, fila_id)'],
+      columns: [_column_182, _column_183, _column_184],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  final i1.Index jornadaColportorIdx = i1.Index(
+    'jornada_colportor_idx',
+    'CREATE INDEX jornada_colportor_idx ON jornada (colportor_id, inicio)',
+  );
+  final i1.Index ubicacionCiudadIdx = i1.Index(
+    'ubicacion_ciudad_idx',
+    'CREATE INDEX ubicacion_ciudad_idx ON ubicacion (ciudad_id, lat)',
+  );
+  final i1.Index espacioUbicacionIdx = i1.Index(
+    'espacio_ubicacion_idx',
+    'CREATE INDEX espacio_ubicacion_idx ON espacio (ubicacion_id)',
+  );
+  final i1.Index campaniaCiudadCiudadIdIdx = i1.Index(
+    'campania_ciudad_ciudad_id_idx',
+    'CREATE INDEX campania_ciudad_ciudad_id_idx ON campania_ciudad (ciudad_id)',
+  );
+  final i1.Index zonaCampaniaCiudadIdx = i1.Index(
+    'zona_campania_ciudad_idx',
+    'CREATE INDEX zona_campania_ciudad_idx ON zona (campania_ciudad_id)',
+  );
+  final i1.Index zonaVerticeZonaIdx = i1.Index(
+    'zona_vertice_zona_idx',
+    'CREATE INDEX zona_vertice_zona_idx ON zona_vertice (zona_id, orden)',
+  );
+  final i1.Index auditLogEventoUuidIdx = i1.Index(
+    'audit_log_evento_uuid_idx',
+    'CREATE INDEX audit_log_evento_uuid_idx ON audit_log (evento, uuid)',
+  );
+  final i1.Index syncQueueEstadoOrden = i1.Index(
+    'sync_queue_estado_orden',
+    'CREATE INDEX sync_queue_estado_orden ON sync_queue (state, created_at, id)',
+  );
+  final i1.Index syncQueueFila = i1.Index(
+    'sync_queue_fila',
+    'CREATE INDEX sync_queue_fila ON sync_queue (entity, row_pk)',
+  );
+  final i1.Index syncQueueDoneAt = i1.Index(
+    'sync_queue_done_at',
+    'CREATE INDEX sync_queue_done_at ON sync_queue (state, done_at)',
+  );
+  final i1.Index espacioPersonaEspacioIdx = i1.Index(
+    'espacio_persona_espacio_idx',
+    'CREATE INDEX espacio_persona_espacio_idx ON espacio_persona (espacio_id)',
+  );
+  final i1.Index espacioPersonaPersonaIdx = i1.Index(
+    'espacio_persona_persona_idx',
+    'CREATE INDEX espacio_persona_persona_idx ON espacio_persona (persona_id)',
+  );
+  final i1.Index notaObjetivoIdx = i1.Index(
+    'nota_objetivo_idx',
+    'CREATE INDEX nota_objetivo_idx ON nota (target_type, target_id)',
+  );
+  final i1.Index agendaColportorIdx = i1.Index(
+    'agenda_colportor_idx',
+    'CREATE INDEX agenda_colportor_idx ON agenda (colportor_id, fecha_programada)',
+  );
+  final i1.Index agendaEspacioPersonaIdx = i1.Index(
+    'agenda_espacio_persona_idx',
+    'CREATE INDEX agenda_espacio_persona_idx ON agenda (espacio_persona_id)',
+  );
+  final i1.Index agendaEspacioIdx = i1.Index(
+    'agenda_espacio_idx',
+    'CREATE INDEX agenda_espacio_idx ON agenda (espacio_id)',
+  );
+  final i1.Index agendaVentaIdx = i1.Index(
+    'agenda_venta_idx',
+    'CREATE INDEX agenda_venta_idx ON agenda (venta_id)',
+  );
+  final i1.Index visitaColportorIdx = i1.Index(
+    'visita_colportor_idx',
+    'CREATE INDEX visita_colportor_idx ON visita (colportor_id, fecha)',
+  );
+  final i1.Index visitaEspacioPersonaIdx = i1.Index(
+    'visita_espacio_persona_idx',
+    'CREATE INDEX visita_espacio_persona_idx ON visita (espacio_persona_id)',
+  );
+  final i1.Index visitaEspacioIdx = i1.Index(
+    'visita_espacio_idx',
+    'CREATE INDEX visita_espacio_idx ON visita (espacio_id)',
+  );
+  final i1.Index visitaMisioneroVisitaIdx = i1.Index(
+    'visita_misionero_visita_idx',
+    'CREATE INDEX visita_misionero_visita_idx ON visita_misionero (visita_id)',
+  );
+  final i1.Index notificacionHistorialRecibidaIdx = i1.Index(
+    'notificacion_historial_recibida_idx',
+    'CREATE INDEX notificacion_historial_recibida_idx ON notificacion_historial (recibida_en)',
+  );
+  final i1.Index productoColeccionColeccionIdx = i1.Index(
+    'producto_coleccion_coleccion_idx',
+    'CREATE INDEX producto_coleccion_coleccion_idx ON producto_coleccion (coleccion_id)',
+  );
+  final i1.Index precioPorCiudadCampaniaCiudadIdx = i1.Index(
+    'precio_por_ciudad_campania_ciudad_idx',
+    'CREATE INDEX precio_por_ciudad_campania_ciudad_idx ON precio_por_ciudad (campania_ciudad_id)',
+  );
+  final i1.Index precioPorCiudadProductoIdx = i1.Index(
+    'precio_por_ciudad_producto_idx',
+    'CREATE INDEX precio_por_ciudad_producto_idx ON precio_por_ciudad (producto_id)',
+  );
+  final i1.Index precioPorCiudadColeccionIdx = i1.Index(
+    'precio_por_ciudad_coleccion_idx',
+    'CREATE INDEX precio_por_ciudad_coleccion_idx ON precio_por_ciudad (coleccion_id)',
+  );
+  final i1.Index precioGeneralProductoIdx = i1.Index(
+    'precio_general_producto_idx',
+    'CREATE INDEX precio_general_producto_idx ON precio_general (producto_id)',
+  );
+  final i1.Index precioGeneralColeccionIdx = i1.Index(
+    'precio_general_coleccion_idx',
+    'CREATE INDEX precio_general_coleccion_idx ON precio_general (coleccion_id)',
+  );
+  final i1.Index stockUsuarioIdx = i1.Index(
+    'stock_usuario_idx',
+    'CREATE INDEX stock_usuario_idx ON stock (usuario_id)',
+  );
+  final i1.Index campaniaColportorUsuarioIdx = i1.Index(
+    'campania_colportor_usuario_idx',
+    'CREATE INDEX campania_colportor_usuario_idx ON campania_colportor (usuario_id)',
+  );
+  final i1.Index ventaColportorIdx = i1.Index(
+    'venta_colportor_idx',
+    'CREATE INDEX venta_colportor_idx ON venta (colportor_id, fecha)',
+  );
+  final i1.Index ventaEspacioPersonaIdx = i1.Index(
+    'venta_espacio_persona_idx',
+    'CREATE INDEX venta_espacio_persona_idx ON venta (espacio_persona_id)',
+  );
+  final i1.Index ventaItemVentaIdx = i1.Index(
+    'venta_item_venta_idx',
+    'CREATE INDEX venta_item_venta_idx ON venta_item (venta_id)',
+  );
+  final i1.Index cobranzaVentaIdx = i1.Index(
+    'cobranza_venta_idx',
+    'CREATE INDEX cobranza_venta_idx ON cobranza (venta_id)',
+  );
+  final i1.Index entregaVentaIdx = i1.Index(
+    'entrega_venta_idx',
+    'CREATE INDEX entrega_venta_idx ON entrega (venta_id)',
+  );
+  final i1.Index devolucionVentaIdx = i1.Index(
+    'devolucion_venta_idx',
+    'CREATE INDEX devolucion_venta_idx ON devolucion (venta_id)',
+  );
+  final i1.Index depositoTicketIdx = i1.Index(
+    'deposito_ticket_idx',
+    'CREATE INDEX deposito_ticket_idx ON deposito (ticket_id)',
+  );
+  final i1.Index cuentaColportorUsuarioIdx = i1.Index(
+    'cuenta_colportor_usuario_idx',
+    'CREATE INDEX cuenta_colportor_usuario_idx ON cuenta_colportor (usuario_id)',
+  );
+  final i1.Index cuentaDeudaHistorialUsuarioIdx = i1.Index(
+    'cuenta_deuda_historial_usuario_idx',
+    'CREATE INDEX cuenta_deuda_historial_usuario_idx ON cuenta_deuda_historial (usuario_id, desde)',
+  );
+  final i1.Index pedidoCasaEditoraColportorIdx = i1.Index(
+    'pedido_casa_editora_colportor_idx',
+    'CREATE INDEX pedido_casa_editora_colportor_idx ON pedido_casa_editora (colportor_id)',
+  );
+  final i1.Index pedidoItemPedidoIdx = i1.Index(
+    'pedido_item_pedido_idx',
+    'CREATE INDEX pedido_item_pedido_idx ON pedido_item (pedido_id)',
+  );
+}
+
+class Shape65 extends i0.VersionedTable {
+  Shape65({required super.source, required super.alias}) : super.aliased();
   i1.GeneratedColumn<String> get id =>
       columnsByName['id']! as i1.GeneratedColumn<String>;
   i1.GeneratedColumn<String> get nombre =>
@@ -35843,6 +38411,8 @@ class Shape62 extends i0.VersionedTable {
       columnsByName['updated_at']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<String> get createdBy =>
       columnsByName['created_by']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get alquilerMonto =>
+      columnsByName['alquiler_monto']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get limiteDeuda =>
       columnsByName['limite_deuda']! as i1.GeneratedColumn<int>;
   i1.GeneratedColumn<int> get deletedAt =>
@@ -35851,7 +38421,7 @@ class Shape62 extends i0.VersionedTable {
       columnsByName['sync_version']! as i1.GeneratedColumn<int>;
 }
 
-i1.GeneratedColumn<int> _column_211(String aliasedName) =>
+i1.GeneratedColumn<int> _column_212(String aliasedName) =>
     i1.GeneratedColumn<int>(
       'limite_deuda',
       aliasedName,
@@ -35899,6 +38469,8 @@ i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema38 schema) from37To38,
   required Future<void> Function(i1.Migrator m, Schema39 schema) from38To39,
   required Future<void> Function(i1.Migrator m, Schema40 schema) from39To40,
+  required Future<void> Function(i1.Migrator m, Schema41 schema) from40To41,
+  required Future<void> Function(i1.Migrator m, Schema42 schema) from41To42,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -36097,6 +38669,16 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from39To40(migrator, schema);
         return 40;
+      case 40:
+        final schema = Schema41(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from40To41(migrator, schema);
+        return 41;
+      case 41:
+        final schema = Schema42(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from41To42(migrator, schema);
+        return 42;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -36143,6 +38725,8 @@ i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema38 schema) from37To38,
   required Future<void> Function(i1.Migrator m, Schema39 schema) from38To39,
   required Future<void> Function(i1.Migrator m, Schema40 schema) from39To40,
+  required Future<void> Function(i1.Migrator m, Schema41 schema) from40To41,
+  required Future<void> Function(i1.Migrator m, Schema42 schema) from41To42,
 }) => i0.VersionedSchema.stepByStepHelper(
   step: migrationSteps(
     from1To2: from1To2,
@@ -36184,5 +38768,7 @@ i1.OnUpgrade stepByStep({
     from37To38: from37To38,
     from38To39: from38To39,
     from39To40: from39To40,
+    from40To41: from40To41,
+    from41To42: from41To42,
   ),
 );

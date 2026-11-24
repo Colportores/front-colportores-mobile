@@ -2,12 +2,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/database_providers.dart';
 import '../../../cobranzas/presentation/providers/cobranzas_providers.dart';
+import '../../data/datasources/alquiler_local_data_source_drift.dart';
 import '../../data/datasources/detalle_de_mi_plata_local_data_source_drift.dart';
 import '../../data/datasources/resumen_de_cuenta_local_data_source_drift.dart';
+import '../../data/repositories/alquiler_repository_impl.dart';
 import '../../data/repositories/detalle_de_mi_plata_repository_impl.dart';
 import '../../data/repositories/resumen_de_cuenta_repository_impl.dart';
+import '../../domain/entities/alquiler.dart';
 import '../../domain/entities/detalle_de_mi_plata.dart';
 import '../../domain/entities/resumen_de_cuenta.dart';
+import '../../domain/repositories/alquiler_repository.dart';
 import '../../domain/repositories/detalle_de_mi_plata_repository.dart';
 import '../../domain/repositories/resumen_de_cuenta_repository.dart';
 
@@ -55,3 +59,20 @@ final detalleDeMiPlataProvider = StreamProvider.autoDispose.family<DetalleDeMiPl
   (ref, colportorId) => ref.watch(detalleDeMiPlataRepositoryProvider).observar(colportorId),
   retry: _sinReintentos,
 );
+
+/// De dónde sale «Mi alquiler» (HU-CTA-007): las réplicas `campania`, `campania_colportor` y `deposito`
+/// de la DB local. Sin DB abierta, su `Stream` falla con `FailureAlquilerNoDisponible`.
+final alquilerRepositoryProvider = Provider<AlquilerRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return const AlquilerSinBase();
+  return AlquilerRepositoryImpl(AlquilerLocalDataSourceDrift(db));
+});
+
+/// «Mi alquiler» del colportor en cada campaña, al día solo cuando el pull baja un pago, una validación
+/// o un cambio del monto. Sin reintentos: un `Stream` que falla deja el error a la vista con su
+/// «Reintentar».
+final alquilerDelColportorProvider = StreamProvider.autoDispose
+    .family<AlquilerDelColportor, String>(
+      (ref, colportorId) => ref.watch(alquilerRepositoryProvider).observar(colportorId),
+      retry: _sinReintentos,
+    );

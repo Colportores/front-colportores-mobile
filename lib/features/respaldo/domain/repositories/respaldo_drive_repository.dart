@@ -31,10 +31,36 @@ abstract interface class RespaldoDriveRepository {
   /// - `Left(FailureDrivePermisoIncompleto)`: Google conectó la cuenta pero sin el permiso de
   ///   Drive.
   /// - `Left(FailureDriveNoConectado)`: cualquier otra causa.
+  ///
+  /// Si ya había una cuenta guardada y Google devuelve **otra** (16E·01), la conexión vuelve con
+  /// [DriveCuentaPorConfirmar] y sin primer respaldo: el respaldo queda frenado hasta que la persona
+  /// elija ([confirmarCuentaNueva], o volver a conectar con la anterior). La cuenta de referencia es
+  /// siempre la del respaldo anterior, aunque ya haya otra por confirmar. Con [conPrimerRespaldo] en
+  /// `false` (recuperar) no se compara: la cuenta que elige es la que quiere buscar.
   Future<Either<Failure, ConexionDrive>> conectar(
     String usuarioId, {
     bool conPrimerRespaldo = true,
   });
+
+  /// «Seguir con la cuenta nueva» (16E·01 y 16E·02): la cuenta por confirmar pasa a ser la del
+  /// respaldo, el anterior queda en su cuenta sin tocarse, y se intenta el primer respaldo en la
+  /// nueva. Sin cuenta por confirmar, no hace nada: devuelve lo que hay.
+  ///
+  /// - `Left(FailureDriveNoConectado)`: ya no hay cuenta guardada, o no se pudo anotar la elección
+  ///   (la cuenta nueva sigue por confirmar).
+  Future<Either<Failure, ConexionDrive>> confirmarCuentaNueva(
+    String usuarioId, {
+    bool conPrimerRespaldo = true,
+  });
+
+  /// Anota que la franja del Drive de Hoy se ocultó **hoy** (16F·04): vuelve a salir mañana, o antes
+  /// si el estado del respaldo cambia (conectar, perder el permiso, quedarse sin espacio, guardar un
+  /// respaldo).
+  Future<Either<Failure, Unit>> ocultarFranja(String usuarioId);
+
+  /// El día (a las 00:00, hora del teléfono) en que se ocultó la franja del Drive de [usuarioId], o
+  /// `null` si no está oculta o el almacén no se deja leer: ante la duda, la franja se ve.
+  Future<DateTime?> franjaOcultaEl(String usuarioId);
 
   /// Deja de usar la cuenta: olvida la cuenta guardada (los respaldos dejan de ejecutarse) y le
   /// pide a Google que retire el permiso. Los archivos ya subidos siguen en el Drive. Retirar el
