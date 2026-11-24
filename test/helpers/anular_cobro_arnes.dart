@@ -16,6 +16,7 @@ import 'package:colportores_mobile/features/cobranzas/presentation/providers/cob
 import 'package:dartz/dartz.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'agendar_visita_arnes.dart' show asentarAgendar;
@@ -36,6 +37,8 @@ DetalleDelCobro detalleDeEjemplo({
   String? cliente = 'María Fernández',
   DateTime? anuladoAt,
   MotivoDeAnulacion? motivo,
+  String? ticketId,
+  String? numeroAprobacion,
 }) {
   final f = fecha ?? DateTime.utc(2026, 10, 23, 17, 10);
   return DetalleDelCobro(
@@ -45,6 +48,8 @@ DetalleDelCobro detalleDeEjemplo({
       montoCentavos: monto,
       medio: medio,
       fecha: f,
+      ticketId: ticketId,
+      numeroAprobacion: numeroAprobacion,
       anuladoAt: anuladoAt,
       motivoAnulacion: motivo,
       auditoria: Auditoria(createdAt: f, updatedAt: f, createdBy: 'col-1'),
@@ -176,6 +181,7 @@ Future<ArnesAnular> montarDetalleDelCobro(
   double escala = 1,
   Size tamano = const Size(390, 844),
   bool abrir = true,
+  List<Override> overrides = const [],
 }) async {
   final arnes = ArnesAnular(
     repo: repo ?? AnulacionesEnMemoria(),
@@ -190,6 +196,7 @@ Future<ArnesAnular> montarDetalleDelCobro(
         anulacionDeCobroRepositoryProvider.overrideWithValue(arnes.repo),
         relojCobroProvider.overrideWithValue(() => arnes.ahora),
         ticketValidadoDelCobroProvider.overrideWith((ref, id) async => ticketValidado),
+        ...overrides,
       ],
       child: MaterialApp(
         theme: temaClaro(),

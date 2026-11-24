@@ -3,8 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../tickets/presentation/flujo_ticket_de_tarjeta.dart';
+import '../../../tickets/presentation/providers/tickets_providers.dart'
+    show fotoDelTicketDisponibleProvider;
+import '../../../tickets/presentation/textos_ticket.dart';
 import '../../../ventas/presentation/formato_venta.dart';
 import '../../../ventas/presentation/widgets/piezas_venta.dart';
+import '../../domain/entities/cobranza.dart';
 import '../../domain/entities/detalle_del_cobro.dart';
 import '../providers/cobranzas_providers.dart';
 import '../textos_anular_cobro.dart';
@@ -26,6 +31,10 @@ import 'anular_cobro_page.dart';
 /// - **Ticket validado** (30B-07): con el ticket de la tarjeta validado por el coordinador, la
 ///   colportora no anula sola: se lo pide a él (decisión de Cristian, 23/10). Lo dice
 ///   [ticketValidadoDelCobroProvider], con el ticket local del cobro (HU-COB-007, #426).
+/// - **Falta el ticket** (HU-COB-007, decisión P4 de #169): un cobro con tarjeta vivo y sin ticket
+///   (`cobranza.ticket_id` vacío) lleva la marca «Falta el ticket» con «Sacar foto del ticket», que abre
+///   `FlujoTicketDeTarjeta` con ese cobro. Al volver se lee de nuevo el cobro: con el ticket guardado la
+///   marca desaparece; si se cerró la cámara sin sacar nada, sigue.
 /// - Además lee el cobro: cargando, ya no está y error de lectura con «Reintentar».
 ///
 /// Devuelve `true` si en esta visita se anuló el cobro y `false` si no.
@@ -102,6 +111,20 @@ class _DetalleDelCobroPageState extends ConsumerState<DetalleDelCobroPage> {
     if (_cerrando) return;
     _cerrando = true;
     Navigator.of(context).pop(_anulo);
+  }
+
+  /// «Sacar foto del ticket» de la marca «Falta el ticket»: abre la foto del ticket (vista 29 C) con
+  /// este cobro y, al volver, lee el cobro de nuevo para que la marca refleje si quedó el ticket.
+  Future<void> _sacarFotoDelTicket(Cobranza cobro) async {
+    if (_navegando || _cerrando) return;
+    _navegando = true;
+    try {
+      await FlujoTicketDeTarjeta.abrir(context, cobro: cobro, colportorId: widget.colportorId);
+      if (!mounted) return;
+      await _leer(mostrarCarga: false);
+    } finally {
+      _navegando = false;
+    }
   }
 
   Future<void> _anular(DetalleDelCobro detalle) async {
@@ -208,6 +231,8 @@ class _DetalleDelCobroPageState extends ConsumerState<DetalleDelCobroPage> {
     final ticketValidado =
         !anulado && (ref.watch(ticketValidadoDelCobroProvider(c.id)).asData?.value ?? false);
     final sePuedeAnular = !anulado && enPlazo && !ticketValidado;
+    final faltaElTicket = !anulado && c.medio == MedioCobranza.tarjeta && c.ticketId == null;
+    final camara = faltaElTicket && ref.watch(fotoDelTicketDisponibleProvider);
     return _marco(
       cabecera: _cabecera(d),
       hijos: [
@@ -222,6 +247,16 @@ class _DetalleDelCobroPageState extends ConsumerState<DetalleDelCobroPage> {
             key: Key('detalle_cobro_ticket_validado'),
             error: false,
             texto: '${TextosAnularCobro.ticketValidado} ${TextosAnularCobro.pedirleAlCoordinador}',
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (faltaElTicket) ...[
+          AvisoDeVenta(
+            key: const Key('detalle_cobro_falta_ticket'),
+            error: false,
+            texto: TextosAnularCobro.faltaElTicket,
+            textoAccion: camara ? TextosTicket.sacarFotoDelTicket : null,
+            alAccion: camara ? () => unawaited(_sacarFotoDelTicket(c)) : null,
           ),
           const SizedBox(height: 10),
         ],
