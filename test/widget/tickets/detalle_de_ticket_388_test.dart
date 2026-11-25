@@ -245,7 +245,7 @@ void main() {
       expect(arnes.tickets.guardados, isEmpty);
     });
 
-    testWidgets('un ticket de un cobro con tarjeta rechazado no ofrece «Cargar de nuevo» acá', (
+    testWidgets('un ticket de un cobro con tarjeta rechazado ofrece «Cargar de nuevo» (#728)', (
       tester,
     ) async {
       final repo = HistorialControlable(
@@ -265,7 +265,7 @@ void main() {
         _texto('Tu coordinador lo rechazó: «No se ve el número». No se acreditó.'),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('ticket_cargar_de_nuevo')), findsNothing);
+      expect(find.byKey(const Key('ticket_cargar_de_nuevo')), findsOneWidget);
     });
   });
 

@@ -49,9 +49,18 @@ AlquilerDeCampania campaniaCon({
 }) =>
     AlquilerDeCampania(campaniaId: id, campania: nombre, montoCentavos: monto * 100, pagos: pagos);
 
-/// El alquiler del colportor con las campañas dadas.
-AlquilerDelColportor alquilerCon(List<AlquilerDeCampania> campanias, {DateTime? bajadoEn}) =>
-    AlquilerDelColportor(campanias: campanias, bajadoEn: bajadoEn);
+/// El alquiler del colportor con las campañas dadas. [trasladado] (en pesos) es lo que el servidor dice
+/// que pasó a la deuda con la casa editora (`cuenta_colportor.alquiler_trasladado`, #753): el teléfono
+/// no lo deduce de los pagos.
+AlquilerDelColportor alquilerCon(
+  List<AlquilerDeCampania> campanias, {
+  DateTime? bajadoEn,
+  int trasladado = 0,
+}) => AlquilerDelColportor(
+  campanias: campanias,
+  bajadoEn: bajadoEn,
+  trasladadoCentavos: trasladado * 100,
+);
 
 /// 38C·01: $ 18.500 de alquiler, $ 6.000 pagados (un retiro validado el 15/10): faltan $ 12.500.
 final alquilerDelCanvas = alquilerCon([

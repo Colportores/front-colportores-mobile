@@ -24,10 +24,18 @@ part 'drift_local_store.g.dart';
 final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
     with _$DriftLocalStoreMixin
     implements LocalStorePort {
-  /// [_entidades] se pasa como `entidades:` (parámetro nombrado privado, Dart ≥ 3.10).
-  DriftLocalStore(super.attachedDatabase, {required this._entidades});
+  /// [_entidades] se pasa como `entidades:` y [_despuesDeAplicar] como `despuesDeAplicar:`
+  /// (parámetros nombrados privados, Dart ≥ 3.10).
+  DriftLocalStore(super.attachedDatabase, {required this._entidades, this._despuesDeAplicar});
 
   final Set<String> _entidades;
+
+  /// Lo que la app hace con lo que bajó, **después** de que la transacción del delta se confirmó (por
+  /// ejemplo, volver a calcular lo que depende de las filas nuevas). Recibe las filas del delta, tal
+  /// como las entregó el servidor. Corre fuera de la transacción: si falla, el delta ya está aplicado
+  /// y el watermark avanzó, así que quien lo pasa se ocupa de no lanzar (un fallo acá no puede dejar
+  /// al pull trabado). `null` en el teléfono que no lo necesita (la recuperación de un respaldo).
+  final Future<void> Function(Map<String, List<Map<String, Object?>>> filas)? _despuesDeAplicar;
 
   /// Aplica el delta, los avisos de área y el watermark en una sola transacción (§10): si una
   /// fila falla, el watermark no avanza y el próximo pull vuelve a traer lo mismo.
@@ -48,6 +56,23 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
     required String? watermark,
     PullNotices notices = PullNotices.none,
     UnappliedRows? unapplied,
+  }) async {
+    await _aplicar(
+      rows,
+      scope: scope,
+      watermark: watermark,
+      notices: notices,
+      unapplied: unapplied,
+    );
+    if (rows.values.any((filas) => filas.isNotEmpty)) await _despuesDeAplicar?.call(rows);
+  }
+
+  Future<void> _aplicar(
+    Map<String, List<Map<String, Object?>>> rows, {
+    required String scope,
+    required String? watermark,
+    required PullNotices notices,
+    required UnappliedRows? unapplied,
   }) => transaction(() async {
     for (final entidad in notices.areaReset) {
       await _ponerALaEspera(_tabla(entidad), unapplied);

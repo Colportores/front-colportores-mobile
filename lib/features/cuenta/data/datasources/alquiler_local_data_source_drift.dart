@@ -17,7 +17,8 @@ import '../../domain/entities/alquiler.dart';
 ///   «rechazado» (ante la duda no se acredita, como [TotalesDeDepositosDrift]), un `validado_en`
 ///   «validado» y sin ninguna «por validar».
 /// - **Pagado de más**: no queda «a favor»: es lo que bajó la deuda con la casa editora (decisión del
-///   28/10, «Alquiler fav»); se calcula por campaña sobre lo validado.
+///   28/10, «Alquiler fav»). Lo dice el servidor (`cuenta_colportor.alquiler_trasladado`, 0152, el total
+///   de todas las campañas): el teléfono no lo calcula.
 final class AlquilerLocalDataSourceDrift {
   AlquilerLocalDataSourceDrift(this._db);
 
@@ -26,6 +27,7 @@ final class AlquilerLocalDataSourceDrift {
   Set<ResultSetImplementation<dynamic, dynamic>> get _tablas => {
     _db.campanias,
     _db.campaniasColportor,
+    _db.cuentasColportor,
     _db.depositos,
     _db.tickets,
     _db.syncMetas,
@@ -63,7 +65,18 @@ final class AlquilerLocalDataSourceDrift {
           ),
       ],
       bajadoEn: (await DriftSyncMeta(_db).read()).lastPullAt,
+      trasladadoCentavos: await _trasladado(colportorId),
     );
+  }
+
+  /// Lo pagado de más que el servidor pasó a la deuda con la casa editora: `alquiler_trasladado` de la
+  /// cuenta de [colportorId]. Sin cuenta bajada, o dada de baja, no hay traslado (0); nunca negativo.
+  Future<int> _trasladado(String colportorId) async {
+    final cuenta = await (_db.select(
+      _db.cuentasColportor,
+    )..where((c) => c.usuarioId.equals(colportorId) & c.deletedAt.isNull())).getSingleOrNull();
+    final centavos = cuenta?.alquilerTrasladado ?? 0;
+    return centavos > 0 ? centavos : 0;
   }
 
   /// Los pagos de alquiler de cada campaña, el más nuevo primero.

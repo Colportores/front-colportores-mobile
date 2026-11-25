@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
+import 'package:colportores_mobile/features/cobranzas/domain/entities/cobranza.dart';
 import 'package:colportores_mobile/features/depositos/domain/entities/deposito.dart';
 import 'package:colportores_mobile/features/tickets/domain/entities/item_del_historial.dart';
 import 'package:colportores_mobile/features/tickets/domain/entities/ticket.dart';
@@ -30,6 +31,7 @@ ItemDelHistorial itemDePrueba(
   ConceptoDeDeposito? concepto = ConceptoDeDeposito.casaEditora,
   EstadoDelItem estado = EstadoDelItem.porValidar,
   String? ticketId,
+  String? cobroId,
   String? autorizacion = '004512',
   TipoDeTarjeta? tarjeta = TipoDeTarjeta.debito,
   String? motivo,
@@ -41,6 +43,11 @@ ItemDelHistorial itemDePrueba(
   id: id,
   depositoId: lugar == LugarDelTicket.cobroConTarjeta ? null : id,
   ticketId: lugar == LugarDelTicket.retiro ? null : (ticketId ?? 't-$id'),
+  // El ticket de un cobro con tarjeta está ligado a su cobro (`cobro-<id>`); pasá `cobroId: ''` para
+  // un ticket que ya no lo está.
+  cobroId: lugar == LugarDelTicket.cobroConTarjeta
+      ? (cobroId == '' ? null : (cobroId ?? 'cobro-$id'))
+      : null,
   fecha: fecha ?? hoyDelHistorial,
   montoCentavos: pesos * 100,
   lugar: lugar,
@@ -105,6 +112,15 @@ final class HistorialControlable implements HistorialDeTicketsRepository {
   /// Cuántas veces se suscribieron (un «Reintentar» suma una).
   var suscripciones = 0;
 
+  /// Los cobros con tarjeta que el teléfono tiene vivos, por id (lo que lee «Cargar de nuevo»).
+  final cobros = <String, Cobranza>{};
+
+  /// Cuántas veces se pidió un cobro.
+  var cobrosPedidos = 0;
+
+  /// Si no es `null`, la próxima lectura de un cobro lanza esto.
+  Object? fallaAlLeerElCobro;
+
   final _abiertos = <StreamController<HistorialDeTickets>>[];
 
   @override
@@ -121,6 +137,17 @@ final class HistorialControlable implements HistorialDeTicketsRepository {
   }
 
   void emitir(HistorialDeTickets historial) => _abiertos.last.add(historial);
+
+  @override
+  Future<Cobranza?> cobroConTarjeta(String cobroId) async {
+    cobrosPedidos++;
+    final falla = fallaAlLeerElCobro;
+    if (falla != null) {
+      fallaAlLeerElCobro = null;
+      throw falla;
+    }
+    return cobros[cobroId];
+  }
 }
 
 /// Historial con [items] y la última bajada en [bajadoEn].

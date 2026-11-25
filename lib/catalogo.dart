@@ -44,8 +44,12 @@ final specsDeLaApp = <SyncSpec>[
   // servidor y el push la descarta. Sin `alsoPull`: un solo escritor.
   SyncSpec.push('entrega'),
   // El cobro (HU-COB-001, #436): sube después de la venta que cobra, sin dato del cliente (`venta_id`
-  // es un id opaco, R-CB03). Es una escritura crítica (contrato §2). Sin `alsoPull`: un solo escritor.
-  SyncSpec.push('cobranza', critical: true),
+  // es un id opaco, R-CB03). Es una escritura crítica (contrato §2). `alsoPull` (decisión de Cristian,
+  // 23/11, «Anul. al tel», backend-supabase#306, migración 0203): el servidor devuelve los cobros
+  // propios con `anulado_at`, `motivo_anulacion` y `anulado_por`, para que el cobro que anuló la
+  // coordinación desde el panel llegue anulado al teléfono (HU-COB-006, vista 30B-05). El detalle de
+  // «Otro» no baja. `anulado_por` no se guarda: la tabla local no lo tiene.
+  SyncSpec.push('cobranza', critical: true, alsoPull: true),
   // La devolución de una venta (HU-VEN-004, #161; backend-supabase 0108, 0136 y 0142): sube después de la
   // venta y sus ítems, que nombra, sin dato del cliente (`venta_id` y los ids de producto y de renglón son
   // opacos). El `motivo` es la única prosa que sube (decisión de Cristian, 27/10). `colportor_id` lo pone
