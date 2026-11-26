@@ -51,12 +51,15 @@ void main() {
         // depósito» (33A·01 ACCIONES: 37A, vista 38 y HU-CTA-004) y las filas «Mis pedidos» (37B,
         // HU-STK-009) y «Mis tickets» (38B, #388); «Depositado» no se dibuja hasta la primera bajada.
         expect(find.text('›'), findsNWidgets(4));
-        expect(find.byType(InkWell), findsNWidgets(8));
+        expect(find.byType(InkWell), findsNWidgets(10));
         expect(find.text('+ Hacer un pedido'), findsOneWidget);
         expect(find.text('Cargar ticket'), findsOneWidget);
         expect(find.text('Registrar depósito'), findsOneWidget);
         expect(find.text('Mis pedidos'), findsOneWidget);
         expect(find.text('Mis tickets'), findsOneWidget);
+        // Las dos de transferencias de materiales (HU-STK-005, #512) también son de ACCIONES.
+        expect(find.text('Pedir transferencia de materiales'), findsOneWidget);
+        expect(find.text('Transferencias'), findsOneWidget);
         expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
       },
     );

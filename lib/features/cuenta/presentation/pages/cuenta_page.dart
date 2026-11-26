@@ -16,6 +16,9 @@ import '../../../tickets/presentation/pages/historial_de_tickets_page.dart';
 import '../../../tickets/presentation/providers/tickets_providers.dart'
     show historialDeTicketsProvider;
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
+import '../../../transferencias/presentation/pages/pedir_transferencia_page.dart';
+import '../../../transferencias/presentation/pages/transferencias_page.dart';
+import '../../../transferencias/presentation/textos_transferencias.dart';
 import '../../domain/entities/resumen_de_cuenta.dart';
 import '../providers/cuenta_providers.dart';
 import '../providers/deuda_casa_providers.dart';
@@ -124,6 +127,35 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       await abrir();
     } finally {
       _abriendoPedido = false;
+    }
+  }
+
+  /// Ya se está abriendo una pantalla de las transferencias de materiales (vista 40).
+  var _abriendoTransferencia = false;
+
+  /// «Pedir transferencia de materiales» (HU-STK-005, 40A): al terminar con «Ver transferencias» abre la
+  /// lista (40B·01).
+  Future<void> _pedirTransferencia() async {
+    if (_abriendoTransferencia) return;
+    _abriendoTransferencia = true;
+    try {
+      final verLista = await PedirTransferenciaPage.abrir(context, colportorId: widget.colportorId);
+      if (verLista == true && mounted) {
+        await TransferenciasPage.abrir(context, colportorId: widget.colportorId);
+      }
+    } finally {
+      _abriendoTransferencia = false;
+    }
+  }
+
+  /// «Transferencias» (40B·01): lo que pedí, lo que me piden y lo que armó mi coordinadora.
+  Future<void> _verTransferencias() async {
+    if (_abriendoTransferencia) return;
+    _abriendoTransferencia = true;
+    try {
+      await TransferenciasPage.abrir(context, colportorId: widget.colportorId);
+    } finally {
+      _abriendoTransferencia = false;
     }
   }
 
@@ -248,6 +280,17 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                       apagadaPorque: datos.enMano.totalCentavos > 0
                           ? null
                           : TextosCuenta.sinPlataParaDepositar,
+                    ),
+                    // Transferencias de materiales entre colportores (HU-STK-005, vista 40).
+                    AccionDeCuenta(
+                      texto: TextosTransferencias.accionPedir,
+                      clave: const Key('cuenta_pedir_transferencia'),
+                      alTocar: () => unawaited(_pedirTransferencia()),
+                    ),
+                    AccionDeCuenta(
+                      texto: TextosTransferencias.accionVer,
+                      clave: const Key('cuenta_ver_transferencias'),
+                      alTocar: () => unawaited(_verTransferencias()),
                     ),
                   ],
                 ),
