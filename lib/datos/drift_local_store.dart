@@ -220,6 +220,53 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
     });
   }
 
+  /// §2.3, «Venta tarde» (`merged`, contrato §6.1): el servidor juntó el vínculo [de] con el
+  /// vínculo [a] que ya tenía y no guardó el primero. Lo local que nombraba a [de] pasa a [a],
+  /// todo en una transacción y **sin borrar nada**:
+  ///
+  /// - las visitas, las agendas y las ventas que lo nombran (`espacio_persona_id`), ya subidas o no:
+  ///   la venta no baja del servidor (un solo escritor), así que sin esto quedaría colgada de un id
+  ///   que el servidor no tiene;
+  /// - la fila del vínculo misma: pasa a llamarse [a] si el teléfono todavía no tiene un vínculo
+  ///   con ese id. Si ya lo tiene (bajó del servidor), la de [de] queda como está, sin baja local y
+  ///   sin encolar nada (decisión del 25/11, mapa §2: queda en el espacio fundido, que el pull da de
+  ///   baja, y sus hijos ya cuelgan de [a]).
+  ///
+  /// **La cola no se reescribe** (decisión del 25/11, mapa §2): lo encolado que nombra a [de] sale
+  /// como estaba, y el servidor redirige el id viejo (migración 0064, `redirigir_vinculo`). Tampoco
+  /// los jobs del vínculo mismo: el servidor pasa un `update` o un `delete` del id viejo al que quedó
+  /// (contrato §2.3, «Edición tarde»). No encola nada. Idempotente: sin nada que nombre a [de], no
+  /// hace nada. Una entidad sin referencias conocidas tampoco hace nada: el job ya está aplicado en
+  /// el servidor y no se tiene que trabar la cola por esto.
+  @override
+  Future<void> reapuntar(String entity, {required String de, required String a}) async {
+    _tabla(entity);
+    if (de == a) return;
+    if (entity != _vinculo) return;
+    final db = attachedDatabase;
+    await transaction(() async {
+      await (db.update(db.visitas)..where((x) => x.espacioPersonaId.equals(de))).write(
+        VisitasCompanion(espacioPersonaId: Value(a)),
+      );
+      await (db.update(db.agendas)..where((x) => x.espacioPersonaId.equals(de))).write(
+        AgendasCompanion(espacioPersonaId: Value(a)),
+      );
+      await (db.update(db.ventas)..where((x) => x.espacioPersonaId.equals(de))).write(
+        VentasCompanion(espacioPersonaId: Value(a)),
+      );
+      final yaEsta = await (db.select(
+        db.espacioPersonas,
+      )..where((x) => x.id.equals(a))).getSingleOrNull();
+      if (yaEsta == null) {
+        await (db.update(
+          db.espacioPersonas,
+        )..where((x) => x.id.equals(de))).write(EspacioPersonasCompanion(id: Value(a)));
+      }
+    });
+  }
+
+  static const _vinculo = 'espacio_persona';
+
   TableInfo<Table, Object?> _tabla(String entidad) {
     if (!_entidades.contains(entidad)) {
       throw ArgumentError.value(
