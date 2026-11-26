@@ -249,7 +249,12 @@ void main() {
       await tester.tap(find.text('OK'));
       await _asentar(tester);
 
-      expect(find.textContaining('No pudimos guardar la hora'), findsOneWidget);
+      // Sin fila bajada el aviso es el propio de ese caso (decisión del 26/11, mapa §2), también para la hora.
+      expect(
+        find.textContaining('Todavía no recibimos tus preferencias de avisos'),
+        findsOneWidget,
+      );
+      expect(_errorGuardar, findsOneWidget);
       expect(tester.widget<Text>(antes).data, textoAntes);
       expect(find.textContaining('onexión'), findsNothing);
     });
