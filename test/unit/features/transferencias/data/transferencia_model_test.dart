@@ -24,6 +24,32 @@ void main() {
     expect(json['created_at'], '2026-10-23T17:35:00.000Z');
   });
 
+  test('la cancelación sube solo id, estado y la auditoría (sin origen_id ni destino_id)', () {
+    final t = transferenciaDeEjemplo();
+    final cancelada = Transferencia(
+      id: t.id,
+      origenId: t.origenId,
+      destinoId: t.destinoId,
+      estado: EstadoDeTransferencia.cancelada,
+      lineas: t.lineas,
+      solicitanteId: t.solicitanteId,
+      fechaSolicitud: t.fechaSolicitud,
+      numero: t.numero,
+      auditoria: t.auditoria,
+    );
+    final json = TransferenciaModel.cancelacionAJson(cancelada);
+    expect(json.keys.toSet(), {
+      'id',
+      'estado',
+      'created_at',
+      'updated_at',
+      'created_by',
+      'deleted_at',
+      'sync_version',
+    });
+    expect(json['estado'], 'CANCELADO');
+  });
+
   test('la línea sube con su transferencia, su producto y la cantidad', () {
     final t = transferenciaDeEjemplo();
     final json = TransferenciaModel.lineaAJson(t.lineas.single, t);

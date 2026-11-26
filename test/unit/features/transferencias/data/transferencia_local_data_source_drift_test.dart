@@ -210,6 +210,18 @@ void main() {
       expect(cambio.payload['estado'], 'CANCELADO');
       expect(cambio.payload['sync_version'], 3);
       expect(cambio.payload['id'], 't-1');
+      // El servidor da al teléfono `update (id, estado, created_at, deleted_at)`: ni origen_id ni destino_id.
+      expect(cambio.payload.keys.toSet(), {
+        'id',
+        'estado',
+        'created_at',
+        'updated_at',
+        'created_by',
+        'deleted_at',
+        'sync_version',
+      });
+      expect(cambio.payload.containsKey('origen_id'), isFalse);
+      expect(cambio.payload.containsKey('destino_id'), isFalse);
     });
 
     test(

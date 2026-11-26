@@ -100,7 +100,7 @@ final class TransferenciaLocalDataSourceDrift {
     await _encolador.encolar(
       'transferencia_stock',
       OperacionSync.update,
-      TransferenciaModel.encabezadoAJson(cancelada),
+      TransferenciaModel.cancelacionAJson(cancelada),
     );
     return cancelada;
   });
