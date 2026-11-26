@@ -42,6 +42,7 @@ import '../../features/stock/data/datasources/pedido_items_table.dart';
 import '../../features/stock/data/datasources/pedidos_casa_editora_table.dart';
 import '../../features/stock/data/datasources/stocks_table.dart';
 import '../../features/tickets/data/datasources/tickets_table.dart';
+import '../../features/transferencias/data/datasources/transferencias_table.dart';
 import '../../features/ventas/data/datasources/componentes_converter.dart';
 import '../../features/ventas/data/datasources/devoluciones_table.dart';
 import '../../features/ventas/data/datasources/entregas_table.dart';
@@ -98,6 +99,8 @@ part 'app_database.g.dart';
     PreciosGenerales,
     ParametrosGlobales,
     Stocks,
+    TransferenciasStock,
+    TransferenciaItems,
     Ciudades,
     Paises,
     Campanias,
@@ -220,14 +223,17 @@ class AppDatabase extends _$AppDatabase {
   /// - 43: `ubicacion_unida`, la marca de unión que baja con la ubicación (`unida_a_id`), solo local y
   ///   de solo bajada: de ahí salen la leyenda «Unida a otra ubicación» y la guarda de «Reactivar»
   ///   (backend-supabase 0051, «Marca local» de Cristian, 28/10, HU-UBI-006, #285).
-  /// - 44: los seguimientos del 24/11 (backend-supabase 0206 a 0208, #313; #769): `ubicacion.nombre`, el
+  /// - 44: `transferencia_stock` y `transferencia_item`, las transferencias de materiales entre colportores
+  ///   que el teléfono pide y cancela, y que baja a las dos puntas (backend-supabase 0139 y 0148,
+  ///   HU-STK-005, #512).
+  /// - 45: los seguimientos del 24/11 (backend-supabase 0206 a 0208, #313; #769): `ubicacion.nombre`, el
   ///   nombre opcional del lugar («Nombre ubic.»); `preferencia_de_avisos`, las preferencias de avisos de la
   ///   persona, una fila que sube y baja con el sync para cambiarlas sin señal («Avisos s/red»); y
   ///   `campania_companiero`, los nombres de los compañeros de campaña, de solo bajada («Nombres camp.»).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 44;
+  static const int versionEsquema = 45;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -623,11 +629,20 @@ class AppDatabase extends _$AppDatabase {
     from42To43: (m, esquema) async {
       await m.createTable(esquema.ubicacionUnida);
     },
+    // Solo crea las tablas de las transferencias, vacías (las llena el pull y el colportor al pedirlas):
+    // nada de lo guardado cambia ni se encola al migrar.
+    from43To44: (m, esquema) async {
+      await m.createTable(esquema.transferenciaStock);
+      await m.createIndex(esquema.transferenciaStockOrigenIdx);
+      await m.createIndex(esquema.transferenciaStockDestinoIdx);
+      await m.createTable(esquema.transferenciaItem);
+      await m.createIndex(esquema.transferenciaItemTransferenciaIdx);
+    },
     // Suma `nombre` a `ubicacion`, vacía (las ubicaciones que ya estaban no tienen nombre) y crea las dos
     // tablas nuevas, vacías: las llena el pull (los compañeros y las preferencias de la persona). Nada de lo
     // guardado por la colportora cambia ni se encola al migrar. Las preferencias que la persona ya tenía en
     // el servidor bajan con el pull: la migración del servidor (0207) le creó su fila.
-    from43To44: (m, esquema) async {
+    from44To45: (m, esquema) async {
       await m.addColumn(esquema.ubicacion, esquema.ubicacion.nombre);
       await m.createTable(esquema.preferenciaDeAvisos);
       await m.createTable(esquema.campaniaCompaniero);

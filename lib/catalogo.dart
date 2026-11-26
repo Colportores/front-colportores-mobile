@@ -74,6 +74,15 @@ final specsDeLaApp = <SyncSpec>[
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
   // `ubicacion_id`, no `id`). Baja con las casas de la ciudad, con el mismo alcance (§2.1, #181).
   SyncSpec.push('house_status', pk: 'ubicacion_id', alsoPull: true),
+  // La transferencia de materiales entre colportores (HU-STK-005, #512; backend-supabase 0139 y 0148): el
+  // colportor la pide (alta `PENDIENTE_AUTORIZACION`, con sus líneas después del encabezado) y la cancela
+  // (update de `estado` con la `sync_version` que tiene) desde el teléfono, y baja a las dos puntas con su
+  // estado (`alsoPull`, «Ver transf.»), la arme quien la arme. `solicitante_id`, `fecha_solicitud`,
+  // `numero`, `coordinador_id`, `monto_deuda`, `decidido_en`, `motivo_rechazo`, `baja_a_1`, `baja_a_2` y el
+  // `precio_unitario` de las líneas los pone el servidor y el push los descarta. Sin dato de ninguna
+  // persona más que ids opacos.
+  SyncSpec.push('transferencia_stock', alsoPull: true),
+  SyncSpec.push('transferencia_item', alsoPull: true),
 
   // push con pull de lo propio (contrato §2, backend-supabase 0124): el pedido a la casa editora que la
   // colportora arma sin conexión (HU-STK-009, #387, todavía sin pantalla). Hoy solo baja: de ahí el
