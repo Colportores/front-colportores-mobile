@@ -448,9 +448,6 @@ void main() {
           expect(f.cantidad, lessThanOrEqualTo(2147483647));
         }
       },
-      skip:
-          'QA #430: combo × componente al máximo da una cantidad de entrega mayor que el integer '
-          'del servidor (el push de esa fila se rechazaría para siempre)',
     );
   });
 

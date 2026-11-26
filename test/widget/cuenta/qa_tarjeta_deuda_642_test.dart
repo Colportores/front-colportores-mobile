@@ -4,15 +4,20 @@
 // guías de accesibilidad por estado, lector de pantalla, casos límite y privacidad. Con
 // `--dart-define=QA_CAPTURAS=true` deja un PNG por estado en `.dart_tool/qa_capturas/` (no se
 // commitean); con `--dart-define=QA_HALLAZGOS=true` corre los tests que documentan un hallazgo.
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:colportores_mobile/core/conectividad/conectividad_providers.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/features/cuenta/domain/entities/deuda_con_la_casa.dart';
+import 'package:colportores_mobile/features/cuenta/presentation/pages/cuenta_page.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/providers/deuda_casa_providers.dart';
+import 'package:colportores_mobile/features/tiles/domain/services/puertos_descarga.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/cuenta_arnes.dart';
@@ -29,7 +34,7 @@ enum _E {
   aFavor('33A·01 a favor'),
   nueva('33A·04 cuenta nueva'),
   leyendo('33A·03 leyendo'),
-  sinConexion('sin lectura · sin conexión'),
+  sinConexion('sin lectura · sin sincronizar'),
   falla('sin lectura · falla'),
   guardadaConFalla('lo guardado + falla'),
   montoEnorme('monto enorme');
@@ -57,7 +62,12 @@ Future<RepositorioDeDeudaControlable> _llevarA(
     tamano: tamano,
     escala: escala,
     boundary: raiz,
-    overrides: overridesDeDeuda(repo),
+    overrides: [
+      ...overridesDeDeuda(repo),
+      monitorConectividadProvider.overrideWithValue(
+        ConexionFija(e == _E.sinConexion ? TipoConexion.sinConexion : TipoConexion.wifi),
+      ),
+    ],
   );
   await tester.pump();
   Future<void> r(DeudaConLaCasa d) async {
@@ -88,11 +98,17 @@ Future<RepositorioDeDeudaControlable> _llevarA(
     case _E.leyendo:
       break;
     case _E.sinConexion:
-      await f(const FailureDeudaSinConexion());
+      repo.sinSincronizar();
+      await tester.pump();
+      await tester.pump();
     case _E.falla:
       await f(const FailureDeudaNoDisponible());
     case _E.guardadaConFalla:
-      await f(const FailureDeudaSinConexion());
+      // Ya había una lectura; al volver a leerla la base falla: queda lo último a la vista.
+      final contenedor = ProviderScope.containerOf(tester.element(find.byType(CuentaPage)));
+      unawaited(contenedor.read(deudaConLaCasaProvider('col-1').notifier).actualizar());
+      await tester.pump();
+      await f(const FailureDeudaNoDisponible());
     case _E.montoEnorme:
       await r(deuda(total: 987654321, haceUnaSemana: 123456789));
   }
@@ -267,11 +283,8 @@ void main() {
       for (var i = 0; i < 8; i++) {
         await tester.pump(const Duration(milliseconds: 60));
       }
-      // Tocar la tarjeta pidió de nuevo; el detalle espera y, si falla otra vez, ofrece «Reintentar».
-      expect(repo.pendientes, 1);
-      repo.fallar();
-      await tester.pump();
-      await tester.pump();
+      // Tocar la tarjeta abre el detalle, que ofrece «Reintentar» (no lee de nuevo por abrirse).
+      expect(repo.pendientes, 0);
       expect(find.text('Reintentar'), findsOneWidget, reason: 'el detalle ofrece la salida');
       await tester.tap(find.text('Reintentar'));
       await tester.pump();

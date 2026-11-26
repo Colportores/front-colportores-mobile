@@ -46,6 +46,7 @@ void main() {
         cedula: any(named: 'cedula'),
         email: any(named: 'email'),
         password: any(named: 'password'),
+        terminosVersion: any(named: 'terminosVersion'),
       ),
     ).thenAnswer((_) async => resultado);
   }
@@ -76,6 +77,7 @@ void main() {
             cedula: '12345678',
             email: 'ana@example.com',
             password: 'Secreto123',
+            terminosVersion: 'v1',
           ),
         ).called(1);
       });
@@ -104,6 +106,7 @@ void main() {
               cedula: '12345678',
               email: email.toLowerCase(),
               password: datosValidos.password,
+              terminosVersion: 'v1',
             ),
           ).called(1);
         });
@@ -142,6 +145,7 @@ void main() {
                   cedula: '12345678',
                   email: emailLimpio,
                   password: datosValidos.password,
+                  terminosVersion: 'v1',
                 ),
               ).called(emails.length);
             },
@@ -191,6 +195,7 @@ void main() {
             cedula: any(named: 'cedula'),
             email: any(named: 'email'),
             password: any(named: 'password'),
+            terminosVersion: any(named: 'terminosVersion'),
           ),
         );
         return (failure as FailureValidacion).campos;
@@ -428,6 +433,7 @@ void main() {
             cedula: any(named: 'cedula'),
             email: any(named: 'email'),
             password: any(named: 'password'),
+            terminosVersion: any(named: 'terminosVersion'),
           ),
         );
       });

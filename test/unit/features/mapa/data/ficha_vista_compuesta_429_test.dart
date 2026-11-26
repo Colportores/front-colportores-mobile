@@ -104,15 +104,7 @@ void main() {
     for (final (id, nombre) in [('pro-1', 'Salud y Hogar'), ('pro-2', 'Nuestros Hijos')]) {
       await db
           .into(db.productos)
-          .insert(
-            ProductosCompanion.insert(
-              id: id,
-              nombre: nombre,
-              tipo: 'LIBRO',
-              createdAt: t0,
-              updatedAt: t0,
-            ),
-          );
+          .insert(ProductosCompanion.insert(id: id, nombre: nombre, createdAt: t0, updatedAt: t0));
     }
     final local = CuentaDePersonaLocalDataSourceDrift(db);
     observar = ObservarFichaDePersonaUseCase(

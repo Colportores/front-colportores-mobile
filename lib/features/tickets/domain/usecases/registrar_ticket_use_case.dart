@@ -123,8 +123,10 @@ final class RegistrarTicketUseCase implements UseCase<TicketRegistrado, Registra
         montoCentavos: params.montoCentavos,
         fecha: fecha,
         numeroAutorizacion: autorizacion,
-        // Los datos de la tarjeta son solo del ticket de tarjeta (el de un depósito no los lleva).
-        tarjetaTipo: params.tipo == TipoDeTicket.cobroTarjeta ? params.tarjetaTipo : null,
+        // Crédito o débito lo lleva también el ticket de un depósito hecho con tarjeta (38A-01, regla
+        // R3 del 26/10: gana el canvas); es opcional ahí. «Cuál» (la marca) es solo del ticket de un
+        // cobro con tarjeta: el canvas de la vista 38 no la dibuja.
+        tarjetaTipo: params.tarjetaTipo,
         tarjetaMarca: params.tipo == TipoDeTicket.cobroTarjeta ? marca : null,
         auditoria: Auditoria(
           createdAt: ahora,

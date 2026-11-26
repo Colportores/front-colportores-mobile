@@ -49,7 +49,12 @@ class VisitaDelDepto extends StatelessWidget {
               style: FilledButton.styleFrom(
                 minimumSize: const Size(48, 52),
                 shape: const StadiumBorder(),
-                textStyle: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
+                // `textStyle` reemplaza al del tema entero: la fuente va a mano (QA #151).
+                textStyle: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               child: const Text(TextosPersonas.registrarVisita, textAlign: TextAlign.center),
             ),

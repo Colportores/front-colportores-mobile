@@ -3,8 +3,7 @@
 // cortados), los escenarios de la HU con su texto literal, la accesibilidad de lo que se anuncia y los
 // casos límite (falla a mitad, acciones superpuestas, lo tipeado que se conserva, atrás en cada estado,
 // reentrada, datos límite, privacidad). Las guías de toque/etiqueta/contraste van aparte
-// (`qa_vista31_devolucion_161_guias_test.dart`). Los hallazgos van con `skip` y se corren con
-// `--dart-define=QA_HALLAZGOS=true`; las capturas con `--dart-define=QA_CAPTURAS=true`.
+// (`qa_vista31_devolucion_161_guias_test.dart`). Las capturas con `--dart-define=QA_CAPTURAS=true`.
 import 'dart:async';
 
 import 'package:colportores_mobile/core/error/failure.dart';
@@ -18,7 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/qa_vista31_devolucion_161_arnes.dart';
 import '../../helpers/venta_ui_falsos.dart';
 
-String _m(int centavos) => FormatoVenta.monto(centavos);
+String _m(int centavos) => FormatoVenta.montoSinQuiebre(centavos);
 
 /// Lleva el formulario a «Seguir» con «Nuestros Hijos» elegido (la venta del canvas, pagó $ 1.000).
 Future<Montaje161> _hastaSeguir(
@@ -708,30 +707,23 @@ void main() {
   });
 
   group('Menores de la revisión visual', () {
-    testWidgets(
-      'los montos no se parten entre «\$» y el número (subtítulo a 360×640)',
-      (tester) async {
-        await montar161(tester, RepoFalso161(ventaCanvas161()));
-        expect(
-          FormatoVenta.monto(450000),
-          contains(' '),
-          reason: '«pagó \$ 4.500 de \$» y «4.500» en dos renglones (captura a01Elegir 360x640 ×1)',
-        );
-      },
-      // skip: issue #161 (QA) — el espacio entre «$» y el número no es sin quiebre: el monto se parte.
-      skip: !conHallazgos161,
-    );
+    testWidgets('los montos no se parten entre «\$» y el número (subtítulo a 360×640)', (
+      tester,
+    ) async {
+      await montar161(tester, RepoFalso161(ventaCanvas161()));
+      expect(
+        FormatoVenta.montoSinQuiebre(450000),
+        contains('\u00A0'),
+        reason: '«pagó \$ 4.500 de \$» y «4.500» en dos renglones (captura a01Elegir 360x640 ×1)',
+      );
+      expect(find.textContaining('pagó ${_m(100000)} de ${_m(450000)}'), findsOneWidget);
+    });
 
-    testWidgets(
-      'la hoja de confirmar no deja «× 1» solo en un renglón a 360×640',
-      (tester) async {
-        await llegar161(tester, Estado161.a04HojaConfirmar);
-        final alto = tester.getSize(find.text('Nuestros Hijos × 1')).height;
-        expect(alto, lessThan(24), reason: 'el valor ocupa $alto dp: 2 renglones');
-      },
-      // skip: issue #161 (QA) — a 360 dp la columna del valor es angosta y parte «Nuestros Hijos × 1».
-      skip: !conHallazgos161,
-    );
+    testWidgets('la hoja de confirmar no deja «× 1» solo en un renglón a 360×640', (tester) async {
+      await llegar161(tester, Estado161.a04HojaConfirmar);
+      final alto = tester.getSize(find.text('Nuestros Hijos × 1')).height;
+      expect(alto, lessThan(24), reason: 'el valor ocupa $alto dp: 2 renglones');
+    });
   });
 
   group('Privacidad', () {

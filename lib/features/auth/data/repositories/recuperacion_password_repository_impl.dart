@@ -34,14 +34,21 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
   /// Solo en memoria, y se suelta con cualquier respuesta del servidor.
   String? _enDuda;
 
-  /// El último pedido de cambio que sigue en el aire (aunque ya haya pasado el [tope]): un cambio
-  /// nuevo lo espera antes de mandarse, así uno que llega tarde nunca pisa a otro posterior. No
-  /// termina con error: solo avisa que terminó.
+  /// El turno del último pedido de cambio, que sigue en la fila hasta que su pedido contesta
+  /// (aunque ya haya pasado el [tope]): un cambio nuevo ocupa la fila al llegar y espera al turno
+  /// anterior antes de mandarse, así dos que esperan al mismo pedido varado salen de a uno, en
+  /// orden, y uno que llega tarde nunca pisa a otro posterior. No termina con error: solo avisa
+  /// que terminó.
   Future<void>? _enVuelo;
 
-  /// La cuenta cuyas otras sesiones quedaron sin cerrar, o `null` si no hay nada pendiente. Atada
-  /// a la cuenta para que el login de otra persona en el mismo teléfono no la consuma.
-  String? _otrasSinCerrarDe;
+  /// Las cuentas cuyas otras sesiones quedaron sin cerrar. Atadas a la cuenta para que el login de
+  /// otra persona en el mismo teléfono no la consuma, y un conjunto para que dos cambios seguidos
+  /// de cuentas distintas (sin login en el medio) no se pisen la marca (QA de #556).
+  final Set<String> _otrasSinCerrarDe = {};
+
+  /// La cuenta del último cambio de contraseña: de ella habla [otrasSesionesSinCerrar], que
+  /// responde la pantalla de éxito de ese cambio.
+  String? _cuentaDelUltimoCambio;
 
   /// Supabase manda el mismo error para un enlace vencido y para uno ya usado: la app no adivina
   /// cuál de los dos es, y los dos salen como [EnlaceRecuperacion.vencido].
@@ -53,15 +60,22 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
 
   @override
   Future<Either<Failure, Unit>> actualizarPassword(String nueva) async {
-    await _esperarAlPedidoAnterior();
+    // El turno se ocupa antes de esperar, sin pasar por un `await`: el que llega después espera
+    // a este, no al anterior.
+    final turno = Completer<void>();
+    final anterior = _enVuelo;
+    _enVuelo = turno.future;
+    var enElAire = false;
     try {
+      await _esperarA(anterior);
       final pedido = _remote.actualizarPassword(nueva);
-      late final Future<void> aviso;
-      aviso = pedido.then<void>(
-        (_) => _soltarEnVuelo(aviso),
-        onError: (Object _, StackTrace _) => _soltarEnVuelo(aviso),
+      enElAire = true;
+      unawaited(
+        pedido.then<void>(
+          (_) => _soltarTurno(turno),
+          onError: (Object _, StackTrace _) => _soltarTurno(turno),
+        ),
       );
-      _enVuelo = aviso;
       await pedido.timeout(tope);
       _enDuda = null;
       _registrarCambio();
@@ -98,6 +112,9 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
         st,
       );
       return Left(FailureInesperado(causa: e));
+    } finally {
+      // Si el pedido nunca llegó a salir, el turno no puede quedar tomado.
+      if (!enElAire) _soltarTurno(turno);
     }
   }
 
@@ -105,8 +122,7 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
   /// pedidos en el aire pueden llegar al servidor en el orden contrario y dejar la contraseña que
   /// la persona ya no quiere (QA de #542). Si el anterior no contesta ni así, el nuevo sale igual:
   /// la persona no puede quedar sin poder guardar.
-  Future<void> _esperarAlPedidoAnterior() async {
-    final anterior = _enVuelo;
+  Future<void> _esperarA(Future<void>? anterior) async {
     if (anterior == null) return;
     try {
       await anterior.timeout(tope);
@@ -119,8 +135,9 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
     }
   }
 
-  void _soltarEnVuelo(Future<void> aviso) {
-    if (identical(_enVuelo, aviso)) _enVuelo = null;
+  void _soltarTurno(Completer<void> turno) {
+    if (identical(_enVuelo, turno.future)) _enVuelo = null;
+    if (!turno.isCompleted) turno.complete();
   }
 
   // `audit_log` todavía no existe: el evento de la HU queda en el log (como `local_data_wipe`).
@@ -128,7 +145,8 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
       _log.info(LogModulo.auth, 'password_reset_completed', 'contraseña actualizada');
 
   @override
-  bool get otrasSesionesSinCerrar => _otrasSinCerrarDe != null;
+  bool get otrasSesionesSinCerrar =>
+      _cuentaDelUltimoCambio != null && _otrasSinCerrarDe.contains(_cuentaDelUltimoCambio);
 
   @override
   Future<Either<Failure, Unit>> cerrarTodasLasSesiones() async {
@@ -141,19 +159,26 @@ final class RecuperacionPasswordRepositoryImpl implements RecuperacionPasswordRe
     );
     // Si no contestó, los otros teléfonos pueden seguir adentro: queda para decírselo a la persona
     // y reintentar al próximo login (decisión del 29/10 en #542).
-    _otrasSinCerrarDe = resultado.isLeft() ? cuenta : null;
+    _cuentaDelUltimoCambio = cuenta;
+    if (cuenta != null) {
+      if (resultado.isLeft()) {
+        _otrasSinCerrarDe.add(cuenta);
+      } else {
+        _otrasSinCerrarDe.remove(cuenta);
+      }
+    }
     return resultado;
   }
 
   @override
   Future<Either<Failure, Unit>> cerrarOtrasSesionesPendientes(String usuarioId) async {
-    if (_otrasSinCerrarDe != usuarioId) return const Right(unit);
+    if (!_otrasSinCerrarDe.contains(usuarioId)) return const Right(unit);
     final resultado = await _sinMostrar(
       'RECUPERACION_REVOCAR_OTRAS_FAIL',
       'no se pudieron revocar las otras sesiones al volver a entrar',
       _remote.cerrarLasOtrasSesiones,
     );
-    if (resultado.isRight() && _otrasSinCerrarDe == usuarioId) _otrasSinCerrarDe = null;
+    if (resultado.isRight()) _otrasSinCerrarDe.remove(usuarioId);
     return resultado;
   }
 

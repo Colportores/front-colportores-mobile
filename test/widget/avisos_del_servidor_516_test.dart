@@ -3,10 +3,12 @@
 import 'dart:async';
 
 import 'package:colportores_mobile/core/notificaciones/permiso_notificaciones_sistema.dart';
+import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/notificaciones/domain/entities/avisos_del_servidor.dart';
 import 'package:colportores_mobile/features/notificaciones/domain/repositories/avisos_del_servidor_repository.dart';
 import 'package:colportores_mobile/features/notificaciones/presentation/pages/notificaciones_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/notificaciones_arnes.dart';
@@ -25,9 +27,13 @@ final _reintentarGuardar = find.byKey(const Key('avisos_error_reintentar'));
 final _errorLeer = find.byKey(const Key('avisos_error_leer'));
 final _reintentarLeer = find.byKey(const Key('avisos_reintentar_leer'));
 final _cargando = find.byKey(const Key('avisos_cargando'));
+final _flecha = find.byKey(const Key('hora_del_aviso_flecha'));
 
 const _textoError = 'No pudimos guardar el cambio. El interruptor volvió a como estaba.';
-const _textoErrorHora = 'No pudimos guardar la hora. Volvió a como estaba.';
+const _textoErrorHoraCuotas =
+    'No pudimos guardar la hora del aviso de cuotas. Volvió a como estaba.';
+const _textoErrorHoraAgenda =
+    'No pudimos guardar la hora del aviso de las visitas de mañana. Volvió a como estaba.';
 const _textoErrorVarios = 'No pudimos guardar los cambios. Volvieron a como estaban.';
 const _textoSinConexion =
     'Sin conexión: no pudimos guardar el cambio. Volvió a como estaba. Probá de nuevo cuando '
@@ -46,6 +52,41 @@ Future<void> _tocar(WidgetTester tester, Finder f) async {
 
 Future<void> _abrir(WidgetTester tester, Telefono telefono) =>
     abrirPantalla(tester, telefono, const NotificacionesPage());
+
+/// La pantalla abierta como en la app: empujada sobre otra, con el `ProviderScope` de la app que sigue
+/// vivo cuando se sale (a diferencia de [_abrir], donde salir es tirar todo).
+Future<void> _abrirEmpujada(WidgetTester tester, Telefono telefono) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: telefono.overrides,
+      child: MaterialApp(
+        theme: temaClaro(),
+        home: Builder(
+          builder: (contexto) => Scaffold(
+            body: TextButton(
+              key: const Key('ir_a_notificaciones'),
+              onPressed: () => unawaited(
+                Navigator.of(
+                  contexto,
+                ).push(MaterialPageRoute<void>(builder: (_) => const NotificacionesPage())),
+              ),
+              child: const Text('Ir'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.byKey(const Key('ir_a_notificaciones')));
+  await tester.pumpAndSettle();
+}
+
+/// Sale de la pantalla con la flecha de atrás.
+Future<void> _salir(WidgetTester tester) async {
+  await _tocar(tester, find.byKey(const Key('notificaciones_atras')));
+  await tester.pumpAndSettle();
+  expect(find.byType(NotificacionesPage), findsNothing);
+}
 
 /// Elige [hora]:[minuto] en el selector del sistema (escribiéndola) y confirma.
 Future<void> _elegirHora(WidgetTester tester, int hora, int minuto) async {
@@ -293,6 +334,59 @@ void main() {
       semantica.dispose();
     });
 
+    for (final (nombre, tamano) in [
+      ('360 dp', const Size(360, 640)),
+      ('412 dp', const Size(412, 915)),
+    ]) {
+      for (final escala in [1.0, 2.0]) {
+        testWidgets(
+          'la hora se ve como un control: «›» a la derecha, sin cortarse ($nombre, texto ×$escala)',
+          (tester) async {
+            fijarTamano(tester, tamano: tamano, texto: escala);
+            final telefono = _activado();
+            telefono.avisos.avisos = const AvisosDelServidor(horaCuota: HoraDelAviso(23, 59));
+            await _abrir(tester, telefono);
+
+            for (final (fila, valor) in [
+              (_horaCuota, _horaCuotaValor),
+              (_horaAgenda, _horaAgendaValor),
+            ]) {
+              await tester.ensureVisible(fila);
+              await tester.pump();
+              expect(tester.takeException(), isNull);
+              final flecha = find.descendant(of: fila, matching: _flecha);
+              expect(flecha, findsOneWidget);
+              // El par «hora ›» queda pegado al borde derecho de la fila (16 dp de margen) y la
+              // flecha va después de la hora.
+              expect(
+                tester.getTopRight(flecha).dx,
+                closeTo(tester.getTopRight(fila).dx - 16, 0.5),
+                reason: 'la flecha no está a la derecha',
+              );
+              expect(tester.getTopRight(valor).dx, lessThanOrEqualTo(tester.getTopLeft(flecha).dx));
+              // Nada se sale de la fila ni de la pantalla.
+              expect(tester.getTopLeft(valor).dx, greaterThanOrEqualTo(tester.getTopLeft(fila).dx));
+              expect(tester.getTopRight(flecha).dx, lessThanOrEqualTo(tamano.width));
+              expect(tester.getSize(fila).height, greaterThanOrEqualTo(48));
+            }
+          },
+        );
+      }
+    }
+
+    testWidgets('con Cuotas apagado la flecha sigue a la vista (la hora queda sin tocar)', (
+      tester,
+    ) async {
+      final telefono = _activado();
+      telefono.avisos.avisos = const AvisosDelServidor(cuotas: false);
+      await _abrir(tester, telefono);
+
+      await tester.ensureVisible(_horaCuota);
+      await tester.pump();
+
+      expect(find.descendant(of: _horaCuota, matching: _flecha), findsOneWidget);
+    });
+
     testWidgets('no se pierde ninguna de dos horas cambiadas una tras otra', (tester) async {
       final telefono = _activado();
       await _abrir(tester, telefono);
@@ -327,6 +421,66 @@ void main() {
       expect(telefono.preferencias.preferencias.activados, isFalse);
       expect(telefono.avisos.avisos.agenda, isFalse);
       expect(_errorGuardar, findsNothing);
+    });
+
+    testWidgets(
+      'apagar el interruptor y salir enseguida: el servidor igual queda con la copia nueva',
+      (tester) async {
+        final telefono = _activado();
+        await _abrirEmpujada(tester, telefono);
+        final demora = Completer<void>();
+        telefono.preferencias.guardadoDemorado = demora;
+
+        await _tocar(tester, _recordatorios);
+        await tester.pump();
+        // Sale de la pantalla antes de que el teléfono termine de guardar.
+        await _salir(tester);
+        expect(telefono.avisos.avisos.agenda, isTrue, reason: 'todavía no se guardó nada');
+
+        telefono.preferencias.guardadoDemorado = null;
+        demora.complete();
+        await tester.pumpAndSettle();
+
+        expect(telefono.preferencias.preferencias.activados, isFalse);
+        expect(telefono.avisos.avisos.agenda, isFalse, reason: 'la copia del servidor se corrigió');
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'apagar y volver a prender mientras guarda, y salir: el servidor queda con lo último',
+      (tester) async {
+        final telefono = _activado();
+        await _abrirEmpujada(tester, telefono);
+        final demora = Completer<void>();
+        telefono.preferencias.guardadoDemorado = demora;
+
+        await _tocar(tester, _recordatorios);
+        await tester.pump();
+        await _tocar(tester, _recordatorios);
+        await tester.pump();
+        await _salir(tester);
+        telefono.preferencias.guardadoDemorado = null;
+        demora.complete();
+        await tester.pumpAndSettle();
+
+        expect(telefono.preferencias.preferencias.activados, isTrue);
+        expect(telefono.avisos.avisos.agenda, isTrue);
+      },
+    );
+
+    testWidgets('si el teléfono no puede guardar el interruptor, el servidor no cambia', (
+      tester,
+    ) async {
+      final telefono = _activado();
+      await _abrir(tester, telefono);
+      telefono.preferencias.fallaAlGuardar = true;
+
+      await _tocar(tester, _recordatorios);
+      await tester.pumpAndSettle();
+
+      expect(telefono.preferencias.preferencias.activados, isTrue);
+      expect(telefono.avisos.avisos.agenda, isTrue);
     });
 
     testWidgets('sin conexión el interruptor del teléfono igual se apaga y no sale ningún error', (
@@ -482,9 +636,48 @@ void main() {
       await tester.pumpAndSettle();
       await _elegirHora(tester, 7, 0);
 
-      expect(find.text(_textoErrorHora), findsOneWidget);
+      expect(find.text(_textoErrorHoraCuotas), findsOneWidget);
       expect(tester.widget<Text>(_horaCuotaValor).data, '09:00');
     });
+
+    testWidgets(
+      'si falla la hora de las visitas de mañana, el aviso lo dice y no habla de cuotas',
+      (tester) async {
+        final telefono = _activado();
+        await _abrir(tester, telefono);
+        telefono.avisos.fallaAlGuardar = const AvisosServidorException();
+
+        await _tocar(tester, _horaAgenda);
+        await tester.pumpAndSettle();
+        await _elegirHora(tester, 21, 0);
+
+        expect(find.text(_textoErrorHoraAgenda), findsOneWidget);
+        expect(find.text(_textoErrorHoraCuotas), findsNothing);
+        expect(tester.widget<Text>(_horaAgendaValor).data, '20:00');
+        // «Reintentar» vuelve a pedir esa hora y, si se guarda, el aviso se va.
+        telefono.avisos.fallaAlGuardar = null;
+        await _tocar(tester, _reintentarGuardar);
+        await tester.pumpAndSettle();
+        expect(_errorGuardar, findsNothing);
+        expect(telefono.avisos.avisos.horaAgenda, const HoraDelAviso(21, 0));
+      },
+    );
+
+    testWidgets(
+      'sin conexión al guardar una hora, el aviso es el de la conexión (no el de la hora)',
+      (tester) async {
+        final telefono = _activado();
+        await _abrir(tester, telefono);
+        telefono.avisos.fallaAlGuardar = const AvisosSinConexionException();
+
+        await _tocar(tester, _horaCuota);
+        await tester.pumpAndSettle();
+        await _elegirHora(tester, 7, 0);
+
+        expect(find.text(_textoSinConexion), findsOneWidget);
+        expect(find.text(_textoErrorHoraCuotas), findsNothing);
+      },
+    );
 
     testWidgets('varios cambios juntos que fallan: «Volvieron a como estaban»', (tester) async {
       final telefono = _activado();

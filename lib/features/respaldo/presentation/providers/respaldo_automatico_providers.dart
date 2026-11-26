@@ -139,7 +139,7 @@ final respaldoNocturnoProgramadoProvider = Provider<void>((ref) {
     switch (estado.value) {
       case DriveConectada() || DriveSinEspacio():
         unawaited(programador.programar());
-      case DriveSinConectar() || DrivePermisoRevocado():
+      case DriveSinConectar() || DrivePermisoRevocado() || DriveCuentaPorConfirmar():
         unawaited(programador.cancelar());
       case null:
         // Todavía leyendo (o no se pudo leer): no se cambia lo que haya.

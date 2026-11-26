@@ -48,7 +48,6 @@ void main() {
             ProductosCompanion.insert(
               id: 'pro-1',
               nombre: 'Salud y Hogar',
-              tipo: 'LIBRO',
               createdAt: t0,
               updatedAt: t0,
             ),

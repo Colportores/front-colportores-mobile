@@ -198,6 +198,15 @@ enum JobOutcome {
   /// **Es un éxito idempotente, no un error** (§7): también → `DONE`.
   duplicate,
 
+  /// El servidor lo juntó con otro trabajo idéntico que ya tenía (§2.3, «Venta
+  /// tarde», migración 0064): un vínculo `espacio_persona` que llega tarde al
+  /// espacio fundido donde esa persona ya tiene el suyo. No se insertó una fila
+  /// más, pero el servidor **ya lo aplicó**, y lo que lo nombra (visitas, agendas
+  /// y ventas) queda en el que sobrevivió ([JobResult.mergedInto]). **Es un
+  /// éxito, no un error**: también → `DONE`. Tratarlo como [invalid] mandaba a
+  /// la cola de error un trabajo que el servidor ya tenía.
+  merged,
+
   /// Con [JobResult.serverRow]: el servidor tiene una `sync_version` más
   /// nueva. El motor resuelve por LWW (§5.4) y el job no queda `INVALID`.
   ///
@@ -227,6 +236,7 @@ class JobResult {
     this.message = '',
     this.constraint = '',
     this.dependsOn,
+    this.mergedInto,
   });
 
   final String clientOpId;
@@ -252,6 +262,11 @@ class JobResult {
   /// el id de la fila en espera de la que cuelga este job. Sin [serverRow].
   final String? dependsOn;
 
+  /// Solo en [JobOutcome.merged] (§6.1): el id de la fila que quedó en el
+  /// servidor, la que absorbió a la de este job. Aditivo: un servidor que no lo
+  /// manda lo deja en `null`.
+  final String? mergedInto;
+
   @override
   String toString() => '$clientOpId → ${outcome.name}'
       '${code.isEmpty ? '' : ' ($code)'}';
@@ -259,9 +274,17 @@ class JobResult {
 
 /// Respuesta de un push. Aceptación por job: un `INVALID` no tumba el lote.
 class PushResult {
-  const PushResult({required this.serverTime, required this.results});
+  const PushResult({
+    required this.serverTime,
+    required this.results,
+    this.serverTimeEsDelServidor = true,
+  });
 
   final DateTime serverTime;
+
+  /// `false` si el servidor no mandó `server_time` o mandó uno ilegible, y [serverTime] es el
+  /// reloj del equipo puesto de relleno: no sirve como hora del servidor.
+  final bool serverTimeEsDelServidor;
   final List<JobResult> results;
 
   Iterable<JobResult> byOutcome(JobOutcome o) =>
@@ -270,7 +293,9 @@ class PushResult {
   /// Los que el motor puede marcar `DONE` (§5.1).
   Iterable<String> get settled => results
       .where((r) =>
-          r.outcome == JobOutcome.accepted || r.outcome == JobOutcome.duplicate)
+          r.outcome == JobOutcome.accepted ||
+          r.outcome == JobOutcome.duplicate ||
+          r.outcome == JobOutcome.merged)
       .map((r) => r.clientOpId);
 }
 
@@ -283,9 +308,14 @@ class PullDelta {
     required this.rows,
     this.outOfArea = const {},
     this.areaReset = const {},
+    this.serverTimeEsDelServidor = true,
   });
 
   final DateTime serverTime;
+
+  /// `false` si el servidor no mandó `server_time` o mandó uno ilegible, y [serverTime] es el
+  /// reloj del equipo puesto de relleno: no sirve como hora del servidor.
+  final bool serverTimeEsDelServidor;
 
   /// Opaco para el motor: se guarda tal cual y se devuelve tal cual.
   ///

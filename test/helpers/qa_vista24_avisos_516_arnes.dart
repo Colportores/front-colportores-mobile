@@ -42,7 +42,10 @@ final atras736 = find.byKey(const Key('notificaciones_atras'));
 final pagina736 = find.byKey(const Key('notificaciones_pagina'));
 
 const textoError736 = 'No pudimos guardar el cambio. El interruptor volvió a como estaba.';
-const textoErrorHora736 = 'No pudimos guardar la hora. Volvió a como estaba.';
+const textoErrorHoraCuotas736 =
+    'No pudimos guardar la hora del aviso de cuotas. Volvió a como estaba.';
+const textoErrorHoraAgenda736 =
+    'No pudimos guardar la hora del aviso de las visitas de mañana. Volvió a como estaba.';
 const textoErrorVarios736 = 'No pudimos guardar los cambios. Volvieron a como estaban.';
 const textoSinConexion736 =
     'Sin conexión: no pudimos guardar el cambio. Volvió a como estaba. Probá de nuevo cuando '

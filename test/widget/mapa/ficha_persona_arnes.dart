@@ -142,6 +142,9 @@ final class MundoFicha {
   /// Las veces que se tocó «Editar persona» y con qué persona.
   final ediciones = <String>[];
 
+  /// El espacio con el que se abrió cada edición de [ediciones].
+  final espaciosDeEdicion = <String>[];
+
   /// Los destinos de «Registrar visita».
   final visitas = <ContextoDeVisitaFicha>[];
 
@@ -236,8 +239,9 @@ Future<void> montarFicha(
         relojPersonaProvider.overrideWithValue(() => ahoraFicha),
         generadorIdPersonaProvider.overrideWithValue(() => 'nota-nueva-${++contador}'),
         if (mundo.conEdicion)
-          editarPersonaDesdeLaFichaProvider.overrideWithValue((id) async {
-            mundo.ediciones.add(id);
+          editarPersonaDesdeLaFichaProvider.overrideWithValue((c) async {
+            mundo.ediciones.add(c.personaId);
+            mundo.espaciosDeEdicion.add(c.espacioId);
             await mundo.compuertaEdicion?.future;
             return null;
           }),

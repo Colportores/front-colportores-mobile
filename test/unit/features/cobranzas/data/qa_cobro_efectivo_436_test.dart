@@ -679,15 +679,19 @@ void main() {
   });
 
   group('sync', () {
-    test('`cobranza` sube como escritura crítica, después de la venta y de sus ítems', () {
-      final entidades = [for (final s in specsDeLaApp) s.entity];
+    test(
+      '`cobranza` sube como escritura crítica, después de la venta y de sus ítems, y baja lo propio '
+      '(la anulación de la coordinación, #756)',
+      () {
+        final entidades = [for (final s in specsDeLaApp) s.entity];
 
-      expect(entidades, containsAllInOrder(['venta', 'venta_item', 'cobranza']));
-      final spec = specsDeLaApp.firstWhere((s) => s.entity == 'cobranza');
-      expect(spec.critical, isTrue);
-      expect(spec.alsoPull, isFalse);
-      expect(spec.pullable, isFalse);
-      expect(spec.pk, 'id');
-    });
+        expect(entidades, containsAllInOrder(['venta', 'venta_item', 'cobranza']));
+        final spec = specsDeLaApp.firstWhere((s) => s.entity == 'cobranza');
+        expect(spec.critical, isTrue);
+        expect(spec.alsoPull, isTrue);
+        expect(spec.pullable, isTrue);
+        expect(spec.pk, 'id');
+      },
+    );
   });
 }

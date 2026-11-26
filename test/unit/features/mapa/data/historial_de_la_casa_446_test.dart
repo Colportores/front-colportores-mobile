@@ -190,7 +190,6 @@ void main() {
           ProductosCompanion.insert(
             id: 'pro-1',
             nombre: 'Salud y Hogar',
-            tipo: 'LIBRO',
             createdAt: t0,
             updatedAt: t0,
           ),
@@ -449,15 +448,7 @@ void main() {
     for (final (id, nombre) in [('pro-2', 'Nuestros Hijos'), ('pro-3', 'Vida Feliz')]) {
       await db
           .into(db.productos)
-          .insert(
-            ProductosCompanion.insert(
-              id: id,
-              nombre: nombre,
-              tipo: 'LIBRO',
-              createdAt: t0,
-              updatedAt: t0,
-            ),
-          );
+          .insert(ProductosCompanion.insert(id: id, nombre: nombre, createdAt: t0, updatedAt: t0));
     }
     await venta('ven-1', DateTime.utc(2026, 10, 12));
     await renglon(

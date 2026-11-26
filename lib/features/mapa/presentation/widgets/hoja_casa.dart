@@ -162,8 +162,9 @@ class HojaCasa extends ConsumerStatefulWidget {
 
 class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspacio {
   /// Hay una acción abierta. Es un campo y no solo estado de la UI: la guarda tiene que cortar el
-  /// segundo toque aunque llegue antes de que se vuelva a dibujar.
-  bool _enCurso = false;
+  /// segundo toque aunque llegue antes de que se vuelva a dibujar. La comparten los botones y las filas
+  /// de «Visitas agendadas»: un solo destino abierto a la vez (QA #491).
+  final _guarda = GuardaDeDestino();
 
   /// Qué falló en la última acción, para decirlo en la hoja; `null` si nada falló.
   String? _falla;
@@ -242,8 +243,8 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
   void _volverALosDeptos() => _cambiarDePaso(() => _depto = null);
 
   Future<void> _correr(FutureOr<void> Function() accion, String textoSiFalla) async {
-    if (_enCurso) return;
-    _enCurso = true;
+    if (_guarda.ocupada) return;
+    _guarda.ocupada = true;
     setState(() {
       _falla = null;
       _guardada = null;
@@ -254,7 +255,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
       // El detalle del error puede llevar datos de la casa: se avisa en la hoja y no se loguea.
       if (mounted) _falla = textoSiFalla;
     } finally {
-      _enCurso = false;
+      _guarda.ocupada = false;
       if (mounted) {
         setState(() {});
         if (_falla != null) _mostrarLaFalla();
@@ -360,7 +361,8 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
           ? _Arriba(
               item: item,
               contexto: datos,
-              ocupado: _enCurso,
+              ocupado: _guarda.ocupada,
+              guarda: _guarda,
               falla: _falla,
               claveFalla: _claveFalla,
               guardada: _guardada,
@@ -384,7 +386,8 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
           ? _ResumenDelDepto(
               item: item,
               contexto: datos,
-              ocupado: _enCurso,
+              ocupado: _guarda.ocupada,
+              guarda: _guarda,
               falla: _falla,
               claveFalla: _claveFalla,
               guardada: _guardada,
@@ -403,7 +406,8 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
           : _Resumen(
               item: item,
               contexto: datos,
-              ocupado: _enCurso,
+              ocupado: _guarda.ocupada,
+              guarda: _guarda,
               falla: _falla,
               claveFalla: _claveFalla,
               alReactivar: widget.alReactivar,
@@ -485,7 +489,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
             resumenes: resumenes.hasError ? null : resumenes.value,
             paso: paso,
             ahora: widget.ahora,
-            ocupado: _enCurso,
+            ocupado: _guarda.ocupada,
             alElegir: _elegirDepto(),
             alAgregar: _agregarDepto(),
             alSeguir: paso == PasoDeptos.agregando
@@ -541,7 +545,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
     if (_paso == PasoDeptos.existente) {
       return (espacio) {
         // Una acción a la vez: con otra abierta, el toque no cambia la hoja de abajo.
-        if (_enCurso) return;
+        if (_guarda.ocupada) return;
         _cambiarDePaso(() => _depto = espacio);
       };
     }
@@ -712,7 +716,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
         espacioId: espacioId,
         colportorId: colportorId,
       );
-      if (nueva != null && mounted) _guardada = TextosPersonas.guardada(nueva.nombre);
+      if (nueva != null && mounted) _guardada = TextosPersonas.guardada(nueva.persona.nombre);
     }, TextosPestanasHojaCasa.noPudimosAbrirAlta);
   }
 
@@ -908,6 +912,7 @@ class _Resumen extends ConsumerWidget {
     required this.item,
     required this.contexto,
     required this.ocupado,
+    required this.guarda,
     required this.falla,
     required this.claveFalla,
     required this.alReactivar,
@@ -922,6 +927,7 @@ class _Resumen extends ConsumerWidget {
   final ItemListaUbicacion item;
   final ContextoDeLaCasa contexto;
   final bool ocupado;
+  final GuardaDeDestino guarda;
   final String? falla;
   final GlobalKey claveFalla;
   final FutureOr<void> Function()? alReactivar;
@@ -976,6 +982,7 @@ class _Resumen extends ConsumerWidget {
             colportorId: colportorId!,
             ubicacionId: item.ubicacion.id,
             ahora: ahora,
+            guarda: guarda,
           ),
         if (falla != null)
           AvisoAlta(key: claveFalla, color: ColoresAlta.rojo, glyph: '!', texto: falla!),
@@ -994,6 +1001,7 @@ class _Arriba extends ConsumerWidget {
     required this.item,
     required this.contexto,
     required this.ocupado,
+    required this.guarda,
     required this.falla,
     required this.claveFalla,
     required this.guardada,
@@ -1017,6 +1025,7 @@ class _Arriba extends ConsumerWidget {
   final ItemListaUbicacion item;
   final ContextoDeLaCasa contexto;
   final bool ocupado;
+  final GuardaDeDestino guarda;
   final String? falla;
   final GlobalKey claveFalla;
   final String? guardada;
@@ -1073,6 +1082,7 @@ class _Arriba extends ConsumerWidget {
             colportorId: colportorId!,
             ubicacionId: item.ubicacion.id,
             ahora: ahora,
+            guarda: guarda,
             espacioId: agendasDelEspacio,
           ),
         if (alRegistrarVisita != null)
@@ -1121,6 +1131,7 @@ class _ResumenDelDepto extends ConsumerWidget {
     required this.item,
     required this.contexto,
     required this.ocupado,
+    required this.guarda,
     required this.falla,
     required this.claveFalla,
     required this.guardada,
@@ -1143,6 +1154,7 @@ class _ResumenDelDepto extends ConsumerWidget {
   final ItemListaUbicacion item;
   final ContextoDeLaCasa contexto;
   final bool ocupado;
+  final GuardaDeDestino guarda;
   final String? falla;
   final GlobalKey claveFalla;
   final String? guardada;
@@ -1226,6 +1238,7 @@ class _ResumenDelDepto extends ConsumerWidget {
             colportorId: colportorId!,
             ubicacionId: item.ubicacion.id,
             ahora: ahora,
+            guarda: guarda,
             espacioId: agendasDelEspacio,
           ),
         if (alAgendar != null) BotonAgendarDeLaCasa(alPresionar: alAgendar!, ocupado: ocupado),

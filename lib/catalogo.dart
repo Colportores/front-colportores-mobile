@@ -44,8 +44,12 @@ final specsDeLaApp = <SyncSpec>[
   // servidor y el push la descarta. Sin `alsoPull`: un solo escritor.
   SyncSpec.push('entrega'),
   // El cobro (HU-COB-001, #436): sube después de la venta que cobra, sin dato del cliente (`venta_id`
-  // es un id opaco, R-CB03). Es una escritura crítica (contrato §2). Sin `alsoPull`: un solo escritor.
-  SyncSpec.push('cobranza', critical: true),
+  // es un id opaco, R-CB03). Es una escritura crítica (contrato §2). `alsoPull` (decisión de Cristian,
+  // 23/11, «Anul. al tel», backend-supabase#306, migración 0203): el servidor devuelve los cobros
+  // propios con `anulado_at`, `motivo_anulacion` y `anulado_por`, para que el cobro que anuló la
+  // coordinación desde el panel llegue anulado al teléfono (HU-COB-006, vista 30B-05). El detalle de
+  // «Otro» no baja. `anulado_por` no se guarda: la tabla local no lo tiene.
+  SyncSpec.push('cobranza', critical: true, alsoPull: true),
   // La devolución de una venta (HU-VEN-004, #161; backend-supabase 0108, 0136 y 0142): sube después de la
   // venta y sus ítems, que nombra, sin dato del cliente (`venta_id` y los ids de producto y de renglón son
   // opacos). El `motivo` es la única prosa que sube (decisión de Cristian, 27/10). `colportor_id` lo pone
@@ -70,6 +74,13 @@ final specsDeLaApp = <SyncSpec>[
   // La cache del color de la casa (ADR-003): sube sin PII, con una fila por ubicación (su clave es
   // `ubicacion_id`, no `id`). Baja con las casas de la ciudad, con el mismo alcance (§2.1, #181).
   SyncSpec.push('house_status', pk: 'ubicacion_id', alsoPull: true),
+
+  // push con pull de lo propio (contrato §2, backend-supabase 0124): el pedido a la casa editora que la
+  // colportora arma sin conexión (HU-STK-009, #387, todavía sin pantalla). Hoy solo baja: de ahí el
+  // teléfono reparte lo pagado entre los pedidos con saldo (#671). El pedido sube antes que sus líneas
+  // (el orden de los specs es el del lote, §3: va antes que los `pull`).
+  SyncSpec.push('pedido_casa_editora', alsoPull: true),
+  SyncSpec.push('pedido_item', alsoPull: true),
 
   // pull: el mapa de la campaña, por el canal de catálogo (§2). La app nunca las escribe.
   SyncSpec.pull('campania_ciudad'),
@@ -109,6 +120,13 @@ final specsDeLaApp = <SyncSpec>[
   // el servidor todavía no la publica (backend-supabase 0145), el pull ignora la entidad.
   SyncSpec.pull('stock'),
 
+  // pull: la deuda con la casa editora (HU-CTA-002, #671; backend-supabase 0179, #254). La cuenta de la
+  // colportora y el historial de su deuda son réplicas de solo lectura, cada persona con las filas suyas:
+  // el teléfono calcula con ellas la deuda y la variación semanal, sin consultas a cada rato (decisión de
+  // Cristian, 05/11). Sin `realtime`: baja en el ciclo.
+  SyncSpec.pull('cuenta_colportor'),
+  SyncSpec.pull('cuenta_deuda_historial'),
+
   // local: jamás sale del teléfono por sync (Ley 18.331). Solo el backup E2E.
   SyncSpec.local('audit_log'),
   // La copia local del nombre del usuario (#243): viene de Auth, no del sync.
@@ -119,9 +137,6 @@ final specsDeLaApp = <SyncSpec>[
   // El historial del centro de notificaciones (HU-NOT-005): avisos de este teléfono, con la
   // dirección de la visita en el texto; nunca sube.
   SyncSpec.local('notificacion_historial'),
-  // La última deuda con la casa editora que dijo el servidor, con su hora (HU-CTA-002): se vuelve a
-  // bajar, así que tampoco entra al backup.
-  SyncSpec.local('deuda_casa_cache'),
   // La copia comprimida de la foto de cada ticket y cómo va su subida (HU-COB-007, S41): archivos de este
   // teléfono, que el colportor puede borrar. No sube por el motor.
   SyncSpec.local('ticket_foto_local'),
@@ -146,13 +161,10 @@ final entidadesQueEscribeElMotor = {
 /// servidor. Las `push` (lo que escribió el colportor, y puede no haber subido todavía) y las
 /// `local` (personas, notas, historial: solo viven en el teléfono), más la cola de sync, porque los
 /// jobs encolados al momento del backup tienen que volver a existir (contrato §7, fase 1). Las
-/// réplicas de solo lectura (`pull`) las reconstruye el pull, `sesion_usuario` es de la sesión de
-/// este teléfono y `deuda_casa_cache` se vuelve a bajar del servidor.
+/// réplicas de solo lectura (`pull`) las reconstruye el pull y `sesion_usuario` es de la sesión de
+/// este teléfono.
 final entidadesDelBackup = {
   for (final s in specsDeLaApp)
-    if (s.policy != SyncPolicy.pull &&
-        s.entity != 'sesion_usuario' &&
-        s.entity != 'deuda_casa_cache')
-      s.entity,
+    if (s.policy != SyncPolicy.pull && s.entity != 'sesion_usuario') s.entity,
   'sync_queue',
 };

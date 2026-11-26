@@ -44,6 +44,7 @@ class _RemoteConDemora with RemotoSinSesionDeslizante implements AuthRemoteDataS
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 50));
     return _interno.registrar(
@@ -52,6 +53,7 @@ class _RemoteConDemora with RemotoSinSesionDeslizante implements AuthRemoteDataS
       cedula: cedula,
       email: email,
       password: password,
+      terminosVersion: terminosVersion,
     );
   }
 
