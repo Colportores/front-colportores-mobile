@@ -675,6 +675,30 @@ final class FailureConservadaDeBaja extends Failure {
       );
 }
 
+/// Al marcar un duplicado, el alta de alguna de las dos está subiendo en este momento (HU-UBI-006,
+/// «Par local»): hasta que el servidor conteste no se sabe cómo se une. No se escribió nada y se
+/// puede reintentar. Texto provisorio (mapa §2: texto/aviso).
+final class FailureAltaSubiendo extends Failure {
+  const FailureAltaSubiendo()
+    : super(
+        mensaje:
+            'Una de las dos ubicaciones se está subiendo ahora. Esperá un momento y probá de nuevo.',
+        codigo: 'UBI_ALTA_SUBIENDO',
+      );
+}
+
+/// Al marcar un duplicado, se pidió conservar la que solo está en el teléfono teniendo la otra en el
+/// servidor (HU-UBI-006, «Par local»): no puede subir mientras la otra esté viva. No se escribió nada;
+/// el par hay que revisarlo de nuevo. Texto provisorio (mapa §2: texto/aviso).
+final class FailureConservadaSoloEnTelefono extends Failure {
+  const FailureConservadaSoloEnTelefono()
+    : super(
+        mensaje:
+            'La ubicación que ibas a conservar todavía no está en el servidor. Revisá el par de nuevo.',
+        codigo: 'UBI_CONSERVADA_SOLO_EN_TELEFONO',
+      );
+}
+
 /// Reactivar una baja choca con la regla de dirección única (D1, HU-UBI-005 «Reactivar choca con otra
 /// casa activa»): ya hay otra ubicación activa con la misma dirección a menos de 100 m y no pueden
 /// quedar las dos. No se escribió nada. [existenteId] es la otra (la más cercana, si hay varias) para

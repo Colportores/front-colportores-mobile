@@ -64,7 +64,8 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
   late ParaRevisar _par = widget.inicial;
 
   /// Cuál se conserva: por defecto la primera («A», la más vieja); el colportor puede elegir la otra.
-  var _conservaLaPrimera = true;
+  /// En un «Par local» solo se puede conservar la que ya está en el servidor.
+  late var _conservaLaPrimera = widget.inicial.sePuedeConservarA;
 
   /// Una decisión guardándose («Son distintos», «Ignorar»): los botones esperan.
   var _guardando = false;
@@ -108,8 +109,12 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
     Navigator.of(context).pop();
   }
 
+  bool _sePuedeConservar({required bool laPrimera}) =>
+      laPrimera ? _par.sePuedeConservarA : _par.sePuedeConservarB;
+
   void _elegir({required bool laPrimera}) {
     if (_guardando || _conservaLaPrimera == laPrimera) return;
+    if (!_sePuedeConservar(laPrimera: laPrimera)) return;
     setState(() => _conservaLaPrimera = laPrimera);
   }
 
@@ -191,7 +196,14 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
       if (actual == null) {
         _cerrar();
       } else if (actual != _par && mounted) {
-        setState(() => _par = actual);
+        setState(() {
+          _par = actual;
+          // El alta de una cambió de lugar (subió, o volvió en conflicto): no se queda elegida la que
+          // ya no se puede conservar.
+          if (!_sePuedeConservar(laPrimera: _conservaLaPrimera)) {
+            _conservaLaPrimera = !_conservaLaPrimera;
+          }
+        });
       }
     });
 
@@ -248,7 +260,9 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
                 espacios: _par.espaciosA,
                 estado: _par.estadoA,
                 conservada: _conservaLaPrimera,
-                alElegir: () => _elegir(laPrimera: true),
+                soloEnTelefono: !_par.sePuedeConservarA,
+                subiendo: _par.subiendoA,
+                alElegir: _par.sePuedeConservarA ? () => _elegir(laPrimera: true) : null,
               ),
               const SizedBox(height: 8),
               _OpcionConservar(
@@ -258,17 +272,33 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
                 espacios: _par.espaciosB,
                 estado: _par.estadoB,
                 conservada: !_conservaLaPrimera,
-                alElegir: () => _elegir(laPrimera: false),
+                soloEnTelefono: !_par.sePuedeConservarB,
+                subiendo: _par.subiendoB,
+                alElegir: _par.sePuedeConservarB ? () => _elegir(laPrimera: false) : null,
               ),
               const SizedBox(height: 10),
               Text(
                 TextosPosiblesDuplicados.avisoUnion,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: ColoresAlta.tinta),
               ),
+              if (!_par.sePuedeConservarA || !_par.sePuedeConservarB) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _par.subiendoA || _par.subiendoB
+                      ? TextosPosiblesDuplicados.altaSubiendo
+                      : TextosPosiblesDuplicados.parLocal,
+                  key: const Key('comparar_par_local'),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: ColoresAlta.tinta),
+                ),
+              ],
               if (!par.admiteConservarAmbos) ...[
                 const SizedBox(height: 10),
                 Text(
-                  TextosPosiblesDuplicados.direccionUnica,
+                  // Con una de las dos sin poder conservarse la elección ya está hecha: no se pide
+                  // marcar cuál es el duplicado.
+                  _par.sePuedeConservarA && _par.sePuedeConservarB
+                      ? TextosPosiblesDuplicados.direccionUnica
+                      : TextosPosiblesDuplicados.direccionUnicaParLocal,
                   key: const Key('comparar_direccion_unica'),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: ColoresAlta.tinta),
                 ),
@@ -390,6 +420,8 @@ class _OpcionConservar extends StatelessWidget {
     required this.estado,
     required this.conservada,
     required this.alElegir,
+    this.soloEnTelefono = false,
+    this.subiendo = false,
   });
 
   final String letra;
@@ -397,7 +429,23 @@ class _OpcionConservar extends StatelessWidget {
   final int espacios;
   final EstadoCasa? estado;
   final bool conservada;
-  final VoidCallback alElegir;
+
+  /// `null` si no se puede elegir (la que solo está en el teléfono en un «Par local»).
+  final VoidCallback? alElegir;
+
+  /// Su alta no está en el servidor y la otra sí: no se puede conservar.
+  final bool soloEnTelefono;
+
+  /// Su alta está viajando al servidor ahora: la etiqueta dice eso y no «solo en tu teléfono».
+  final bool subiendo;
+
+  String get _etiqueta => conservada
+      ? TextosPosiblesDuplicados.conservada(letra)
+      : subiendo
+      ? TextosPosiblesDuplicados.duplicadaSubiendo(letra)
+      : soloEnTelefono
+      ? TextosPosiblesDuplicados.duplicadaSoloEnTelefono(letra)
+      : TextosPosiblesDuplicados.duplicada(letra);
 
   @override
   Widget build(BuildContext context) {
@@ -415,9 +463,7 @@ class _OpcionConservar extends StatelessWidget {
         ubicacion: ubicacion,
         espacios: espacios,
         estado: estado,
-        etiqueta: conservada
-            ? TextosPosiblesDuplicados.conservada(letra)
-            : TextosPosiblesDuplicados.duplicada(letra),
+        etiqueta: _etiqueta,
       ),
       onTap: alElegir,
       child: Material(
@@ -444,9 +490,7 @@ class _OpcionConservar extends StatelessWidget {
                       ubicacion: ubicacion,
                       espacios: espacios,
                       estado: estado,
-                      etiqueta: conservada
-                          ? TextosPosiblesDuplicados.conservada(letra)
-                          : TextosPosiblesDuplicados.duplicada(letra),
+                      etiqueta: _etiqueta,
                     ),
                   ),
                   const SizedBox(width: 8),

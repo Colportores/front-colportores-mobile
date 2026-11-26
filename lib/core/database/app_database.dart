@@ -30,6 +30,7 @@ import '../../features/mapa/data/datasources/notas_table.dart';
 import '../../features/mapa/data/datasources/paises_table.dart';
 import '../../features/mapa/data/datasources/pares_duplicados_table.dart';
 import '../../features/mapa/data/datasources/personas_table.dart';
+import '../../features/mapa/data/datasources/ubicacion_unida_table.dart';
 import '../../features/mapa/data/datasources/ubicaciones_table.dart';
 import '../../features/mapa/data/datasources/uniones_locales_table.dart';
 import '../../features/mapa/data/datasources/zona_vertices_table.dart';
@@ -112,6 +113,7 @@ part 'app_database.g.dart';
     PedidoItems,
     UnionesLocales,
     SyncFueraDelArea,
+    UbicacionesUnidas,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -210,10 +212,13 @@ class AppDatabase extends _$AppDatabase {
   /// - 42: `campania` suma `limite_deuda`, el límite de deuda de la campaña en centavos (backend-supabase 0120,
   ///   «Límite ped.» del 25/10), para que el pedido a la casa editora avise sin conexión cuando lo pasa
   ///   (HU-STK-009, #387). Vacía hasta que el pull trae la campaña de nuevo: sin límite no hay aviso.
+  /// - 43: `ubicacion_unida`, la marca de unión que baja con la ubicación (`unida_a_id`), solo local y
+  ///   de solo bajada: de ahí salen la leyenda «Unida a otra ubicación» y la guarda de «Reactivar»
+  ///   (backend-supabase 0051, «Marca local» de Cristian, 28/10, HU-UBI-006, #285).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 42;
+  static const int versionEsquema = 43;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -602,6 +607,12 @@ class AppDatabase extends _$AppDatabase {
     // de lo guardado por la colportora cambia ni se encola al migrar.
     from41To42: (m, esquema) async {
       await m.addColumn(esquema.campania, esquema.campania.limiteDeuda);
+    },
+    // Solo crea la marca de unión, vacía (la llena el pull con el `unida_a_id` de cada ubicación): nada
+    // de lo guardado cambia. Las uniones que el servidor ya había mandado antes no se recuperan solas
+    // (el pull es por delta); las que hizo este teléfono siguen en la auditoría local (#285).
+    from42To43: (m, esquema) async {
+      await m.createTable(esquema.ubicacionUnida);
     },
   );
 }

@@ -96,6 +96,7 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
         // `<Never>`: la tabla llega como `TableInfo<Table, Object?>` y Drift verifica en runtime
         // el tipo de su fila; un insertable de `Never` es subtipo de cualquiera.
         await into(tabla).insertOnConflictUpdate(RawValuesInsertable<Never>(_valores(tabla, fila)));
+        if (entidad == 'ubicacion') await _guardarMarcaDeUnion(fila);
       }
       final ids = [
         for (final fila in filas)
@@ -128,6 +129,26 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
       ).insertOnConflictUpdate(SyncWatermarksCompanion.insert(scope: scope, watermark: watermark));
     }
   });
+
+  /// La marca de unión de una `ubicacion` que bajó (HU-UBI-006, «Marca unión» y «Marca local»,
+  /// contrato §2.3): el servidor manda `unida_a_id` junto con la fila (el id de la ubicación a la que
+  /// se unió, o `null`), que **no es una columna de `ubicacion`**, y el teléfono la guarda en su tabla
+  /// aparte `ubicacion_unida`, que nunca sube. Con `null` se borra la marca; si la fila no trae la
+  /// clave (un servidor que todavía no la manda), no se toca.
+  Future<void> _guardarMarcaDeUnion(Map<String, Object?> fila) async {
+    if (!fila.containsKey('unida_a_id')) return;
+    final id = fila['id'];
+    if (id is! String) return;
+    final unidas = attachedDatabase.ubicacionesUnidas;
+    final unidaA = fila['unida_a_id'];
+    if (unidaA is String && unidaA.isNotEmpty) {
+      await into(unidas).insertOnConflictUpdate(
+        UbicacionesUnidasCompanion.insert(ubicacionId: id, unidaAId: unidaA),
+      );
+    } else {
+      await (delete(unidas)..where((u) => u.ubicacionId.equals(id))).go();
+    }
+  }
 
   /// Con un `area_reset` de [tabla]: todo lo que el teléfono tiene de ella pasa a esperar volver a
   /// bajar, menos lo que ya se sabe afuera y lo que tiene escrituras en la cola sin terminar: las de

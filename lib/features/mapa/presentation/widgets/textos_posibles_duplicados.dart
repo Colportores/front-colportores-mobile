@@ -90,6 +90,34 @@ abstract final class TextosPosiblesDuplicados {
   static String conservada(String letra) => 'Ubicación $letra, la que se conserva';
   static String duplicada(String letra) => 'Ubicación $letra, la que queda como baja';
 
+  // «Par local» (HU-UBI-006, #285): una de las dos todavía no está en el servidor. Textos provisorios
+  // (mapa §2: texto/aviso), coherentes con los de arriba; el canvas no dibuja este caso.
+
+  /// La que solo está en el teléfono: no se puede conservar, queda como baja.
+  static String duplicadaSoloEnTelefono(String letra) =>
+      'Ubicación $letra, solo en tu teléfono: queda como baja';
+
+  /// La que se está subiendo en este momento (su alta está `IN_FLIGHT`): se sabe que viaja, no que
+  /// solo esté en el teléfono (decisión del orquestador, 25/11, P2 de la QA de #285; mapa §2).
+  static String duplicadaSubiendo(String letra) =>
+      'Ubicación $letra, se está subiendo: queda como baja';
+
+  /// Debajo de las dos opciones cuando una se está subiendo ahora (en lugar de [parLocal]); es el
+  /// mismo texto de `FailureAltaSubiendo`.
+  static const altaSubiendo =
+      'Una de las dos ubicaciones se está subiendo ahora. Esperá un momento y probá de nuevo.';
+
+  /// El texto de dirección única en un par donde una de las dos no se puede conservar: la elección ya
+  /// está hecha, así que no pide marcar cuál es el duplicado (decisión del orquestador, 25/11, P1 de
+  /// la QA de #285; mapa §2).
+  static const direccionUnicaParLocal =
+      'Si son dos lugares distintos, corregí la dirección de una con «Editar uno».';
+
+  /// Debajo de las dos opciones cuando una no se puede conservar.
+  static const parLocal =
+      'Una de las dos todavía no está en el servidor, así que se conserva la que sí está. Lo que '
+      'cargaste en la otra pasa a ella y se sube con el resto.';
+
   // ------------------------------------------------------------ par resuelto (10·03)
   static const deshacer = 'Deshacer';
 
@@ -124,7 +152,11 @@ abstract final class TextosPosiblesDuplicados {
   /// El texto del aviso rojo según la falla de la unión: con la que se iba a conservar de baja, el
   /// suyo («La ubicación que ibas a conservar ya está dada de baja. Revisá el par de nuevo.»).
   static String falloUnion(Failure falla) =>
-      falla is FailureConservadaDeBaja ? falla.mensaje : noSePudoUnir;
+      falla is FailureConservadaDeBaja ||
+          falla is FailureAltaSubiendo ||
+          falla is FailureConservadaSoloEnTelefono
+      ? falla.mensaje
+      : noSePudoUnir;
 
   /// «No se pudieron marcar 2 pares como duplicados. Probá de nuevo.»
   static String noSePudieronUnir(int cantidad) =>
