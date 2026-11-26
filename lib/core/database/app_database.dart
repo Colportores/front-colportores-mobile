@@ -40,6 +40,7 @@ import '../../features/stock/data/datasources/pedido_items_table.dart';
 import '../../features/stock/data/datasources/pedidos_casa_editora_table.dart';
 import '../../features/stock/data/datasources/stocks_table.dart';
 import '../../features/tickets/data/datasources/tickets_table.dart';
+import '../../features/transferencias/data/datasources/transferencias_table.dart';
 import '../../features/ventas/data/datasources/componentes_converter.dart';
 import '../../features/ventas/data/datasources/devoluciones_table.dart';
 import '../../features/ventas/data/datasources/entregas_table.dart';
@@ -95,6 +96,8 @@ part 'app_database.g.dart';
     PreciosGenerales,
     ParametrosGlobales,
     Stocks,
+    TransferenciasStock,
+    TransferenciaItems,
     Ciudades,
     Paises,
     Campanias,
@@ -215,10 +218,13 @@ class AppDatabase extends _$AppDatabase {
   /// - 43: `ubicacion_unida`, la marca de unión que baja con la ubicación (`unida_a_id`), solo local y
   ///   de solo bajada: de ahí salen la leyenda «Unida a otra ubicación» y la guarda de «Reactivar»
   ///   (backend-supabase 0051, «Marca local» de Cristian, 28/10, HU-UBI-006, #285).
+  /// - 44: `transferencia_stock` y `transferencia_item`, las transferencias de materiales entre colportores
+  ///   que el teléfono pide y cancela, y que baja a las dos puntas (backend-supabase 0139 y 0148,
+  ///   HU-STK-005, #512).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 43;
+  static const int versionEsquema = 44;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -613,6 +619,15 @@ class AppDatabase extends _$AppDatabase {
     // (el pull es por delta); las que hizo este teléfono siguen en la auditoría local (#285).
     from42To43: (m, esquema) async {
       await m.createTable(esquema.ubicacionUnida);
+    },
+    // Solo crea las tablas de las transferencias, vacías (las llena el pull y el colportor al pedirlas):
+    // nada de lo guardado cambia ni se encola al migrar.
+    from43To44: (m, esquema) async {
+      await m.createTable(esquema.transferenciaStock);
+      await m.createIndex(esquema.transferenciaStockOrigenIdx);
+      await m.createIndex(esquema.transferenciaStockDestinoIdx);
+      await m.createTable(esquema.transferenciaItem);
+      await m.createIndex(esquema.transferenciaItemTransferenciaIdx);
     },
   );
 }
