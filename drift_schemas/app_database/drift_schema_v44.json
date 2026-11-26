@@ -380,6 +380,16 @@
             "dsl_features": []
           },
           {
+            "name": "descripcion",
+            "getter_name": "descripcion",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
             "name": "created_at",
             "getter_name": "createdAt",
             "moor_type": "int",
@@ -3432,6 +3442,307 @@
       "references": [],
       "type": "table",
       "data": {
+        "name": "transferencia_stock",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "origen_id",
+            "getter_name": "origenId",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "destino_id",
+            "getter_name": "destinoId",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "estado",
+            "getter_name": "estado",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('\\'PENDIENTE_AUTORIZACION\\'')",
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "solicitante_id",
+            "getter_name": "solicitanteId",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "fecha_solicitud",
+            "getter_name": "fechaSolicitud",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "numero",
+            "getter_name": "numero",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "decidido_en",
+            "getter_name": "decididoEn",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "motivo_rechazo",
+            "getter_name": "motivoRechazo",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "created_at",
+            "getter_name": "createdAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "updated_at",
+            "getter_name": "updatedAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "created_by",
+            "getter_name": "createdBy",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "deleted_at",
+            "getter_name": "deletedAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "sync_version",
+            "getter_name": "syncVersion",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (estado IN ('PENDIENTE_AUTORIZACION', 'AUTORIZADO', 'EJECUTADO', 'RECHAZADO', 'CANCELADO'))",
+          "CHECK (origen_id <> destino_id)"
+        ],
+        "explicit_pk": [
+          "id"
+        ]
+      }
+    },
+    {
+      "id": 28,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "transferencia_item",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "transferencia_id",
+            "getter_name": "transferenciaId",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "producto_id",
+            "getter_name": "productoId",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "cantidad",
+            "getter_name": "cantidad",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "created_at",
+            "getter_name": "createdAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "updated_at",
+            "getter_name": "updatedAt",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "created_by",
+            "getter_name": "createdBy",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "deleted_at",
+            "getter_name": "deletedAt",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [],
+            "type_converter": {
+              "dart_expr": "const FechaUtcConverter()",
+              "dart_type_name": "DateTime"
+            }
+          },
+          {
+            "name": "sync_version",
+            "getter_name": "syncVersion",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": "const CustomExpression('0')",
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [
+          "CHECK (cantidad > 0)"
+        ],
+        "explicit_pk": [
+          "id"
+        ]
+      }
+    },
+    {
+      "id": 29,
+      "references": [],
+      "type": "table",
+      "data": {
         "name": "ciudad",
         "was_declared_in_moor": false,
         "columns": [
@@ -3567,7 +3878,7 @@
       }
     },
     {
-      "id": 28,
+      "id": 30,
       "references": [],
       "type": "table",
       "data": {
@@ -3676,7 +3987,7 @@
       }
     },
     {
-      "id": 29,
+      "id": 31,
       "references": [],
       "type": "table",
       "data": {
@@ -3815,7 +4126,7 @@
       }
     },
     {
-      "id": 30,
+      "id": 32,
       "references": [],
       "type": "table",
       "data": {
@@ -3946,7 +4257,7 @@
       }
     },
     {
-      "id": 31,
+      "id": 33,
       "references": [],
       "type": "table",
       "data": {
@@ -4111,7 +4422,7 @@
       }
     },
     {
-      "id": 32,
+      "id": 34,
       "references": [],
       "type": "table",
       "data": {
@@ -4280,7 +4591,7 @@
       }
     },
     {
-      "id": 33,
+      "id": 35,
       "references": [],
       "type": "table",
       "data": {
@@ -4500,7 +4811,7 @@
       }
     },
     {
-      "id": 34,
+      "id": 36,
       "references": [],
       "type": "table",
       "data": {
@@ -4663,7 +4974,7 @@
       }
     },
     {
-      "id": 35,
+      "id": 37,
       "references": [],
       "type": "table",
       "data": {
@@ -4802,7 +5113,7 @@
       }
     },
     {
-      "id": 36,
+      "id": 38,
       "references": [],
       "type": "table",
       "data": {
@@ -5024,7 +5335,7 @@
       }
     },
     {
-      "id": 37,
+      "id": 39,
       "references": [],
       "type": "table",
       "data": {
@@ -5270,7 +5581,7 @@
       }
     },
     {
-      "id": 38,
+      "id": 40,
       "references": [],
       "type": "table",
       "data": {
@@ -5375,7 +5686,7 @@
       }
     },
     {
-      "id": 39,
+      "id": 41,
       "references": [],
       "type": "table",
       "data": {
@@ -5548,7 +5859,7 @@
       }
     },
     {
-      "id": 40,
+      "id": 42,
       "references": [],
       "type": "table",
       "data": {
@@ -5671,7 +5982,7 @@
       }
     },
     {
-      "id": 41,
+      "id": 43,
       "references": [],
       "type": "table",
       "data": {
@@ -5892,7 +6203,7 @@
       }
     },
     {
-      "id": 42,
+      "id": 44,
       "references": [],
       "type": "table",
       "data": {
@@ -6051,7 +6362,7 @@
       }
     },
     {
-      "id": 43,
+      "id": 45,
       "references": [],
       "type": "table",
       "data": {
@@ -6158,7 +6469,7 @@
       }
     },
     {
-      "id": 44,
+      "id": 46,
       "references": [],
       "type": "table",
       "data": {
@@ -6210,7 +6521,7 @@
       }
     },
     {
-      "id": 45,
+      "id": 47,
       "references": [],
       "type": "table",
       "data": {
@@ -6247,7 +6558,7 @@
       }
     },
     {
-      "id": 46,
+      "id": 48,
       "references": [
         0
       ],
@@ -6270,7 +6581,7 @@
       }
     },
     {
-      "id": 47,
+      "id": 49,
       "references": [
         1
       ],
@@ -6293,7 +6604,7 @@
       }
     },
     {
-      "id": 48,
+      "id": 50,
       "references": [
         2
       ],
@@ -6312,7 +6623,7 @@
       }
     },
     {
-      "id": 49,
+      "id": 51,
       "references": [
         4
       ],
@@ -6331,7 +6642,7 @@
       }
     },
     {
-      "id": 50,
+      "id": 52,
       "references": [
         5
       ],
@@ -6350,7 +6661,7 @@
       }
     },
     {
-      "id": 51,
+      "id": 53,
       "references": [
         6
       ],
@@ -6373,7 +6684,7 @@
       }
     },
     {
-      "id": 52,
+      "id": 54,
       "references": [
         8
       ],
@@ -6396,7 +6707,7 @@
       }
     },
     {
-      "id": 53,
+      "id": 55,
       "references": [
         9
       ],
@@ -6423,7 +6734,7 @@
       }
     },
     {
-      "id": 54,
+      "id": 56,
       "references": [
         9
       ],
@@ -6446,7 +6757,7 @@
       }
     },
     {
-      "id": 55,
+      "id": 57,
       "references": [
         9
       ],
@@ -6469,7 +6780,7 @@
       }
     },
     {
-      "id": 56,
+      "id": 58,
       "references": [
         13
       ],
@@ -6488,7 +6799,7 @@
       }
     },
     {
-      "id": 57,
+      "id": 59,
       "references": [
         13
       ],
@@ -6507,7 +6818,7 @@
       }
     },
     {
-      "id": 58,
+      "id": 60,
       "references": [
         14
       ],
@@ -6530,7 +6841,7 @@
       }
     },
     {
-      "id": 59,
+      "id": 61,
       "references": [
         15
       ],
@@ -6553,7 +6864,7 @@
       }
     },
     {
-      "id": 60,
+      "id": 62,
       "references": [
         15
       ],
@@ -6572,7 +6883,7 @@
       }
     },
     {
-      "id": 61,
+      "id": 63,
       "references": [
         15
       ],
@@ -6591,7 +6902,7 @@
       }
     },
     {
-      "id": 62,
+      "id": 64,
       "references": [
         15
       ],
@@ -6610,7 +6921,7 @@
       }
     },
     {
-      "id": 63,
+      "id": 65,
       "references": [
         16
       ],
@@ -6633,7 +6944,7 @@
       }
     },
     {
-      "id": 64,
+      "id": 66,
       "references": [
         16
       ],
@@ -6652,7 +6963,7 @@
       }
     },
     {
-      "id": 65,
+      "id": 67,
       "references": [
         16
       ],
@@ -6671,7 +6982,7 @@
       }
     },
     {
-      "id": 66,
+      "id": 68,
       "references": [
         17
       ],
@@ -6690,7 +7001,7 @@
       }
     },
     {
-      "id": 67,
+      "id": 69,
       "references": [
         19
       ],
@@ -6709,7 +7020,7 @@
       }
     },
     {
-      "id": 68,
+      "id": 70,
       "references": [
         22
       ],
@@ -6728,7 +7039,7 @@
       }
     },
     {
-      "id": 69,
+      "id": 71,
       "references": [
         23
       ],
@@ -6747,7 +7058,7 @@
       }
     },
     {
-      "id": 70,
+      "id": 72,
       "references": [
         23
       ],
@@ -6766,7 +7077,7 @@
       }
     },
     {
-      "id": 71,
+      "id": 73,
       "references": [
         23
       ],
@@ -6785,7 +7096,7 @@
       }
     },
     {
-      "id": 72,
+      "id": 74,
       "references": [
         24
       ],
@@ -6804,7 +7115,7 @@
       }
     },
     {
-      "id": 73,
+      "id": 75,
       "references": [
         24
       ],
@@ -6823,7 +7134,7 @@
       }
     },
     {
-      "id": 74,
+      "id": 76,
       "references": [
         26
       ],
@@ -6842,13 +7153,70 @@
       }
     },
     {
-      "id": 75,
+      "id": 77,
       "references": [
-        30
+        27
       ],
       "type": "index",
       "data": {
-        "on": 30,
+        "on": 27,
+        "name": "transferencia_stock_origen_idx",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "origen_id",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 78,
+      "references": [
+        27
+      ],
+      "type": "index",
+      "data": {
+        "on": 27,
+        "name": "transferencia_stock_destino_idx",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "destino_id",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 79,
+      "references": [
+        28
+      ],
+      "type": "index",
+      "data": {
+        "on": 28,
+        "name": "transferencia_item_transferencia_idx",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "transferencia_id",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 80,
+      "references": [
+        32
+      ],
+      "type": "index",
+      "data": {
+        "on": 32,
         "name": "campania_colportor_usuario_idx",
         "sql": null,
         "unique": false,
@@ -6861,13 +7229,13 @@
       }
     },
     {
-      "id": 76,
+      "id": 81,
       "references": [
-        31
+        33
       ],
       "type": "index",
       "data": {
-        "on": 31,
+        "on": 33,
         "name": "venta_colportor_idx",
         "sql": null,
         "unique": false,
@@ -6884,13 +7252,13 @@
       }
     },
     {
-      "id": 77,
+      "id": 82,
       "references": [
-        31
+        33
       ],
       "type": "index",
       "data": {
-        "on": 31,
+        "on": 33,
         "name": "venta_espacio_persona_idx",
         "sql": null,
         "unique": false,
@@ -6903,13 +7271,13 @@
       }
     },
     {
-      "id": 78,
+      "id": 83,
       "references": [
-        32
+        34
       ],
       "type": "index",
       "data": {
-        "on": 32,
+        "on": 34,
         "name": "venta_item_venta_idx",
         "sql": null,
         "unique": false,
@@ -6922,13 +7290,13 @@
       }
     },
     {
-      "id": 79,
+      "id": 84,
       "references": [
-        33
+        35
       ],
       "type": "index",
       "data": {
-        "on": 33,
+        "on": 35,
         "name": "cobranza_venta_idx",
         "sql": null,
         "unique": false,
@@ -6941,13 +7309,13 @@
       }
     },
     {
-      "id": 80,
+      "id": 85,
       "references": [
-        34
+        36
       ],
       "type": "index",
       "data": {
-        "on": 34,
+        "on": 36,
         "name": "entrega_venta_idx",
         "sql": null,
         "unique": false,
@@ -6960,13 +7328,13 @@
       }
     },
     {
-      "id": 81,
+      "id": 86,
       "references": [
-        35
+        37
       ],
       "type": "index",
       "data": {
-        "on": 35,
+        "on": 37,
         "name": "devolucion_venta_idx",
         "sql": null,
         "unique": false,
@@ -6979,13 +7347,13 @@
       }
     },
     {
-      "id": 82,
+      "id": 87,
       "references": [
-        36
+        38
       ],
       "type": "index",
       "data": {
-        "on": 36,
+        "on": 38,
         "name": "deposito_ticket_idx",
         "sql": null,
         "unique": false,
@@ -6998,13 +7366,13 @@
       }
     },
     {
-      "id": 83,
+      "id": 88,
       "references": [
-        39
+        41
       ],
       "type": "index",
       "data": {
-        "on": 39,
+        "on": 41,
         "name": "cuenta_colportor_usuario_idx",
         "sql": null,
         "unique": false,
@@ -7017,13 +7385,13 @@
       }
     },
     {
-      "id": 84,
+      "id": 89,
       "references": [
-        40
+        42
       ],
       "type": "index",
       "data": {
-        "on": 40,
+        "on": 42,
         "name": "cuenta_deuda_historial_usuario_idx",
         "sql": null,
         "unique": false,
@@ -7040,13 +7408,13 @@
       }
     },
     {
-      "id": 85,
+      "id": 90,
       "references": [
-        41
+        43
       ],
       "type": "index",
       "data": {
-        "on": 41,
+        "on": 43,
         "name": "pedido_casa_editora_colportor_idx",
         "sql": null,
         "unique": false,
@@ -7059,13 +7427,13 @@
       }
     },
     {
-      "id": 86,
+      "id": 91,
       "references": [
-        42
+        44
       ],
       "type": "index",
       "data": {
-        "on": 42,
+        "on": 44,
         "name": "pedido_item_pedido_idx",
         "sql": null,
         "unique": false,
@@ -7102,7 +7470,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"espacio\" (\"id\" TEXT NOT NULL, \"ubicacion_id\" TEXT NOT NULL, \"numero_depto\" TEXT NULL, \"piso\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"espacio\" (\"id\" TEXT NOT NULL, \"ubicacion_id\" TEXT NOT NULL, \"numero_depto\" TEXT NULL, \"piso\" TEXT NULL, \"descripcion\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
         }
       ]
     },
@@ -7319,6 +7687,24 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE TABLE IF NOT EXISTS \"stock\" (\"id\" TEXT NOT NULL, \"usuario_id\" TEXT NOT NULL, \"producto_id\" TEXT NOT NULL, \"cantidad_disponible\" INTEGER NOT NULL DEFAULT 0, \"cantidad_reservada\" INTEGER NOT NULL DEFAULT 0, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (cantidad_reservada >= 0));"
+        }
+      ]
+    },
+    {
+      "name": "transferencia_stock",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"transferencia_stock\" (\"id\" TEXT NOT NULL, \"origen_id\" TEXT NOT NULL, \"destino_id\" TEXT NOT NULL, \"estado\" TEXT NOT NULL DEFAULT 'PENDIENTE_AUTORIZACION', \"solicitante_id\" TEXT NULL, \"fecha_solicitud\" INTEGER NULL, \"numero\" INTEGER NULL, \"decidido_en\" INTEGER NULL, \"motivo_rechazo\" TEXT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (estado IN ('PENDIENTE_AUTORIZACION', 'AUTORIZADO', 'EJECUTADO', 'RECHAZADO', 'CANCELADO')), CHECK (origen_id <> destino_id));"
+        }
+      ]
+    },
+    {
+      "name": "transferencia_item",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"transferencia_item\" (\"id\" TEXT NOT NULL, \"transferencia_id\" TEXT NOT NULL, \"producto_id\" TEXT NOT NULL, \"cantidad\" INTEGER NOT NULL, \"created_at\" INTEGER NOT NULL, \"updated_at\" INTEGER NOT NULL, \"created_by\" TEXT NULL, \"deleted_at\" INTEGER NULL, \"sync_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"), CHECK (cantidad > 0));"
         }
       ]
     },
@@ -7751,6 +8137,33 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE INDEX stock_usuario_idx ON stock (usuario_id)"
+        }
+      ]
+    },
+    {
+      "name": "transferencia_stock_origen_idx",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX transferencia_stock_origen_idx ON transferencia_stock (origen_id)"
+        }
+      ]
+    },
+    {
+      "name": "transferencia_stock_destino_idx",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX transferencia_stock_destino_idx ON transferencia_stock (destino_id)"
+        }
+      ]
+    },
+    {
+      "name": "transferencia_item_transferencia_idx",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX transferencia_item_transferencia_idx ON transferencia_item (transferencia_id)"
         }
       ]
     },

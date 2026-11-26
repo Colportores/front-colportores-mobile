@@ -1269,6 +1269,14 @@ class Espacio extends Table with TableInfo<Espacio, EspacioData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
+  late final GeneratedColumn<String> descripcion = GeneratedColumn<String>(
+    'descripcion',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
   late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
     'created_at',
     aliasedName,
@@ -1316,6 +1324,7 @@ class Espacio extends Table with TableInfo<Espacio, EspacioData> {
     ubicacionId,
     numeroDepto,
     piso,
+    descripcion,
     createdAt,
     updatedAt,
     createdBy,
@@ -1348,6 +1357,10 @@ class Espacio extends Table with TableInfo<Espacio, EspacioData> {
       piso: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}piso'],
+      ),
+      descripcion: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}descripcion'],
       ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -1388,6 +1401,7 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
   final String ubicacionId;
   final String? numeroDepto;
   final String? piso;
+  final String? descripcion;
   final int createdAt;
   final int updatedAt;
   final String? createdBy;
@@ -1398,6 +1412,7 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
     required this.ubicacionId,
     this.numeroDepto,
     this.piso,
+    this.descripcion,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
@@ -1414,6 +1429,9 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
     }
     if (!nullToAbsent || piso != null) {
       map['piso'] = Variable<String>(piso);
+    }
+    if (!nullToAbsent || descripcion != null) {
+      map['descripcion'] = Variable<String>(descripcion);
     }
     map['created_at'] = Variable<int>(createdAt);
     map['updated_at'] = Variable<int>(updatedAt);
@@ -1435,6 +1453,9 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
           ? const Value.absent()
           : Value(numeroDepto),
       piso: piso == null && nullToAbsent ? const Value.absent() : Value(piso),
+      descripcion: descripcion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(descripcion),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       createdBy: createdBy == null && nullToAbsent
@@ -1457,6 +1478,7 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
       ubicacionId: serializer.fromJson<String>(json['ubicacionId']),
       numeroDepto: serializer.fromJson<String?>(json['numeroDepto']),
       piso: serializer.fromJson<String?>(json['piso']),
+      descripcion: serializer.fromJson<String?>(json['descripcion']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
       createdBy: serializer.fromJson<String?>(json['createdBy']),
@@ -1472,6 +1494,7 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
       'ubicacionId': serializer.toJson<String>(ubicacionId),
       'numeroDepto': serializer.toJson<String?>(numeroDepto),
       'piso': serializer.toJson<String?>(piso),
+      'descripcion': serializer.toJson<String?>(descripcion),
       'createdAt': serializer.toJson<int>(createdAt),
       'updatedAt': serializer.toJson<int>(updatedAt),
       'createdBy': serializer.toJson<String?>(createdBy),
@@ -1485,6 +1508,7 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
     String? ubicacionId,
     Value<String?> numeroDepto = const Value.absent(),
     Value<String?> piso = const Value.absent(),
+    Value<String?> descripcion = const Value.absent(),
     int? createdAt,
     int? updatedAt,
     Value<String?> createdBy = const Value.absent(),
@@ -1495,6 +1519,7 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
     ubicacionId: ubicacionId ?? this.ubicacionId,
     numeroDepto: numeroDepto.present ? numeroDepto.value : this.numeroDepto,
     piso: piso.present ? piso.value : this.piso,
+    descripcion: descripcion.present ? descripcion.value : this.descripcion,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
@@ -1511,6 +1536,9 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
           ? data.numeroDepto.value
           : this.numeroDepto,
       piso: data.piso.present ? data.piso.value : this.piso,
+      descripcion: data.descripcion.present
+          ? data.descripcion.value
+          : this.descripcion,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
@@ -1528,6 +1556,7 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
           ..write('ubicacionId: $ubicacionId, ')
           ..write('numeroDepto: $numeroDepto, ')
           ..write('piso: $piso, ')
+          ..write('descripcion: $descripcion, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -1543,6 +1572,7 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
     ubicacionId,
     numeroDepto,
     piso,
+    descripcion,
     createdAt,
     updatedAt,
     createdBy,
@@ -1557,6 +1587,7 @@ class EspacioData extends DataClass implements Insertable<EspacioData> {
           other.ubicacionId == this.ubicacionId &&
           other.numeroDepto == this.numeroDepto &&
           other.piso == this.piso &&
+          other.descripcion == this.descripcion &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.createdBy == this.createdBy &&
@@ -1569,6 +1600,7 @@ class EspacioCompanion extends UpdateCompanion<EspacioData> {
   final Value<String> ubicacionId;
   final Value<String?> numeroDepto;
   final Value<String?> piso;
+  final Value<String?> descripcion;
   final Value<int> createdAt;
   final Value<int> updatedAt;
   final Value<String?> createdBy;
@@ -1580,6 +1612,7 @@ class EspacioCompanion extends UpdateCompanion<EspacioData> {
     this.ubicacionId = const Value.absent(),
     this.numeroDepto = const Value.absent(),
     this.piso = const Value.absent(),
+    this.descripcion = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.createdBy = const Value.absent(),
@@ -1592,6 +1625,7 @@ class EspacioCompanion extends UpdateCompanion<EspacioData> {
     required String ubicacionId,
     this.numeroDepto = const Value.absent(),
     this.piso = const Value.absent(),
+    this.descripcion = const Value.absent(),
     required int createdAt,
     required int updatedAt,
     this.createdBy = const Value.absent(),
@@ -1607,6 +1641,7 @@ class EspacioCompanion extends UpdateCompanion<EspacioData> {
     Expression<String>? ubicacionId,
     Expression<String>? numeroDepto,
     Expression<String>? piso,
+    Expression<String>? descripcion,
     Expression<int>? createdAt,
     Expression<int>? updatedAt,
     Expression<String>? createdBy,
@@ -1619,6 +1654,7 @@ class EspacioCompanion extends UpdateCompanion<EspacioData> {
       if (ubicacionId != null) 'ubicacion_id': ubicacionId,
       if (numeroDepto != null) 'numero_depto': numeroDepto,
       if (piso != null) 'piso': piso,
+      if (descripcion != null) 'descripcion': descripcion,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (createdBy != null) 'created_by': createdBy,
@@ -1633,6 +1669,7 @@ class EspacioCompanion extends UpdateCompanion<EspacioData> {
     Value<String>? ubicacionId,
     Value<String?>? numeroDepto,
     Value<String?>? piso,
+    Value<String?>? descripcion,
     Value<int>? createdAt,
     Value<int>? updatedAt,
     Value<String?>? createdBy,
@@ -1645,6 +1682,7 @@ class EspacioCompanion extends UpdateCompanion<EspacioData> {
       ubicacionId: ubicacionId ?? this.ubicacionId,
       numeroDepto: numeroDepto ?? this.numeroDepto,
       piso: piso ?? this.piso,
+      descripcion: descripcion ?? this.descripcion,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       createdBy: createdBy ?? this.createdBy,
@@ -1668,6 +1706,9 @@ class EspacioCompanion extends UpdateCompanion<EspacioData> {
     }
     if (piso.present) {
       map['piso'] = Variable<String>(piso.value);
+    }
+    if (descripcion.present) {
+      map['descripcion'] = Variable<String>(descripcion.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
@@ -1697,6 +1738,7 @@ class EspacioCompanion extends UpdateCompanion<EspacioData> {
           ..write('ubicacionId: $ubicacionId, ')
           ..write('numeroDepto: $numeroDepto, ')
           ..write('piso: $piso, ')
+          ..write('descripcion: $descripcion, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('createdBy: $createdBy, ')
@@ -13491,6 +13533,1173 @@ class StockCompanion extends UpdateCompanion<StockData> {
   }
 }
 
+class TransferenciaStock extends Table
+    with TableInfo<TransferenciaStock, TransferenciaStockData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  TransferenciaStock(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> origenId = GeneratedColumn<String>(
+    'origen_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> destinoId = GeneratedColumn<String>(
+    'destino_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> estado = GeneratedColumn<String>(
+    'estado',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT \'PENDIENTE_AUTORIZACION\'',
+    defaultValue: const CustomExpression('\'PENDIENTE_AUTORIZACION\''),
+  );
+  late final GeneratedColumn<String> solicitanteId = GeneratedColumn<String>(
+    'solicitante_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> fechaSolicitud = GeneratedColumn<int>(
+    'fecha_solicitud',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> numero = GeneratedColumn<int>(
+    'numero',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> decididoEn = GeneratedColumn<int>(
+    'decidido_en',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<String> motivoRechazo = GeneratedColumn<String>(
+    'motivo_rechazo',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
+    'sync_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    origenId,
+    destinoId,
+    estado,
+    solicitanteId,
+    fechaSolicitud,
+    numero,
+    decididoEn,
+    motivoRechazo,
+    createdAt,
+    updatedAt,
+    createdBy,
+    deletedAt,
+    syncVersion,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'transferencia_stock';
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TransferenciaStockData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TransferenciaStockData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      origenId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}origen_id'],
+      )!,
+      destinoId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}destino_id'],
+      )!,
+      estado: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}estado'],
+      )!,
+      solicitanteId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}solicitante_id'],
+      ),
+      fechaSolicitud: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}fecha_solicitud'],
+      ),
+      numero: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}numero'],
+      ),
+      decididoEn: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}decidido_en'],
+      ),
+      motivoRechazo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}motivo_rechazo'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      ),
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      syncVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sync_version'],
+      )!,
+    );
+  }
+
+  @override
+  TransferenciaStock createAlias(String alias) {
+    return TransferenciaStock(attachedDatabase, alias);
+  }
+
+  @override
+  List<String> get customConstraints => const [
+    'PRIMARY KEY(id)',
+    'CHECK(estado IN (\'PENDIENTE_AUTORIZACION\', \'AUTORIZADO\', \'EJECUTADO\', \'RECHAZADO\', \'CANCELADO\'))',
+    'CHECK(origen_id <> destino_id)',
+  ];
+  @override
+  bool get dontWriteConstraints => true;
+}
+
+class TransferenciaStockData extends DataClass
+    implements Insertable<TransferenciaStockData> {
+  final String id;
+  final String origenId;
+  final String destinoId;
+  final String estado;
+  final String? solicitanteId;
+  final int? fechaSolicitud;
+  final int? numero;
+  final int? decididoEn;
+  final String? motivoRechazo;
+  final int createdAt;
+  final int updatedAt;
+  final String? createdBy;
+  final int? deletedAt;
+  final int syncVersion;
+  const TransferenciaStockData({
+    required this.id,
+    required this.origenId,
+    required this.destinoId,
+    required this.estado,
+    this.solicitanteId,
+    this.fechaSolicitud,
+    this.numero,
+    this.decididoEn,
+    this.motivoRechazo,
+    required this.createdAt,
+    required this.updatedAt,
+    this.createdBy,
+    this.deletedAt,
+    required this.syncVersion,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['origen_id'] = Variable<String>(origenId);
+    map['destino_id'] = Variable<String>(destinoId);
+    map['estado'] = Variable<String>(estado);
+    if (!nullToAbsent || solicitanteId != null) {
+      map['solicitante_id'] = Variable<String>(solicitanteId);
+    }
+    if (!nullToAbsent || fechaSolicitud != null) {
+      map['fecha_solicitud'] = Variable<int>(fechaSolicitud);
+    }
+    if (!nullToAbsent || numero != null) {
+      map['numero'] = Variable<int>(numero);
+    }
+    if (!nullToAbsent || decididoEn != null) {
+      map['decidido_en'] = Variable<int>(decididoEn);
+    }
+    if (!nullToAbsent || motivoRechazo != null) {
+      map['motivo_rechazo'] = Variable<String>(motivoRechazo);
+    }
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || createdBy != null) {
+      map['created_by'] = Variable<String>(createdBy);
+    }
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
+    map['sync_version'] = Variable<int>(syncVersion);
+    return map;
+  }
+
+  TransferenciaStockCompanion toCompanion(bool nullToAbsent) {
+    return TransferenciaStockCompanion(
+      id: Value(id),
+      origenId: Value(origenId),
+      destinoId: Value(destinoId),
+      estado: Value(estado),
+      solicitanteId: solicitanteId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(solicitanteId),
+      fechaSolicitud: fechaSolicitud == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fechaSolicitud),
+      numero: numero == null && nullToAbsent
+          ? const Value.absent()
+          : Value(numero),
+      decididoEn: decididoEn == null && nullToAbsent
+          ? const Value.absent()
+          : Value(decididoEn),
+      motivoRechazo: motivoRechazo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(motivoRechazo),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      createdBy: createdBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdBy),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      syncVersion: Value(syncVersion),
+    );
+  }
+
+  factory TransferenciaStockData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TransferenciaStockData(
+      id: serializer.fromJson<String>(json['id']),
+      origenId: serializer.fromJson<String>(json['origenId']),
+      destinoId: serializer.fromJson<String>(json['destinoId']),
+      estado: serializer.fromJson<String>(json['estado']),
+      solicitanteId: serializer.fromJson<String?>(json['solicitanteId']),
+      fechaSolicitud: serializer.fromJson<int?>(json['fechaSolicitud']),
+      numero: serializer.fromJson<int?>(json['numero']),
+      decididoEn: serializer.fromJson<int?>(json['decididoEn']),
+      motivoRechazo: serializer.fromJson<String?>(json['motivoRechazo']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      createdBy: serializer.fromJson<String?>(json['createdBy']),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
+      syncVersion: serializer.fromJson<int>(json['syncVersion']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'origenId': serializer.toJson<String>(origenId),
+      'destinoId': serializer.toJson<String>(destinoId),
+      'estado': serializer.toJson<String>(estado),
+      'solicitanteId': serializer.toJson<String?>(solicitanteId),
+      'fechaSolicitud': serializer.toJson<int?>(fechaSolicitud),
+      'numero': serializer.toJson<int?>(numero),
+      'decididoEn': serializer.toJson<int?>(decididoEn),
+      'motivoRechazo': serializer.toJson<String?>(motivoRechazo),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'createdBy': serializer.toJson<String?>(createdBy),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
+      'syncVersion': serializer.toJson<int>(syncVersion),
+    };
+  }
+
+  TransferenciaStockData copyWith({
+    String? id,
+    String? origenId,
+    String? destinoId,
+    String? estado,
+    Value<String?> solicitanteId = const Value.absent(),
+    Value<int?> fechaSolicitud = const Value.absent(),
+    Value<int?> numero = const Value.absent(),
+    Value<int?> decididoEn = const Value.absent(),
+    Value<String?> motivoRechazo = const Value.absent(),
+    int? createdAt,
+    int? updatedAt,
+    Value<String?> createdBy = const Value.absent(),
+    Value<int?> deletedAt = const Value.absent(),
+    int? syncVersion,
+  }) => TransferenciaStockData(
+    id: id ?? this.id,
+    origenId: origenId ?? this.origenId,
+    destinoId: destinoId ?? this.destinoId,
+    estado: estado ?? this.estado,
+    solicitanteId: solicitanteId.present
+        ? solicitanteId.value
+        : this.solicitanteId,
+    fechaSolicitud: fechaSolicitud.present
+        ? fechaSolicitud.value
+        : this.fechaSolicitud,
+    numero: numero.present ? numero.value : this.numero,
+    decididoEn: decididoEn.present ? decididoEn.value : this.decididoEn,
+    motivoRechazo: motivoRechazo.present
+        ? motivoRechazo.value
+        : this.motivoRechazo,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    syncVersion: syncVersion ?? this.syncVersion,
+  );
+  TransferenciaStockData copyWithCompanion(TransferenciaStockCompanion data) {
+    return TransferenciaStockData(
+      id: data.id.present ? data.id.value : this.id,
+      origenId: data.origenId.present ? data.origenId.value : this.origenId,
+      destinoId: data.destinoId.present ? data.destinoId.value : this.destinoId,
+      estado: data.estado.present ? data.estado.value : this.estado,
+      solicitanteId: data.solicitanteId.present
+          ? data.solicitanteId.value
+          : this.solicitanteId,
+      fechaSolicitud: data.fechaSolicitud.present
+          ? data.fechaSolicitud.value
+          : this.fechaSolicitud,
+      numero: data.numero.present ? data.numero.value : this.numero,
+      decididoEn: data.decididoEn.present
+          ? data.decididoEn.value
+          : this.decididoEn,
+      motivoRechazo: data.motivoRechazo.present
+          ? data.motivoRechazo.value
+          : this.motivoRechazo,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      syncVersion: data.syncVersion.present
+          ? data.syncVersion.value
+          : this.syncVersion,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TransferenciaStockData(')
+          ..write('id: $id, ')
+          ..write('origenId: $origenId, ')
+          ..write('destinoId: $destinoId, ')
+          ..write('estado: $estado, ')
+          ..write('solicitanteId: $solicitanteId, ')
+          ..write('fechaSolicitud: $fechaSolicitud, ')
+          ..write('numero: $numero, ')
+          ..write('decididoEn: $decididoEn, ')
+          ..write('motivoRechazo: $motivoRechazo, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncVersion: $syncVersion')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    origenId,
+    destinoId,
+    estado,
+    solicitanteId,
+    fechaSolicitud,
+    numero,
+    decididoEn,
+    motivoRechazo,
+    createdAt,
+    updatedAt,
+    createdBy,
+    deletedAt,
+    syncVersion,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TransferenciaStockData &&
+          other.id == this.id &&
+          other.origenId == this.origenId &&
+          other.destinoId == this.destinoId &&
+          other.estado == this.estado &&
+          other.solicitanteId == this.solicitanteId &&
+          other.fechaSolicitud == this.fechaSolicitud &&
+          other.numero == this.numero &&
+          other.decididoEn == this.decididoEn &&
+          other.motivoRechazo == this.motivoRechazo &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.createdBy == this.createdBy &&
+          other.deletedAt == this.deletedAt &&
+          other.syncVersion == this.syncVersion);
+}
+
+class TransferenciaStockCompanion
+    extends UpdateCompanion<TransferenciaStockData> {
+  final Value<String> id;
+  final Value<String> origenId;
+  final Value<String> destinoId;
+  final Value<String> estado;
+  final Value<String?> solicitanteId;
+  final Value<int?> fechaSolicitud;
+  final Value<int?> numero;
+  final Value<int?> decididoEn;
+  final Value<String?> motivoRechazo;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<String?> createdBy;
+  final Value<int?> deletedAt;
+  final Value<int> syncVersion;
+  final Value<int> rowid;
+  const TransferenciaStockCompanion({
+    this.id = const Value.absent(),
+    this.origenId = const Value.absent(),
+    this.destinoId = const Value.absent(),
+    this.estado = const Value.absent(),
+    this.solicitanteId = const Value.absent(),
+    this.fechaSolicitud = const Value.absent(),
+    this.numero = const Value.absent(),
+    this.decididoEn = const Value.absent(),
+    this.motivoRechazo = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.syncVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  TransferenciaStockCompanion.insert({
+    required String id,
+    required String origenId,
+    required String destinoId,
+    this.estado = const Value.absent(),
+    this.solicitanteId = const Value.absent(),
+    this.fechaSolicitud = const Value.absent(),
+    this.numero = const Value.absent(),
+    this.decididoEn = const Value.absent(),
+    this.motivoRechazo = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+    this.createdBy = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.syncVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       origenId = Value(origenId),
+       destinoId = Value(destinoId),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<TransferenciaStockData> custom({
+    Expression<String>? id,
+    Expression<String>? origenId,
+    Expression<String>? destinoId,
+    Expression<String>? estado,
+    Expression<String>? solicitanteId,
+    Expression<int>? fechaSolicitud,
+    Expression<int>? numero,
+    Expression<int>? decididoEn,
+    Expression<String>? motivoRechazo,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<String>? createdBy,
+    Expression<int>? deletedAt,
+    Expression<int>? syncVersion,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (origenId != null) 'origen_id': origenId,
+      if (destinoId != null) 'destino_id': destinoId,
+      if (estado != null) 'estado': estado,
+      if (solicitanteId != null) 'solicitante_id': solicitanteId,
+      if (fechaSolicitud != null) 'fecha_solicitud': fechaSolicitud,
+      if (numero != null) 'numero': numero,
+      if (decididoEn != null) 'decidido_en': decididoEn,
+      if (motivoRechazo != null) 'motivo_rechazo': motivoRechazo,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (createdBy != null) 'created_by': createdBy,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (syncVersion != null) 'sync_version': syncVersion,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  TransferenciaStockCompanion copyWith({
+    Value<String>? id,
+    Value<String>? origenId,
+    Value<String>? destinoId,
+    Value<String>? estado,
+    Value<String?>? solicitanteId,
+    Value<int?>? fechaSolicitud,
+    Value<int?>? numero,
+    Value<int?>? decididoEn,
+    Value<String?>? motivoRechazo,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<String?>? createdBy,
+    Value<int?>? deletedAt,
+    Value<int>? syncVersion,
+    Value<int>? rowid,
+  }) {
+    return TransferenciaStockCompanion(
+      id: id ?? this.id,
+      origenId: origenId ?? this.origenId,
+      destinoId: destinoId ?? this.destinoId,
+      estado: estado ?? this.estado,
+      solicitanteId: solicitanteId ?? this.solicitanteId,
+      fechaSolicitud: fechaSolicitud ?? this.fechaSolicitud,
+      numero: numero ?? this.numero,
+      decididoEn: decididoEn ?? this.decididoEn,
+      motivoRechazo: motivoRechazo ?? this.motivoRechazo,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      createdBy: createdBy ?? this.createdBy,
+      deletedAt: deletedAt ?? this.deletedAt,
+      syncVersion: syncVersion ?? this.syncVersion,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (origenId.present) {
+      map['origen_id'] = Variable<String>(origenId.value);
+    }
+    if (destinoId.present) {
+      map['destino_id'] = Variable<String>(destinoId.value);
+    }
+    if (estado.present) {
+      map['estado'] = Variable<String>(estado.value);
+    }
+    if (solicitanteId.present) {
+      map['solicitante_id'] = Variable<String>(solicitanteId.value);
+    }
+    if (fechaSolicitud.present) {
+      map['fecha_solicitud'] = Variable<int>(fechaSolicitud.value);
+    }
+    if (numero.present) {
+      map['numero'] = Variable<int>(numero.value);
+    }
+    if (decididoEn.present) {
+      map['decidido_en'] = Variable<int>(decididoEn.value);
+    }
+    if (motivoRechazo.present) {
+      map['motivo_rechazo'] = Variable<String>(motivoRechazo.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
+    if (syncVersion.present) {
+      map['sync_version'] = Variable<int>(syncVersion.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TransferenciaStockCompanion(')
+          ..write('id: $id, ')
+          ..write('origenId: $origenId, ')
+          ..write('destinoId: $destinoId, ')
+          ..write('estado: $estado, ')
+          ..write('solicitanteId: $solicitanteId, ')
+          ..write('fechaSolicitud: $fechaSolicitud, ')
+          ..write('numero: $numero, ')
+          ..write('decididoEn: $decididoEn, ')
+          ..write('motivoRechazo: $motivoRechazo, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncVersion: $syncVersion, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class TransferenciaItem extends Table
+    with TableInfo<TransferenciaItem, TransferenciaItemData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  TransferenciaItem(this.attachedDatabase, [this._alias]);
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> transferenciaId = GeneratedColumn<String>(
+    'transferencia_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> productoId = GeneratedColumn<String>(
+    'producto_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> cantidad = GeneratedColumn<int>(
+    'cantidad',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    $customConstraints: 'NOT NULL',
+  );
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL',
+  );
+  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
+    'sync_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NOT NULL DEFAULT 0',
+    defaultValue: const CustomExpression('0'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    transferenciaId,
+    productoId,
+    cantidad,
+    createdAt,
+    updatedAt,
+    createdBy,
+    deletedAt,
+    syncVersion,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'transferencia_item';
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TransferenciaItemData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TransferenciaItemData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      transferenciaId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}transferencia_id'],
+      )!,
+      productoId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}producto_id'],
+      )!,
+      cantidad: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cantidad'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      ),
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      syncVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sync_version'],
+      )!,
+    );
+  }
+
+  @override
+  TransferenciaItem createAlias(String alias) {
+    return TransferenciaItem(attachedDatabase, alias);
+  }
+
+  @override
+  List<String> get customConstraints => const [
+    'PRIMARY KEY(id)',
+    'CHECK(cantidad > 0)',
+  ];
+  @override
+  bool get dontWriteConstraints => true;
+}
+
+class TransferenciaItemData extends DataClass
+    implements Insertable<TransferenciaItemData> {
+  final String id;
+  final String transferenciaId;
+  final String productoId;
+  final int cantidad;
+  final int createdAt;
+  final int updatedAt;
+  final String? createdBy;
+  final int? deletedAt;
+  final int syncVersion;
+  const TransferenciaItemData({
+    required this.id,
+    required this.transferenciaId,
+    required this.productoId,
+    required this.cantidad,
+    required this.createdAt,
+    required this.updatedAt,
+    this.createdBy,
+    this.deletedAt,
+    required this.syncVersion,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['transferencia_id'] = Variable<String>(transferenciaId);
+    map['producto_id'] = Variable<String>(productoId);
+    map['cantidad'] = Variable<int>(cantidad);
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || createdBy != null) {
+      map['created_by'] = Variable<String>(createdBy);
+    }
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
+    map['sync_version'] = Variable<int>(syncVersion);
+    return map;
+  }
+
+  TransferenciaItemCompanion toCompanion(bool nullToAbsent) {
+    return TransferenciaItemCompanion(
+      id: Value(id),
+      transferenciaId: Value(transferenciaId),
+      productoId: Value(productoId),
+      cantidad: Value(cantidad),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      createdBy: createdBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdBy),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      syncVersion: Value(syncVersion),
+    );
+  }
+
+  factory TransferenciaItemData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TransferenciaItemData(
+      id: serializer.fromJson<String>(json['id']),
+      transferenciaId: serializer.fromJson<String>(json['transferenciaId']),
+      productoId: serializer.fromJson<String>(json['productoId']),
+      cantidad: serializer.fromJson<int>(json['cantidad']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      createdBy: serializer.fromJson<String?>(json['createdBy']),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
+      syncVersion: serializer.fromJson<int>(json['syncVersion']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'transferenciaId': serializer.toJson<String>(transferenciaId),
+      'productoId': serializer.toJson<String>(productoId),
+      'cantidad': serializer.toJson<int>(cantidad),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'createdBy': serializer.toJson<String?>(createdBy),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
+      'syncVersion': serializer.toJson<int>(syncVersion),
+    };
+  }
+
+  TransferenciaItemData copyWith({
+    String? id,
+    String? transferenciaId,
+    String? productoId,
+    int? cantidad,
+    int? createdAt,
+    int? updatedAt,
+    Value<String?> createdBy = const Value.absent(),
+    Value<int?> deletedAt = const Value.absent(),
+    int? syncVersion,
+  }) => TransferenciaItemData(
+    id: id ?? this.id,
+    transferenciaId: transferenciaId ?? this.transferenciaId,
+    productoId: productoId ?? this.productoId,
+    cantidad: cantidad ?? this.cantidad,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    syncVersion: syncVersion ?? this.syncVersion,
+  );
+  TransferenciaItemData copyWithCompanion(TransferenciaItemCompanion data) {
+    return TransferenciaItemData(
+      id: data.id.present ? data.id.value : this.id,
+      transferenciaId: data.transferenciaId.present
+          ? data.transferenciaId.value
+          : this.transferenciaId,
+      productoId: data.productoId.present
+          ? data.productoId.value
+          : this.productoId,
+      cantidad: data.cantidad.present ? data.cantidad.value : this.cantidad,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      syncVersion: data.syncVersion.present
+          ? data.syncVersion.value
+          : this.syncVersion,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TransferenciaItemData(')
+          ..write('id: $id, ')
+          ..write('transferenciaId: $transferenciaId, ')
+          ..write('productoId: $productoId, ')
+          ..write('cantidad: $cantidad, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncVersion: $syncVersion')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    transferenciaId,
+    productoId,
+    cantidad,
+    createdAt,
+    updatedAt,
+    createdBy,
+    deletedAt,
+    syncVersion,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TransferenciaItemData &&
+          other.id == this.id &&
+          other.transferenciaId == this.transferenciaId &&
+          other.productoId == this.productoId &&
+          other.cantidad == this.cantidad &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.createdBy == this.createdBy &&
+          other.deletedAt == this.deletedAt &&
+          other.syncVersion == this.syncVersion);
+}
+
+class TransferenciaItemCompanion
+    extends UpdateCompanion<TransferenciaItemData> {
+  final Value<String> id;
+  final Value<String> transferenciaId;
+  final Value<String> productoId;
+  final Value<int> cantidad;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<String?> createdBy;
+  final Value<int?> deletedAt;
+  final Value<int> syncVersion;
+  final Value<int> rowid;
+  const TransferenciaItemCompanion({
+    this.id = const Value.absent(),
+    this.transferenciaId = const Value.absent(),
+    this.productoId = const Value.absent(),
+    this.cantidad = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.syncVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  TransferenciaItemCompanion.insert({
+    required String id,
+    required String transferenciaId,
+    required String productoId,
+    required int cantidad,
+    required int createdAt,
+    required int updatedAt,
+    this.createdBy = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.syncVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       transferenciaId = Value(transferenciaId),
+       productoId = Value(productoId),
+       cantidad = Value(cantidad),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<TransferenciaItemData> custom({
+    Expression<String>? id,
+    Expression<String>? transferenciaId,
+    Expression<String>? productoId,
+    Expression<int>? cantidad,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<String>? createdBy,
+    Expression<int>? deletedAt,
+    Expression<int>? syncVersion,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (transferenciaId != null) 'transferencia_id': transferenciaId,
+      if (productoId != null) 'producto_id': productoId,
+      if (cantidad != null) 'cantidad': cantidad,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (createdBy != null) 'created_by': createdBy,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (syncVersion != null) 'sync_version': syncVersion,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  TransferenciaItemCompanion copyWith({
+    Value<String>? id,
+    Value<String>? transferenciaId,
+    Value<String>? productoId,
+    Value<int>? cantidad,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<String?>? createdBy,
+    Value<int?>? deletedAt,
+    Value<int>? syncVersion,
+    Value<int>? rowid,
+  }) {
+    return TransferenciaItemCompanion(
+      id: id ?? this.id,
+      transferenciaId: transferenciaId ?? this.transferenciaId,
+      productoId: productoId ?? this.productoId,
+      cantidad: cantidad ?? this.cantidad,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      createdBy: createdBy ?? this.createdBy,
+      deletedAt: deletedAt ?? this.deletedAt,
+      syncVersion: syncVersion ?? this.syncVersion,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (transferenciaId.present) {
+      map['transferencia_id'] = Variable<String>(transferenciaId.value);
+    }
+    if (productoId.present) {
+      map['producto_id'] = Variable<String>(productoId.value);
+    }
+    if (cantidad.present) {
+      map['cantidad'] = Variable<int>(cantidad.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
+    if (syncVersion.present) {
+      map['sync_version'] = Variable<int>(syncVersion.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TransferenciaItemCompanion(')
+          ..write('id: $id, ')
+          ..write('transferenciaId: $transferenciaId, ')
+          ..write('productoId: $productoId, ')
+          ..write('cantidad: $cantidad, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('syncVersion: $syncVersion, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class Ciudad extends Table with TableInfo<Ciudad, CiudadData> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -24544,6 +25753,8 @@ class DatabaseAtV44 extends GeneratedDatabase {
   late final PrecioGeneral precioGeneral = PrecioGeneral(this);
   late final ParametroGlobal parametroGlobal = ParametroGlobal(this);
   late final Stock stock = Stock(this);
+  late final TransferenciaStock transferenciaStock = TransferenciaStock(this);
+  late final TransferenciaItem transferenciaItem = TransferenciaItem(this);
   late final Ciudad ciudad = Ciudad(this);
   late final Pais pais = Pais(this);
   late final Campania campania = Campania(this);
@@ -24683,6 +25894,18 @@ class DatabaseAtV44 extends GeneratedDatabase {
     'stock_usuario_idx',
     'CREATE INDEX stock_usuario_idx ON stock (usuario_id)',
   );
+  late final Index transferenciaStockOrigenIdx = Index(
+    'transferencia_stock_origen_idx',
+    'CREATE INDEX transferencia_stock_origen_idx ON transferencia_stock (origen_id)',
+  );
+  late final Index transferenciaStockDestinoIdx = Index(
+    'transferencia_stock_destino_idx',
+    'CREATE INDEX transferencia_stock_destino_idx ON transferencia_stock (destino_id)',
+  );
+  late final Index transferenciaItemTransferenciaIdx = Index(
+    'transferencia_item_transferencia_idx',
+    'CREATE INDEX transferencia_item_transferencia_idx ON transferencia_item (transferencia_id)',
+  );
   late final Index campaniaColportorUsuarioIdx = Index(
     'campania_colportor_usuario_idx',
     'CREATE INDEX campania_colportor_usuario_idx ON campania_colportor (usuario_id)',
@@ -24763,6 +25986,8 @@ class DatabaseAtV44 extends GeneratedDatabase {
     precioGeneral,
     parametroGlobal,
     stock,
+    transferenciaStock,
+    transferenciaItem,
     ciudad,
     pais,
     campania,
@@ -24811,6 +26036,9 @@ class DatabaseAtV44 extends GeneratedDatabase {
     precioGeneralProductoIdx,
     precioGeneralColeccionIdx,
     stockUsuarioIdx,
+    transferenciaStockOrigenIdx,
+    transferenciaStockDestinoIdx,
+    transferenciaItemTransferenciaIdx,
     campaniaColportorUsuarioIdx,
     ventaColportorIdx,
     ventaEspacioPersonaIdx,

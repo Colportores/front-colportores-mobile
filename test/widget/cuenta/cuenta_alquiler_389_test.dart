@@ -138,6 +138,9 @@ void main() {
       (tester) async {
         await _cuenta(tester, RepositorioDeAlquilerControlable(inicial: alquilerDelCanvas));
 
+        // Con las dos acciones de transferencias (HU-STK-005, #512) la línea queda debajo del borde.
+        await tester.ensureVisible(find.byKey(const Key('cuenta_fila_alquiler')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('cuenta_fila_alquiler')));
         await tester.tap(find.byKey(const Key('cuenta_fila_alquiler')), warnIfMissed: false);
         await tester.pumpAndSettle();
@@ -149,6 +152,8 @@ void main() {
         expect(find.byType(AlquilerPage), findsNothing);
         expect(find.byKey(const Key('cuenta_pestana')), findsOneWidget);
 
+        await tester.ensureVisible(find.byKey(const Key('cuenta_fila_alquiler')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('cuenta_fila_alquiler')));
         await tester.pumpAndSettle();
         expect(find.byType(AlquilerPage), findsOneWidget);

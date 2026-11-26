@@ -51,6 +51,7 @@ import 'generated/schema_v41.dart' as v41;
 import 'generated/schema_v42.dart' as v42;
 import 'generated/schema_v43.dart' as v43;
 import 'generated/schema_v44.dart' as v44;
+import 'generated/schema_v45.dart' as v45;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
@@ -2777,13 +2778,84 @@ void main() {
       );
     },
   );
+
+  test('dado lo guardado en la versión 43, cuando migra a la 44, se conserva todo y las tablas de las '
+      'transferencias quedan vacías y sin nada para subir (#512)', () async {
+    // HU-STK-005 (#512): solo se suman `transferencia_stock` y `transferencia_item`. El stock, la cola y
+    // los watermarks no se tocan: lo que esperaba subir sigue esperando (convenciones §9).
+    const stock = v43.StockData(
+      id: 'st-1',
+      usuarioId: 'col-1',
+      productoId: 'p-1',
+      cantidadDisponible: 6,
+      cantidadReservada: 0,
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 3,
+    );
+    const job = v43.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'venta',
+      op: 'insert',
+      payload: '{"id":"v-1"}',
+      rowPk: 'v-1',
+      createdAt: 1758700000000,
+      state: 'PENDING',
+      code: '',
+      message: '',
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 43,
+      newVersion: 44,
+      createOld: v43.DatabaseAtV43.new,
+      createNew: v44.DatabaseAtV44.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.stock, stock)
+          ..insert(viejo.syncQueue, job);
+      },
+      validateItems: (nuevo) async {
+        final stocks = await nuevo.select(nuevo.stock).get();
+        expect(stocks.map((s) => s.toJson()), [stock.toJson()]);
+        final jobs = await nuevo.select(nuevo.syncQueue).get();
+        expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+        expect(await nuevo.select(nuevo.transferenciaStock).get(), isEmpty);
+        expect(await nuevo.select(nuevo.transferenciaItem).get(), isEmpty);
+
+        const insertar =
+            'INSERT INTO transferencia_stock (id, origen_id, destino_id, created_at, updated_at) VALUES ';
+        await nuevo.customStatement("$insertar('t-1', 'ana', 'juan', 1, 1)");
+        final fila = await nuevo.select(nuevo.transferenciaStock).getSingle();
+        expect(fila.estado, 'PENDIENTE_AUTORIZACION', reason: 'nace por autorizar');
+        expect(fila.solicitanteId, isNull);
+        expect(fila.fechaSolicitud, isNull, reason: 'sin hora del servidor: «En cola»');
+        await expectLater(
+          nuevo.customStatement("$insertar('t-2', 'ana', 'ana', 1, 1)"),
+          throwsA(anything),
+          reason: 'las dos puntas son distintas (CHECK del servidor)',
+        );
+        await expectLater(
+          nuevo.customStatement(
+            'INSERT INTO transferencia_item (id, transferencia_id, producto_id, cantidad, created_at, '
+            "updated_at) VALUES ('l-1', 't-1', 'p-1', 0, 1, 1)",
+          ),
+          throwsA(anything),
+          reason: 'la cantidad es mayor que cero',
+        );
+      },
+    );
+  });
+
   test(
-    'dado deptos con y sin texto en la columna descripcion en la versión 43, cuando migra a la 44, el '
+    'dado deptos con y sin texto en la columna descripcion en la versión 44, cuando migra a la 45, el '
     'texto pasa a una nota del depto, la columna se va y nada más cambia (#290)',
     () async {
       const base = (ubicacionId: 'ub-1', createdAt: 1000, updatedAt: 2000);
-      v43.EspacioData espacio(String id, {String? descripcion, int? deletedAt, String? numero}) =>
-          v43.EspacioData(
+      v44.EspacioData espacio(String id, {String? descripcion, int? deletedAt, String? numero}) =>
+          v44.EspacioData(
             id: id,
             ubicacionId: base.ubicacionId,
             numeroDepto: numero,
@@ -2797,10 +2869,10 @@ void main() {
           );
 
       await verificador.testWithDataIntegrity(
-        oldVersion: 43,
-        newVersion: 44,
-        createOld: v43.DatabaseAtV43.new,
-        createNew: v44.DatabaseAtV44.new,
+        oldVersion: 44,
+        newVersion: 45,
+        createOld: v44.DatabaseAtV44.new,
+        createNew: v45.DatabaseAtV45.new,
         openTestedDatabase: _abrir,
         createItems: (batch, viejo) {
           batch.insertAll(viejo.espacio, [
@@ -2812,7 +2884,7 @@ void main() {
           ]);
           batch.insert(
             viejo.nota,
-            const v43.NotaData(
+            const v44.NotaData(
               id: 'n-previa',
               targetType: 'UBICACION',
               targetId: 'ub-1',
