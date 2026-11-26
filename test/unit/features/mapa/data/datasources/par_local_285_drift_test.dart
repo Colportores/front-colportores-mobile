@@ -24,7 +24,7 @@ import 'package:colportores_mobile/features/mapa/data/repositories/ubicacion_rep
 import 'package:colportores_mobile/features/mapa/data/services/consultor_alta_ubicacion_drift.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/estado_alta_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/usecases/duplicados_ubicacion_use_cases.dart';
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show BooleanExpressionOperators, Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_engine/sync_engine.dart';
@@ -472,6 +472,54 @@ void main() {
         ['ep-a1'],
         reason: 'solo salió lo de B: lo demás sigue rechazado y visible',
       );
+    });
+
+    test(
+      'una edición de B que no salió (update PENDING) no sube: B nunca sube ni como baja',
+      () async {
+        await subirYQuedarRechazada();
+        // Ana corrige un dato de B: el motor no funde con un INVALID, queda un update PENDING.
+        await motor.stage('ubicacion', Op.update, {'id': 'ub-b', 'numero': '1235'});
+
+        final r = await unir(const UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: 'ub-b'));
+
+        expect(r.isRight(), isTrue);
+        expect(
+          await (db.select(
+            db.syncQueue,
+          )..where((q) => q.entity.equals('ubicacion') & q.rowPk.equals('ub-b'))).get(),
+          isEmpty,
+          reason: 'ninguna operación sobre B en la cola',
+        );
+        expect((await motor.syncNow()).ok, isTrue);
+        expect(servidor.filas.containsKey('ub-b'), isFalse, reason: 'B no sube, ni a medias');
+        expect((await DriftJobStore(db).status()).invalid, 0);
+      },
+    );
+
+    test('un depto de B dado de baja antes de subir se descarta: no queda rechazado', () async {
+      await sembrarAEnElServidor();
+      await cargarB();
+      await sembrarEspacio(db, id: 'esp-b3', ubicacionId: 'ub-b', numeroDepto: '3');
+      await motor.stage('espacio', Op.insert, {
+        'id': 'esp-b3',
+        'ubicacion_id': 'ub-b',
+        'numero_depto': '3',
+        'deleted_at': '2026-11-04T12:30:00.000Z',
+      });
+      await (db.update(db.espacios)..where((e) => e.id.equals('esp-b3'))).write(
+        EspaciosCompanion(deletedAt: Value(DateTime.utc(2026, 11, 4, 12, 30))),
+      );
+      await motor.syncNow();
+      expect((await invalidas()).any((q) => q.rowPk == 'esp-b3'), isTrue);
+
+      final r = await unir(const UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: 'ub-b'));
+
+      expect(r.isRight(), isTrue);
+      expect((await motor.syncNow()).ok, isTrue);
+      expect(await invalidas(), isEmpty, reason: 'nada queda rechazado en Sincronización');
+      expect(servidor.filas.containsKey('esp-b3'), isFalse);
+      expect(servidor.filas['ep-b1']!['espacio_id'], 'esp-a');
     });
 
     test('un segundo toque sobre el mismo par no hace nada de más', () async {

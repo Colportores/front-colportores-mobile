@@ -627,7 +627,17 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       // Antes de reapuntar: lo que el servidor rechazó por nombrar a B vuelve a la cola y el stage
       // de siempre lo funde con el cambio de padre; el alta rechazada de B sale de Sincronización.
       if (duplicadaRechazada) {
-        await _soltarLoRechazadoDe(duplicadaId, espaciosDeB: [for (final e in deB) e.id]);
+        final dadosDeBaja = await (select(
+          espacios,
+        )..where((e) => e.ubicacionId.equals(duplicadaId) & e.deletedAt.isNotNull())).get();
+        await _soltarLoRechazadoDe(
+          duplicadaId,
+          espaciosDeB: [for (final e in deB) e.id],
+          espaciosDadosDeBaja: [for (final e in dadosDeBaja) e.id],
+        );
+        // Una edición de B que todavía no salió (`update` PENDING sobre un alta rechazada) tampoco
+        // puede subir: el servidor nunca tuvo la fila. Sin esto la baja de B se fundía en ella.
+        await _descartarSinMandar('ubicacion', duplicadaId);
       }
       await _reencolarReapuntadas(reapuntadas, instante: instante);
       return (
@@ -718,18 +728,27 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   /// de la cola: salen de Sincronización, que es la única excepción a «una operación rechazada no se
   /// descarta desde el teléfono» (HU-SYNC-007). No toca los rechazos con otro código: esos son de la
   /// fila, no de B.
-  Future<void> _soltarLoRechazadoDe(String duplicadaId, {required List<String> espaciosDeB}) async {
+  Future<void> _soltarLoRechazadoDe(
+    String duplicadaId, {
+    required List<String> espaciosDeB,
+    required List<String> espaciosDadosDeBaja,
+  }) async {
     final cola = attachedDatabase.syncQueue;
     final rechazados = await (select(cola)..where((q) => q.state.equals(EstadoJob.invalid))).get();
 
     // Lo que nombra a B, a sus espacios o a lo que cuelga de ellos, hasta que no crezca.
     final nombradas = {duplicadaId, ...espaciosDeB};
+    // Un depto de B que Ana dio de baja antes de subir: el servidor nunca lo vio y no hay nada que
+    // conservar, así que su alta rechazada se descarta en vez de volver a la cola (subiría nombrando
+    // a B y volvería `23503` para siempre).
+    final muertos = espaciosDadosDeBaja.toSet();
     final vuelven = <String>{};
     var crecio = true;
     while (crecio) {
       crecio = false;
       for (final q in rechazados) {
         if (vuelven.contains(q.id) ||
+            (q.entity == 'espacio' && muertos.contains(q.rowPk)) ||
             q.code != _codigoFilaInexistente ||
             q.op == _opMarcarComoDuplicado ||
             q.entity == 'ubicacion' ||
@@ -757,6 +776,15 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
           claimedAt: Value(null),
         ),
       );
+    }
+    if (muertos.isNotEmpty) {
+      await (delete(cola)..where(
+            (q) =>
+                q.entity.equals('espacio') &
+                q.rowPk.isIn(muertos) &
+                q.state.equals(EstadoJob.invalid),
+          ))
+          .go();
     }
     await (delete(cola)..where(
           (q) =>
