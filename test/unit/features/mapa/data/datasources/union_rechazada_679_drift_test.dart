@@ -108,6 +108,23 @@ void main() {
         ),
       );
 
+  Future<void> notaDelDepto(String id, String espacioId, {DateTime? borrada}) => db
+      .into(db.notas)
+      .insert(
+        NotasCompanion.insert(
+          id: id,
+          targetType: TipoObjetivoNota.espacio,
+          targetId: espacioId,
+          texto: 'timbre roto, tocar fuerte',
+          createdAt: t0,
+          updatedAt: t0,
+          deletedAt: Value(borrada),
+        ),
+      );
+
+  Future<String> duenioDeLaNota(String id) async =>
+      (await (db.select(db.notas)..where((n) => n.id.equals(id))).getSingle()).targetId;
+
   /// A: casa con su espacio único `esp-a`. B: casa con su único `esp-b` (con la persona `ep-b`, una
   /// visita y una entrevista), y un depto `esp-b2`.
   Future<void> sembrarPar() async {
@@ -154,6 +171,7 @@ void main() {
         'vinculos': ['ep-b'],
         'visitas': ['vis-b'],
         'agendas': ['ag-b'],
+        'notas': <String>[],
       });
       expect(m.agendasAlternativas, ['ag-c']);
       expect(m.vinculosAlternativos, ['ep-c']);
@@ -161,6 +179,32 @@ void main() {
       expect(m.duplicadaDadaDeBaja, isTrue);
       expect(m.conservadaPasoAEdificio, isTrue, reason: 'A queda con esp-a y el depto 2B');
     });
+
+    test(
+      'dado que el único de B tiene notas de depto, cuando se une, pasan al único de A (también '
+      'la borrada) y la fila guarda sus ids; las del depto que pasa entero siguen en él (#290)',
+      () async {
+        await sembrarPar();
+        await notaDelDepto('nd-1', 'esp-b');
+        await notaDelDepto('nd-2', 'esp-b', borrada: t0);
+        await notaDelDepto('nd-3', 'esp-b2');
+        await notaDelDepto('nd-a', 'esp-a');
+
+        await local.unirDuplicada('ub-a', 'ub-b', ahora: tUnion);
+
+        expect(await duenioDeLaNota('nd-1'), 'esp-a');
+        expect(await duenioDeLaNota('nd-2'), 'esp-a', reason: 'la borrada pasa igual: 90 días');
+        expect(await duenioDeLaNota('nd-3'), 'esp-b2', reason: 'su depto no se fundió');
+        expect(await duenioDeLaNota('nd-a'), 'esp-a');
+        final m = MovimientosDeUnion.decodificar((await union('trabajo-1')).movimientos);
+        expect(m.espaciosFundidos.single.notas, ['nd-1', 'nd-2']);
+        expect(
+          encolador.encolados.map((c) => c.entidad).toSet().difference({'house_status'}),
+          isNot(contains('nota')),
+          reason: 'la nota es solo local: no se encola',
+        );
+      },
+    );
 
     test('dado que el trabajo no se pudo encolar, cuando la unión se revierte, tampoco queda su '
         'fila: la unión y lo que movió van juntos', () async {
@@ -241,6 +285,29 @@ void main() {
         // Nada se borró.
         expect(await db.select(db.espacios).get(), hasLength(4));
         expect(await db.select(db.espacioPersonas).get(), hasLength(2));
+      },
+    );
+
+    test(
+      'dado notas de depto que pasaron al único de A, cuando el servidor rechaza la unión, '
+      'vuelven a su depto; la que se movió después a otro depto se queda donde está (#290)',
+      () async {
+        await sembrarPar();
+        await notaDelDepto('nd-1', 'esp-b');
+        await notaDelDepto('nd-2', 'esp-b');
+        await local.unirDuplicada('ub-a', 'ub-b', ahora: tUnion);
+        await rechazar('trabajo-1', 'UB003');
+        // Otra unión posterior se llevó una de las dos a otro lado.
+        await (db.update(db.notas)..where((n) => n.id.equals('nd-2'))).write(
+          const NotasCompanion(targetId: Value('esp-otro')),
+        );
+
+        final hechas = await local.deshacerUnionesRechazadas(ahora: tDeshacer);
+
+        expect(await duenioDeLaNota('nd-1'), 'esp-b');
+        expect(await duenioDeLaNota('nd-2'), 'esp-otro');
+        expect(hechas.single.sinVolver, 1, reason: 'lo que se movió después se cuenta');
+        expect(await db.select(db.notas).get(), hasLength(2), reason: 'nada se borró');
       },
     );
 

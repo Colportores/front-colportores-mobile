@@ -13,17 +13,23 @@ import '../datasources/nota_ubicacion_local_data_source.dart';
 ///   cualquier otra excepción a `FailureInesperado`; nunca deja escapar una.
 /// - Loguea en `[DB]` (convenciones §7.3) solo UUIDs y códigos: ni el texto de la nota ni la dirección
 ///   del lugar (convenciones §7.5).
+///
+/// Con [delDepto] sirve a las notas de un depto (vista 11, #290): lo único que cambia es cómo se llaman
+/// en el log (`NOTA_DEPTO_*` y `espacio_id`).
 final class NotaUbicacionRepositoryImpl implements NotaUbicacionRepository {
-  NotaUbicacionRepositoryImpl(this._local, {AppLogger? logger})
+  NotaUbicacionRepositoryImpl(this._local, {AppLogger? logger, this.delDepto = false})
     : _log = logger ?? AppLogger.instance;
 
   final NotaUbicacionLocalDataSource _local;
   final AppLogger _log;
+  final bool delDepto;
+
+  String get _prefijo => delDepto ? 'NOTA_DEPTO' : 'NOTA_LUGAR';
 
   @override
-  Future<Either<Failure, NotaUbicacion>> agregar(NotaUbicacion nota) => _correr('NOTA_LUGAR_ALTA', {
+  Future<Either<Failure, NotaUbicacion>> agregar(NotaUbicacion nota) => _correr('ALTA', {
     'nota_id': nota.id,
-    'ubicacion_id': nota.ubicacionId,
+    delDepto ? 'espacio_id' : 'ubicacion_id': nota.ubicacionId,
   }, () => _local.agregar(nota));
 
   @override
@@ -31,19 +37,16 @@ final class NotaUbicacionRepositoryImpl implements NotaUbicacionRepository {
     required String id,
     required String texto,
     required DateTime ahora,
-  }) => _correr('NOTA_LUGAR_EDICION', {
-    'nota_id': id,
-  }, () => _local.editar(id: id, texto: texto, ahora: ahora));
+  }) =>
+      _correr('EDICION', {'nota_id': id}, () => _local.editar(id: id, texto: texto, ahora: ahora));
 
   @override
   Future<Either<Failure, NotaUbicacion>> borrar({required String id, required DateTime ahora}) =>
-      _correr('NOTA_LUGAR_BAJA', {'nota_id': id}, () => _local.borrar(id: id, ahora: ahora));
+      _correr('BAJA', {'nota_id': id}, () => _local.borrar(id: id, ahora: ahora));
 
   @override
   Future<Either<Failure, NotaUbicacion>> restaurar({required String id, required DateTime ahora}) =>
-      _correr('NOTA_LUGAR_RESTAURAR', {
-        'nota_id': id,
-      }, () => _local.restaurar(id: id, ahora: ahora));
+      _correr('RESTAURAR', {'nota_id': id}, () => _local.restaurar(id: id, ahora: ahora));
 
   @override
   Stream<List<NotaUbicacion>> observar(String ubicacionId) => _local.observar(ubicacionId);
@@ -53,10 +56,11 @@ final class NotaUbicacionRepositoryImpl implements NotaUbicacionRepository {
     Map<String, Object?> contexto,
     Future<NotaUbicacion> Function() accion,
   ) async {
+    final nombre = '${_prefijo}_$operacion';
     try {
       return Right(await accion());
     } on NotaRechazadaException catch (e) {
-      _log.info(LogModulo.db, '${operacion}_RECHAZADA', 'operación sobre una nota rechazada', {
+      _log.info(LogModulo.db, '${nombre}_RECHAZADA', 'operación sobre una nota rechazada', {
         ...contexto,
         'motivo': e.motivo.name,
       });
@@ -67,7 +71,7 @@ final class NotaUbicacionRepositoryImpl implements NotaUbicacionRepository {
       final tipo = e.runtimeType.toString();
       _log.error(
         LogModulo.db,
-        '${operacion}_FAIL',
+        '${nombre}_FAIL',
         'falló una operación sobre una nota',
         {...contexto, 'tipo': tipo},
         null,

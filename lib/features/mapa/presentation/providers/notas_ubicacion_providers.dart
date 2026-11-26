@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/database_providers.dart';
 import '../../data/datasources/nota_ubicacion_local_data_source_drift.dart';
+import '../../data/datasources/notas_table.dart' show TipoObjetivoNota;
 import '../../data/repositories/nota_ubicacion_repository_impl.dart';
 import '../../domain/entities/nota_ubicacion.dart';
 import '../../domain/repositories/nota_ubicacion_repository.dart';
@@ -54,5 +55,52 @@ final restaurarNotaUbicacionUseCaseProvider = Provider<RestaurarNotaUbicacionUse
 /// se agrega, edita, borra o restaura una. Una falla de lectura es el error del provider.
 final notasDeUbicacionProvider = StreamProvider.autoDispose.family<List<NotaUbicacion>, String>(
   (ref, ubicacionId) => ref.watch(notaUbicacionRepositoryProvider).observar(ubicacionId),
+  retry: _sinReintentos,
+);
+
+// Las notas de un depto (vista 11, #290): las mismas piezas con `target_type = ESPACIO`. Una nota de
+// un depto es una `NotaUbicacion` cuyo `ubicacionId` es el `id` del espacio.
+
+final notaDeptoRepositoryProvider = Provider<NotaUbicacionRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) throw StateError('La base de datos local no está abierta');
+  return NotaUbicacionRepositoryImpl(
+    NotaUbicacionLocalDataSourceDrift(db, objetivo: TipoObjetivoNota.espacio),
+    delDepto: true,
+  );
+});
+
+final agregarNotaDeptoUseCaseProvider = Provider<AgregarNotaUbicacionUseCase>(
+  (ref) => AgregarNotaUbicacionUseCase(
+    ref.watch(notaDeptoRepositoryProvider),
+    ahora: ref.watch(relojPersonaProvider),
+  ),
+);
+
+final editarNotaDeptoUseCaseProvider = Provider<EditarNotaUbicacionUseCase>(
+  (ref) => EditarNotaUbicacionUseCase(
+    ref.watch(notaDeptoRepositoryProvider),
+    ahora: ref.watch(relojPersonaProvider),
+  ),
+);
+
+final borrarNotaDeptoUseCaseProvider = Provider<BorrarNotaUbicacionUseCase>(
+  (ref) => BorrarNotaUbicacionUseCase(
+    ref.watch(notaDeptoRepositoryProvider),
+    ahora: ref.watch(relojPersonaProvider),
+  ),
+);
+
+final restaurarNotaDeptoUseCaseProvider = Provider<RestaurarNotaUbicacionUseCase>(
+  (ref) => RestaurarNotaUbicacionUseCase(
+    ref.watch(notaDeptoRepositoryProvider),
+    ahora: ref.watch(relojPersonaProvider),
+  ),
+);
+
+/// Todas las notas del depto [espacioId], activas y borradas, de la más nueva a la más vieja, al día
+/// cuando se agrega, edita, borra o restaura una. Una falla de lectura es el error del provider.
+final notasDeDeptoProvider = StreamProvider.autoDispose.family<List<NotaUbicacion>, String>(
+  (ref, espacioId) => ref.watch(notaDeptoRepositoryProvider).observar(espacioId),
   retry: _sinReintentos,
 );

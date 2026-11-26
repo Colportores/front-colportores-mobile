@@ -1,5 +1,5 @@
 /// Por qué la persistencia rechazó una operación sobre las notas de una persona (HU-UBI-012) o de un
-/// lugar (vista 39, C·05).
+/// lugar (vista 39, C·05) o de un depto (vista 11, #290).
 ///
 /// Los decide la capa `data` dentro de la transacción (donde puede leer el estado real de la DB) y el
 /// repositorio los traduce a un `FailureValidacion` con el [campo] y el [mensaje] de acá. Los mensajes
@@ -14,6 +14,11 @@ enum MotivoRechazoNota {
   ubicacionDeBaja(
     'ubicacion',
     'Este lugar está dado de baja: podés ver sus notas, pero no agregar ni cambiar ninguna.',
+  ),
+  espacioInexistente('espacio', 'El depto ya no está en tu teléfono. Volvé atrás.'),
+  espacioDeBaja(
+    'espacio',
+    'Este depto está dado de baja: podés ver sus notas, pero no agregar ni cambiar ninguna.',
   ),
   notaInexistente('nota', 'La nota ya no está en tu teléfono. Volvé a la lista de notas.'),
   notaBorrada('nota', 'La nota está borrada. Restaurala para poder editarla.');

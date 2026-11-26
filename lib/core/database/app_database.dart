@@ -226,14 +226,17 @@ class AppDatabase extends _$AppDatabase {
   /// - 44: `transferencia_stock` y `transferencia_item`, las transferencias de materiales entre colportores
   ///   que el teléfono pide y cancela, y que baja a las dos puntas (backend-supabase 0139 y 0148,
   ///   HU-STK-005, #512).
-  /// - 45: los seguimientos del 24/11 (backend-supabase 0206 a 0208, #313; #769): `ubicacion.nombre`, el
+  /// - 45: `espacio` pierde `descripcion` (backend-supabase 0104, «Notas depto», HU-UBI-007, #290): lo que
+  ///   hubiera escrito ahí pasa antes a una nota del depto (`nota`, `target_type = ESPACIO`), así que ningún
+  ///   texto escrito en campo se descarta.
+  /// - 46: los seguimientos del 24/11 (backend-supabase 0206 a 0208, #313; #769): `ubicacion.nombre`, el
   ///   nombre opcional del lugar («Nombre ubic.»); `preferencia_de_avisos`, las preferencias de avisos de la
   ///   persona, una fila que sube y baja con el sync para cambiarlas sin señal («Avisos s/red»); y
   ///   `campania_companiero`, los nombres de los compañeros de campaña, de solo bajada («Nombres camp.»).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 45;
+  static const int versionEsquema = 46;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -638,11 +641,30 @@ class AppDatabase extends _$AppDatabase {
       await m.createTable(esquema.transferenciaItem);
       await m.createIndex(esquema.transferenciaItemTransferenciaIdx);
     },
+    // Saca `descripcion` de `espacio` (backend-supabase 0104, #290). Antes, el texto que tuviera un depto
+    // pasa a una nota suya (`nota` con `target_type = ESPACIO`, local-only), con la fecha y la autora del
+    // depto: nunca se descarta un texto escrito en campo (decisión del 27/10, #498). Los espacios dados de
+    // baja también (el historial se conserva). Un texto en blanco no es una nota. Después se recrea `espacio`
+    // sin la columna, copiando las que siguen (`alterTable` también vuelve a crear `espacio_ubicacion_idx`).
+    // Nada de lo guardado cambia ni se encola al migrar: la nota es local y las filas de `espacio` quedan
+    // como estaban.
+    from44To45: (m, esquema) async {
+      await m.database.customStatement(
+        'INSERT INTO nota (id, target_type, target_id, texto, categoria, created_at, updated_at, '
+        'created_by, deleted_at, sync_version) '
+        "SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
+        "substr(hex(randomblob(2)), 2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || "
+        "substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))), "
+        "'ESPACIO', id, trim(descripcion), NULL, created_at, updated_at, created_by, NULL, 0 "
+        "FROM espacio WHERE descripcion IS NOT NULL AND trim(descripcion) <> ''",
+      );
+      await m.alterTable(TableMigration(esquema.espacio));
+    },
     // Suma `nombre` a `ubicacion`, vacía (las ubicaciones que ya estaban no tienen nombre) y crea las dos
     // tablas nuevas, vacías: las llena el pull (los compañeros y las preferencias de la persona). Nada de lo
     // guardado por la colportora cambia ni se encola al migrar. Las preferencias que la persona ya tenía en
     // el servidor bajan con el pull: la migración del servidor (0207) le creó su fila.
-    from44To45: (m, esquema) async {
+    from45To46: (m, esquema) async {
       await m.addColumn(esquema.ubicacion, esquema.ubicacion.nombre);
       await m.createTable(esquema.preferenciaDeAvisos);
       await m.createTable(esquema.campaniaCompaniero);

@@ -137,7 +137,8 @@ Cada entrada tiene `dónde` (archivo), `uso` (3 líneas como máximo), `no dupli
 ### CASA-03 · Ubicación con deptos (vista 11) y personas del espacio
 - dónde: `widgets/hoja_ubicacion.dart` (`mostrarHojaUbicacion`) · `widgets/hoja_depto.dart` (`mostrarHojaDepto`, `SalidaHojaDepto`) · `pages/personas_del_espacio_page.dart` (sin quién la llame en develop)
 - uso: un edificio o un negocio de la Lista abre `mostrarHojaUbicacion` (en `InicioPage._abrirUbicacion`). En un edificio el contexto es siempre el depto (`espacio_id`).
-- no duplicar: ninguna lista de deptos propia.
+- notas del depto (#290): la fila de la hoja del depto es `widgets/fila_nota_del_depto.dart`; la pestaña Notas y «Ver borradas» son las del lugar con `espacioId` (`PestanaNotasDeLaCasa.enganche`, `NotasBorradasDelLugarPage`); el formulario es `NotaDeptoFormPage`; los providers, `notaDeptoRepositoryProvider` y `notasDeDeptoProvider`. Son filas de `Notas` con `target_type = ESPACIO`.
+- no duplicar: ninguna lista de deptos propia, ni una tabla de notas del depto.
 - tags: vistas 11 39 · HU-UBI-007
 
 ### CASA-04 · «¿Con quién?» y alta corta de persona

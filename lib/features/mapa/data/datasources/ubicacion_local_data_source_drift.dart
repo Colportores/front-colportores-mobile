@@ -496,6 +496,9 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     final parLocal =
         altaConservada == EstadoAltaUbicacion.soloEnTelefono ||
         altaDuplicada == EstadoAltaUbicacion.soloEnTelefono;
+    // El alta de B que el servidor rechazó por un error de datos (`INVALID`) también es «Par local»,
+    // y es la única rechazada que se descarta desde el teléfono (HU-UBI-006, «Alta invalid»).
+    final duplicadaRechazada = parLocal && await _altaRechazada(duplicadaId);
     // Los espacios de B que viajan en este momento (el alta de B ya no, pero sí lo que cuelga de ella
     // en un lote anterior): no se les cambia el padre por abajo.
     if (parLocal) {
@@ -622,6 +625,21 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       if (altaDuplicada == EstadoAltaUbicacion.soloEnTelefono) {
         await _descartarSinMandar('house_status', duplicadaId);
       }
+      // Antes de reapuntar: lo que el servidor rechazó por nombrar a B vuelve a la cola y el stage
+      // de siempre lo funde con el cambio de padre; el alta rechazada de B sale de Sincronización.
+      if (duplicadaRechazada) {
+        final dadosDeBaja = await (select(
+          espacios,
+        )..where((e) => e.ubicacionId.equals(duplicadaId) & e.deletedAt.isNotNull())).get();
+        await _soltarLoRechazadoDe(
+          duplicadaId,
+          espaciosDeB: [for (final e in deB) e.id],
+          espaciosDadosDeBaja: [for (final e in dadosDeBaja) e.id],
+        );
+        // Una edición de B que todavía no salió (`update` PENDING sobre un alta rechazada) tampoco
+        // puede subir: el servidor nunca tuvo la fila. Sin esto la baja de B se fundía en ella.
+        await _descartarSinMandar('ubicacion', duplicadaId);
+      }
       await _reencolarReapuntadas(reapuntadas, instante: instante);
       return (
         escribio: true,
@@ -661,10 +679,10 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   });
 
   /// Dónde está el alta de la ubicación [id] (HU-UBI-006, «Par local»): su `insert` en `sync_queue`
-  /// sin aplicar. `subiendo` si un ciclo lo tiene en la mano; `soloEnTelefono` si espera (`PENDING`) o
-  /// el motor lo retuvo (`BLOCKED` por conflicto, `WAITING` por otra en conflicto); sin `insert` sin
-  /// aplicar, o con uno `INVALID`, se la trata como del servidor (ante la duda no se une en el
-  /// teléfono: el trabajo «marcar como duplicado» que le corresponde falla y no cambia nada).
+  /// sin aplicar. `subiendo` si un ciclo lo tiene en la mano; `soloEnTelefono` si espera (`PENDING`),
+  /// el motor lo retuvo (`BLOCKED` por conflicto, `WAITING` por otra en conflicto) o el servidor la
+  /// rechazó por un error de datos (`INVALID`: nunca llegó a él; decisión de Cristian, 05/11, «Alta
+  /// invalid», #285 y #746); sin `insert` en la cola se la trata como del servidor.
   Future<EstadoAltaUbicacion> _estadoAlta(String id) async {
     final cola = attachedDatabase.syncQueue;
     final estados =
@@ -674,7 +692,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
                 cola.entity.equals('ubicacion') &
                     cola.rowPk.equals(id) &
                     cola.op.equals('insert') &
-                    cola.state.isIn(EstadoJob.sinAplicar),
+                    cola.state.isIn([...EstadoJob.sinAplicar, EstadoJob.invalid]),
               ))
             .map((r) => r.read(cola.state))
             .get();
@@ -682,6 +700,101 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     return estados.contains(EstadoJob.inFlight)
         ? EstadoAltaUbicacion.subiendo
         : EstadoAltaUbicacion.soloEnTelefono;
+  }
+
+  /// Si el alta de la ubicación [id] volvió `INVALID`: el servidor la rechazó por un error de datos.
+  Future<bool> _altaRechazada(String id) async {
+    final cola = attachedDatabase.syncQueue;
+    final hay =
+        await (attachedDatabase.selectOnly(cola)
+              ..addColumns([cola.id])
+              ..where(
+                cola.entity.equals('ubicacion') &
+                    cola.rowPk.equals(id) &
+                    cola.op.equals('insert') &
+                    cola.state.equals(EstadoJob.invalid),
+              ))
+            .get();
+    return hay.isNotEmpty;
+  }
+
+  /// El código con que el servidor rechaza lo que nombra una fila que no tiene (la FK).
+  static const _codigoFilaInexistente = '23503';
+
+  /// «Par local» con el alta de B `INVALID` (HU-UBI-006, «Alta invalid», #746): el servidor nunca
+  /// tuvo a B, así que lo que la nombraba (sus espacios, y lo que cuelga de ellos) subió detrás de
+  /// ella y volvió `INVALID` con `23503`. Eso **no se pierde**: vuelve a `PENDING`, en su lugar de la
+  /// cola, y [_reencolarReapuntadas] lo funde con el cambio de padre a la conservada, así que sube
+  /// con ella. El alta rechazada de B, su color y cualquier otra operación rechazada sobre B se sacan
+  /// de la cola: salen de Sincronización, que es la única excepción a «una operación rechazada no se
+  /// descarta desde el teléfono» (HU-SYNC-007). No toca los rechazos con otro código: esos son de la
+  /// fila, no de B.
+  Future<void> _soltarLoRechazadoDe(
+    String duplicadaId, {
+    required List<String> espaciosDeB,
+    required List<String> espaciosDadosDeBaja,
+  }) async {
+    final cola = attachedDatabase.syncQueue;
+    final rechazados = await (select(cola)..where((q) => q.state.equals(EstadoJob.invalid))).get();
+
+    // Lo que nombra a B, a sus espacios o a lo que cuelga de ellos, hasta que no crezca.
+    final nombradas = {duplicadaId, ...espaciosDeB};
+    // Un depto de B que Ana dio de baja antes de subir: el servidor nunca lo vio y no hay nada que
+    // conservar, así que su alta rechazada se descarta en vez de volver a la cola (subiría nombrando
+    // a B y volvería `23503` para siempre).
+    final muertos = espaciosDadosDeBaja.toSet();
+    final vuelven = <String>{};
+    var crecio = true;
+    while (crecio) {
+      crecio = false;
+      for (final q in rechazados) {
+        if (vuelven.contains(q.id) ||
+            (q.entity == 'espacio' && muertos.contains(q.rowPk)) ||
+            q.code != _codigoFilaInexistente ||
+            q.op == _opMarcarComoDuplicado ||
+            q.entity == 'ubicacion' ||
+            q.entity == 'house_status') {
+          continue;
+        }
+        final payload = jsonDecode(q.payload);
+        if (payload is! Map || !payload.values.whereType<String>().any(nombradas.contains)) {
+          continue;
+        }
+        vuelven.add(q.id);
+        if (q.rowPk != null) nombradas.add(q.rowPk!);
+        crecio = true;
+      }
+    }
+    if (vuelven.isNotEmpty) {
+      await (update(
+        cola,
+      )..where((q) => q.id.isIn(vuelven) & q.state.equals(EstadoJob.invalid))).write(
+        const SyncQueueCompanion(
+          state: Value(EstadoJob.pending),
+          code: Value(''),
+          message: Value(''),
+          dependsOn: Value(null),
+          claimedAt: Value(null),
+        ),
+      );
+    }
+    if (muertos.isNotEmpty) {
+      await (delete(cola)..where(
+            (q) =>
+                q.entity.equals('espacio') &
+                q.rowPk.isIn(muertos) &
+                q.state.equals(EstadoJob.invalid),
+          ))
+          .go();
+    }
+    await (delete(cola)..where(
+          (q) =>
+              q.entity.isIn(const ['ubicacion', 'house_status']) &
+              q.rowPk.equals(duplicadaId) &
+              q.state.equals(EstadoJob.invalid) &
+              q.op.equals(_opMarcarComoDuplicado).not(),
+        ))
+        .go();
   }
 
   /// Si algún job de la fila [id] de [entidad] está `IN_FLIGHT` (un ciclo lo tiene en la mano).
@@ -811,7 +924,8 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   /// borrar nada**, con lo que guardó al unir (`MovimientosDeUnion`):
   ///
   /// - los espacios que pasaron enteros vuelven a B;
-  /// - los únicos fundidos se reactivan y vuelve a ellos lo que colgaba (vínculos, visitas, agendas),
+  /// - los únicos fundidos se reactivan y vuelve a ellos lo que colgaba (vínculos, visitas, agendas y
+  ///   notas del depto),
   ///   y también la visita o la entrevista que se le hizo después de unir a una persona que vuelve
   ///   («Visita unión», decisión de Cristian, 11/11, #696);
   /// - las alternativas (`agenda.ubicacion_alt_id`, `espacio_persona.ubicacion_cobranza_alt_id`) y las
@@ -918,6 +1032,18 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
         );
         vueltas += agendas.length;
         anotar('agenda', agendas, campo: 'espacio_id', ladoA: f.unicoDeA);
+      }
+      if (f.notas.isNotEmpty) {
+        // Las notas del depto vuelven a él, si siguen donde las dejó la unión. Son locales: no suben.
+        esperadas += f.notas.length;
+        vueltas +=
+            await (db.update(db.notas)..where(
+                  (x) =>
+                      x.id.isIn(f.notas) &
+                      x.targetType.equals(TipoObjetivoNota.espacio) &
+                      x.targetId.equals(f.unicoDeA),
+                ))
+                .write(NotasCompanion(targetId: Value(f.espacioId), updatedAt: Value(instante)));
       }
       // «Visita unión» (decisión de Cristian, 11/11, #696): la visita o la entrevista que se le hizo
       // después de unir a una persona que vuelve a B se va con ella, como sus ventas. Son las que
@@ -1250,6 +1376,16 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     );
     final visitas = await _ids(db.visitas, db.visitas.id, db.visitas.espacioId.equals(deB));
     final agendas = await _ids(db.agendas, db.agendas.id, db.agendas.espacioId.equals(deB));
+    // Las notas del depto (#290, también las borradas: siguen 90 días en «Ver borradas») pasan al único
+    // de A: las del de B quedarían sin depto donde verse. Son locales: nada que encolar.
+    final notas = await _ids(
+      db.notas,
+      db.notas.id,
+      db.notas.targetType.equals(TipoObjetivoNota.espacio) & db.notas.targetId.equals(deB),
+    );
+    await (db.update(db.notas)
+          ..where((x) => x.targetType.equals(TipoObjetivoNota.espacio) & x.targetId.equals(deB)))
+        .write(NotasCompanion(targetId: Value(a), updatedAt: Value(instante)));
     await (db.update(db.espacioPersonas)..where((x) => x.espacioId.equals(deB))).write(
       EspacioPersonasCompanion(espacioId: Value(a), updatedAt: Value(instante)),
     );
@@ -1265,6 +1401,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       vinculos: vinculos,
       visitas: visitas,
       agendas: agendas,
+      notas: notas,
     );
   }
 

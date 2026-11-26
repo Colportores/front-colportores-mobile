@@ -8,6 +8,7 @@ import '../../domain/entities/nota_ubicacion.dart';
 import '../../domain/services/retencion_notas_borradas.dart';
 import '../pages/nota_ubicacion_form_page.dart';
 import '../pages/notas_borradas_del_lugar_page.dart';
+import '../providers/hoja_casa_providers.dart' show ContextoDePestana;
 import '../providers/notas_ubicacion_providers.dart';
 import '../providers/personas_providers.dart';
 import '../textos_notas.dart';
@@ -63,6 +64,10 @@ class _AvisoDeNotas {
 /// - Cada nota tiene su propia guarda: dos notas se pueden borrar una tras otra sin esperar a que
 ///   termine la primera, y un doble toque sobre la misma no la procesa dos veces.
 ///
+/// - Con [espacioId] (la hoja de un depto, C·10; vista 11 «Nota depto», #290) son las notas **del depto**
+///   y no las del lugar: la pestaña es la misma, con las mismas reglas (varias, con fecha, borradas 90
+///   días), y cambian los textos («+ Nota del depto») y el dueño de las notas.
+///
 /// **local-only — PII**: el texto vive solo en el teléfono y nunca va a un log.
 class PestanaNotasDeLaCasa extends ConsumerStatefulWidget {
   const PestanaNotasDeLaCasa({
@@ -70,9 +75,22 @@ class PestanaNotasDeLaCasa extends ConsumerStatefulWidget {
     required this.ubicacionId,
     required this.colportorId,
     required this.soloLectura,
+    this.espacioId,
   });
 
+  /// El enganche de la hoja de la casa (`pestanaNotasDeLaCasaProvider`): en una casa, las notas del lugar;
+  /// en un depto elegido (C·10, [ContextoDePestana.esDepto]), las del depto (vista 11, #290).
+  static Widget enganche(BuildContext context, ContextoDePestana contexto) => PestanaNotasDeLaCasa(
+    ubicacionId: contexto.ubicacionId,
+    colportorId: contexto.colportorId,
+    soloLectura: contexto.esBaja,
+    espacioId: contexto.esDepto ? contexto.espacioId : null,
+  );
+
   final String ubicacionId;
+
+  /// El depto de la hoja (C·10): las notas son las suyas. `null`: las notas del lugar.
+  final String? espacioId;
 
   /// UUID del usuario con la sesión iniciada (`created_by` de las notas nuevas). Sin él no se escribe.
   final String? colportorId;
@@ -99,6 +117,22 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
 
   bool get _puedeEscribir => !widget.soloLectura && widget.colportorId != null;
 
+  /// Las notas son las de un depto (vista 11, #290) y no las del lugar.
+  bool get _delDepto => widget.espacioId != null;
+
+  /// El dueño de las notas: el depto o el lugar.
+  String get _duenioId => widget.espacioId ?? widget.ubicacionId;
+
+  Future<NotaDelLugarGuardada?> _abrirFormulario(String colportorId, {NotaUbicacion? nota}) =>
+      _delDepto
+      ? NotaDeptoFormPage.abrir(context, espacioId: _duenioId, colportorId: colportorId, nota: nota)
+      : NotaUbicacionFormPage.abrir(
+          context,
+          ubicacionId: _duenioId,
+          colportorId: colportorId,
+          nota: nota,
+        );
+
   void _avisar(_AvisoDeNotas? aviso) {
     if (!mounted) return;
     setState(() => _aviso = aviso);
@@ -122,11 +156,7 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
     if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendo = true;
     try {
-      final guardada = await NotaUbicacionFormPage.abrir(
-        context,
-        ubicacionId: widget.ubicacionId,
-        colportorId: colportorId,
-      );
+      final guardada = await _abrirFormulario(colportorId);
       if (guardada != null) _avisarGuardada(guardada);
     } finally {
       _abriendo = false;
@@ -139,21 +169,30 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
     if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendo = true;
     try {
-      final guardada = await NotaUbicacionFormPage.abrir(
-        context,
-        ubicacionId: widget.ubicacionId,
-        colportorId: colportorId,
-        nota: nota,
-      );
+      final guardada = await _abrirFormulario(colportorId, nota: nota);
       if (guardada != null) _avisarGuardada(guardada);
     } finally {
       _abriendo = false;
     }
   }
 
-  void _avisarGuardada(NotaDelLugarGuardada guardada) => _avisar(
-    _AvisoDeNotas.exito(guardada.esNueva ? TextosNotas.guardada : TextosNotas.cambiosGuardados),
-  );
+  void _avisarGuardada(NotaDelLugarGuardada guardada) {
+    if (guardada.borrada) {
+      // «Borrar nota» del formulario de un depto (11N·04): el mismo aviso que borrar desde el menú.
+      final id = guardada.nota.id;
+      _avisar(
+        _AvisoDeNotas.exito(
+          TextosNotas.borrada,
+          etiquetaAccion: TextosNotas.deshacer,
+          alAccion: () => _deshacer(id),
+        ),
+      );
+      return;
+    }
+    _avisar(
+      _AvisoDeNotas.exito(guardada.esNueva ? TextosNotas.guardada : TextosNotas.cambiosGuardados),
+    );
+  }
 
   Future<void> _abrirOpciones(NotaUbicacion nota, DateTime ahora) async {
     if (_abriendo) return;
@@ -180,7 +219,9 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
     if (frenaPorCuentaRestringida(context, ref)) return;
     final id = nota.id;
     if (!_borrando.add(id)) return;
-    final borrar = ref.read(borrarNotaUbicacionUseCaseProvider);
+    final borrar = ref.read(
+      _delDepto ? borrarNotaDeptoUseCaseProvider : borrarNotaUbicacionUseCaseProvider,
+    );
     var salioBien = false;
     try {
       salioBien = (await borrar(id)).isRight();
@@ -207,7 +248,9 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
 
   Future<void> _deshacer(String id) async {
     if (!_borrando.add(id)) return;
-    final restaurar = ref.read(restaurarNotaUbicacionUseCaseProvider);
+    final restaurar = ref.read(
+      _delDepto ? restaurarNotaDeptoUseCaseProvider : restaurarNotaUbicacionUseCaseProvider,
+    );
     var salioBien = false;
     try {
       salioBien = (await restaurar(id)).isRight();
@@ -234,6 +277,7 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
       await NotasBorradasDelLugarPage.abrir(
         context,
         ubicacionId: widget.ubicacionId,
+        espacioId: widget.espacioId,
         colportorId: widget.colportorId,
         puedeRestaurar: _puedeEscribir,
       );
@@ -242,11 +286,15 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
     }
   }
 
-  void _reintentarLectura() => ref.invalidate(notasDeUbicacionProvider(widget.ubicacionId));
+  void _reintentarLectura() => ref.invalidate(
+    _delDepto ? notasDeDeptoProvider(_duenioId) : notasDeUbicacionProvider(_duenioId),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final notas = ref.watch(notasDeUbicacionProvider(widget.ubicacionId));
+    final notas = ref.watch(
+      _delDepto ? notasDeDeptoProvider(_duenioId) : notasDeUbicacionProvider(_duenioId),
+    );
     final ahora = ref.watch(relojPersonaProvider)();
     final aviso = _aviso;
 
@@ -257,7 +305,7 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
           key: ClavesNotasDelLugar.error,
           color: ColoresAlta.rojo,
           glyph: '!',
-          texto: TextosNotas.noPudimosLeerDelLugar,
+          texto: _delDepto ? TextosNotas.noPudimosLeerDelDepto : TextosNotas.noPudimosLeerDelLugar,
           acciones: Align(
             alignment: Alignment.centerLeft,
             child: EnlaceAlta(texto: TextosNotas.reintentar, alPresionar: _reintentarLectura),
@@ -300,7 +348,11 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
               conLapiz: true,
               margen: EdgeInsets.zero,
             ),
-        if (_puedeEscribir) _EnlaceDeLaPestana(texto: TextosNotas.notaDelLugar, alTocar: _nueva),
+        if (_puedeEscribir)
+          _EnlaceDeLaPestana(
+            texto: _delDepto ? TextosNotas.notaDelDepto : TextosNotas.notaDelLugar,
+            alTocar: _nueva,
+          ),
         if (borradas > 0)
           _EnlaceDeLaPestana(
             texto: TextosNotas.verBorradas(borradas),

@@ -7,6 +7,11 @@ import 'nota_de_texto.dart';
 /// lugar tiene todas las que quiera, cada una con su fecha (decisión de Cristian, 23/10, «Notas
 /// casa»).
 ///
+/// La nota de un **depto** (`target_type = ESPACIO`, vista 11, #290) es la misma cosa con otro dueño:
+/// funciona igual (varias, con fecha, 90 días en «Ver borradas») y [ubicacionId] guarda el `id` del
+/// espacio. Lo decide quién la lee y la escribe (`NotaUbicacionLocalDataSourceDrift.objetivo`), no la
+/// nota.
+///
 /// **local-only — PII**: el texto lo escribe la colportora y nunca sale del teléfono ni va a los logs.
 class NotaUbicacion extends Equatable implements NotaDeTexto {
   const NotaUbicacion({
@@ -19,7 +24,7 @@ class NotaUbicacion extends Equatable implements NotaDeTexto {
   @override
   final String id;
 
-  /// FK a `ubicacion.id` (`nota.target_id`).
+  /// FK a `ubicacion.id` (`nota.target_id`); en la nota de un depto, a `espacio.id`.
   final String ubicacionId;
 
   @override

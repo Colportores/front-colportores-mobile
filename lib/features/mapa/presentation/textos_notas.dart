@@ -17,6 +17,9 @@ abstract final class TextosNotas {
   static const noPudimosGuardar = 'No pudimos guardar la nota. El texto sigue acá.';
   static const editar = 'Editar';
   static const borrar = 'Borrar';
+
+  /// 11N·04: el botón del formulario de editar la nota de un depto.
+  static const borrarNota = 'Borrar nota';
   static const cerrar = 'Cerrar';
   static const volver = 'Volver';
   static const borrada = 'Nota borrada.';
@@ -48,6 +51,13 @@ abstract final class TextosNotas {
   static const notaDelLugar = '+ Nota del lugar';
   static const tituloDelLugar = 'Notas del lugar';
   static const noPudimosLeerDelLugar = 'No pudimos leer las notas del lugar en tu teléfono.';
+
+  /// Las notas de un depto (vista 11, 11N, #290: «+ Agregar una nota» y «NOTA DEL DEPTO» son del canvas;
+  /// el resto, a confirmar).
+  static const notaDelDepto = '+ Nota del depto';
+  static const tituloDelDepto = 'Notas del depto';
+  static const noPudimosLeerDelDepto = 'No pudimos leer las notas del depto en tu teléfono.';
+
   static const soloLecturaDelLugar =
       'Este lugar está dado de baja. Podés ver sus notas, pero no agregar, editar ni borrar ninguna.';
 

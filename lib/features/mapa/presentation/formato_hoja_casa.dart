@@ -165,6 +165,17 @@ abstract final class TextosDeptosDeLaCasa {
 
   /// Lo que lee el lector de pantalla de la flecha «‹» de C·10, que vuelve a la lista de deptos.
   static const volverALosDeptos = 'Volver a los deptos';
+
+  /// La nota del depto (vista 11, 11N·01 y 11N·03, #290). «+ Agregar una nota», su ayuda y «Editar» son
+  /// del canvas; «NOTA DEL DEPTO» sigue a «NOTA DEL LUGAR» de la casa (a confirmar).
+  static const lapizDeLaNota = '✎';
+  static const notaDelDepto = 'NOTA DEL DEPTO';
+  static const agregarUnaNota = '+ Agregar una nota';
+  static const agregarUnaNotaAyuda = 'Por ejemplo, «timbre roto, tocar fuerte»';
+  static const editarLaNota = 'Editar';
+
+  /// Lo que lee el lector de pantalla de la nota de la fila de un depto.
+  static String notaDelDeptoParaElLector(String texto) => 'Nota: $texto';
 }
 
 /// Cómo se escriben los deptos en la hoja de la casa (vista 39, C·09 y C·10).
