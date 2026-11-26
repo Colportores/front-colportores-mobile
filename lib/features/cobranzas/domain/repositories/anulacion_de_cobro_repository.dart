@@ -5,7 +5,8 @@ import '../entities/cobranza.dart';
 import '../entities/detalle_del_cobro.dart';
 
 /// Leer un cobro y anularlo (HU-COB-006, #422). La anulación es **todo o nada**, en una transacción
-/// local: marca el cobro, lo encola para el sync, deja el `audit_log` y recalcula el color de la casa.
+/// local: marca el cobro, lo encola para el sync, reabre las cuotas del plan que dejan de estar cubiertas
+/// (vuelven a `PROGRAMADA`, con su fecha, y suben), deja el `audit_log` y recalcula el color de la casa.
 abstract interface class AnulacionDeCobroRepository {
   /// El cobro [cobranzaId] con su venta y su cliente, o `null` si no está (o está dado de baja).
   Future<Either<Failure, DetalleDelCobro?>> detalle(String cobranzaId);

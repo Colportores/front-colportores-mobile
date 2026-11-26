@@ -4,6 +4,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/logging/app_logger.dart';
 import '../../../../core/sync/encolador_sync.dart';
 import '../../../mapa/data/services/house_status_updater_drift.dart';
+import '../datasources/cuotas_local_data_source_drift.dart';
 
 /// Vuelve a calcular el color de la casa de cada cobro **anulado** que bajó del servidor (HU-COB-006,
 /// vista 30B-05; decisión de Cristian, 23/11, «Anul. al tel», backend-supabase#306).
@@ -39,8 +40,9 @@ final class CasasDeCobrosBajados {
           if (fila['anulado_at'] != null && fila['id'] != null) '${fila['id']}',
       ];
       if (ids.isEmpty) return;
-      final casas = await _casasDe(ids);
       final ahora = _ahora();
+      await _reabrirCuotas(ids, ahora);
+      final casas = await _casasDe(ids);
       for (final casa in casas) {
         await HouseStatusUpdaterDrift(
           _db,
@@ -56,6 +58,45 @@ final class CasasDeCobrosBajados {
         e,
         st,
       );
+    }
+  }
+
+  /// Las cuotas que cada cobro anulado cubría y ya no están cubiertas vuelven a `PROGRAMADA` y suben como
+  /// cita (decisión «Anular cuota» y «Anul. al tel», #769): lo mismo que hace anular en el teléfono. El
+  /// «antes» se reconstruye contando como válidos los cobros que bajaron anulados; una cuota que otro
+  /// cobro sigue cubriendo no se toca, y repetir el delta no escribe nada. Por venta, en su transacción.
+  Future<void> _reabrirCuotas(List<String> cobroIds, DateTime ahora) async {
+    final porVenta = <String, Set<String>>{};
+    for (var i = 0; i < cobroIds.length; i += 500) {
+      final tramo = cobroIds.sublist(i, i + 500 > cobroIds.length ? cobroIds.length : i + 500);
+      final filas = await (_db.select(
+        _db.cobranzas,
+      )..where((c) => c.id.isIn(tramo) & c.anuladoAt.isNotNull() & c.deletedAt.isNull())).get();
+      for (final f in filas) {
+        porVenta.putIfAbsent(f.ventaId, () => {}).add(f.id);
+      }
+    }
+    final cuotas = CuotasLocalDataSourceDrift(
+      _db,
+      encolador: _encolador,
+      estadoDeLasCasas: HouseStatusUpdaterDrift(_db, encolador: _encolador),
+    );
+    for (final MapEntry(key: ventaId, value: anulados) in porVenta.entries) {
+      try {
+        await _db.transaction(() async {
+          final antes = await cuotas.cubiertasPorLosCobros(ventaId, tambienContando: anulados);
+          await cuotas.reabrirLasQueQuedaronSinCubrir(ventaId, cubiertasAntes: antes, ahora: ahora);
+        });
+      } on Object catch (e, st) {
+        AppLogger.instance.error(
+          LogModulo.sync,
+          'CUOTAS_TRAS_ANULACION_FAIL',
+          'no se pudieron reabrir las cuotas de un cobro anulado que bajó',
+          const {},
+          e,
+          st,
+        );
+      }
     }
   }
 

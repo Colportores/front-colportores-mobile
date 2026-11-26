@@ -75,6 +75,7 @@ abstract final class ClavesAltaMapa {
   static const ciudad = Key('alta_mapa_ciudad');
   static const calle = Key('alta_mapa_calle');
   static const numero = Key('alta_mapa_numero');
+  static const nombre = Key('alta_mapa_nombre');
   static const buscarCiudad = Key('alta_mapa_buscar_ciudad');
   static const justificacion = Key('alta_mapa_justificacion');
   static const crearIgual = Key('alta_mapa_crear_igual');
@@ -115,6 +116,7 @@ class _AltaSobreElMapaState extends ConsumerState<AltaSobreElMapa> {
   final _claveHoja = GlobalKey();
   final _calle = TextEditingController();
   final _numero = TextEditingController();
+  final _nombre = TextEditingController();
   final _justificacion = TextEditingController();
 
   /// La capa ya se está cerrando: un segundo toque no la cierra dos veces.
@@ -138,6 +140,7 @@ class _AltaSobreElMapaState extends ConsumerState<AltaSobreElMapa> {
   void dispose() {
     _calle.dispose();
     _numero.dispose();
+    _nombre.dispose();
     _justificacion.dispose();
     super.dispose();
   }
@@ -237,6 +240,13 @@ class _AltaSobreElMapaState extends ConsumerState<AltaSobreElMapa> {
 
     poner(_calle, estado.calle);
     poner(_numero, estado.numero);
+    // El nombre lo escribe siempre la persona: el controlador solo se alinea si el estado cambió por otro lado.
+    if (_nombre.text != estado.nombre) {
+      _nombre.value = TextEditingValue(
+        text: estado.nombre,
+        selection: TextSelection.collapsed(offset: estado.nombre.length),
+      );
+    }
   }
 
   Future<void> _registrar({String? justificacion}) async {
@@ -501,7 +511,7 @@ class _AltaSobreElMapaState extends ConsumerState<AltaSobreElMapa> {
           controlador: _numero,
           alCambiar: _alta.editarNumero,
           limite: 20,
-          accion: TextInputAction.done,
+          accion: TextInputAction.next,
           bloqueado: estado.guardando,
           claveCampo: ClavesAltaMapa.numero,
         ),
@@ -512,6 +522,14 @@ class _AltaSobreElMapaState extends ConsumerState<AltaSobreElMapa> {
             style: const TextStyle(fontSize: 12, color: ColoresAlta.gris),
           ),
         ],
+        const SizedBox(height: 14),
+        CampoNombreUbicacion(
+          controlador: _nombre,
+          alCambiar: _alta.editarNombre,
+          accion: TextInputAction.done,
+          bloqueado: estado.guardando,
+          claveCampo: ClavesAltaMapa.nombre,
+        ),
         if (estado.falla != null) ...[
           const SizedBox(height: 12),
           AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: mensajeFallaAlta(estado.falla!)),

@@ -129,6 +129,7 @@ final class AltaUbicacionState extends Equatable {
     this.origenCiudad = OrigenCiudad.buscando,
     this.calle = const CampoDireccion(),
     this.numero = const CampoDireccion(),
+    this.nombre = '',
     this.propuesta,
     this.avisosCalle = 0,
     this.movimientosCamara = 0,
@@ -167,6 +168,10 @@ final class AltaUbicacionState extends Equatable {
 
   final CampoDireccion calle;
   final CampoDireccion numero;
+
+  /// El nombre opcional del lugar («Farmacia Italia»): lo escribe la persona, hasta
+  /// [Ubicacion.largoMaximoDelNombre] caracteres.
+  final String nombre;
 
   /// La dirección que el mapa conoce del punto actual (para «El punto está en … Usar …»).
   final DireccionDelPunto? propuesta;
@@ -235,6 +240,7 @@ final class AltaUbicacionState extends Equatable {
     OrigenCiudad? origenCiudad,
     CampoDireccion? calle,
     CampoDireccion? numero,
+    String? nombre,
     DireccionDelPunto? propuesta,
     bool borrarPropuesta = false,
     int? avisosCalle,
@@ -259,6 +265,7 @@ final class AltaUbicacionState extends Equatable {
     origenCiudad: origenCiudad ?? this.origenCiudad,
     calle: calle ?? this.calle,
     numero: numero ?? this.numero,
+    nombre: nombre ?? this.nombre,
     propuesta: borrarPropuesta ? null : (propuesta ?? this.propuesta),
     avisosCalle: avisosCalle ?? this.avisosCalle,
     movimientosCamara: movimientosCamara ?? this.movimientosCamara,
@@ -283,6 +290,7 @@ final class AltaUbicacionState extends Equatable {
     origenCiudad,
     calle,
     numero,
+    nombre,
     propuesta,
     avisosCalle,
     movimientosCamara,
@@ -501,6 +509,8 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
     numero: CampoDireccion(texto, texto.trim().isEmpty ? FuenteCampo.vacio : FuenteCampo.editado),
     borrarFalla: true,
   );
+
+  void editarNombre(String texto) => state = state.copyWith(nombre: texto, borrarFalla: true);
 
   /// «Usar 1250»: toma el valor del mapa para la calle.
   void usarCalleDelMapa() {
@@ -757,6 +767,7 @@ final class AltaUbicacionNotifier extends Notifier<AltaUbicacionState> {
           ciudadId: ciudad.id,
           calle: state.calle.texto,
           numero: state.numero.texto,
+          nombre: state.nombre,
           confirmaBajaPrecision: state.precisionDecidida,
           justificacionDuplicado: justificacion,
         ),

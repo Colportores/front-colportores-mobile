@@ -95,7 +95,7 @@ abstract final class ArmadorCandidatasAlternativa {
   static bool _coincide(Ubicacion u, List<String> terminos) {
     if (terminos.isEmpty) return true;
     final texto = CriterioDuplicadoUbicacion.normalizar(
-      '${u.calle ?? ''} ${u.numero ?? ''} ${u.tipo.name}',
+      '${u.calle ?? ''} ${u.numero ?? ''} ${u.nombre ?? ''} ${u.tipo.name}',
     );
     return terminos.every(texto.contains);
   }

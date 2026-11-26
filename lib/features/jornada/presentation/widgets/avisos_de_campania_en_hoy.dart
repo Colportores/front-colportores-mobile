@@ -12,10 +12,14 @@ import 'aviso_jornada.dart';
 
 /// Lo que dice el aviso de una jornada que el servidor no aceptó por empezar antes del inicio de la
 /// campaña (decisión de Cristian del 27/10, backend-supabase#184): sin el error técnico, y diciendo
-/// que no se borró nada.
+/// que no se borró nada. Desde el 24/11 («Jornada rech.», #769) cierra diciendo qué hacer: las visitas
+/// quedan en el teléfono y, si eran de la campaña, se le cuenta a la coordinación.
 abstract final class TextosJornadaRechazada {
   /// Cuando no se sabe cuál es la campaña (la réplica todavía no la trae).
   static const sinCampania = 'tu campaña todavía no empezó';
+
+  /// Qué hacer con lo que quedó en el teléfono (decisión de Cristian, 24/11, «Jornada rech.»).
+  static const queHacer = 'Contale a tu coordinador si eran de la campaña.';
 
   /// El aviso de [jornada], con la [campania] que la frenó si se conoce, vista desde [hoy]
   /// (`AAAA-MM-DD`). Con más de una visita es el texto de la decisión; con una sola o con ninguna se
@@ -30,13 +34,15 @@ abstract final class TextosJornadaRechazada {
         : 'tu campaña ${campania.nombre} '
               '${campania.empezoA(hoy) ? 'empezó' : 'empieza'} el ${diaYMesDe(campania.fechaInicio)}';
     return switch (jornada.visitas) {
-      0 => 'Esta jornada no se envió: $causa. No se borró nada; queda guardada en este teléfono.',
+      0 =>
+        'Esta jornada no se envió: $causa. '
+            'No se borró nada; queda guardada en este teléfono. $queHacer',
       1 =>
         'Esta jornada y su visita no se enviaron: $causa. '
-            'No se borró nada; quedan guardadas en este teléfono.',
+            'No se borró nada; quedan guardadas en este teléfono. $queHacer',
       final n =>
         'Esta jornada y sus $n visitas no se enviaron: $causa. '
-            'No se borró nada; quedan guardadas en este teléfono.',
+            'No se borró nada; quedan guardadas en este teléfono. $queHacer',
     };
   }
 }

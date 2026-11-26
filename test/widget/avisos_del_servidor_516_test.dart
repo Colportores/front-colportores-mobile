@@ -35,9 +35,6 @@ const _textoErrorHoraCuotas =
 const _textoErrorHoraAgenda =
     'No pudimos guardar la hora del aviso de las visitas de mañana. Volvió a como estaba.';
 const _textoErrorVarios = 'No pudimos guardar los cambios. Volvieron a como estaban.';
-const _textoSinConexion =
-    'Sin conexión: no pudimos guardar el cambio. Volvió a como estaba. Probá de nuevo cuando '
-    'tengas conexión.';
 
 Telefono _activado() => Telefono(estado: EstadoSistemaNotificaciones.activadas);
 
@@ -483,12 +480,12 @@ void main() {
       expect(telefono.avisos.avisos.agenda, isTrue);
     });
 
-    testWidgets('sin conexión el interruptor del teléfono igual se apaga y no sale ningún error', (
+    testWidgets('si la copia del servidor no se guarda el interruptor igual se apaga y sin error', (
       tester,
     ) async {
       final telefono = _activado();
       await _abrir(tester, telefono);
-      telefono.avisos.fallaAlGuardar = const AvisosSinConexionException();
+      telefono.avisos.fallaAlGuardar = const AvisosServidorException();
 
       await _tocar(tester, _recordatorios);
       await tester.pumpAndSettle();
@@ -537,33 +534,6 @@ void main() {
   });
 
   group('Error al leer los avisos', () {
-    testWidgets('sin conexión: lo dice, guía y deja reintentar; lo del teléfono sigue', (
-      tester,
-    ) async {
-      final telefono = _activado();
-      telefono.avisos.fallaAlLeer = const AvisosSinConexionException();
-
-      await _abrir(tester, telefono);
-
-      expect(
-        find.text(
-          'Sin conexión: no pudimos leer tus avisos. Probá de nuevo cuando tengas conexión.',
-        ),
-        findsOneWidget,
-      );
-      expect(_pedidos, findsNothing);
-      expect(_recordatorios, findsOneWidget);
-      expect(_horaAgenda, findsNothing, reason: 'sin leer el servidor no se puede cambiar su hora');
-
-      telefono.avisos.fallaAlLeer = null;
-      await _tocar(tester, _reintentarLeer);
-      await tester.pumpAndSettle();
-
-      expect(_errorLeer, findsNothing);
-      expect(_pedidos, findsOneWidget);
-      expect(_horaAgenda, findsOneWidget);
-    });
-
     testWidgets('el servidor con error dice que no pudo leer y deja reintentar', (tester) async {
       final telefono = _activado();
       telefono.avisos.fallaAlLeer = const AvisosServidorException(codigo: '42501');
@@ -578,7 +548,7 @@ void main() {
       tester,
     ) async {
       final telefono = _activado();
-      telefono.avisos.fallaAlLeer = const AvisosSinConexionException();
+      telefono.avisos.fallaAlLeer = const AvisosServidorException();
       await _abrir(tester, telefono);
 
       await _tocar(tester, _reintentarLeer);
@@ -615,18 +585,6 @@ void main() {
       },
     );
 
-    testWidgets('sin conexión: lo dice y dice qué hacer', (tester) async {
-      final telefono = _activado();
-      await _abrir(tester, telefono);
-      telefono.avisos.fallaAlGuardar = const AvisosSinConexionException();
-
-      await _tocar(tester, _cuotas);
-      await tester.pumpAndSettle();
-
-      expect(_prendido(tester, _cuotas), isTrue);
-      expect(find.text(_textoSinConexion), findsOneWidget);
-    });
-
     testWidgets('si lo que no se guardó es una hora, el aviso habla de la hora', (tester) async {
       final telefono = _activado();
       await _abrir(tester, telefono);
@@ -660,22 +618,6 @@ void main() {
         await tester.pumpAndSettle();
         expect(_errorGuardar, findsNothing);
         expect(telefono.avisos.avisos.horaAgenda, const HoraDelAviso(21, 0));
-      },
-    );
-
-    testWidgets(
-      'sin conexión al guardar una hora, el aviso es el de la conexión (no el de la hora)',
-      (tester) async {
-        final telefono = _activado();
-        await _abrir(tester, telefono);
-        telefono.avisos.fallaAlGuardar = const AvisosSinConexionException();
-
-        await _tocar(tester, _horaCuota);
-        await tester.pumpAndSettle();
-        await _elegirHora(tester, 7, 0);
-
-        expect(find.text(_textoSinConexion), findsOneWidget);
-        expect(find.text(_textoErrorHoraCuotas), findsNothing);
       },
     );
 
@@ -844,7 +786,7 @@ void main() {
         fijarTamano(tester, tamano: tamano, texto: 2);
         final telefono = _activado();
         await _abrir(tester, telefono);
-        telefono.avisos.fallaAlGuardar = const AvisosSinConexionException();
+        telefono.avisos.fallaAlGuardar = const AvisosServidorException();
 
         await tester.ensureVisible(_cuotas);
         await _tocar(tester, _cuotas);
@@ -853,7 +795,7 @@ void main() {
         await tester.pump();
 
         expect(tester.takeException(), isNull);
-        expect(find.text(_textoSinConexion), findsOneWidget);
+        expect(find.text(_textoError), findsOneWidget);
         await tester.ensureVisible(_reintentarGuardar);
         await tester.pump();
         expect(tester.getSize(_reintentarGuardar).shortestSide, greaterThanOrEqualTo(48));

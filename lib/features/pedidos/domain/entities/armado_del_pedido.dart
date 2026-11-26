@@ -2,23 +2,26 @@ import 'package:equatable/equatable.dart';
 
 import '../../../catalogo/domain/entities/catalogo_local.dart';
 
-/// Las tres categorías que el canvas ofrece al armar el pedido (37A·01): «Libros», «Misioneros» y «Revistas».
+/// Las categorías que se ofrecen al armar el pedido: las tres del canvas (37A·01), «Libros», «Misioneros» y
+/// «Revistas», y la cuarta, «Materiales» (decisión de Cristian, 24/11, «Pedir mater.», #769): el material
+/// de trabajo se pide como otra categoría, con el costo de la casa editora.
 enum CategoriaDelPedido {
   libros('Libros'),
   misioneros('Misioneros'),
-  revistas('Revistas');
+  revistas('Revistas'),
+  materiales('Materiales');
 
   const CategoriaDelPedido(this.rotulo);
 
   final String rotulo;
 
-  /// La categoría del pedido de una categoría del catálogo, o `null` si no se pide (el material de
-  /// trabajo y lo que no se conoce: el canvas tampoco los ofrece).
+  /// La categoría del pedido de una categoría del catálogo, o `null` si no se pide (lo que no se conoce).
   static CategoriaDelPedido? de(CategoriaDeProducto categoria) => switch (categoria) {
     CategoriaDeProducto.bonificables || CategoriaDeProducto.espirituales => libros,
     CategoriaDeProducto.misioneros => misioneros,
     CategoriaDeProducto.revistas => revistas,
-    CategoriaDeProducto.material || CategoriaDeProducto.otra => null,
+    CategoriaDeProducto.material => materiales,
+    CategoriaDeProducto.otra => null,
   };
 }
 

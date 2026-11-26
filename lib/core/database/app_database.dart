@@ -18,6 +18,7 @@ import '../../features/cuenta/data/datasources/cuenta_deuda_historial_table.dart
 import '../../features/depositos/data/datasources/depositos_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
+import '../../features/mapa/data/datasources/campania_companieros_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
 import '../../features/mapa/data/datasources/campanias_colportor_table.dart';
 import '../../features/mapa/data/datasources/campanias_table.dart';
@@ -36,6 +37,7 @@ import '../../features/mapa/data/datasources/uniones_locales_table.dart';
 import '../../features/mapa/data/datasources/zona_vertices_table.dart';
 import '../../features/mapa/data/datasources/zonas_table.dart';
 import '../../features/notificaciones/data/datasources/notificacion_historial_table.dart';
+import '../../features/notificaciones/data/datasources/preferencia_de_avisos_table.dart';
 import '../../features/stock/data/datasources/pedido_items_table.dart';
 import '../../features/stock/data/datasources/pedidos_casa_editora_table.dart';
 import '../../features/stock/data/datasources/stocks_table.dart';
@@ -50,6 +52,7 @@ import '../../features/ventas/data/datasources/ventas_table.dart';
 import '../logging/app_logger.dart';
 import 'app_database.steps.dart';
 import 'fecha_utc_converter.dart';
+import 'objeto_json_converter.dart';
 
 part 'app_database.g.dart';
 
@@ -117,6 +120,8 @@ part 'app_database.g.dart';
     UnionesLocales,
     SyncFueraDelArea,
     UbicacionesUnidas,
+    PreferenciasDeAvisos,
+    CampaniaCompanieros,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -224,10 +229,14 @@ class AppDatabase extends _$AppDatabase {
   /// - 45: `espacio` pierde `descripcion` (backend-supabase 0104, «Notas depto», HU-UBI-007, #290): lo que
   ///   hubiera escrito ahí pasa antes a una nota del depto (`nota`, `target_type = ESPACIO`), así que ningún
   ///   texto escrito en campo se descarta.
+  /// - 46: los seguimientos del 24/11 (backend-supabase 0206 a 0208, #313; #769): `ubicacion.nombre`, el
+  ///   nombre opcional del lugar («Nombre ubic.»); `preferencia_de_avisos`, las preferencias de avisos de la
+  ///   persona, una fila que sube y baja con el sync para cambiarlas sin señal («Avisos s/red»); y
+  ///   `campania_companiero`, los nombres de los compañeros de campaña, de solo bajada («Nombres camp.»).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 45;
+  static const int versionEsquema = 46;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -650,6 +659,16 @@ class AppDatabase extends _$AppDatabase {
         "FROM espacio WHERE descripcion IS NOT NULL AND trim(descripcion) <> ''",
       );
       await m.alterTable(TableMigration(esquema.espacio));
+    },
+    // Suma `nombre` a `ubicacion`, vacía (las ubicaciones que ya estaban no tienen nombre) y crea las dos
+    // tablas nuevas, vacías: las llena el pull (los compañeros y las preferencias de la persona). Nada de lo
+    // guardado por la colportora cambia ni se encola al migrar. Las preferencias que la persona ya tenía en
+    // el servidor bajan con el pull: la migración del servidor (0207) le creó su fila.
+    from45To46: (m, esquema) async {
+      await m.addColumn(esquema.ubicacion, esquema.ubicacion.nombre);
+      await m.createTable(esquema.preferenciaDeAvisos);
+      await m.createTable(esquema.campaniaCompaniero);
+      await m.createIndex(esquema.campaniaCompanieroCampaniaIdx);
     },
   );
 }

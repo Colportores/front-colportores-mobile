@@ -91,6 +91,12 @@ final specsDeLaApp = <SyncSpec>[
   SyncSpec.push('pedido_casa_editora', alsoPull: true),
   SyncSpec.push('pedido_item', alsoPull: true),
 
+  // push con pull de lo propio (backend-supabase 0207, #313, «Avisos s/red» de Cristian, 24/11): las preferencias
+  // de avisos de la persona, una fila por persona (su `id` es el de la persona). Se cambian sin señal: el cambio
+  // queda en el teléfono al instante y sube con la sincronización; si hay dos teléfonos rige el último cambio del
+  // motor. El servidor la mantiene igual a `usuario.notif_preferences`, que es lo que lee para mandar los avisos.
+  SyncSpec.push('preferencia_de_avisos', alsoPull: true),
+
   // pull: el mapa de la campaña, por el canal de catálogo (§2). La app nunca las escribe.
   SyncSpec.pull('campania_ciudad'),
   SyncSpec.pull('zona'),
@@ -135,6 +141,12 @@ final specsDeLaApp = <SyncSpec>[
   // Cristian, 05/11). Sin `realtime`: baja en el ciclo.
   SyncSpec.pull('cuenta_colportor'),
   SyncSpec.pull('cuenta_deuda_historial'),
+
+  // pull: los compañeros de campaña (backend-supabase 0208, #313, «Nombres camp.» de Cristian, 24/11): el nombre, el
+  // apellido y la ciudad de las personas inscriptas en las mismas campañas que la colportora, nada más. Réplica de
+  // solo lectura que sigue las campañas de la persona; de acá salen los nombres de «Elegir colportor» (40A·02) y de
+  // la lista de colportores (40B·01). Sin `realtime`: baja en el ciclo.
+  SyncSpec.pull('campania_companiero'),
 
   // local: jamás sale del teléfono por sync (Ley 18.331). Solo el backup E2E.
   SyncSpec.local('audit_log'),

@@ -18,6 +18,19 @@ import '../../helpers/pedidos_falsos.dart';
 
 Finder _t(String texto) => find.text(texto, findRichText: true);
 
+const _cuaderno = ProductoPedible(
+  id: 'p-mat',
+  nombre: 'Cuaderno de ruta',
+  categoriaDelCatalogo: CategoriaDeProducto.material,
+  precioDeCompraCentavos: 25000,
+);
+
+/// Con cuatro categorías los chips ocupan dos renglones y, al sumar, la pantalla se desplaza: vuelve arriba.
+Future<void> _alInicio(WidgetTester tester) async {
+  await tester.drag(find.byType(Scrollable).first, const Offset(0, 2000));
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
 Finder get _enviar => find.byKey(const Key('pedidos_boton_principal'));
 
 FilledButton _boton(WidgetTester tester) => tester.widget<FilledButton>(_enviar);
@@ -43,7 +56,7 @@ void main() {
         expect(_t('Nuevo pedido'), findsOneWidget);
         expect(_t('A la casa editora'), findsOneWidget);
         expect(_t('QUÉ PEDÍS · PRECIO DE COMPRA'), findsOneWidget);
-        for (final c in ['Libros', 'Misioneros', 'Revistas']) {
+        for (final c in ['Libros', 'Misioneros', 'Revistas', 'Materiales']) {
           expect(_t(c), findsOneWidget, reason: c);
         }
         expect(_t('Salud y Hogar'), findsOneWidget);
@@ -133,25 +146,57 @@ void main() {
       expect(_t('✦ Misionero'), findsOneWidget);
     });
 
-    testWidgets('dado que el material de trabajo no se pide, no aparece en ninguna categoría', (
-      tester,
-    ) async {
-      final armado = ArmadoFalso(
-        productos: const [
-          saludYHogar,
-          ProductoPedible(
-            id: 'p-mat',
-            nombre: 'Cuaderno de ruta',
-            categoriaDelCatalogo: CategoriaDeProducto.material,
-            precioDeCompraCentavos: 100,
-          ),
-        ],
+    testWidgets('el material de trabajo se pide en la cuarta pestaña «Materiales», con su costo y '
+        'cuenta para el pedido («Pedir mater.», #769)', (tester) async {
+      final arnes = ArnesDePedidos(armado: ArmadoFalso(productos: const [saludYHogar, _cuaderno]));
+      await montarPedir(tester, arnes);
+
+      expect(_t('Cuaderno de ruta'), findsNothing, reason: 'no está entre los libros');
+      await tocar(tester, find.byKey(const Key('pedido_chip_materiales')));
+      expect(_t('Cuaderno de ruta'), findsOneWidget);
+      expect(_t(r'Tenés 0 · $ 250 c/u'), findsOneWidget);
+      expect(_t('Salud y Hogar'), findsNothing);
+
+      await sumar(tester, 'p-mat', 2);
+      expect(_t('Materiales · 2'), findsOneWidget);
+      expect(_t(r'+ $ 500'), findsOneWidget, reason: '2 × 250, el costo de la casa editora');
+      expect(_t(r'$ 18.900'), findsOneWidget, reason: '18.400 + 500');
+
+      await tocar(tester, _enviar, cuadros: 6);
+      final lineas = arnes.pedidos.enviados.single.lineas;
+      expect([for (final l in lineas) (l.productoId, l.cantidadVigente)], [('p-mat', 2)]);
+    });
+
+    testWidgets('los materiales también cuentan para el límite de deuda', (tester) async {
+      await montarPedir(
+        tester,
+        ArnesDePedidos(
+          armado: ArmadoFalso(productos: const [saludYHogar, _cuaderno]),
+          limitePesos: 18700,
+        ),
       );
-      await montarPedir(tester, ArnesDePedidos(armado: armado));
-      for (final c in ['libros', 'misioneros', 'revistas']) {
-        await tocar(tester, find.byKey(Key('pedido_chip_$c')));
-        expect(_t('Cuaderno de ruta'), findsNothing, reason: c);
+      await tocar(tester, find.byKey(const Key('pedido_chip_materiales')));
+      await sumar(tester, 'p-mat', 1);
+      expect(find.textContaining('pasa el límite'), findsNothing, reason: '18.400 + 250 = 18.650');
+
+      await sumar(tester, 'p-mat', 1);
+      expect(find.textContaining('pasa el límite'), findsOneWidget, reason: '18.900 > 18.700');
+    });
+
+    testWidgets('sin materiales para pedir, la pestaña lo dice y guía', (tester) async {
+      await montarPedir(tester, ArnesDePedidos());
+      await tocar(tester, find.byKey(const Key('pedido_chip_materiales')));
+
+      expect(_t(TextosPedidos.sinProductosEnCategoria), findsOneWidget);
+    });
+
+    testWidgets('con el texto al 200 % las cuatro categorías siguen a la vista', (tester) async {
+      await montarPedir(tester, ArnesDePedidos(), escala: 2);
+
+      for (final c in CategoriaDelPedido.values) {
+        expect(find.byKey(Key('pedido_chip_${c.name}')), findsOneWidget, reason: c.name);
       }
+      expect(tester.takeException(), isNull);
     });
   });
 
@@ -322,6 +367,7 @@ void main() {
         await tester.binding.handlePopRoute();
         await tester.pump();
         expect(find.byKey(const Key('pedido_descartar')), findsNothing);
+        await _alInicio(tester);
         expect(_t(TextosPedidos.tituloArmar), findsOneWidget);
 
         arnes.pedidos.esperaAlEnviar!.complete();
@@ -499,6 +545,7 @@ void main() {
       expect(_t('¿Salir sin enviar?'), findsOneWidget);
       expect(_t('Lo que armaste se pierde.'), findsOneWidget);
       await tocar(tester, find.byKey(const Key('pedido_seguir_armando')), cuadros: 6);
+      await _alInicio(tester);
       expect(_t(TextosPedidos.tituloArmar), findsOneWidget);
       expect(find.text('2'), findsOneWidget);
     });
@@ -509,6 +556,7 @@ void main() {
         final arnes = ArnesDePedidos();
         await montarPedir(tester, arnes);
         await sumar(tester, 'p-salud', 2);
+        await _alInicio(tester);
         await tocar(tester, find.byKey(const Key('pedidos_volver')), cuadros: 4);
         await tocar(tester, find.byKey(const Key('pedido_descartar')), cuadros: 8);
         expect(find.byKey(const Key('abrir_pedir')), findsOneWidget);

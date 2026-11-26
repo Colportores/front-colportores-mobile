@@ -424,7 +424,8 @@ void main() {
 
       const texto =
           'Esta jornada y sus 4 visitas no se enviaron: tu campaña Verano 2027 empieza el 01/12. '
-          'No se borró nada; quedan guardadas en este teléfono.';
+          'No se borró nada; quedan guardadas en este teléfono. '
+          'Contale a tu coordinador si eran de la campaña.';
       expect(find.text(texto), findsOneWidget);
       expect(find.textContaining('23503'), findsNothing);
       expect(find.textContaining('42501'), findsNothing);
@@ -441,18 +442,37 @@ void main() {
       expect(
         find.text(
           'Esta jornada y su visita no se enviaron: tu campaña Verano 2027 empieza el 01/12. '
-          'No se borró nada; quedan guardadas en este teléfono.',
+          'No se borró nada; quedan guardadas en este teléfono. '
+          'Contale a tu coordinador si eran de la campaña.',
         ),
         findsOneWidget,
       );
       expect(
         find.text(
           'Esta jornada no se envió: tu campaña Verano 2027 empieza el 01/12. '
-          'No se borró nada; queda guardada en este teléfono.',
+          'No se borró nada; queda guardada en este teléfono. '
+          'Contale a tu coordinador si eran de la campaña.',
         ),
         findsOneWidget,
       );
     });
+
+    testWidgets(
+      'cierra diciendo qué hacer («Jornada rech.», #769), también con el texto al 200 %',
+      (tester) async {
+        final m = _Mundo(campanias: [_porEmpezar()], rechazadas: [_rechazada('j-1', visitas: 4)]);
+        await _montar(tester, m, escala: 2);
+
+        expect(
+          find.descendant(
+            of: _textoRechazada('j-1'),
+            matching: find.textContaining('Contale a tu coordinador si eran de la campaña.'),
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets('sin el nombre ni la fecha de la campaña dice «tu campaña todavía no empezó»', (
       tester,
@@ -463,7 +483,8 @@ void main() {
       expect(
         find.text(
           'Esta jornada y sus 2 visitas no se enviaron: tu campaña todavía no empezó. '
-          'No se borró nada; quedan guardadas en este teléfono.',
+          'No se borró nada; quedan guardadas en este teléfono. '
+          'Contale a tu coordinador si eran de la campaña.',
         ),
         findsOneWidget,
       );
@@ -479,7 +500,8 @@ void main() {
       expect(
         find.text(
           'Esta jornada y sus 2 visitas no se enviaron: tu campaña Verano 2027 empezó el 01/12. '
-          'No se borró nada; quedan guardadas en este teléfono.',
+          'No se borró nada; quedan guardadas en este teléfono. '
+          'Contale a tu coordinador si eran de la campaña.',
         ),
         findsOneWidget,
       );

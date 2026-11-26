@@ -142,6 +142,23 @@ final class AvisosDelServidor extends Equatable {
     otras: otras,
   );
 
+  /// Lo que esta versión cambió respecto de [base], aplicado sobre [sobre]: de cada interruptor y cada hora,
+  /// si difiere de [base] manda esta versión; si no, queda lo que tiene [sobre] (y sus claves desconocidas).
+  /// Sirve para guardar un cambio sobre lo que hay ahora sin pisar lo que la persona no tocó.
+  AvisosDelServidor cambiosSobre({
+    required AvisosDelServidor base,
+    required AvisosDelServidor sobre,
+  }) => AvisosDelServidor(
+    pedidos: pedidos != base.pedidos ? pedidos : sobre.pedidos,
+    tickets: tickets != base.tickets ? tickets : sobre.tickets,
+    cuotas: cuotas != base.cuotas ? cuotas : sobre.cuotas,
+    asignaciones: asignaciones != base.asignaciones ? asignaciones : sobre.asignaciones,
+    agenda: agenda != base.agenda ? agenda : sobre.agenda,
+    horaCuota: horaCuota != base.horaCuota ? horaCuota : sobre.horaCuota,
+    horaAgenda: horaAgenda != base.horaAgenda ? horaAgenda : sobre.horaAgenda,
+    otras: sobre.otras,
+  );
+
   /// El objeto entero que recibe el servidor.
   Map<String, Object?> aJson() => {
     ...otras,

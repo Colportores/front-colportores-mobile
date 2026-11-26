@@ -32,6 +32,7 @@ const _ubicacion = {
   'tipo': 'CASA',
   'calle': 'Av. Ñandú',
   'numero': '1234 bis',
+  'nombre': null,
   'lat': -34.9012345,
   'lon': -56.16,
   'ciudad_id': 'ciu-1',

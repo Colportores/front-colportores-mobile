@@ -16,6 +16,7 @@ Ubicacion ubicacionParaAlternativa(
   String id, {
   String? calle = 'Av. Italia',
   String? numero = '2810',
+  String? nombre,
   TipoUbicacion tipo = TipoUbicacion.negocio,
   double lat = -34.89,
   double lon = -56.16,
@@ -25,6 +26,7 @@ Ubicacion ubicacionParaAlternativa(
   tipo: tipo,
   calle: calle,
   numero: numero,
+  nombre: nombre,
   lat: lat,
   lon: lon,
   ciudadId: 'mvd',
