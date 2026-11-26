@@ -23,15 +23,21 @@ import '../widgets/piezas_notas.dart';
 ///   pasó de los 90 días no se muestra, aunque la limpieza de al abrir la app todavía no la haya
 ///   borrado.
 /// - Con el lugar dado de baja (o sin sesión) se ven, pero no hay «Restaurar».
+/// - Con [espacioId] son las notas **borradas de un depto** (vista 11, 11N·04 a 11N·06, #290): la misma
+///   pantalla, con las mismas reglas.
 class NotasBorradasDelLugarPage extends ConsumerStatefulWidget {
   const NotasBorradasDelLugarPage({
     super.key,
     required this.ubicacionId,
     required this.colportorId,
     required this.puedeRestaurar,
+    this.espacioId,
   });
 
   final String ubicacionId;
+
+  /// El depto dueño de las notas; `null`: las notas del lugar [ubicacionId].
+  final String? espacioId;
 
   /// UUID del usuario con la sesión iniciada (para la preferencia del aviso de privacidad).
   final String? colportorId;
@@ -44,10 +50,12 @@ class NotasBorradasDelLugarPage extends ConsumerStatefulWidget {
     required String ubicacionId,
     required String? colportorId,
     required bool puedeRestaurar,
+    String? espacioId,
   }) => Navigator.of(context).push<void>(
     MaterialPageRoute(
       builder: (_) => NotasBorradasDelLugarPage(
         ubicacionId: ubicacionId,
+        espacioId: espacioId,
         colportorId: colportorId,
         puedeRestaurar: puedeRestaurar,
       ),
@@ -62,11 +70,19 @@ class _NotasBorradasDelLugarPageState extends ConsumerState<NotasBorradasDelLuga
   /// Las notas con una restauración en vuelo.
   final _restaurando = <String>{};
 
+  bool get _delDepto => widget.espacioId != null;
+
+  String get _duenioId => widget.espacioId ?? widget.ubicacionId;
+
   Future<void> _restaurar(NotaUbicacion nota) async {
     if (frenaPorCuentaRestringida(context, ref)) return;
     await _correr(
       nota.id,
-      restaurar: ref.read(restaurarNotaUbicacionUseCaseProvider).call,
+      restaurar: ref
+          .read(
+            _delDepto ? restaurarNotaDeptoUseCaseProvider : restaurarNotaUbicacionUseCaseProvider,
+          )
+          .call,
       mensajero: ScaffoldMessenger.of(context),
       mediaQuery: MediaQuery.of(context),
     );
@@ -99,15 +115,19 @@ class _NotasBorradasDelLugarPageState extends ConsumerState<NotasBorradasDelLuga
     );
   }
 
-  void _reintentar() => ref.invalidate(notasDeUbicacionProvider(widget.ubicacionId));
+  void _reintentar() => ref.invalidate(
+    _delDepto ? notasDeDeptoProvider(_duenioId) : notasDeUbicacionProvider(_duenioId),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final notas = ref.watch(notasDeUbicacionProvider(widget.ubicacionId));
+    final notas = ref.watch(
+      _delDepto ? notasDeDeptoProvider(_duenioId) : notasDeUbicacionProvider(_duenioId),
+    );
     final ahora = ref.watch(relojPersonaProvider)();
 
     final encabezado = EncabezadoNotas(
-      titulo: TextosNotas.tituloDelLugar,
+      titulo: _delDepto ? TextosNotas.tituloDelDepto : TextosNotas.tituloDelLugar,
       colportorId: widget.colportorId,
     );
     final Widget cuerpo;
@@ -120,7 +140,9 @@ class _NotasBorradasDelLugarPageState extends ConsumerState<NotasBorradasDelLuga
             child: AvisoAlta(
               color: ColoresAlta.rojo,
               glyph: '!',
-              texto: TextosNotas.noPudimosLeerDelLugar,
+              texto: _delDepto
+                  ? TextosNotas.noPudimosLeerDelDepto
+                  : TextosNotas.noPudimosLeerDelLugar,
               acciones: Align(
                 alignment: Alignment.centerLeft,
                 child: EnlaceAlta(texto: TextosNotas.reintentar, alPresionar: _reintentar),

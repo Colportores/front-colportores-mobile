@@ -10,6 +10,7 @@ import '../../domain/entities/estado_casa.dart';
 import '../../domain/entities/resumen_del_depto.dart';
 import '../../domain/services/lector_resumen_de_los_deptos.dart';
 import '../services/hechos_del_color_drift.dart';
+import 'notas_table.dart' show TipoObjetivoNota;
 
 /// [LectorResumenDeLosDeptos] sobre la DB local. El estado de cada depto es la cuenta del color de la
 /// casa ([HechosDelColorDrift]) hecha con ese depto solo; la última visita es la de fecha más reciente
@@ -73,6 +74,7 @@ final class ResumenDeLosDeptosDrift implements LectorResumenDeLosDeptos {
                 _db.cobranzas,
                 _db.entregas,
                 _db.devoluciones,
+                _db.notas,
               ]),
             )
             .listen((_) => unawaited(leer()));
@@ -119,10 +121,24 @@ final class ResumenDeLosDeptosDrift implements LectorResumenDeLosDeptos {
                   ..orderBy([(a) => OrderingTerm.asc(a.fechaProgramada)])
                   ..limit(1))
                 .getSingleOrNull();
+      // La nota más nueva del depto sin borrar: la más reciente por fecha y, a igual instante, por `id`
+      // (UUID v7), como la pestaña Notas.
+      final nota =
+          await (_db.select(_db.notas)
+                ..where(
+                  (n) =>
+                      n.targetType.equals(TipoObjetivoNota.espacio) &
+                      n.targetId.equals(espacio.id) &
+                      n.deletedAt.isNull(),
+                )
+                ..orderBy([(n) => OrderingTerm.desc(n.createdAt), (n) => OrderingTerm.desc(n.id)])
+                ..limit(1))
+              .getSingleOrNull();
       salida[espacio.id] = ResumenDelDepto(
         estado: EstadoCasa.desdeColor(color),
         ultimaVisita: ultima?.fecha,
         proximaEntrevista: proxima?.fechaProgramada,
+        notaMasNueva: nota?.texto,
       );
     }
     return salida;

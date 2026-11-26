@@ -10,6 +10,7 @@ import 'package:colportores_mobile/features/mapa/domain/entities/contexto_de_la_
 import 'package:colportores_mobile/features/mapa/domain/entities/espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/estado_casa.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/lista_ubicaciones.dart';
+import 'package:colportores_mobile/features/mapa/domain/entities/nota_ubicacion.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/persona_del_espacio.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/resumen_del_depto.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/ubicacion.dart';
@@ -17,13 +18,18 @@ import 'package:colportores_mobile/features/mapa/presentation/formato_hoja_casa.
 import 'package:colportores_mobile/features/mapa/presentation/providers/alta_ubicacion_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/espacios_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/notas_ubicacion_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_registrar_visita.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/deptos_de_la_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/estados_hoja_casa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/fila_nota_del_depto.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_depto.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/pestana_notas_de_la_casa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/pestanas_hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_hoja_casa.dart';
+import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_notas.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,6 +37,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/agenda_items_falsos.dart';
 import '../../helpers/espacios_falsos.dart';
 import '../../helpers/modificar_ubicacion_falsos.dart';
+import '../../helpers/nota_ubicacion_falsos.dart';
 import '../../helpers/persona_falsos.dart';
 
 /// El edificio del canvas (C·09): «Grecia 3313».
@@ -68,6 +75,11 @@ final class _Montaje {
 
   final EspacioRepoFalso repo;
   final lecturas = <ClaveDeLaCasa>[];
+
+  /// Las notas de los deptos (#290) y las del edificio, que el depto no debe mostrar como suyas.
+  final notasDeDeptos = NotaUbicacionRepositorioFalso();
+  final notasDelEdificio = NotaUbicacionRepositorioFalso();
+
   final visitas = <ContextoDeVisita>[];
   var cierres = 0;
 
@@ -97,6 +109,7 @@ Future<_Montaje> _montar(
   bool arriba = false,
   bool conRegistrar = true,
   bool conAtras = false,
+  bool conPestanaNotas = false,
   double escala = 1,
   Size tamano = const Size(390, 844),
   double? metros = 35,
@@ -156,6 +169,12 @@ Future<_Montaje> _montar(
               : null,
         ),
         espacioRepositoryProvider.overrideWithValue(m.repo),
+        notaDeptoRepositoryProvider.overrideWithValue(m.notasDeDeptos),
+        notaUbicacionRepositoryProvider.overrideWithValue(m.notasDelEdificio),
+        relojPersonaProvider.overrideWithValue(() => _ahora),
+        generadorIdPersonaProvider.overrideWithValue(() => 'nota-nueva-${++secuencia}'),
+        if (conPestanaNotas)
+          pestanaNotasDeLaCasaProvider.overrideWithValue(PestanaNotasDeLaCasa.enganche),
         ubicacionRepositoryProvider.overrideWithValue(RepoEdicionFalso(ubicacion)),
         contadorPersonasEspacioProvider.overrideWithValue(ContadorPersonasFalso()),
         generadorIdEspacioProvider.overrideWithValue(() => 'nuevo-${++secuencia}'),
@@ -420,6 +439,190 @@ void main() {
       expect(find.byKey(ClavesHojaCasa.pestanas), findsOneWidget);
       expect(_registrar, findsOneWidget);
     });
+  });
+
+  group('#290 la nota del depto en la hoja (11N)', () {
+    NotaUbicacion notaDe(String id, String texto, {String duenio = 'd-3b'}) =>
+        notaDeLugar(id, texto, ubicacionId: duenio);
+
+    Finder agregarNota() => find.byKey(ClavesNotaDelDepto.agregar);
+
+    testWidgets(
+      'C·10: el depto sin nota ofrece «+ Agregar una nota» arriba de PERSONAS; la fila de otro '
+      'depto y la nota del edificio no se mezclan',
+      (tester) async {
+        await _montar(
+          tester,
+          antes: (m) {
+            m.notasDeDeptos.agregarSinAvisar(notaDe('otro', 'del 1A', duenio: 'd-1a'));
+            m.notasDelEdificio.agregarSinAvisar(
+              notaDe('lugar', 'del edificio', duenio: _ubicacionId),
+            );
+          },
+        );
+        await tester.tap(_fila(_d3B));
+        await _asentar(tester);
+
+        expect(find.text('+ Agregar una nota'), findsOneWidget);
+        expect(find.text('del 1A'), findsNothing);
+        expect(find.text('del edificio'), findsNothing);
+        expect(
+          tester.getTopLeft(agregarNota()).dy,
+          lessThan(tester.getTopLeft(find.text(TextosDeptosDeLaCasa.personas)).dy),
+          reason: 'la nota va arriba de las personas (11N·01)',
+        );
+      },
+    );
+
+    testWidgets('C·10: el depto con nota la muestra como «NOTA DEL DEPTO» con «Editar» (11N·03)', (
+      tester,
+    ) async {
+      await _montar(
+        tester,
+        antes: (m) => m.notasDeDeptos.agregarSinAvisar(notaDe('a', 'timbre roto, tocar fuerte')),
+      );
+      await tester.tap(_fila(_d3B));
+      await _asentar(tester);
+
+      expect(find.text('NOTA DEL DEPTO'), findsOneWidget);
+      expect(find.text('timbre roto, tocar fuerte'), findsOneWidget);
+      expect(find.byKey(ClavesNotaDelDepto.editar), findsOneWidget);
+      expect(agregarNota(), findsNothing);
+    });
+
+    testWidgets(
+      'C·10: tocar «+ Agregar una nota», escribir y guardar deja la nota en el depto 3B y vuelve '
+      'a la hoja con ella',
+      (tester) async {
+        final m = await _montar(tester);
+        await tester.tap(_fila(_d3B));
+        await _asentar(tester);
+
+        await tester.tap(agregarNota());
+        await _asentar(tester);
+        await tester.enterText(find.byKey(ClavesNotas.campo), 'timbre roto, tocar fuerte');
+        await tester.pump();
+        await tester.tap(find.text('Guardar nota'));
+        await _asentar(tester, 14);
+
+        expect(find.text('Guardar nota'), findsNothing, reason: 'el formulario se cerró');
+        expect(find.text('timbre roto, tocar fuerte'), findsOneWidget);
+        expect(_texto(tester, ClavesHojaCasa.titulo), 'Grecia 3313 · Depto 3B');
+        expect(m.notasDeDeptos.notas.single.ubicacionId, 'd-3b');
+        expect(m.notasDelEdificio.notas, isEmpty);
+      },
+    );
+
+    testWidgets('C·10: volver a la lista y entrar a otro depto muestra la nota de ese depto', (
+      tester,
+    ) async {
+      await _montar(tester, antes: (m) => m.notasDeDeptos.agregarSinAvisar(notaDe('a', 'del 3B')));
+      await tester.tap(_fila(_d3B));
+      await _asentar(tester);
+      expect(find.text('del 3B'), findsOneWidget);
+
+      await tester.tap(_volver);
+      await _asentar(tester);
+      await tester.tap(_fila(_d1A));
+      await _asentar(tester);
+
+      expect(find.text('del 3B'), findsNothing);
+      expect(find.text('+ Agregar una nota'), findsOneWidget);
+    });
+
+    testWidgets('C·10 de un edificio dado de baja: la nota se ve y no se agrega ni se edita', (
+      tester,
+    ) async {
+      await _montar(
+        tester,
+        baja: DateTime.utc(2026, 10, 18, 12),
+        antes: (m) => m.notasDeDeptos.agregarSinAvisar(notaDe('a', 'del 3B')),
+      );
+      await tester.tap(_fila(_d3B));
+      await _asentar(tester);
+
+      expect(find.text('del 3B'), findsOneWidget);
+      expect(find.byKey(ClavesNotaDelDepto.editar), findsNothing);
+
+      await tester.tap(_volver);
+      await _asentar(tester);
+      await tester.tap(_fila(_d1A));
+      await _asentar(tester);
+      expect(agregarNota(), findsNothing);
+    });
+
+    testWidgets(
+      'con la hoja arriba, la pestaña Notas del depto es la del depto (no la del edificio) y «+ Nota '
+      'del depto» guarda en el depto',
+      (tester) async {
+        final m = await _montar(
+          tester,
+          arriba: true,
+          conPestanaNotas: true,
+          antes: (m) {
+            m.notasDeDeptos.agregarSinAvisar(notaDe('a', 'del 3B'));
+            m.notasDelEdificio.agregarSinAvisar(
+              notaDe('lugar', 'del edificio', duenio: _ubicacionId),
+            );
+          },
+        );
+        await tester.tap(_fila(_d3B));
+        await _asentar(tester);
+
+        final pestana = find.byKey(ClavesHojaCasa.pestana(PestanaHojaCasa.notas.id));
+        await tester.ensureVisible(pestana);
+        await tester.tap(pestana);
+        await _asentar(tester);
+
+        expect(find.byKey(ClavesNotasDelLugar.nota('a')), findsOneWidget);
+        expect(find.text('del edificio'), findsNothing);
+        expect(find.text('+ Nota del depto'), findsOneWidget);
+        expect(find.text('+ Nota del lugar'), findsNothing);
+
+        await tester.tap(find.text('+ Nota del depto'));
+        await _asentar(tester);
+        await tester.enterText(find.byKey(ClavesNotas.campo), 'otra del 3B');
+        await tester.pump();
+        await tester.tap(find.text('Guardar nota'));
+        await _asentar(tester);
+        expect(m.notasDeDeptos.notas.map((n) => n.ubicacionId), everyElement('d-3b'));
+        expect(m.notasDeDeptos.notas, hasLength(2));
+        expect(m.notasDelEdificio.notas, hasLength(1));
+      },
+    );
+
+    testWidgets(
+      'el enganche elige el dueño: en un depto las del depto; en una casa, las del lugar',
+      (tester) async {
+        late BuildContext contexto;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (c) {
+                contexto = c;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        );
+        ContextoDePestana de({required bool esDepto}) => (
+          ubicacionId: 'ubi-1',
+          espacioId: 'e-1',
+          direccion: 'Grecia 3313',
+          colportorId: 'col-1',
+          esBaja: false,
+          esDepto: esDepto,
+        );
+
+        final deDepto =
+            PestanaNotasDeLaCasa.enganche(contexto, de(esDepto: true)) as PestanaNotasDeLaCasa;
+        final deCasa =
+            PestanaNotasDeLaCasa.enganche(contexto, de(esDepto: false)) as PestanaNotasDeLaCasa;
+
+        expect((deDepto.ubicacionId, deDepto.espacioId), ('ubi-1', 'e-1'));
+        expect((deCasa.ubicacionId, deCasa.espacioId), ('ubi-1', null));
+      },
+    );
   });
 
   group('N·04 a N·07: el edificio recién registrado', () {

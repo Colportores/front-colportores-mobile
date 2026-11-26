@@ -221,10 +221,13 @@ class AppDatabase extends _$AppDatabase {
   /// - 44: `transferencia_stock` y `transferencia_item`, las transferencias de materiales entre colportores
   ///   que el teléfono pide y cancela, y que baja a las dos puntas (backend-supabase 0139 y 0148,
   ///   HU-STK-005, #512).
+  /// - 45: `espacio` pierde `descripcion` (backend-supabase 0104, «Notas depto», HU-UBI-007, #290): lo que
+  ///   hubiera escrito ahí pasa antes a una nota del depto (`nota`, `target_type = ESPACIO`), así que ningún
+  ///   texto escrito en campo se descarta.
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 44;
+  static const int versionEsquema = 45;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -628,6 +631,25 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(esquema.transferenciaStockDestinoIdx);
       await m.createTable(esquema.transferenciaItem);
       await m.createIndex(esquema.transferenciaItemTransferenciaIdx);
+    },
+    // Saca `descripcion` de `espacio` (backend-supabase 0104, #290). Antes, el texto que tuviera un depto
+    // pasa a una nota suya (`nota` con `target_type = ESPACIO`, local-only), con la fecha y la autora del
+    // depto: nunca se descarta un texto escrito en campo (decisión del 27/10, #498). Los espacios dados de
+    // baja también (el historial se conserva). Un texto en blanco no es una nota. Después se recrea `espacio`
+    // sin la columna, copiando las que siguen (`alterTable` también vuelve a crear `espacio_ubicacion_idx`).
+    // Nada de lo guardado cambia ni se encola al migrar: la nota es local y las filas de `espacio` quedan
+    // como estaban.
+    from44To45: (m, esquema) async {
+      await m.database.customStatement(
+        'INSERT INTO nota (id, target_type, target_id, texto, categoria, created_at, updated_at, '
+        'created_by, deleted_at, sync_version) '
+        "SELECT lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
+        "substr(hex(randomblob(2)), 2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || "
+        "substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))), "
+        "'ESPACIO', id, trim(descripcion), NULL, created_at, updated_at, created_by, NULL, 0 "
+        "FROM espacio WHERE descripcion IS NOT NULL AND trim(descripcion) <> ''",
+      );
+      await m.alterTable(TableMigration(esquema.espacio));
     },
   );
 }

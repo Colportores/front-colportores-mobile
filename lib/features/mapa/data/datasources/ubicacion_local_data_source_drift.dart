@@ -923,7 +923,8 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
   /// borrar nada**, con lo que guardó al unir (`MovimientosDeUnion`):
   ///
   /// - los espacios que pasaron enteros vuelven a B;
-  /// - los únicos fundidos se reactivan y vuelve a ellos lo que colgaba (vínculos, visitas, agendas),
+  /// - los únicos fundidos se reactivan y vuelve a ellos lo que colgaba (vínculos, visitas, agendas y
+  ///   notas del depto),
   ///   y también la visita o la entrevista que se le hizo después de unir a una persona que vuelve
   ///   («Visita unión», decisión de Cristian, 11/11, #696);
   /// - las alternativas (`agenda.ubicacion_alt_id`, `espacio_persona.ubicacion_cobranza_alt_id`) y las
@@ -1030,6 +1031,18 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
         );
         vueltas += agendas.length;
         anotar('agenda', agendas, campo: 'espacio_id', ladoA: f.unicoDeA);
+      }
+      if (f.notas.isNotEmpty) {
+        // Las notas del depto vuelven a él, si siguen donde las dejó la unión. Son locales: no suben.
+        esperadas += f.notas.length;
+        vueltas +=
+            await (db.update(db.notas)..where(
+                  (x) =>
+                      x.id.isIn(f.notas) &
+                      x.targetType.equals(TipoObjetivoNota.espacio) &
+                      x.targetId.equals(f.unicoDeA),
+                ))
+                .write(NotasCompanion(targetId: Value(f.espacioId), updatedAt: Value(instante)));
       }
       // «Visita unión» (decisión de Cristian, 11/11, #696): la visita o la entrevista que se le hizo
       // después de unir a una persona que vuelve a B se va con ella, como sus ventas. Son las que
@@ -1362,6 +1375,16 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     );
     final visitas = await _ids(db.visitas, db.visitas.id, db.visitas.espacioId.equals(deB));
     final agendas = await _ids(db.agendas, db.agendas.id, db.agendas.espacioId.equals(deB));
+    // Las notas del depto (#290, también las borradas: siguen 90 días en «Ver borradas») pasan al único
+    // de A: las del de B quedarían sin depto donde verse. Son locales: nada que encolar.
+    final notas = await _ids(
+      db.notas,
+      db.notas.id,
+      db.notas.targetType.equals(TipoObjetivoNota.espacio) & db.notas.targetId.equals(deB),
+    );
+    await (db.update(db.notas)
+          ..where((x) => x.targetType.equals(TipoObjetivoNota.espacio) & x.targetId.equals(deB)))
+        .write(NotasCompanion(targetId: Value(a), updatedAt: Value(instante)));
     await (db.update(db.espacioPersonas)..where((x) => x.espacioId.equals(deB))).write(
       EspacioPersonasCompanion(espacioId: Value(a), updatedAt: Value(instante)),
     );
@@ -1377,6 +1400,7 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
       vinculos: vinculos,
       visitas: visitas,
       agendas: agendas,
+      notas: notas,
     );
   }
 

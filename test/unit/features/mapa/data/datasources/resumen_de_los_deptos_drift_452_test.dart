@@ -6,6 +6,7 @@ import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/sync/fakes/encolador_sync_en_memoria.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/estado_agenda.dart';
 import 'package:colportores_mobile/features/agenda/domain/entities/visita.dart';
+import 'package:colportores_mobile/features/mapa/data/datasources/notas_table.dart';
 import 'package:colportores_mobile/features/mapa/data/datasources/resumen_de_los_deptos_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/services/house_status_updater_drift.dart';
 import 'package:colportores_mobile/features/mapa/domain/entities/color_house_status.dart';
@@ -165,5 +166,103 @@ void main() {
         expect(emitidos, hasLength(cuantos));
       },
     );
+  });
+  group('la nota más nueva de cada depto (11N·06, #290)', () {
+    Future<void> nota(
+      String id,
+      String objetivo, {
+      required DateTime creada,
+      String tipo = TipoObjetivoNota.espacio,
+      DateTime? borrada,
+      String? texto,
+    }) => db
+        .into(db.notas)
+        .insert(
+          NotasCompanion.insert(
+            id: id,
+            targetType: tipo,
+            targetId: objetivo,
+            texto: texto ?? 'texto $id',
+            createdAt: creada,
+            updatedAt: creada,
+            deletedAt: Value(borrada),
+          ),
+        );
+
+    test('cada depto muestra la suya: la más nueva sin borrar; sin notas, ninguna', () async {
+      await nota('n-vieja', 'esp-1', creada: t0);
+      await nota('n-nueva', 'esp-1', creada: t0.add(const Duration(hours: 1)));
+      await nota(
+        'n-borrada',
+        'esp-1',
+        creada: t0.add(const Duration(hours: 2)),
+        borrada: t0.add(const Duration(hours: 3)),
+      );
+
+      final resumen = await primero();
+
+      expect(resumen['esp-1']!.notaMasNueva, 'texto n-nueva', reason: 'la borrada no cuenta');
+      expect(resumen['esp-2']!.notaMasNueva, isNull);
+    });
+
+    test('las notas del lugar, de una persona o de otro depto no cuentan', () async {
+      await nota('n-lugar', 'esp-1', creada: t0, tipo: TipoObjetivoNota.ubicacion);
+      await nota('n-persona', 'esp-1', creada: t0, tipo: TipoObjetivoNota.persona);
+      await nota('n-otro', 'esp-2', creada: t0);
+
+      final resumen = await primero();
+
+      expect(resumen['esp-1']!.notaMasNueva, isNull);
+      expect(resumen['esp-2']!.notaMasNueva, 'texto n-otro');
+    });
+
+    test('a igual instante gana la de id mayor, y una nota larga llega entera', () async {
+      final larga = List.filled(600, 'x').join();
+      await nota('n-a', 'esp-1', creada: t0, texto: 'primera');
+      await nota('n-b', 'esp-1', creada: t0, texto: larga);
+
+      final resumen = await primero();
+
+      expect(resumen['esp-1']!.notaMasNueva, larga);
+    });
+
+    test('el resumen no imprime la nota en su toString (PII)', () async {
+      await nota('n-1', 'esp-1', creada: t0, texto: 'secreto del timbre');
+
+      final resumen = await primero();
+
+      expect('${resumen['esp-1']}', isNot(contains('secreto del timbre')));
+    });
+
+    test('al agregar, borrar y restaurar una nota, la fila se pone al día sin recargar', () async {
+      final emitidos = <Map<String, ResumenDelDepto>>[];
+      final llego = StreamController<void>.broadcast();
+      final sub = lector.observar('ub-1', colportorId: 'col-1').listen((r) {
+        emitidos.add(r);
+        llego.add(null);
+      });
+      addTearDown(sub.cancel);
+      addTearDown(llego.close);
+      await llego.stream.first;
+
+      var siguiente = llego.stream.first;
+      await nota('n-1', 'esp-1', creada: t0, texto: 'timbre roto');
+      await siguiente;
+      expect(emitidos.last['esp-1']!.notaMasNueva, 'timbre roto');
+
+      siguiente = llego.stream.first;
+      await (db.update(db.notas)..where((n) => n.id.equals('n-1'))).write(
+        NotasCompanion(deletedAt: Value(t0.add(const Duration(minutes: 1)))),
+      );
+      await siguiente;
+      expect(emitidos.last['esp-1']!.notaMasNueva, isNull);
+
+      siguiente = llego.stream.first;
+      await (db.update(
+        db.notas,
+      )..where((n) => n.id.equals('n-1'))).write(const NotasCompanion(deletedAt: Value(null)));
+      await siguiente;
+      expect(emitidos.last['esp-1']!.notaMasNueva, 'timbre roto');
+    });
   });
 }

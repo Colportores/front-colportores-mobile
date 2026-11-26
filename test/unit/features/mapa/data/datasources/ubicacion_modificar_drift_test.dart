@@ -120,7 +120,6 @@ void main() {
     DateTime? deletedAt,
     String? numeroDepto,
     String? piso,
-    String? descripcion,
   }) => db
       .into(db.espacios)
       .insert(
@@ -129,7 +128,6 @@ void main() {
           ubicacionId: ubicacionId,
           numeroDepto: Value(numeroDepto),
           piso: Value(piso),
-          descripcion: Value(descripcion),
           createdAt: t0,
           updatedAt: t0,
           createdBy: const Value('col-1'),
@@ -483,10 +481,10 @@ void main() {
       await esperar(cuentas, 2);
       expect(cuentas.last, (cantidad: 2, numeroDeptoUnico: null));
 
-      // Un cambio que no mueve ni la cuenta ni el número (la `descripcion` heredada): sin emisión.
-      await (db.update(db.espacios)..where((e) => e.id.equals('e2'))).write(
-        const EspaciosCompanion(descripcion: Value('al fondo')),
-      );
+      // Un cambio que no mueve ni la cuenta ni el número (el piso): sin emisión.
+      await (db.update(
+        db.espacios,
+      )..where((e) => e.id.equals('e2'))).write(const EspaciosCompanion(piso: Value('4')));
       await Future<void>.delayed(const Duration(milliseconds: 60));
       expect(cuentas, hasLength(2), reason: 'distinct: igual a la anterior');
 
@@ -506,7 +504,7 @@ void main() {
     test('dado un EDIFICIO con un solo depto "3B", cuando pasa a CASA, el depto queda como el '
         'espacio de la casa, sin número, y se encolan los dos cambios', () async {
       await local.insertar(ubicacion(tipo: TipoUbicacion.edificio));
-      await espacioEn('ub-1', 'e1', numeroDepto: '3B', piso: '3', descripcion: 'al fondo');
+      await espacioEn('ub-1', 'e1', numeroDepto: '3B', piso: '3');
       encolador.encolados.clear();
 
       final r = await ok(params(tipo: TipoUbicacion.casa));
@@ -515,8 +513,8 @@ void main() {
       expect((await guardada()).tipo, TipoUbicacion.casa);
       final e = await espacio('e1');
       expect(e.numeroDepto, isNull);
-      expect((e.piso, e.descripcion), ('3', 'al fondo'), reason: 'lo demás queda igual');
-      // Y la `descripcion` heredada no sale nunca (HU-UBI-007, «Nota por depto»; backend 0104).
+      expect(e.piso, '3', reason: 'lo demás queda igual');
+      // Y la `descripcion` no sale nunca (HU-UBI-007, «Nota por depto»; backend 0104).
       final subido = encolador.encolados.last.payload;
       expect(subido.containsKey('descripcion'), isFalse);
       expect(e.updatedAt, t1);
@@ -598,7 +596,7 @@ void main() {
       expect(r, isA<UbicacionModificada>());
       expect((await guardada()).tipo, TipoUbicacion.casa);
       final e = await espacio('esp-nuevo');
-      expect((e.ubicacionId, e.numeroDepto, e.piso, e.descripcion), ('ub-1', null, null, null));
+      expect((e.ubicacionId, e.numeroDepto, e.piso), ('ub-1', null, null));
       expect((e.createdAt, e.updatedAt, e.createdBy, e.deletedAt), (t1, t1, 'col-1', null));
       expect(cambiosEncolados(), [
         [

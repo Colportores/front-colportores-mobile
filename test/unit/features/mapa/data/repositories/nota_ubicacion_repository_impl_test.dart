@@ -131,4 +131,35 @@ void main() {
     expect(todo, contains('NOTA_LUGAR_ALTA_FAIL'));
     expect(todo, isNot(contains('La dueña')));
   });
+  test(
+    'dado el repositorio de las notas de un depto (#290), el log nombra el depto y nunca el texto',
+    () async {
+      final delDepto = NotaUbicacionRepositoryImpl(
+        local,
+        delDepto: true,
+        logger: AppLogger(
+          logger: Logger(level: Level.trace, output: salida),
+        ),
+      );
+      local.lanza = const NotaRechazadaException(MotivoRechazoNota.espacioDeBaja);
+      final rechazada = await delDepto.agregar(nota);
+      local.lanza = StateError('INSERT INTO nota (texto) VALUES (La dueña no quiere visitas)');
+      await delDepto.agregar(nota);
+      await delDepto.borrar(id: 'nota-1', ahora: t0);
+
+      final falla = rechazada.fold((f) => f, (_) => fail('debía fallar'));
+      expect((falla as FailureValidacion).campos, {
+        'espacio':
+            'Este depto está dado de baja: podés ver sus notas, pero no agregar ni cambiar ninguna.',
+      });
+      final todo = salida.lineas.join('\n');
+      expect(todo, contains('NOTA_DEPTO_ALTA_RECHAZADA'));
+      expect(todo, contains('NOTA_DEPTO_ALTA_FAIL'));
+      expect(todo, contains('NOTA_DEPTO_BAJA_FAIL'));
+      expect(todo, contains('espacio_id'));
+      expect(todo, isNot(contains('NOTA_LUGAR')));
+      expect(todo, isNot(contains('ubicacion_id')));
+      expect(todo, isNot(contains('La dueña')));
+    },
+  );
 }
