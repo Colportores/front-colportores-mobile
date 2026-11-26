@@ -1,7 +1,8 @@
 import 'dart:convert';
 
 /// Lo que colgaba del espacio único de B que la unión fundió en el único de A: el espacio de B (que
-/// quedó de baja), el de A y los `id` de los vínculos, visitas y agendas que pasaron de uno al otro.
+/// quedó de baja), el de A y los `id` de los vínculos, visitas, agendas y notas del depto que pasaron de
+/// uno al otro.
 final class EspacioFundido {
   const EspacioFundido({
     required this.espacioId,
@@ -9,6 +10,7 @@ final class EspacioFundido {
     this.vinculos = const [],
     this.visitas = const [],
     this.agendas = const [],
+    this.notas = const [],
   });
 
   factory EspacioFundido.fromJson(Map<String, Object?> json) => EspacioFundido(
@@ -17,6 +19,7 @@ final class EspacioFundido {
     vinculos: _ids(json['vinculos']),
     visitas: _ids(json['visitas']),
     agendas: _ids(json['agendas']),
+    notas: _ids(json['notas']),
   );
 
   /// El espacio único de B, que la unión dio de baja.
@@ -25,10 +28,12 @@ final class EspacioFundido {
   /// El espacio único de A, que recibió lo que colgaba de [espacioId].
   final String unicoDeA;
 
-  /// `espacio_persona`, `visita` y `agenda` que pasaron de [espacioId] a [unicoDeA].
+  /// `espacio_persona`, `visita`, `agenda` y `nota` (las del depto, `target_type = ESPACIO`, #290) que
+  /// pasaron de [espacioId] a [unicoDeA]. Son solo `id`: el texto de una nota nunca sale de la DB.
   final List<String> vinculos;
   final List<String> visitas;
   final List<String> agendas;
+  final List<String> notas;
 
   Map<String, Object?> toJson() => {
     'espacio_id': espacioId,
@@ -36,6 +41,7 @@ final class EspacioFundido {
     'vinculos': vinculos,
     'visitas': visitas,
     'agendas': agendas,
+    'notas': notas,
   };
 }
 

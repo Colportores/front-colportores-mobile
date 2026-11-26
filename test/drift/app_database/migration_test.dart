@@ -50,6 +50,7 @@ import 'generated/schema_v40.dart' as v40;
 import 'generated/schema_v41.dart' as v41;
 import 'generated/schema_v42.dart' as v42;
 import 'generated/schema_v43.dart' as v43;
+import 'generated/schema_v44.dart' as v44;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
@@ -2772,6 +2773,96 @@ void main() {
           );
           final marca = await nuevo.select(nuevo.ubicacionUnida).getSingle();
           expect((marca.ubicacionId, marca.unidaAId), ('ub-1', 'ub-2'));
+        },
+      );
+    },
+  );
+  test(
+    'dado deptos con y sin texto en la columna descripcion en la versión 43, cuando migra a la 44, el '
+    'texto pasa a una nota del depto, la columna se va y nada más cambia (#290)',
+    () async {
+      const base = (ubicacionId: 'ub-1', createdAt: 1000, updatedAt: 2000);
+      v43.EspacioData espacio(String id, {String? descripcion, int? deletedAt, String? numero}) =>
+          v43.EspacioData(
+            id: id,
+            ubicacionId: base.ubicacionId,
+            numeroDepto: numero,
+            piso: '3',
+            descripcion: descripcion,
+            createdAt: base.createdAt,
+            updatedAt: base.updatedAt,
+            createdBy: 'col-1',
+            deletedAt: deletedAt,
+            syncVersion: 5,
+          );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 43,
+        newVersion: 44,
+        createOld: v43.DatabaseAtV43.new,
+        createNew: v44.DatabaseAtV44.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch.insertAll(viejo.espacio, [
+            espacio('e-con', descripcion: '  timbre roto, tocar fuerte ', numero: '3B'),
+            espacio('e-baja', descripcion: 'el perro muerde', deletedAt: 3000, numero: '3C'),
+            espacio('e-blanco', descripcion: '   ', numero: '4A'),
+            espacio('e-vacio', descripcion: '', numero: '4B'),
+            espacio('e-nulo', numero: '5A'),
+          ]);
+          batch.insert(
+            viejo.nota,
+            const v43.NotaData(
+              id: 'n-previa',
+              targetType: 'UBICACION',
+              targetId: 'ub-1',
+              texto: 'ya estaba',
+              createdAt: 1,
+              updatedAt: 1,
+              syncVersion: 0,
+            ),
+          );
+        },
+        validateItems: (nuevo) async {
+          // Cada texto escrito pasó a una nota ESPACIO suya, con su fecha y su autora, sin espacios
+          // alrededor; ni el texto en blanco ni el vacío ni el nulo hicieron una.
+          final notas = await nuevo.select(nuevo.nota).get();
+          final deptos = notas.where((n) => n.targetType == 'ESPACIO').toList()
+            ..sort((a, b) => a.targetId.compareTo(b.targetId));
+          expect(
+            deptos.map((n) => (n.targetId, n.texto)),
+            [('e-baja', 'el perro muerde'), ('e-con', 'timbre roto, tocar fuerte')],
+            reason: 'también el depto dado de baja: nunca se descarta un texto escrito',
+          );
+          for (final n in deptos) {
+            expect((n.createdAt, n.updatedAt, n.createdBy), (1000, 2000, 'col-1'));
+            expect((n.deletedAt, n.categoria, n.syncVersion), (null, null, 0));
+            expect(
+              n.id,
+              matches(
+                RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'),
+              ),
+            );
+          }
+          expect(deptos.first.id, isNot(deptos.last.id));
+          // Lo que ya había no se toca.
+          expect(notas.where((n) => n.id == 'n-previa').single.texto, 'ya estaba');
+          expect(notas, hasLength(3));
+
+          // Los espacios siguen enteros, sin la columna.
+          final espacios = await nuevo.select(nuevo.espacio).get();
+          expect(espacios, hasLength(5));
+          final baja = espacios.singleWhere((e) => e.id == 'e-baja');
+          expect(
+            (baja.numeroDepto, baja.piso, baja.deletedAt, baja.syncVersion),
+            ('3C', '3', 3000, 5),
+          );
+          final columnas = await nuevo.customSelect("PRAGMA table_info('espacio')").get();
+          expect(columnas.map((c) => c.read<String>('name')), isNot(contains('descripcion')));
+          // El índice de `espacio` sobrevive a la recreación y nada se encola.
+          final indices = await nuevo.customSelect("PRAGMA index_list('espacio')").get();
+          expect(indices.map((i) => i.read<String>('name')), contains('espacio_ubicacion_idx'));
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
         },
       );
     },

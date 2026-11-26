@@ -10,19 +10,27 @@ import 'notas_table.dart';
 
 typedef _Motivo = MotivoRechazoNota;
 
-/// [NotaUbicacionLocalDataSource] sobre las tablas `nota` y `ubicacion` de la DB cifrada.
+/// [NotaUbicacionLocalDataSource] sobre las tablas `nota`, `ubicacion` y `espacio` de la DB cifrada.
+///
+/// Sirve a dos dueños de notas con la misma forma: el lugar (`target_type = UBICACION`, vista 39) y el
+/// depto (`ESPACIO`, vista 11, #290). Lo elige [objetivo]; cambia a qué filas toca y qué tiene que
+/// cumplir el dueño para que se pueda escribir (el lugar, no estar de baja; el depto, estar en el
+/// teléfono, sin baja y en un lugar sin baja).
 ///
 /// Cada operación es **una transacción de Drift**: leer, decidir y escribir juntos. Drift no corre dos
 /// a la vez sobre la misma DB, así que dos llamadas casi simultáneas (un doble toque, dos acciones
 /// seguidas) se serializan y la segunda ve lo que dejó la primera.
 ///
 /// **local-only**: la nota no es una entidad del sync (`SyncSpec.local`), así que no hay nada que
-/// encolar. Sin migración: la tabla `nota` ya admite varias filas por lugar (v9) y la app no escribía
-/// ninguna con `target_type = UBICACION` antes de esta clase.
+/// encolar. Sin migración: la tabla `nota` ya admite varias filas por lugar o por depto (v9).
 final class NotaUbicacionLocalDataSourceDrift implements NotaUbicacionLocalDataSource {
-  NotaUbicacionLocalDataSourceDrift(this._db);
+  NotaUbicacionLocalDataSourceDrift(this._db, {this.objetivo = TipoObjetivoNota.ubicacion})
+    : assert(objetivo == TipoObjetivoNota.ubicacion || objetivo == TipoObjetivoNota.espacio);
 
   final AppDatabase _db;
+
+  /// `target_type` de las notas que lee y escribe: `UBICACION` o `ESPACIO` ([TipoObjetivoNota]).
+  final String objetivo;
 
   @override
   Future<NotaUbicacion> agregar(NotaUbicacion nota) => _db.transaction(() async {
@@ -74,25 +82,32 @@ final class NotaUbicacionLocalDataSourceDrift implements NotaUbicacionLocalDataS
   @override
   Stream<List<NotaUbicacion>> observar(String ubicacionId) {
     final consulta = _db.select(_db.notas)
-      ..where(
-        (n) => n.targetType.equals(TipoObjetivoNota.ubicacion) & n.targetId.equals(ubicacionId),
-      )
+      ..where((n) => n.targetType.equals(objetivo) & n.targetId.equals(ubicacionId))
       // La más nueva primero; a igual instante, la de `id` mayor (UUID v7: crece con el tiempo).
       ..orderBy([(n) => OrderingTerm.desc(n.createdAt), (n) => OrderingTerm.desc(n.id)]);
     return consulta.watch().map((filas) => [for (final f in filas) _aNota(f)]);
   }
 
-  Future<NotaFila?> _fila(String id) =>
-      (_db.select(_db.notas)
-            ..where((n) => n.id.equals(id) & n.targetType.equals(TipoObjetivoNota.ubicacion)))
-          .getSingleOrNull();
+  Future<NotaFila?> _fila(String id) => (_db.select(
+    _db.notas,
+  )..where((n) => n.id.equals(id) & n.targetType.equals(objetivo))).getSingleOrNull();
 
   Future<NotaFila> _filaExistente(String id) async =>
       await _fila(id) ?? (throw const NotaRechazadaException(_Motivo.notaInexistente));
 
   /// El lugar tiene que estar en el teléfono y no estar dado de baja (la hoja de una casa dada de baja
-  /// se ve en solo lectura: las notas se leen, no se tocan).
-  Future<void> _exigirEscribible(String ubicacionId) async {
+  /// se ve en solo lectura: las notas se leen, no se tocan). Con las de un depto, el depto también: en
+  /// el teléfono y sin baja, y su lugar sin baja.
+  Future<void> _exigirEscribible(String duenioId) async {
+    var ubicacionId = duenioId;
+    if (objetivo == TipoObjetivoNota.espacio) {
+      final espacio = await (_db.select(
+        _db.espacios,
+      )..where((e) => e.id.equals(duenioId))).getSingleOrNull();
+      if (espacio == null) throw const NotaRechazadaException(_Motivo.espacioInexistente);
+      if (espacio.deletedAt != null) throw const NotaRechazadaException(_Motivo.espacioDeBaja);
+      ubicacionId = espacio.ubicacionId;
+    }
     final ubicacion = await (_db.select(
       _db.ubicaciones,
     )..where((u) => u.id.equals(ubicacionId))).getSingleOrNull();
@@ -122,9 +137,9 @@ final class NotaUbicacionLocalDataSourceDrift implements NotaUbicacionLocalDataS
     ),
   );
 
-  static NotasCompanion _aFila(NotaUbicacion n) => NotasCompanion.insert(
+  NotasCompanion _aFila(NotaUbicacion n) => NotasCompanion.insert(
     id: n.id,
-    targetType: TipoObjetivoNota.ubicacion,
+    targetType: objetivo,
     targetId: n.ubicacionId,
     texto: n.texto,
     createdAt: n.auditoria.createdAt,

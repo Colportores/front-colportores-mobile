@@ -596,13 +596,8 @@ Future<void> main() async {
         ),
         // Pestaña Notas de la hoja de la casa (vista 39, C·05, #447): las notas del lugar, todas en
         // el teléfono.
-        pestanaNotasDeLaCasaProvider.overrideWithValue(
-          (context, contexto) => PestanaNotasDeLaCasa(
-            ubicacionId: contexto.ubicacionId,
-            colportorId: contexto.colportorId,
-            soloLectura: contexto.esBaja,
-          ),
-        ),
+        // En un depto elegido (C·10) las notas son las del depto y no las del edificio (#290).
+        pestanaNotasDeLaCasaProvider.overrideWithValue(PestanaNotasDeLaCasa.enganche),
         if (tiles != null) ...[
           paquetesTilesRepositoryProvider.overrideWithValue(tiles.repository),
           descargadorPaquetesTilesProvider.overrideWithValue(tiles.descargador),

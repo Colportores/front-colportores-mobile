@@ -205,13 +205,16 @@ final devolverVentaDesdeLaFichaProvider =
 
 /// Lo que recibe el contenido de una pestaña de la hoja arriba (Historial o Notas) para dibujarse: la
 /// casa y el espacio ya resueltos, la dirección que la hoja muestra de título («Grecia 3310»), el
-/// colportor con la sesión iniciada y si la casa está dada de baja (solo lectura).
+/// colportor con la sesión iniciada y si la casa está dada de baja (solo lectura). [esDepto] dice que la
+/// hoja es la de un depto elegido en un edificio o un negocio (C·10): las notas son las del depto y no las
+/// del lugar (vista 11, #290).
 typedef ContextoDePestana = ({
   String ubicacionId,
   String espacioId,
   String direccion,
   String? colportorId,
   bool esBaja,
+  bool esDepto,
 });
 
 /// Arma el contenido de una pestaña de la hoja arriba.

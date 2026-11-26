@@ -1,7 +1,7 @@
 // HU-UBI-007, escenario «Nota por depto, solo en el teléfono»: «del depto solo suben al servidor
 // su número y su piso». El backend sacó `espacio.descripcion` (0104, backend-supabase#79): un push
-// con esa columna falla. Se prueba contra las tablas reales (AppDatabase en memoria) con una fila
-// que todavía trae texto en la columna heredada, la peor situación posible.
+// con esa columna falla, y desde el esquema 44 (#290) la tabla local tampoco la tiene: lo que hubiera
+// escrito ahí pasó a una nota del depto. Se prueba contra las tablas reales (AppDatabase en memoria).
 import 'package:colportores_mobile/core/database/app_database.dart';
 import 'package:colportores_mobile/core/domain/entities/auditoria.dart';
 import 'package:colportores_mobile/core/sync/encolador_sync.dart';
@@ -19,7 +19,6 @@ import '../../../../helpers/logger_mudo.dart';
 void main() {
   final t0 = DateTime.utc(2026, 10, 27, 13, 45);
   final t1 = t0.add(const Duration(minutes: 5));
-  const textoHeredado = 'timbre roto, la señora Pérez';
 
   // Las columnas de `public.espacio` después de la migración 0104.
   const columnasDelServidor = {
@@ -69,8 +68,8 @@ void main() {
   Iterable<CambioEncolado> deptosEncolados() =>
       encolador.encolados.where((c) => c.entidad == 'espacio');
 
-  /// Una fila de una instalación vieja: el texto libre sigue en la columna que ya no sube.
-  Future<void> sembrarConTextoHeredado() => db
+  /// Una fila de una instalación vieja, con su número, su piso y su `sync_version`.
+  Future<void> sembrarDeptoViejo() => db
       .into(db.espacios)
       .insert(
         EspaciosCompanion.insert(
@@ -78,7 +77,6 @@ void main() {
           ubicacionId: 'ub-1',
           numeroDepto: const Value('3B'),
           piso: const Value('3'),
-          descripcion: const Value(textoHeredado),
           createdAt: t0,
           updatedAt: t0,
           createdBy: const Value('col-1'),
@@ -89,7 +87,6 @@ void main() {
   void sinNingunTextoLibre() {
     for (final c in deptosEncolados()) {
       expect(c.payload.keys.toSet(), columnasDelServidor, reason: '${c.operacion}');
-      expect('${c.payload}', isNot(contains(textoHeredado)));
     }
   }
 
@@ -103,40 +100,47 @@ void main() {
     expect((subido.payload['numero_depto'], subido.payload['piso']), ('5B', '5'));
   });
 
-  test('dado un depto de una instalación vieja con texto en la columna heredada, cuando se le '
-      'corrige el número, el update sube sin ese texto y la fila local no lo pierde', () async {
-    await sembrarConTextoHeredado();
+  test(
+    'dado un depto de una instalación vieja, cuando se le corrige el número, el update sube solo '
+    'las columnas del servidor',
+    () async {
+      await sembrarDeptoViejo();
 
-    final editado = await local.actualizarEspacio(
-      'e-viejo',
-      numeroDepto: '3C',
-      piso: '3',
-      ahora: t1,
-    );
+      final editado = await local.actualizarEspacio(
+        'e-viejo',
+        numeroDepto: '3C',
+        piso: '3',
+        ahora: t1,
+      );
 
-    final subido = deptosEncolados().single;
-    expect(subido.operacion, OperacionSync.update);
-    expect((subido.payload['numero_depto'], subido.payload['piso']), ('3C', '3'));
-    expect(editado.numeroDepto, '3C');
-    sinNingunTextoLibre();
-    final fila = await (db.select(db.espacios)..where((e) => e.id.equals('e-viejo'))).getSingle();
-    expect(fila.descripcion, textoHeredado, reason: 'la columna local no se toca ni se manda');
-  });
+      final subido = deptosEncolados().single;
+      expect(subido.operacion, OperacionSync.update);
+      expect((subido.payload['numero_depto'], subido.payload['piso']), ('3C', '3'));
+      expect(editado.numeroDepto, '3C');
+      sinNingunTextoLibre();
+    },
+  );
 
-  test('dado un depto con texto heredado, cuando se da de baja y se restaura, los dos updates '
-      'suben solo las columnas del servidor', () async {
-    await sembrarConTextoHeredado();
+  test(
+    'dado un depto de una instalación vieja, cuando se da de baja y se restaura, los dos updates '
+    'suben solo las columnas del servidor',
+    () async {
+      await sembrarDeptoViejo();
 
-    await local.darDeBajaEspacio('e-viejo', ahora: t1);
-    await local.restaurarEspacio('e-viejo', ahora: t1.add(const Duration(minutes: 1)));
+      await local.darDeBajaEspacio('e-viejo', ahora: t1);
+      await local.restaurarEspacio('e-viejo', ahora: t1.add(const Duration(minutes: 1)));
 
-    expect(deptosEncolados().map((c) => c.operacion), [OperacionSync.update, OperacionSync.update]);
-    sinNingunTextoLibre();
-  });
+      expect(deptosEncolados().map((c) => c.operacion), [
+        OperacionSync.update,
+        OperacionSync.update,
+      ]);
+      sinNingunTextoLibre();
+    },
+  );
 
-  test('dado un edificio con un solo depto con texto heredado, cuando pasa a casa y su espacio '
-      'queda sin número, el update sube sin ese texto', () async {
-    await sembrarConTextoHeredado();
+  test('dado un edificio con un solo depto, cuando pasa a casa y su espacio queda sin número, el '
+      'update sube solo las columnas del servidor', () async {
+    await sembrarDeptoViejo();
     encolador.encolados.clear();
 
     await local.actualizar(
