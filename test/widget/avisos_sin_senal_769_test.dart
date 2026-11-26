@@ -31,6 +31,8 @@ final _errorLeer = find.byKey(const Key('avisos_error_leer'));
 final _reintentarLeer = find.byKey(const Key('avisos_reintentar_leer'));
 
 const _textoError = 'No pudimos guardar el cambio. El interruptor volvió a como estaba.';
+const _textoSinBajar =
+    'Todavía no recibimos tus preferencias de avisos. Cuando termine la sincronización, probá de nuevo.';
 
 /// El teléfono de la colportora `col-1`: la base real y la cola del sync (que no sube nada).
 final class _Base {
@@ -220,7 +222,10 @@ void main() {
         await _tocar(tester, _tickets);
 
         expect(_prendido(tester, _tickets), isTrue, reason: 'volvió a como estaba');
-        expect(find.text(_textoError), findsOneWidget);
+        // Texto propio de este caso (QA de #773): dice qué pasa y qué hacer; «Reintentar» sigue.
+        expect(find.text(_textoSinBajar), findsOneWidget);
+        expect(find.text(_textoError), findsNothing);
+        expect(_reintentarGuardar, findsOneWidget);
         _sinAvisosDeConexion();
         expect(base.cola.encolados, isEmpty);
 
@@ -228,6 +233,7 @@ void main() {
         await _tocar(tester, _reintentarGuardar);
 
         expect(_errorGuardar, findsNothing);
+        expect(find.text(_textoSinBajar), findsNothing);
         expect(_prendido(tester, _tickets), isFalse);
         expect((await _guardado(tester, base))!['tickets'], isFalse);
         expect(base.cola.encolados.single.operacion, OperacionSync.update);

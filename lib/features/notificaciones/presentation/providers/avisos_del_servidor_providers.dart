@@ -39,6 +39,10 @@ Duration? _sinReintentos(int intento, Object error) => null;
 enum FalloDeAvisos {
   /// La base del teléfono no pudo guardarlo (no hay falla de conexión: se guarda en el teléfono).
   servidor,
+
+  /// Todavía no bajó la fila de preferencias de la persona (el teléfono no terminó su primera sincronización):
+  /// «Reintentar» va a funcionar cuando termine (24B·06, texto propio; QA de #773).
+  sinBajar,
 }
 
 /// Lo que ve la sección AVISOS.
@@ -88,6 +92,14 @@ class AvisosDelServidorNotifier extends AsyncNotifier<EstadoAvisosDelServidor> {
 
   /// El guardado en curso (si lo hay): un cambio nuevo lo comparte.
   Future<bool>? _enCurso;
+
+  /// Un guardado falló: lo leído al abrir pudo quedar viejo (la fila pudo bajar en el medio, o ser la de
+  /// «sin fila» con los valores de siempre). Antes del próximo guardado se vuelve a leer y se aplica solo lo
+  /// que la persona cambió, sin pisar lo demás.
+  bool _lecturaVieja = false;
+
+  /// Lo guardado cuando falló el último guardado: la base de lo que pidió la persona (para «Reintentar»).
+  AvisosDelServidor? _baseDeLaFalla;
 
   @override
   Future<EstadoAvisosDelServidor> build() async {
@@ -162,7 +174,10 @@ class AvisosDelServidorNotifier extends AsyncNotifier<EstadoAvisosDelServidor> {
   Future<bool> reintentar() {
     final intento = state.value?.falla;
     if (intento == null) return Future.value(false);
-    return _pedir((_) => intento);
+    // Solo lo que la persona había cambiado, sobre lo que haya ahora: el objeto entero de entonces pudo
+    // armarse sobre una lectura vieja.
+    final base = _baseDeLaFalla ?? _guardados;
+    return _pedir((actuales) => intento.cambiosSobre(base: base, sobre: actuales));
   }
 
   Future<bool> _pedir(AvisosDelServidor Function(AvisosDelServidor) cambio) {
@@ -183,13 +198,25 @@ class AvisosDelServidorNotifier extends AsyncNotifier<EstadoAvisosDelServidor> {
     var guardo = false;
     try {
       while (ref.mounted && _deseados != _guardados) {
-        final objetivo = _deseados;
+        final base = _guardados;
+        final pedido0 = _deseados;
+        var objetivo = pedido0;
         final repositorio = ref.read(avisosDelServidorRepositoryProvider);
         FalloDeAvisos? fallo;
         try {
-          await repositorio.guardar(objetivo);
+          if (_lecturaVieja) {
+            // Nunca se guarda sobre una lectura que pudo quedar vieja: se vuelve a leer y se aplica solo lo
+            // que la persona cambió.
+            final actuales = await repositorio.leer();
+            _lecturaVieja = false;
+            objetivo = objetivo.cambiosSobre(base: base, sobre: actuales);
+            _guardados = actuales;
+          }
+          if (objetivo != _guardados) await repositorio.guardar(objetivo);
         } on Object catch (e) {
-          fallo = FalloDeAvisos.servidor;
+          fallo = e is PreferenciasSinBajarException
+              ? FalloDeAvisos.sinBajar
+              : FalloDeAvisos.servidor;
           AppLogger.instance.warn(
             LogModulo.push,
             'AVISOS_GUARDAR',
@@ -200,12 +227,20 @@ class AvisosDelServidorNotifier extends AsyncNotifier<EstadoAvisosDelServidor> {
         if (!ref.mounted) return false;
         if (fallo == null) {
           _guardados = objetivo;
+          // Lo que la persona cambió mientras tanto se conserva; lo demás pasa a lo que se guardó.
+          final deseados = _deseados.cambiosSobre(base: pedido0, sobre: objetivo);
+          _deseados = deseados;
+          if (state.value?.avisos != deseados) {
+            state = AsyncData(EstadoAvisosDelServidor(avisos: deseados));
+          }
           guardo = true;
           continue;
         }
         // «Reintentar» repite lo último que se pidió (con todos los cambios que se juntaron mientras
         // tanto), no solo el que estaba guardándose.
         final pedido = _deseados;
+        _baseDeLaFalla = base;
+        _lecturaVieja = true;
         _deseados = _guardados;
         // Si lo único que no se guardó es la copia de «Recordatorios de agenda», no hay nada que decir.
         final soloLaCopiaDeAgenda = pedido == _guardados.copyWith(agenda: pedido.agenda);

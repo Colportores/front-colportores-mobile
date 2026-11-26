@@ -143,4 +143,28 @@ void main() {
       expect(json['otra'], 1);
     });
   });
+
+  group('cambiosSobre', () {
+    test('aplica solo lo que difiere de la base y deja lo demás como está en destino', () {
+      const base = AvisosDelServidor();
+      final pedido = base.copyWith(tickets: false, horaAgenda: const HoraDelAviso(19, 30));
+      const destino = AvisosDelServidor(
+        pedidos: false,
+        horaCuota: HoraDelAviso(7, 0),
+        otras: {'nueva': 1},
+      );
+      final r = pedido.cambiosSobre(base: base, sobre: destino);
+      expect(r.pedidos, isFalse);
+      expect(r.tickets, isFalse);
+      expect(r.horaCuota, const HoraDelAviso(7, 0));
+      expect(r.horaAgenda, const HoraDelAviso(19, 30));
+      expect(r.otras, {'nueva': 1});
+    });
+
+    test('sin cambios respecto de la base devuelve el destino', () {
+      const base = AvisosDelServidor();
+      const destino = AvisosDelServidor(cuotas: false);
+      expect(base.cambiosSobre(base: base, sobre: destino), destino);
+    });
+  });
 }

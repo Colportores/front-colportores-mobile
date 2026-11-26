@@ -315,6 +315,7 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
   static String _textoErrorAvisos(EstadoAvisosDelServidor estado) {
     final pedido = estado.falla;
     if (pedido == null) return TextosNotificaciones.errorAlGuardar;
+    if (estado.fallo == FalloDeAvisos.sinBajar) return TextosNotificaciones.errorAlGuardarSinBajar;
     final actual = estado.avisos;
     final interruptores = [
       pedido.pedidos != actual.pedidos,
