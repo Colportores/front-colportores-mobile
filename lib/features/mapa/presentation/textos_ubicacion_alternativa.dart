@@ -100,6 +100,9 @@ abstract final class TextosUbicacionAlternativa {
 
   static const cargandoUbicaciones = 'Cargando tus ubicaciones';
 
+  /// La etiqueta de la fila que ya es la alternativa, cuando el selector se abre para cambiarla.
+  static const actual = 'Actual';
+
   /// 22A·02: «a 1,2 km».
   static String aDistancia(String distancia) => 'a $distancia';
 
@@ -129,6 +132,13 @@ abstract final class TextosUbicacionAlternativa {
   // ---- Lector de pantalla.
 
   static String semanticaQuitar(String direccion) => 'Quitar la ubicación alternativa $direccion';
-  static String semanticaElegirFila(String direccion, String tipo, String? distancia) =>
-      distancia == null ? '$direccion, $tipo' : '$direccion, $tipo, a $distancia';
+  static String semanticaElegirFila(
+    String direccion,
+    String tipo,
+    String? distancia, {
+    bool esActual = false,
+  }) {
+    final fila = distancia == null ? '$direccion, $tipo' : '$direccion, $tipo, a $distancia';
+    return esActual ? '$actual: $fila' : fila;
+  }
 }

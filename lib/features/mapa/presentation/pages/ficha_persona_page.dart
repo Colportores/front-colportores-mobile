@@ -339,10 +339,15 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     }
     // Un aviso viejo taparía el botón de abajo del selector.
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    final vigente = switch (ref.read(ubicacionAlternativaProvider(_claveAlternativa)).value) {
+      UbicacionAlternativaVigente(:final ubicacion) => ubicacion.id,
+      _ => null,
+    };
     final elegida = await ElegirUbicacionAlternativaPage.abrir(
       context,
       colportorId: widget.colportorId,
       espacioId: widget.espacioId,
+      ubicacionActualId: vigente,
     );
     if (!mounted || elegida == null) return;
     await _guardarAlternativa(elegida, FormatoBajaPersona.nombreDePila(ficha.persona));

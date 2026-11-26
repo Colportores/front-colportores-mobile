@@ -431,54 +431,43 @@ void main() {
       }
     });
 
-    group(
-      'selector abierto desde la vigente: marca cuál es la actual (decisión P2 del 22/11)',
-      skip: _hallazgos
-          ? false
-          : 'QA #145 r2: la decisión P2 del 22/11 (fila vigente con la etiqueta «Actual» y el lector '
-                'la anuncia) no está aplicada: el selector no sabe cuál es la alternativa de ahora',
-      () {
-        Future<void> abrirDesdeLaVigente(WidgetTester tester) async {
-          await montarFicha(
-            tester,
-            mundo(estado: UbicacionAlternativaVigente(italia)),
-            tamano: alto,
-          );
-          await tocar(tester, find.byKey(ClavesAlternativa.vigente));
-          expect(find.byKey(ClavesAlternativa.selector), findsOneWidget);
-        }
+    group('selector abierto desde la vigente: marca cuál es la actual (decisión P2 del 22/11)', () {
+      Future<void> abrirDesdeLaVigente(WidgetTester tester) async {
+        await montarFicha(tester, mundo(estado: UbicacionAlternativaVigente(italia)), tamano: alto);
+        await tocar(tester, find.byKey(ClavesAlternativa.vigente));
+        expect(find.byKey(ClavesAlternativa.selector), findsOneWidget);
+      }
 
-        testWidgets('solo la fila de la vigente dice «Actual»', (tester) async {
-          await abrirDesdeLaVigente(tester);
-          Finder actualEn(String id) => find.descendant(
-            of: find.byKey(ClavesAlternativa.fila(id)),
-            matching: find.text('Actual'),
-          );
-          expect(actualEn('ub-2'), findsOneWidget);
-          expect(actualEn('ub-3'), findsNothing);
-          expect(actualEn('ub-4'), findsNothing);
-        });
+      testWidgets('solo la fila de la vigente dice «Actual»', (tester) async {
+        await abrirDesdeLaVigente(tester);
+        Finder actualEn(String id) => find.descendant(
+          of: find.byKey(ClavesAlternativa.fila(id)),
+          matching: find.text('Actual'),
+        );
+        expect(actualEn('ub-2'), findsOneWidget);
+        expect(actualEn('ub-3'), findsNothing);
+        expect(actualEn('ub-4'), findsNothing);
+      });
 
-        testWidgets('el lector de pantalla anuncia «Actual» en la fila de la vigente', (
-          tester,
-        ) async {
-          final semantica = tester.ensureSemantics();
-          await abrirDesdeLaVigente(tester);
-          final etiqueta = tester
-              .getSemantics(find.byKey(ClavesAlternativa.fila('ub-2')))
-              .getSemanticsData()
-              .label;
-          expect(etiqueta, contains('Actual'));
-          semantica.dispose();
-        });
+      testWidgets('el lector de pantalla anuncia «Actual» en la fila de la vigente', (
+        tester,
+      ) async {
+        final semantica = tester.ensureSemantics();
+        await abrirDesdeLaVigente(tester);
+        final etiqueta = tester
+            .getSemantics(find.byKey(ClavesAlternativa.fila('ub-2')))
+            .getSemanticsData()
+            .label;
+        expect(etiqueta, contains('Actual'));
+        semantica.dispose();
+      });
 
-        testWidgets('sin alternativa (alta nueva) ninguna fila dice «Actual»', (tester) async {
-          await montarFicha(tester, mundo(), tamano: alto);
-          await tocar(tester, sin);
-          expect(find.text('Actual'), findsNothing);
-        });
-      },
-    );
+      testWidgets('sin alternativa (alta nueva) ninguna fila dice «Actual»', (tester) async {
+        await montarFicha(tester, mundo(), tamano: alto);
+        await tocar(tester, sin);
+        expect(find.text('Actual'), findsNothing);
+      });
+    });
 
     group(
       'tipografía de los botones de texto',

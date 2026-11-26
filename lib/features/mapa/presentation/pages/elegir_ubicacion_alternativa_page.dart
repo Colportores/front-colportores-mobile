@@ -32,6 +32,7 @@ class ElegirUbicacionAlternativaPage extends ConsumerStatefulWidget {
     super.key,
     required this.colportorId,
     required this.espacioId,
+    this.ubicacionActualId,
     this.alRegistrar,
   });
 
@@ -41,6 +42,10 @@ class ElegirUbicacionAlternativaPage extends ConsumerStatefulWidget {
   /// El espacio de la persona: su ubicación no se ofrece.
   final String espacioId;
 
+  /// La ubicación que hoy es la alternativa (si se abre para cambiarla): su fila queda en su lugar del
+  /// orden con la etiqueta «Actual». Elegirla de nuevo no cambia nada.
+  final String? ubicacionActualId;
+
   /// Cómo se abre el alta («+ Registrar una ubicación»). Por defecto abre `AltaUbicacionPage`; un test
   /// pone el suyo.
   final Future<void> Function()? alRegistrar;
@@ -49,10 +54,14 @@ class ElegirUbicacionAlternativaPage extends ConsumerStatefulWidget {
     BuildContext context, {
     required String colportorId,
     required String espacioId,
+    String? ubicacionActualId,
   }) => Navigator.of(context).push<Ubicacion>(
     MaterialPageRoute(
-      builder: (_) =>
-          ElegirUbicacionAlternativaPage(colportorId: colportorId, espacioId: espacioId),
+      builder: (_) => ElegirUbicacionAlternativaPage(
+        colportorId: colportorId,
+        espacioId: espacioId,
+        ubicacionActualId: ubicacionActualId,
+      ),
     ),
   );
 
@@ -250,7 +259,11 @@ class _ElegirUbicacionAlternativaPageState extends ConsumerState<ElegirUbicacion
                     for (final c in lista.items)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: _FilaDeUbicacion(candidata: c, alElegir: () => _elegir(c.ubicacion)),
+                        child: _FilaDeUbicacion(
+                          candidata: c,
+                          esActual: c.ubicacion.id == widget.ubicacionActualId,
+                          alElegir: () => _elegir(c.ubicacion),
+                        ),
                       ),
                   ],
                 ],
@@ -439,9 +452,12 @@ class _Mensaje extends StatelessWidget {
 }
 
 class _FilaDeUbicacion extends StatelessWidget {
-  const _FilaDeUbicacion({required this.candidata, required this.alElegir});
+  const _FilaDeUbicacion({required this.candidata, required this.esActual, required this.alElegir});
 
   final CandidataAlternativa candidata;
+
+  /// Es la alternativa de ahora: lleva la etiqueta «Actual» y el lector la anuncia.
+  final bool esActual;
   final VoidCallback alElegir;
 
   @override
@@ -456,6 +472,7 @@ class _FilaDeUbicacion extends StatelessWidget {
       key: ClavesAlternativa.fila(u.id),
       child: TarjetaAlternativa(
         glifo: glifoDelTipo(u.tipo),
+        rotulo: esActual ? TextosUbicacionAlternativa.actual : null,
         titulo: direccion,
         detalle: tipo,
         detalle2: distancia == null || distancia.isEmpty
@@ -465,6 +482,7 @@ class _FilaDeUbicacion extends StatelessWidget {
           direccion,
           tipo,
           distancia == null || distancia.isEmpty ? null : distancia,
+          esActual: esActual,
         ),
         derecha: const ExcludeSemantics(child: Icon(Icons.chevron_right, color: Color(0xFF90A0B7))),
         alTocar: alElegir,
