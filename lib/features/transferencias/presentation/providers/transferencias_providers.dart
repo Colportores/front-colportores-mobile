@@ -7,8 +7,10 @@ import '../../../../core/database/database_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../../datos/drift_sync_meta.dart';
+import '../../../ventas/domain/services/reglas_de_venta.dart';
 import '../../data/datasources/materiales_local_data_source_drift.dart';
 import '../../data/datasources/transferencia_local_data_source_drift.dart';
+import '../../data/repositories/companieros_de_campania_local.dart';
 import '../../data/repositories/companieros_de_campania_sin_fuente.dart';
 import '../../data/repositories/transferencia_repository_impl.dart';
 import '../../domain/entities/companiero_de_campania.dart';
@@ -89,11 +91,15 @@ final nombresDeProductosProvider = StreamProvider.autoDispose<Map<String, String
   return MaterialesLocalDataSourceDrift(db).observarNombres();
 }, retry: _sinReintentos);
 
-/// De dónde salen los colportores de la campaña (40A·02). Por defecto, una fuente que dice que no pudo
-/// traerlos ([CompanierosDeCampaniaSinFuente]): `main.dart` la reemplaza cuando el servidor dé la lista.
-final companierosDeCampaniaRepositoryProvider = Provider<CompanierosDeCampaniaRepository>(
-  (ref) => const CompanierosDeCampaniaSinFuente(),
-);
+/// De dónde salen los colportores de la campaña (40A·02): la tabla `campania_companiero` del teléfono
+/// (los nombres que baja el servidor, «Nombres camp.», #769). Sin DB, [CompanierosDeCampaniaSinFuente]:
+/// la pantalla dice que no pudo traerlos.
+final companierosDeCampaniaRepositoryProvider = Provider<CompanierosDeCampaniaRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return const CompanierosDeCampaniaSinFuente();
+  final reloj = ref.watch(relojTransferenciaProvider);
+  return CompanierosDeCampaniaLocal(db, () => ReglasDeVenta.diaDeMontevideo(reloj().toUtc()));
+});
 
 /// Los compañeros de campaña de [colportorId]: la lista o por qué no se pudo traer. Sirve también para
 /// poner nombre a la otra punta de cada transferencia.
