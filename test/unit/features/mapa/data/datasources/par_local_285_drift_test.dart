@@ -229,6 +229,38 @@ void main() {
       expect((await DriftJobStore(db).status()).invalid, 0);
     });
 
+    test(
+      'el color de B (house_status) que esperaba con el alta retenida no sube: se descarta al unir, '
+      'no queda INVALID',
+      () async {
+        await sembrarAEnElServidor();
+        await cargarB();
+        await motor.stage('house_status', Op.insert, {'ubicacion_id': 'ub-b', 'color': 'VERDE'});
+        await motor.syncNow();
+        final esperando = await retenidos();
+        expect(
+          esperando.where((j) => j.job.entity == 'house_status'),
+          isNotEmpty,
+          reason: 'el color de B espera con el alta de B (WAITING)',
+        );
+
+        final r = await unir(const UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: 'ub-b'));
+
+        expect(r.isRight(), isTrue);
+        expect(await retenidos(), isEmpty);
+        final cola = await db.select(db.syncQueue).get();
+        expect(
+          cola.where((j) => j.entity == 'house_status' && j.rowPk == 'ub-b'),
+          isEmpty,
+          reason: 'nada sobre B en la cola: ni «en espera» ni pendiente',
+        );
+        final resultado = await motor.syncNow();
+        expect(resultado.ok, isTrue);
+        expect((await DriftJobStore(db).status()).invalid, 0);
+        expect(servidor.filas.containsKey('ub-b'), isFalse);
+      },
+    );
+
     test('los deptos de B pasan a A y suben con la ubicación de A', () async {
       await sembrarAEnElServidor();
       await cargarB();

@@ -261,6 +261,7 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
                 estado: _par.estadoA,
                 conservada: _conservaLaPrimera,
                 soloEnTelefono: !_par.sePuedeConservarA,
+                subiendo: _par.subiendoA,
                 alElegir: _par.sePuedeConservarA ? () => _elegir(laPrimera: true) : null,
               ),
               const SizedBox(height: 8),
@@ -272,6 +273,7 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
                 estado: _par.estadoB,
                 conservada: !_conservaLaPrimera,
                 soloEnTelefono: !_par.sePuedeConservarB,
+                subiendo: _par.subiendoB,
                 alElegir: _par.sePuedeConservarB ? () => _elegir(laPrimera: false) : null,
               ),
               const SizedBox(height: 10),
@@ -282,7 +284,9 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
               if (!_par.sePuedeConservarA || !_par.sePuedeConservarB) ...[
                 const SizedBox(height: 10),
                 Text(
-                  TextosPosiblesDuplicados.parLocal,
+                  _par.subiendoA || _par.subiendoB
+                      ? TextosPosiblesDuplicados.altaSubiendo
+                      : TextosPosiblesDuplicados.parLocal,
                   key: const Key('comparar_par_local'),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: ColoresAlta.tinta),
                 ),
@@ -290,7 +294,11 @@ class _HojaCompararDuplicadoState extends ConsumerState<HojaCompararDuplicado> {
               if (!par.admiteConservarAmbos) ...[
                 const SizedBox(height: 10),
                 Text(
-                  TextosPosiblesDuplicados.direccionUnica,
+                  // Con una de las dos sin poder conservarse la elección ya está hecha: no se pide
+                  // marcar cuál es el duplicado.
+                  _par.sePuedeConservarA && _par.sePuedeConservarB
+                      ? TextosPosiblesDuplicados.direccionUnica
+                      : TextosPosiblesDuplicados.direccionUnicaParLocal,
                   key: const Key('comparar_direccion_unica'),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: ColoresAlta.tinta),
                 ),
@@ -413,6 +421,7 @@ class _OpcionConservar extends StatelessWidget {
     required this.conservada,
     required this.alElegir,
     this.soloEnTelefono = false,
+    this.subiendo = false,
   });
 
   final String letra;
@@ -427,8 +436,13 @@ class _OpcionConservar extends StatelessWidget {
   /// Su alta no está en el servidor y la otra sí: no se puede conservar.
   final bool soloEnTelefono;
 
+  /// Su alta está viajando al servidor ahora: la etiqueta dice eso y no «solo en tu teléfono».
+  final bool subiendo;
+
   String get _etiqueta => conservada
       ? TextosPosiblesDuplicados.conservada(letra)
+      : subiendo
+      ? TextosPosiblesDuplicados.duplicadaSubiendo(letra)
       : soloEnTelefono
       ? TextosPosiblesDuplicados.duplicadaSoloEnTelefono(letra)
       : TextosPosiblesDuplicados.duplicada(letra);

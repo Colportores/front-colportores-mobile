@@ -304,20 +304,46 @@ void main() {
       expect(contraste208(color, Colors.white), greaterThanOrEqualTo(4.5));
     });
 
-    _prueba('dado B subiendo (IN_FLIGHT), la etiqueta no dice "solo en tu teléfono"', (
-      tester,
-    ) async {
-      await _montar(
-        tester,
-        _datos(),
-        ConsultorAltaUbicacionFalso({'ub-b': EstadoAltaUbicacion.subiendo}),
-      );
-      await _abrirHoja(tester);
+    _prueba(
+      'dado B subiendo (IN_FLIGHT), la etiqueta no dice "solo en tu teléfono" y el aviso es el de «subiendo»',
+      (tester) async {
+        await _montar(
+          tester,
+          _datos(),
+          ConsultorAltaUbicacionFalso({'ub-b': EstadoAltaUbicacion.subiendo}),
+        );
+        await _abrirHoja(tester);
 
-      // El alta de B ya está viajando: decir que está «solo en tu teléfono» es lo que no se sabe.
-      expect(tester.getSemantics(_segunda).label, isNot(contains('solo en tu teléfono')));
-    }, skip: !_verHallazgos); // skip: QA #285 — con el alta subiendo la hoja dice «solo en tu
-    // teléfono» y «todavía no está en el servidor»: lo que sí se sabe es que se está subiendo.
+        // El alta de B ya está viajando: decir que está «solo en tu teléfono» es lo que no se sabe.
+        expect(tester.getSemantics(_segunda).label, isNot(contains('solo en tu teléfono')));
+        expect(
+          tester.getSemantics(_segunda).label,
+          contains('Ubicación B, se está subiendo: queda como baja'),
+        );
+        expect(find.text(_textoSubiendo), findsOneWidget);
+        expect(find.textContaining('todavía no está en el servidor'), findsNothing);
+      },
+    );
+
+    _prueba(
+      'par local con B solo en el teléfono: el texto de dirección única no pide marcar cuál es '
+      'el duplicado',
+      (tester) async {
+        await _montar(
+          tester,
+          _datos(),
+          ConsultorAltaUbicacionFalso({'ub-b': EstadoAltaUbicacion.soloEnTelefono}),
+        );
+        await _abrirHoja(tester);
+
+        final unica = find.byKey(const Key('comparar_direccion_unica'));
+        expect(
+          tester.widget<Text>(unica).data,
+          'Si son dos lugares distintos, corregí la dirección de una con «Editar uno».',
+        );
+        expect(find.textContaining('Marcá cuál es el duplicado'), findsNothing);
+      },
+    );
   });
 
   group('Matriz 360×640 y 412×915 × texto 1.0 y 2.0', () {

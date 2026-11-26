@@ -122,6 +122,11 @@ final class ParaRevisar extends Equatable {
   /// Lo mismo para `par.b`.
   bool get sePuedeConservarB => !_soloEnTelefono(altaB) || _soloEnTelefono(altaA);
 
+  /// Si el alta de `par.a` / `par.b` está viajando al servidor en este momento (`IN_FLIGHT`): no se
+  /// sabe si va a quedar en el servidor, así que no se la llama «solo en el teléfono».
+  bool get subiendoA => altaA == EstadoAltaUbicacion.subiendo;
+  bool get subiendoB => altaB == EstadoAltaUbicacion.subiendo;
+
   static bool _soloEnTelefono(EstadoAltaUbicacion alta) => alta != EstadoAltaUbicacion.enServidor;
 
   /// Si la última unión de este par la rechazó el servidor y se deshizo en el teléfono, el código del

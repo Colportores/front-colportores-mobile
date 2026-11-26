@@ -763,16 +763,18 @@ final class UbicacionLocalDataSourceDrift extends DatabaseAccessor<AppDatabase>
     return hay.isNotEmpty;
   }
 
-  /// Saca de la cola las escrituras `PENDING` de la fila [id] de [entidad] (no la unión de
-  /// duplicados, que no es una escritura de la fila). Solo para una fila que el servidor nunca tuvo:
-  /// ver [_reencolarReapuntadas].
+  /// Saca de la cola las escrituras sin mandar de la fila [id] de [entidad] (`PENDING`, `BLOCKED` o
+  /// `WAITING`; no la unión de duplicados, que no es una escritura de la fila). Incluye las que
+  /// esperan: con el alta de B retenida, lo suyo está `WAITING` y, si se dejara, la baja de B lo
+  /// soltaría y subiría contra una fila que el servidor no tiene. Solo para una fila que el servidor
+  /// nunca tuvo: ver [_reencolarReapuntadas].
   Future<void> _descartarSinMandar(String entidad, String id) async {
     final cola = attachedDatabase.syncQueue;
     await (delete(cola)..where(
           (q) =>
               q.entity.equals(entidad) &
               q.rowPk.equals(id) &
-              q.state.equals(EstadoJob.pending) &
+              q.state.isIn(EstadoJob.sinMandar) &
               q.op.equals(_opMarcarComoDuplicado).not(),
         ))
         .go();

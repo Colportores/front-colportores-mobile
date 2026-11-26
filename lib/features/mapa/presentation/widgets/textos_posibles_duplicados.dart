@@ -97,6 +97,22 @@ abstract final class TextosPosiblesDuplicados {
   static String duplicadaSoloEnTelefono(String letra) =>
       'Ubicación $letra, solo en tu teléfono: queda como baja';
 
+  /// La que se está subiendo en este momento (su alta está `IN_FLIGHT`): se sabe que viaja, no que
+  /// solo esté en el teléfono (decisión del orquestador, 25/11, P2 de la QA de #285; mapa §2).
+  static String duplicadaSubiendo(String letra) =>
+      'Ubicación $letra, se está subiendo: queda como baja';
+
+  /// Debajo de las dos opciones cuando una se está subiendo ahora (en lugar de [parLocal]); es el
+  /// mismo texto de `FailureAltaSubiendo`.
+  static const altaSubiendo =
+      'Una de las dos ubicaciones se está subiendo ahora. Esperá un momento y probá de nuevo.';
+
+  /// El texto de dirección única en un par donde una de las dos no se puede conservar: la elección ya
+  /// está hecha, así que no pide marcar cuál es el duplicado (decisión del orquestador, 25/11, P1 de
+  /// la QA de #285; mapa §2).
+  static const direccionUnicaParLocal =
+      'Si son dos lugares distintos, corregí la dirección de una con «Editar uno».';
+
   /// Debajo de las dos opciones cuando una no se puede conservar.
   static const parLocal =
       'Una de las dos todavía no está en el servidor, así que se conserva la que sí está. Lo que '
