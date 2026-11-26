@@ -3,6 +3,10 @@
 // que hace lo de la 0017: una `ubicacion` viva con una calle ocupada vuelve `conflict` 23505, y lo que
 // la nombra en el mismo lote queda `ESPERA_ALTA_EN_CONFLICTO`.
 //
+// #746: también es «Par local» el alta de B que el servidor rechazó por un error de datos (`INVALID`,
+// decisión «Alta invalid», 05/11): se une en el teléfono, lo que cargó en B sube con A y el alta
+// rechazada sale de Sincronización.
+//
 // Contrato del motor, §2.3 y §6.2: no se encola «marcar como duplicado»; lo que colgaba de la
 // rechazada se reapunta a la conservada y sube con los trabajos de siempre; la rechazada queda de baja
 // en el teléfono, sin borrarse y sin subir.
@@ -12,6 +16,7 @@ import 'package:colportores_mobile/core/error/failure.dart';
 import 'package:colportores_mobile/datos/drift_job_store.dart';
 import 'package:colportores_mobile/datos/drift_local_store.dart';
 import 'package:colportores_mobile/datos/encolador_sync_motor.dart';
+import 'package:colportores_mobile/datos/sync_queue_table.dart' show EstadoJob;
 import 'package:colportores_mobile/features/mapa/data/datasources/ubicacion_local_data_source_drift.dart';
 import 'package:colportores_mobile/features/mapa/data/models/espacio_model.dart';
 import 'package:colportores_mobile/features/mapa/data/models/ubicacion_model.dart';
@@ -33,6 +38,9 @@ class _Servidor implements SyncTransport {
   _Servidor({this.ocupadas = const {}});
 
   final Set<String> ocupadas;
+
+  /// Las calles cuya alta de `ubicacion` el servidor rechaza por un error de datos (`invalid`).
+  final Set<String> rechazadas = {};
   final Map<String, Map<String, Object?>> filas = {};
 
   @override
@@ -70,6 +78,12 @@ class _Servidor implements SyncTransport {
         continue;
       }
       final fila = {...?filas[pk], ...job.payload};
+      if (job.entity == 'ubicacion' && job.op == Op.insert && rechazadas.contains(fila['calle'])) {
+        resultados.add(
+          JobResult(clientOpId: job.clientOpId, outcome: JobOutcome.invalid, code: '23514'),
+        );
+        continue;
+      }
       if (job.entity == 'ubicacion' &&
           fila['deleted_at'] == null &&
           ocupadas.contains(fila['calle']) &&
@@ -341,6 +355,141 @@ void main() {
         expect((await DriftJobStore(db).status()).invalid, 0);
       },
     );
+  });
+
+  group('Par local: el alta de B volvió INVALID (error de datos, #746)', () {
+    setUp(() {
+      // Rivera ya no es un choque de dirección única: el servidor la rechaza por sus datos.
+      servidor.ocupadas.clear();
+      servidor.rechazadas.add('Rivera');
+    });
+
+    /// El servidor rechaza el alta de B y, detrás, lo que la nombra (FK): todo `INVALID`.
+    Future<void> subirYQuedarRechazada() async {
+      await sembrarAEnElServidor();
+      await cargarB();
+      await motor.stage('house_status', Op.insert, {'ubicacion_id': 'ub-b', 'color': 'VERDE'});
+      await motor.syncNow();
+    }
+
+    Future<List<SyncQueueFila>> invalidas() =>
+        (db.select(db.syncQueue)..where((q) => q.state.equals(EstadoJob.invalid))).get();
+
+    test('se une en el teléfono: el alta de B sale de Sincronización y lo que cargó en B sube en A '
+        'sin perder nada', () async {
+      await subirYQuedarRechazada();
+      final antes = await invalidas();
+      expect(
+        antes.map((q) => '${q.entity}:${q.rowPk}').toSet(),
+        containsAll(['ubicacion:ub-b', 'espacio:esp-b', 'espacio_persona:ep-b1']),
+        reason: 'el servidor rechazó el alta de B y lo que cuelga de ella',
+      );
+      expect(await sinConfirmar(), {'ub-b': EstadoAltaUbicacion.soloEnTelefono});
+
+      final r = await unir(const UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: 'ub-b'));
+
+      expect(r.isRight(), isTrue);
+      expect(marcador.encolados, isEmpty, reason: 'la RPC no conoce a B: no se encola la unión');
+      expect((await fila('ub-b')).deletedAt, ahora, reason: 'B queda de baja, sin borrarse');
+      expect(
+        await invalidas(),
+        isEmpty,
+        reason: 'el alta rechazada de B (y su color) salió de Sincronización',
+      );
+      expect(await sinConfirmar(), isEmpty);
+      expect(await db.select(db.unionesLocales).get(), isEmpty, reason: 'sin trabajo que deshacer');
+
+      expect((await motor.syncNow()).ok, isTrue);
+      expect(servidor.filas.containsKey('ub-b'), isFalse, reason: 'B nunca sube');
+      expect(servidor.filas.containsKey('esp-b'), isFalse, reason: 'el único de B se fundió');
+      expect(
+        servidor.filas['ep-b1']!['espacio_id'],
+        'esp-a',
+        reason: 'lo que cargó en B subió reapuntado a A',
+      );
+      final estado = await DriftJobStore(db).status();
+      expect(estado.pending, 0);
+      expect(estado.invalid, 0);
+    });
+
+    test('los deptos de B pasan a A y suben con la ubicación de A', () async {
+      await sembrarAEnElServidor();
+      await cargarB();
+      await sembrarEspacio(db, id: 'esp-b3', ubicacionId: 'ub-b', numeroDepto: '3');
+      await motor.stage('espacio', Op.insert, {
+        'id': 'esp-b3',
+        'ubicacion_id': 'ub-b',
+        'numero_depto': '3',
+      });
+      await motor.syncNow();
+      expect((await invalidas()).any((q) => q.rowPk == 'esp-b3'), isTrue);
+
+      final r = await unir(const UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: 'ub-b'));
+
+      expect(r.isRight(), isTrue);
+      expect(await invalidas(), isEmpty);
+      expect((await motor.syncNow()).ok, isTrue);
+      expect(servidor.filas['esp-b3']!['ubicacion_id'], 'ub-a');
+      expect(servidor.filas['ub-a']!['tipo'], 'EDIFICIO', reason: 'A quedó con dos espacios');
+      expect(servidor.filas['ep-b1']!['espacio_id'], 'esp-a');
+      expect((await DriftJobStore(db).status()).invalid, 0);
+    });
+
+    test(
+      'no se puede conservar la rechazada si la otra está en el servidor: no cambia nada y no se '
+      'pierde nada',
+      () async {
+        await subirYQuedarRechazada();
+        final antes = (await invalidas()).length;
+
+        final r = await unir(const UnirDuplicadosParams(conservarId: 'ub-b', duplicadaId: 'ub-a'));
+
+        expect(r.fold((f) => f, (_) => null), isA<FailureConservadaSoloEnTelefono>());
+        expect((await fila('ub-a')).deletedAt, isNull);
+        expect((await fila('ub-b')).deletedAt, isNull);
+        expect(await invalidas(), hasLength(antes), reason: 'las rechazadas siguen a la vista');
+        expect(marcador.encolados, isEmpty);
+      },
+    );
+
+    test('un rechazo de otra fila (sin relación con B) sigue en Sincronización', () async {
+      await sembrarAEnElServidor();
+      await cargarB();
+      // Un vínculo de A con una persona que el servidor no tiene: `23503`, pero no nombra a B.
+      await sembrarVinculo(db, id: 'ep-a1', espacioId: 'esp-a', personaId: 'per-x');
+      await motor.stage('espacio_persona', Op.insert, {
+        'id': 'ep-a1',
+        'espacio_id': 'esp-a',
+        'persona_id': 'per-x',
+      });
+      await motor.syncNow();
+
+      final r = await unir(const UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: 'ub-b'));
+
+      expect(r.isRight(), isTrue);
+      expect(
+        (await invalidas()).map((q) => q.rowPk).toList(),
+        ['ep-a1'],
+        reason: 'solo salió lo de B: lo demás sigue rechazado y visible',
+      );
+    });
+
+    test('un segundo toque sobre el mismo par no hace nada de más', () async {
+      await subirYQuedarRechazada();
+      const params = UnirDuplicadosParams(conservarId: 'ub-a', duplicadaId: 'ub-b');
+
+      expect((await unir(params)).isRight(), isTrue);
+      final colaTrasElPrimero = (await db.select(db.syncQueue).get()).map((q) => q.id).toList();
+      expect((await unir(params)).isRight(), isTrue);
+
+      expect(
+        (await db.select(db.syncQueue).get()).map((q) => q.id).toList(),
+        colaTrasElPrimero,
+        reason: 'la cola no cambió',
+      );
+      expect((await motor.syncNow()).ok, isTrue);
+      expect(servidor.filas['ep-b1']!['espacio_id'], 'esp-a');
+    });
   });
 
   group('Par local: el alta de B está subiendo (IN_FLIGHT)', () {

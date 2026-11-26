@@ -6,7 +6,7 @@ import '../../domain/entities/estado_alta_ubicacion.dart';
 import '../../domain/services/consultor_alta_ubicacion.dart';
 
 /// [ConsultorAltaUbicacion] sobre `sync_queue`: el alta de una ubicación (`op = insert`) que sigue
-/// en la cola sin haber sido aceptada.
+/// en la cola sin haber sido aceptada: esperando, viajando o rechazada por el servidor (`INVALID`).
 final class ConsultorAltaUbicacionDrift implements ConsultorAltaUbicacion {
   const ConsultorAltaUbicacionDrift(this._db);
 
@@ -20,7 +20,9 @@ final class ConsultorAltaUbicacionDrift implements ConsultorAltaUbicacion {
         (j) =>
             j.entity.equals('ubicacion') &
             j.op.equals('insert') &
-            j.state.isIn(EstadoJob.sinAplicar),
+            // `INVALID`: el servidor la rechazó por un error de datos y nunca la tuvo; también es
+            // «Par local» (decisión de Cristian, 05/11, «Alta invalid»).
+            j.state.isIn([...EstadoJob.sinAplicar, EstadoJob.invalid]),
       );
     return consulta.watch().map(
       (jobs) => {
