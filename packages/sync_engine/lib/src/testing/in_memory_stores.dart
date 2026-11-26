@@ -439,6 +439,30 @@ class InMemoryLocalStore implements LocalStorePort {
       }
     }
   }
+
+  /// Cada [reapuntar] que recibió, en orden: `(entidad, de, a)`.
+  final List<(String, String, String)> reapuntados = [];
+
+  /// Simula que la DB local falla al reapuntar.
+  bool failOnReapuntar = false;
+
+  /// Reapunta la fila misma: la de [de] pasa a llamarse [a], salvo que [a] ya
+  /// esté (entonces la deja como está y no borra ninguna). Lo que la
+  /// referencia depende de las tablas de cada app: este fake lo registra en
+  /// [reapuntados] y no lo interpreta.
+  @override
+  Future<void> reapuntar(String entity,
+      {required String de, required String a}) async {
+    if (failOnReapuntar) throw StateError('la DB local falló al reapuntar');
+    reapuntados.add((entity, de, a));
+    final filas = rows[entity];
+    if (filas == null) return;
+    final pk = pkFieldPorEntidad[entity] ?? 'id';
+    if (filas.any((f) => '${f[pk]}' == a)) return;
+    for (final (i, fila) in filas.indexed) {
+      if ('${fila[pk]}' == de) filas[i] = {...fila, pk: a};
+    }
+  }
 }
 
 /// `sync_meta` en memoria (HU-SYNC-007). Un test que simula reiniciar el

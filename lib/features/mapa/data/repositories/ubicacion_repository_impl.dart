@@ -345,6 +345,22 @@ final class UbicacionRepositoryImpl implements UbicacionRepository {
         datos,
       );
       return const Left(FailureConservadaDeBaja());
+    } on AltaSubiendoException {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_UNIR_ALTA_SUBIENDO',
+        'el alta de una de las dos está subiendo: la unión espera su respuesta',
+        datos,
+      );
+      return const Left(FailureAltaSubiendo());
+    } on ConservadaSoloEnTelefonoException {
+      _log.info(
+        LogModulo.db,
+        'UBICACION_UNIR_CONSERVADA_LOCAL',
+        'se pidió conservar la que solo está en el teléfono teniendo la otra en el servidor',
+        datos,
+      );
+      return const Left(FailureConservadaSoloEnTelefono());
     } on Object catch (e, st) {
       // Como en la baja: nunca la excepción al log (una `SqliteException` imprime la sentencia con
       // sus parámetros). Solo el tipo y, de SQLite, el código.

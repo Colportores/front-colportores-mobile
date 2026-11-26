@@ -50,6 +50,7 @@ import 'generated/schema_v40.dart' as v40;
 import 'generated/schema_v41.dart' as v41;
 import 'generated/schema_v42.dart' as v42;
 import 'generated/schema_v43.dart' as v43;
+import 'generated/schema_v44.dart' as v44;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
@@ -2734,11 +2735,54 @@ void main() {
     );
   });
 
-  test('dado lo guardado en la versión 42, cuando migra a la 43, se conserva todo y las tablas de las '
+  test(
+    'dado ubicaciones guardadas en la versión 42, cuando migra a la 43, no se pierde nada, suma la '
+    'tabla de la marca de unión vacía y no se encola nada (#285)',
+    () async {
+      const ubicacion = v42.UbicacionData(
+        id: 'ub-1',
+        tipo: 'CASA',
+        calle: 'Rivera',
+        numero: '1234',
+        lat: -34.9,
+        lon: -56.16,
+        ciudadId: 'ciu-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 42,
+        newVersion: 43,
+        createOld: v42.DatabaseAtV42.new,
+        createNew: v43.DatabaseAtV43.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.ubicacion, ubicacion),
+        validateItems: (nuevo) async {
+          final guardada = await nuevo.select(nuevo.ubicacion).getSingle();
+          expect(guardada.id, 'ub-1');
+          expect(guardada.calle, 'Rivera');
+          expect(guardada.syncVersion, 4);
+          expect(await nuevo.select(nuevo.ubicacionUnida).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La tabla acepta la marca que baja del servidor, una por ubicación.
+          await nuevo.customStatement(
+            "INSERT INTO ubicacion_unida (ubicacion_id, unida_a_id) VALUES ('ub-1', 'ub-2')",
+          );
+          final marca = await nuevo.select(nuevo.ubicacionUnida).getSingle();
+          expect((marca.ubicacionId, marca.unidaAId), ('ub-1', 'ub-2'));
+        },
+      );
+    },
+  );
+
+  test('dado lo guardado en la versión 43, cuando migra a la 44, se conserva todo y las tablas de las '
       'transferencias quedan vacías y sin nada para subir (#512)', () async {
     // HU-STK-005 (#512): solo se suman `transferencia_stock` y `transferencia_item`. El stock, la cola y
     // los watermarks no se tocan: lo que esperaba subir sigue esperando (convenciones §9).
-    const stock = v42.StockData(
+    const stock = v43.StockData(
       id: 'st-1',
       usuarioId: 'col-1',
       productoId: 'p-1',
@@ -2748,7 +2792,7 @@ void main() {
       updatedAt: 1,
       syncVersion: 3,
     );
-    const job = v42.SyncQueueData(
+    const job = v43.SyncQueueData(
       id: 'q-1',
       clientOpId: 'op-1',
       entity: 'venta',
@@ -2762,10 +2806,10 @@ void main() {
     );
 
     await verificador.testWithDataIntegrity(
-      oldVersion: 42,
-      newVersion: 43,
-      createOld: v42.DatabaseAtV42.new,
-      createNew: v43.DatabaseAtV43.new,
+      oldVersion: 43,
+      newVersion: 44,
+      createOld: v43.DatabaseAtV43.new,
+      createNew: v44.DatabaseAtV44.new,
       openTestedDatabase: _abrir,
       createItems: (batch, viejo) {
         batch

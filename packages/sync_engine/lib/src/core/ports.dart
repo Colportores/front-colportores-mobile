@@ -301,6 +301,17 @@ abstract interface class LocalStorePort {
   /// llama una vez por entidad y por lote, no por fila.
   Future<void> applyVersions(String entity,
       {required String pkColumn, required Map<String, int> versionPorFila});
+
+  /// §2.3, «Venta tarde» (resultado `merged`, §6.1): el servidor juntó la fila [de] de [entity]
+  /// con la fila [a], que ya tenía, y no guardó la primera. Todo lo local que nombraba a [de]
+  /// pasa a nombrar a [a] —la fila misma y lo que la referencia—, **sin borrar nada**. La cola
+  /// no se reescribe: el servidor redirige el id viejo de lo que le llega.
+  ///
+  /// Es idempotente: el motor la llama antes de cerrar el job, y si algo falla el job se
+  /// reintenta (el servidor vuelve a contestar `merged` con el mismo destino). Lo que no tiene
+  /// nada que reapuntar no es un error. No encola nada: lo que ya subió quedó en la fila que
+  /// sobrevivió.
+  Future<void> reapuntar(String entity, {required String de, required String a});
 }
 
 /// El `appDataFolder` de Google Drive (ADR-003). Va directo, sin BFF (§6).
