@@ -9,7 +9,7 @@ import '../core/queue.dart';
 /// vuelven solos.
 class InMemoryJobStore implements JobStorePort {
   InMemoryJobStore({DateTime Function()? clock})
-    : _clock = clock ?? (() => DateTime.now().toUtc());
+      : _clock = clock ?? (() => DateTime.now().toUtc());
 
   final DateTime Function() _clock;
 
@@ -40,9 +40,9 @@ class InMemoryJobStore implements JobStorePort {
   List<QueuedJob> get all => List.unmodifiable(_jobs.values);
 
   List<QueuedJob> withState(JobState state) => [
-    for (final j in _jobs.values)
-      if (j.state == state) j,
-  ];
+        for (final j in _jobs.values)
+          if (j.state == state) j
+      ];
 
   QueuedJob byId(String id) =>
       _jobs[id] ?? (throw StateError('no existe el job $id'));
@@ -62,9 +62,8 @@ class InMemoryJobStore implements JobStorePort {
     final tomados = <QueuedJob>[];
     // §5.5: orden de creación. La lista ya está en ese orden porque append
     // agrega al final; ordenar explícito deja el invariante escrito.
-    final candidatos = _enOrden([
-      ..._jobs.values.where((j) => j.state == JobState.pending),
-    ]);
+    final candidatos =
+        _enOrden([..._jobs.values.where((j) => j.state == JobState.pending)]);
 
     final ahora = _clock();
     for (final job in candidatos.take(limit)) {
@@ -86,85 +85,64 @@ class InMemoryJobStore implements JobStorePort {
   }
 
   @override
-  Future<void> markInvalid(
-    String jobId, {
-    required String code,
-    String message = '',
-  }) async {
-    _reemplazar(
-      byId(
-        jobId,
-      ).copyWith(state: JobState.invalid, code: code, message: message),
-    );
+  Future<void> markInvalid(String jobId,
+      {required String code, String message = ''}) async {
+    _reemplazar(byId(jobId)
+        .copyWith(state: JobState.invalid, code: code, message: message));
   }
 
   @override
   Future<void> markPending(Iterable<String> jobIds) async {
     for (final id in jobIds) {
       _reemplazar(
-        byId(id).copyWith(state: JobState.pending, limpiarClaimedAt: true),
-      );
+          byId(id).copyWith(state: JobState.pending, limpiarClaimedAt: true));
     }
   }
 
   @override
   Future<void> requeue(String jobId) async {
     _reemplazar(
-      byId(jobId).copyWith(state: JobState.pending, code: '', message: ''),
-    );
+        byId(jobId).copyWith(state: JobState.pending, code: '', message: ''));
   }
 
   @override
-  Future<void> markBlocked(
-    String jobId, {
-    required String code,
-    String message = '',
-  }) async {
-    _reemplazar(
-      byId(jobId).copyWith(
+  Future<void> markBlocked(String jobId,
+      {required String code, String message = ''}) async {
+    _reemplazar(byId(jobId).copyWith(
         state: JobState.blocked,
         code: code,
         message: message,
-        limpiarClaimedAt: true,
-      ),
-    );
+        limpiarClaimedAt: true));
   }
 
   @override
-  Future<void> markWaiting(
-    String jobId, {
-    required String dependsOn,
-    String code = '',
-    String message = '',
-  }) async {
-    _reemplazar(
-      byId(jobId).copyWith(
+  Future<void> markWaiting(String jobId,
+      {required String dependsOn,
+      String code = '',
+      String message = ''}) async {
+    _reemplazar(byId(jobId).copyWith(
         state: JobState.waiting,
         code: code,
         message: message,
         dependsOn: dependsOn,
-        limpiarClaimedAt: true,
-      ),
-    );
+        limpiarClaimedAt: true));
   }
 
   @override
   Future<List<QueuedJob>> listHeld() async => _enOrden([
-    for (final j in _jobs.values)
-      if (j.state == JobState.blocked || j.state == JobState.waiting) j,
-  ]);
+        for (final j in _jobs.values)
+          if (j.state == JobState.blocked || j.state == JobState.waiting) j
+      ]);
 
   @override
   Future<List<QueuedJob>> listPending() async => _enOrden([
-    for (final j in _jobs.values)
-      if (j.state == JobState.pending) j,
-  ]);
+        for (final j in _jobs.values)
+          if (j.state == JobState.pending) j
+      ]);
 
   @override
   Future<void> replacePayload(
-    String jobId,
-    Map<String, Object?> payload,
-  ) async {
+      String jobId, Map<String, Object?> payload) async {
     final q = _sinMandar(jobId, 'replacePayload');
     _reemplazar(q.copyWith(job: q.job.copyWith(payload: payload)));
   }
@@ -173,29 +151,25 @@ class InMemoryJobStore implements JobStorePort {
   Future<List<QueuedJob>> unsentFor(String entity, String rowPk) async =>
       _enOrden([
         for (final id in _porFila[(entity, rowPk)] ?? const <String>[])
-          if (_jobs[id] case final j? when _esSinMandar(j.state)) j,
+          if (_jobs[id] case final j? when _esSinMandar(j.state)) j
       ]);
 
   @override
   Future<Set<String>> withUnapplied(
-    String entity,
-    Iterable<String> rowPks,
-  ) async => {
-    for (final pk in rowPks)
-      if ((_porFila[(entity, pk)] ?? const <String>[]).any((id) {
-        final estado = _jobs[id]?.state;
-        return estado != null &&
-            estado != JobState.done &&
-            estado != JobState.invalid;
-      }))
-        pk,
-  };
+      String entity, Iterable<String> rowPks) async => {
+        for (final pk in rowPks)
+          if ((_porFila[(entity, pk)] ?? const <String>[]).any((id) {
+            final estado = _jobs[id]?.state;
+            return estado != null &&
+                estado != JobState.done &&
+                estado != JobState.invalid;
+          }))
+            pk
+      };
 
   @override
   Future<void> rebaseVersions(
-    String entity,
-    Map<String, int> versionPorFila,
-  ) async {
+      String entity, Map<String, int> versionPorFila) async {
     for (final MapEntry(key: pk, value: version) in versionPorFila.entries) {
       for (final id in _porFila[(entity, pk)] ?? const <String>[]) {
         final q = _jobs[id];
@@ -241,15 +215,13 @@ class InMemoryJobStore implements JobStorePort {
               q.state != JobState.pending)) {
         continue;
       }
-      _reemplazar(
-        q.copyWith(
-          state: JobState.pending,
-          code: '',
-          message: '',
-          limpiarDependsOn: true,
-          job: q.job.copyWith(createdAt: base.add(Duration(microseconds: i++))),
-        ),
-      );
+      _reemplazar(q.copyWith(
+        state: JobState.pending,
+        code: '',
+        message: '',
+        limpiarDependsOn: true,
+        job: q.job.copyWith(createdAt: base.add(Duration(microseconds: i++))),
+      ));
     }
   }
 
@@ -302,13 +274,13 @@ class InMemoryJobStore implements JobStorePort {
 
   @override
   Future<SyncStatus> status() async => SyncStatus(
-    pending: _cuenta[JobState.pending]!,
-    inFlight: _cuenta[JobState.inFlight]!,
-    invalid: _cuenta[JobState.invalid]!,
-    blocked: _cuenta[JobState.blocked]!,
-    waiting: _cuenta[JobState.waiting]!,
-    lastPushAt: _ultimoDone,
-  );
+        pending: _cuenta[JobState.pending]!,
+        inFlight: _cuenta[JobState.inFlight]!,
+        invalid: _cuenta[JobState.invalid]!,
+        blocked: _cuenta[JobState.blocked]!,
+        waiting: _cuenta[JobState.waiting]!,
+        lastPushAt: _ultimoDone,
+      );
 
   @override
   Future<int> reclaimInFlight(Duration staleAfter) async {
@@ -318,12 +290,11 @@ class InMemoryJobStore implements JobStorePort {
     // colgado para siempre es peor.
     final vencidos = [
       for (final j in withState(JobState.inFlight))
-        if (j.claimedAt == null || !j.claimedAt!.isAfter(corte)) j,
+        if (j.claimedAt == null || !j.claimedAt!.isAfter(corte)) j
     ];
     for (final job in vencidos) {
       _reemplazar(
-        job.copyWith(state: JobState.pending, limpiarClaimedAt: true),
-      );
+          job.copyWith(state: JobState.pending, limpiarClaimedAt: true));
     }
     return vencidos.length;
   }
@@ -406,7 +377,7 @@ class InMemoryLocalStore implements LocalStorePort {
     for (final entidad in notices.areaReset) {
       final ids = [
         for (final f in rows[entidad] ?? const <Map<String, Object?>>[])
-          _pkDe(entidad, f),
+          _pkDe(entidad, f)
       ];
       final ocupadas = unapplied == null || ids.isEmpty
           ? const <String>{}
@@ -421,7 +392,7 @@ class InMemoryLocalStore implements LocalStorePort {
           : await unapplied(entity, ids);
       aplicar[entity] = [
         for (final f in filas)
-          if (!ocupadas.contains(_pkDe(entity, f))) f,
+          if (!ocupadas.contains(_pkDe(entity, f))) f
       ];
     }
     for (final MapEntry(key: entidad, value: ids) in espera.entries) {
@@ -457,11 +428,9 @@ class InMemoryLocalStore implements LocalStorePort {
   Future<String?> watermarkOf(String scope) async => watermarks[scope];
 
   @override
-  Future<void> applyVersions(
-    String entity, {
-    required String pkColumn,
-    required Map<String, int> versionPorFila,
-  }) async {
+  Future<void> applyVersions(String entity,
+      {required String pkColumn,
+      required Map<String, int> versionPorFila}) async {
     final filas = rows[entity];
     if (filas == null || versionPorFila.isEmpty) return;
     for (final (i, fila) in filas.indexed) {
@@ -482,11 +451,8 @@ class InMemoryLocalStore implements LocalStorePort {
   /// referencia depende de las tablas de cada app: este fake lo registra en
   /// [reapuntados] y no lo interpreta.
   @override
-  Future<void> reapuntar(
-    String entity, {
-    required String de,
-    required String a,
-  }) async {
+  Future<void> reapuntar(String entity,
+      {required String de, required String a}) async {
     if (failOnReapuntar) throw StateError('la DB local falló al reapuntar');
     reapuntados.add((entity, de, a));
     final filas = rows[entity];
@@ -524,8 +490,7 @@ class InMemorySyncMeta implements SyncMetaPort {
     if (failOnWrite) throw StateError('la DB local falló al anotar sync_meta');
     writes++;
     final previo = _meta;
-    final pushNuevo =
-        lastPushAt != null &&
+    final pushNuevo = lastPushAt != null &&
         (previo.lastPushAt == null || !lastPushAt.isBefore(previo.lastPushAt!));
     _meta = SyncMeta(
       lastPullAt: lastPullAt ?? previo.lastPullAt,

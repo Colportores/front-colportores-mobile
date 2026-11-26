@@ -72,11 +72,8 @@ abstract interface class JobStorePort {
   Future<void> markDone(Iterable<String> jobIds, {required DateTime at});
 
   /// `IN_FLIGHT` → `INVALID`. Queda visible y no se reintenta solo (§5.1).
-  Future<void> markInvalid(
-    String jobId, {
-    required String code,
-    String message,
-  });
+  Future<void> markInvalid(String jobId,
+      {required String code, String message});
 
   /// `IN_FLIGHT` → `PENDING`. Es la vuelta atrás de un error transitorio: el
   /// ciclo se corta y estos jobs se reintentan al próximo trigger.
@@ -87,20 +84,13 @@ abstract interface class JobStorePort {
 
   /// `IN_FLIGHT` → `BLOCKED` (§2.2): el servidor no lo aplicó por un conflicto
   /// que resuelve la colportora. Guarda [code] y [message] como [markInvalid].
-  Future<void> markBlocked(
-    String jobId, {
-    required String code,
-    String message,
-  });
+  Future<void> markBlocked(String jobId,
+      {required String code, String message});
 
   /// `IN_FLIGHT` → `WAITING` (§2.2): nombra la fila [dependsOn], que el
   /// servidor no tiene. Guarda [code] y [message] como [markInvalid].
-  Future<void> markWaiting(
-    String jobId, {
-    required String dependsOn,
-    String code,
-    String message,
-  });
+  Future<void> markWaiting(String jobId,
+      {required String dependsOn, String code, String message});
 
   /// Los jobs en `BLOCKED` y en `WAITING`, en orden de creación (el mismo de
   /// [claimPending]).
@@ -257,8 +247,8 @@ abstract interface class SyncMetaPort {
 /// De [rowPks], las filas de [entity] que el pull no tiene que pisar porque
 /// tienen escrituras locales sin aplicar en el servidor. Ver
 /// [LocalStorePort.applyDelta].
-typedef UnappliedRows =
-    Future<Set<String>> Function(String entity, List<String> rowPks);
+typedef UnappliedRows = Future<Set<String>> Function(
+    String entity, List<String> rowPks);
 
 /// La DB local, del lado de las tablas de negocio.
 abstract interface class LocalStorePort {
@@ -309,11 +299,8 @@ abstract interface class LocalStorePort {
   /// `update` viaja esperando una versión que el servidor ya no tiene: vuelve
   /// `conflict` y el LWW pisa la edición con la fila vieja del servidor. Se
   /// llama una vez por entidad y por lote, no por fila.
-  Future<void> applyVersions(
-    String entity, {
-    required String pkColumn,
-    required Map<String, int> versionPorFila,
-  });
+  Future<void> applyVersions(String entity,
+      {required String pkColumn, required Map<String, int> versionPorFila});
 
   /// §2.3, «Venta tarde» (resultado `merged`, §6.1): el servidor juntó la fila [de] de [entity]
   /// con la fila [a], que ya tenía, y no guardó la primera. Todo lo local que nombraba a [de]
@@ -324,11 +311,7 @@ abstract interface class LocalStorePort {
   /// reintenta (el servidor vuelve a contestar `merged` con el mismo destino). Lo que no tiene
   /// nada que reapuntar no es un error. No encola nada: lo que ya subió quedó en la fila que
   /// sobrevivió.
-  Future<void> reapuntar(
-    String entity, {
-    required String de,
-    required String a,
-  });
+  Future<void> reapuntar(String entity, {required String de, required String a});
 }
 
 /// El `appDataFolder` de Google Drive (ADR-003). Va directo, sin BFF (§6).
@@ -462,8 +445,7 @@ class SnapshotNewerSchemaException implements Exception {
   final int appSchema;
 
   @override
-  String toString() =>
-      'SnapshotNewerSchemaException($backupSchema > $appSchema)';
+  String toString() => 'SnapshotNewerSchemaException($backupSchema > $appSchema)';
 }
 
 /// El payload de un backup no se puede leer: formato desconocido o roto.

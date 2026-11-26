@@ -847,8 +847,7 @@ class SyncEngine {
     final candado = Completer<SyncOutcome>();
     _running = candado.future;
     try {
-      final fuentes =
-          sources ??
+      final fuentes = sources ??
           [
             if (backup ?? _backup case final servicio?)
               RecoverySource(backup: servicio, keyId: keyId),
@@ -1434,10 +1433,9 @@ class SyncEngine {
                 // servidor no tiene. Sin `merged_into` (un servidor que no lo manda) no hay a
                 // quién reapuntar.
                 if (r.outcome == JobOutcome.merged) {
-                  if ((job.rowPk, r.mergedInto) case (
-                    final de?,
-                    final a?,
-                  ) when de != a) {
+                  final de = job.rowPk;
+                  final a = r.mergedInto;
+                  if (de != null && a != null && de != a) {
                     await _store.reapuntar(job.entity, de: de, a: a);
                   }
                 }
@@ -1608,10 +1606,8 @@ class SyncEngine {
     var watermark = await _store.watermarkOf(scope);
 
     while (true) {
-      final delta = await _transport.pull(
-        entities: entities,
-        watermark: watermark,
-      );
+      final delta =
+          await _transport.pull(entities: entities, watermark: watermark);
       final avisos = PullNotices(
         outOfArea: delta.outOfArea,
         areaReset: delta.areaReset,
@@ -1639,8 +1635,8 @@ class SyncEngine {
         final bajadas = fuera.isEmpty
             ? lista.length
             : lista
-                  .where((f) => !fuera.contains('${f[_specs.of(entidad).pk]}'))
-                  .length;
+                .where((f) => !fuera.contains('${f[_specs.of(entidad).pk]}'))
+                .length;
         contador[entidad] = (contador[entidad] ?? 0) + bajadas;
       }
       // Si el watermark no avanzó, la próxima request es idéntica a esta: un
