@@ -19,26 +19,40 @@ import 'push_remotas.dart';
 /// - [tocadas] ← `FirebaseMessaging.onMessageOpenedApp`;
 /// - [tomarLaQueAbrioLaApp] ← `getInitialMessage()`, una sola vez por instancia (el plugin puede
 ///   devolver el mismo mensaje en cada llamada mientras viva el proceso, y la raíz de la app se
-///   rearma al recuperar un respaldo: la misma push no se abre dos veces).
+///   rearma al recuperar un respaldo: la misma push no se abre dos veces);
+/// - [obtenerToken] ← `getToken()` y [tokenRotado] ← `onTokenRefresh` (HU-NOT-001, «Token FCM»).
 final class PushRemotasFirebase implements PushRemotas {
   /// Con las fuentes del plugin inyectadas (los tests pasan las suyas; la app usa [delPlugin]).
   PushRemotasFirebase({
     required Stream<RemoteMessage> alFrente,
     required Stream<RemoteMessage> tocadas,
     required this._laQueAbrioLaApp,
+    required this._token,
+    required Stream<String> tokenRotado,
   }) : _alFrente = _deDifusion(alFrente).map(_aMensaje),
-       _tocadas = _deDifusion(tocadas).map(_aMensaje);
+       _tocadas = _deDifusion(tocadas).map(_aMensaje),
+       _tokenRotado = _deDifusion(tokenRotado);
 
   /// Sobre el plugin real. Firebase ya tiene que estar inicializado (ver [iniciar]).
   factory PushRemotasFirebase.delPlugin(FirebaseMessaging mensajeria) => PushRemotasFirebase(
     alFrente: FirebaseMessaging.onMessage,
     tocadas: FirebaseMessaging.onMessageOpenedApp,
     laQueAbrioLaApp: mensajeria.getInitialMessage,
+    // `getToken` y `onTokenRefresh` están marcados como obsoletos en firebase_messaging 17: la
+    // alternativa (`register` / `onRegistered`) entrega el Firebase Installation ID, no el token de
+    // registro que el servidor (`push-fcm`, API HTTP v1) usa como destino y que la HU nombra. Hasta que
+    // se decida migrar (pendiente de Cristian), se usan los que dicen la HU y el ADR-014.
+    // ignore: deprecated_member_use
+    token: () => mensajeria.getToken(),
+    // ignore: deprecated_member_use
+    tokenRotado: mensajeria.onTokenRefresh,
   );
 
   final Stream<MensajePush> _alFrente;
   final Stream<MensajePush> _tocadas;
+  final Stream<String> _tokenRotado;
   final Future<RemoteMessage?> Function() _laQueAbrioLaApp;
+  final Future<String?> Function() _token;
   var _yaSeTomo = false;
 
   /// Inicializa Firebase y devuelve el adaptador, o `null` si este build no tiene Firebase.
@@ -86,7 +100,13 @@ final class PushRemotasFirebase implements PushRemotas {
     return mensaje == null ? null : _aMensaje(mensaje);
   }
 
-  static Stream<RemoteMessage> _deDifusion(Stream<RemoteMessage> fuente) =>
+  @override
+  Future<String?> obtenerToken() => _token();
+
+  @override
+  Stream<String> get tokenRotado => _tokenRotado;
+
+  static Stream<T> _deDifusion<T>(Stream<T> fuente) =>
       fuente.isBroadcast ? fuente : fuente.asBroadcastStream();
 
   /// Solo el `data`, copiado: lo que venga ahí se sigue leyendo como no confiable más adelante.

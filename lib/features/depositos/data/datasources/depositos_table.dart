@@ -10,10 +10,11 @@ import '../../../../core/database/fecha_utc_converter.dart';
 ///
 /// Las columnas que pone el servidor **no viajan por el push** (lo descartaría, `columnas_servidor`):
 /// `colportor_id` (sale del JWT; en el teléfono es el `created_by`), `validado_en` y `validado_por`
-/// (al validar el coordinador, HU-COB-008) y `rechazado_en` y `motivo_rechazo` (al rechazar un
-/// retiro, 0152). Las cuatro últimas **bajan por el pull** (`deposito` es `push` con `alsoPull`,
-/// backend-supabase#231, #596) y se guardan acá: de ellas sale si el depósito está por validar,
-/// validado o rechazado. `colportor_id` y `rechazado_por` no bajan ni se guardan.
+/// (al validar el coordinador, HU-COB-008), `rechazado_en` y `motivo_rechazo` (al rechazar un
+/// retiro, 0152) y `anulado_at` (al devolver un pago de alquiler, 0167). Todas menos `colportor_id`
+/// **bajan por el pull** (`deposito` es `push` con `alsoPull`, backend-supabase#231, #596) y se
+/// guardan acá: de ellas sale si el depósito está por validar, validado, rechazado o anulado.
+/// `colportor_id`, `rechazado_por` y `anulado_por` no bajan ni se guardan.
 ///
 /// Los CHECK repiten los del servidor: un depósito que el servidor rechazaría con `23514` no entra ni
 /// en el teléfono. El caso de uso nunca arma otra cosa.
@@ -58,6 +59,12 @@ class Depositos extends Table {
   /// Por qué lo rechazó, escrito por el coordinador (hasta 500 caracteres). Baja por el pull. Es
   /// texto libre: nunca va a un log (convenciones §7.5).
   TextColumn get motivoRechazo => text().nullable()();
+
+  /// Cuándo se anuló un pago de alquiler ya validado, porque el coordinador eligió devolverle la plata
+  /// al colportor (backend-supabase 0167, decisión «Alq. baja», 04/11). Solo la pone el servidor: baja
+  /// por el pull y el teléfono nunca la escribe. Un depósito anulado queda como historia: no suma a lo
+  /// pagado del alquiler ni a «Depositado», y su efectivo vuelve a estar «en mano». `null` = vigente.
+  IntColumn get anuladoAt => integer().nullable().map(const FechaUtcConverter())();
 
   IntColumn get createdAt => integer().map(const FechaUtcConverter())();
 

@@ -5,16 +5,17 @@ import '../entities/deuda_con_la_casa.dart';
 
 /// La deuda del colportor con la casa editora (HU-CTA-002, vista 33B).
 ///
-/// La cuenta la hace el servidor (RPC `mi_deuda_con_la_casa_editora`); el teléfono guarda la última
-/// respuesta con su hora y la muestra sin conexión (decisión de Cristian, 03/11, «Leer deuda»).
+/// La deuda **baja con la sincronización** y el teléfono la calcula con lo que bajó (decisión de
+/// Cristian, 05/11, «nada de consultas a cada rato»; backend-supabase 0179, #254): leerla no llama al
+/// servidor, así que se ve igual con y sin señal, con la hora de la última sincronización.
 abstract interface class DeudaConLaCasaRepository {
-  /// La última respuesta guardada de [colportorId], o `null` si nunca llegó una. Nunca lanza: una
-  /// base que no se puede leer es lo mismo que no tener nada guardado.
-  Future<LecturaDeLaDeuda?> ultimaGuardada(String colportorId);
-
-  /// Le pregunta al servidor, guarda la respuesta con la hora de ahora y la devuelve.
+  /// La deuda de [colportorId] calculada con lo último que bajó, con la hora de esa bajada.
   ///
-  /// Sin conexión: [FailureDeudaSinConexion]. Cualquier otra falla del servidor o una respuesta que
-  /// no se entiende: [FailureDeudaNoDisponible]. En ambos casos lo guardado queda como estaba.
-  Future<Either<Failure, LecturaDeLaDeuda>> leer(String colportorId);
+  /// `Right(null)`: el teléfono todavía no sincronizó nunca, así que no sabe nada de la deuda (no es
+  /// «no debe nada»). [FailureDeudaNoDisponible]: no se pudo leer la base local. Nunca lanza.
+  Future<Either<Failure, LecturaDeLaDeuda?>> leer(String colportorId);
+
+  /// Avisa cada vez que cambia algo de lo que cuenta la deuda (la sincronización trajo cuenta, pedidos,
+  /// depósitos, tickets o productos), para volver a leerla.
+  Stream<void> get cambios;
 }

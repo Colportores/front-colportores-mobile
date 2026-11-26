@@ -215,29 +215,24 @@ void main() {
     });
   });
 
-  group('hallazgos (se corren con --dart-define=QA_HALLAZGOS=true)', () {
-    // skip: QA #413 — 24A·03 a 360×640 ×2,0: con el texto del canvas (P4) el aviso ocupa 6 renglones, llega
-    // al tope del 40 % del alto y «Ir a configuración» queda bajo el borde del propio aviso: hay que
-    // desplazar dentro de la caja para verlo (la ✕ sí se ve).
-    testWidgets(
-      'H1 · 24A·03 a 360×640 ×2,0: «Ir a configuración» se ve sin desplazar el aviso',
-      (tester) async {
-        await llegarA(tester, Estado24.a03, tam: const Size(360, 640), escala: 2);
-        final caja = tester.getRect(
-          find.descendant(
-            of: find.byType(AvisoNotificacionesApagadas),
-            matching: find.byType(SingleChildScrollView),
-          ),
-        );
-        final accion = tester.getRect(find.byKey(const Key('aviso_notificaciones_ir')));
-        expect(
-          accion.bottom,
-          lessThanOrEqualTo(caja.bottom + 0.5),
-          reason: 'la acción queda ${accion.bottom - caja.bottom} dp bajo el borde del aviso',
-        );
-        await cerrar(tester);
-      },
-      skip: !const bool.fromEnvironment('QA_HALLAZGOS'),
-    );
+  group('hallazgos arreglados (#626)', () {
+    testWidgets('H1 · 24A·03 a 360×640 ×2,0: «Ir a configuración» se ve sin desplazar el aviso', (
+      tester,
+    ) async {
+      await llegarA(tester, Estado24.a03, tam: const Size(360, 640), escala: 2);
+      final caja = tester.getRect(
+        find.descendant(
+          of: find.byType(AvisoNotificacionesApagadas),
+          matching: find.byType(SingleChildScrollView),
+        ),
+      );
+      final accion = tester.getRect(find.byKey(const Key('aviso_notificaciones_ir')));
+      expect(
+        accion.bottom,
+        lessThanOrEqualTo(caja.bottom + 0.5),
+        reason: 'la acción queda ${accion.bottom - caja.bottom} dp bajo el borde del aviso',
+      );
+      await cerrar(tester);
+    });
   });
 }

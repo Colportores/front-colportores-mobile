@@ -438,7 +438,9 @@ class _AgendarVisitaPageState extends ConsumerState<AgendarVisitaPage> with Widg
     if (decision == true) {
       await _agendar(confirmoHoraPasada: true);
     } else if (decision == false) {
-      await _elegirDiaYHora();
+      // Con la estricta la hoja «Día y hora» no tiene la hora (va aparte, R·03): «Cambiar la hora» abre
+      // el selector de la hora acordada, no una hoja que no la cambia (QA #513).
+      await (_estricta ? _elegirHoraAcordada() : _elegirDiaYHora());
     }
   }
 

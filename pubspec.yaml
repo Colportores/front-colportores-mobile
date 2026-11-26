@@ -77,6 +77,7 @@ dependencies:
   sync_engine:               # el motor de sync (ADR-008/017): el paquete Dart puro de este repo
     path: packages/sync_engine
   timezone: ^0.11.2         # TZDateTime que pide flutter_local_notifications (los avisos van en UTC, sin base de zonas)
+  url_launcher: ^6.3.2      # «términos de uso» del registro abre la página versionada en el navegador (#386)
   uuid: ^4.6.0              # UUID v7 (esquema-datos.md §Principios)
   workmanager: ^0.10.10
 

@@ -200,7 +200,6 @@ abstract final class FlujoEntrevista {
       if (enCurso == null || enCurso.espacioPersonaId != null) break;
       final pedida = await _pedirLaPersona(
         context,
-        ref,
         colportorId: colportorId,
         espacioId: enCurso.espacioId,
       );
@@ -210,12 +209,7 @@ abstract final class FlujoEntrevista {
         salidaVista = r.salida;
         continue;
       }
-      final vinculo = pedida.vinculo;
-      if (vinculo == null) {
-        _avisar(mensajero, TextosEntrevista.ventaNoGuardada(pedida.nombre));
-        return const VentaSinCompletar();
-      }
-      await notificador.ponerPersona(vinculo);
+      await notificador.ponerPersona(pedida.vinculo);
       persona = pedida.nombre;
       break;
     }
@@ -368,21 +362,12 @@ abstract final class FlujoEntrevista {
       );
       if (r is! QuiereRegistrarLaVenta || !context.mounted || vinculo != null) break;
       // La venta necesita a quién (decisión de Cristian, 05/11, «Entrev. s/n»); atrás vuelve a esta hoja.
-      final pedida = await _pedirLaPersona(
-        context,
-        ref,
-        colportorId: colportorId,
-        espacioId: espacioId,
-      );
+      final pedida = await _pedirLaPersona(context, colportorId: colportorId, espacioId: espacioId);
       if (!context.mounted) return const VentaSinCompletar();
       if (pedida == null) {
         entradaVista = r.entrada;
         salidaVista = r.salida;
         continue;
-      }
-      if (pedida.vinculo == null) {
-        _avisar(mensajero, TextosEntrevista.ventaNoGuardada(pedida.nombre));
-        return const VentaSinCompletar();
       }
       vinculo = pedida.vinculo;
       nombre = pedida.nombre;
@@ -524,11 +509,11 @@ abstract final class FlujoEntrevista {
   /// El paso del nombre de la venta de una entrevista **sin persona** (decisión de Cristian, 05/11,
   /// «Entrev. s/n»): el alta corta (32 A) de la casa de la entrevista. Devuelve a la persona dada de
   /// alta (su vínculo y su nombre), o `null` si la colportora volvió atrás sin guardar a nadie: no se
-  /// guardó nada y la entrevista sigue como estaba. Si la persona quedó guardada pero no se pudo leer
-  /// su vínculo, `vinculo` viene `null` (la persona está; la venta no sigue).
-  static Future<({String? vinculo, String nombre})?> _pedirLaPersona(
-    BuildContext context,
-    ProviderContainer ref, {
+  /// guardó nada y la entrevista sigue como estaba. El vínculo es el que el alta misma creó (no se
+  /// vuelve a leer el espacio): si una lectura fallara, no se pediría el nombre de nuevo ni se
+  /// duplicaría a la persona (#671).
+  static Future<({String vinculo, String nombre})?> _pedirLaPersona(
+    BuildContext context, {
     required String colportorId,
     required String espacioId,
   }) async {
@@ -539,24 +524,7 @@ abstract final class FlujoEntrevista {
       ayuda: TextosPersonas.altaParaVender,
     );
     if (nueva == null) return null;
-    final nombre = FormatoPersonas.nombreCompleto(nueva);
-    String? vinculo;
-    try {
-      final personas = await ref
-          .read(personaRepositoryProvider)
-          .observarDelEspacio(espacioId)
-          .first
-          .timeout(const Duration(seconds: 2));
-      for (final p in personas) {
-        if (p.persona.id == nueva.id) {
-          vinculo = p.vinculo.id;
-          break;
-        }
-      }
-    } on Object {
-      // Sin el vínculo no se sigue a la venta: la persona ya quedó guardada en la casa.
-    }
-    return (vinculo: vinculo, nombre: nombre);
+    return (vinculo: nueva.vinculoId, nombre: FormatoPersonas.nombreCompleto(nueva.persona));
   }
 
   /// «+ Registrar venta» de la pestaña Ventas (#546, decisión de Cristian del 28/10): la venta (vista

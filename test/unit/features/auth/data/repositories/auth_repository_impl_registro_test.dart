@@ -50,6 +50,7 @@ void main() {
         cedula: '12345678',
         email: 'bruno@example.com',
         password: 'Secreto123',
+        terminosVersion: 'v1',
       );
 
       // La UI ve un error genérico...
@@ -67,6 +68,7 @@ void main() {
         cedula: '12345678',
         email: 'bruno@example.com',
         password: 'Secreto123',
+        terminosVersion: 'v1',
       );
       expect(reintento, const Left<Failure, ResultadoRegistro>(FailureEmailYaRegistrado()));
     });

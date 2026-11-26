@@ -86,12 +86,20 @@ final class AuthRemoteDataSourceSupabase
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) async {
     final respuesta = await _traduciendo(
       () => _auth.signUp(
         email: email,
         password: password,
-        data: {'nombre': nombre, 'apellido': apellido, 'cedula': cedula},
+        // `terminos_version`: la versión de los Términos que aceptó; el trigger del alta la guarda
+        // con la hora del servidor (backend-supabase#109, migración 0065).
+        data: {
+          'nombre': nombre,
+          'apellido': apellido,
+          'cedula': cedula,
+          'terminos_version': terminosVersion,
+        },
         // Enlace de verificación → vuelve a la app por el deep link (declarado en el manifest),
         // no al Site URL (localhost:3000 por default). Path propio `/verificado` (issue #84) para
         // poder distinguir, del lado de la app, esta confirmación de un login/registro normal.

@@ -121,6 +121,12 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
   /// El aviso de falla: cuando aparece se lleva a la vista, arriba del botón fijo.
   final _claveFalla = GlobalKey();
 
+  /// «Ciudad» con su aviso («No pudimos leer las ciudades…» y «Reintentar»): cuando el aviso aparece se
+  /// lleva a la vista. En una pantalla chica la hoja es baja y el aviso queda más abajo de lo que se ve:
+  /// sin esto había que desplazar a ciegas para llegar a «Reintentar» (QA #274).
+  final _claveCiudad = GlobalKey();
+  var _avisoCiudadALaVista = false;
+
   /// El campo «Número», para medir cuánto alto ocupa un campo entero (el de «Calle» mide lo mismo).
   final _claveCampo = GlobalKey();
 
@@ -167,6 +173,26 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
         }
       });
     });
+    final avisoCiudad =
+        estado.ciudad == null &&
+        (estado.origenCiudad == OrigenCiudad.sinCiudades ||
+            estado.origenCiudad == OrigenCiudad.noSePudoLeer);
+    if (avisoCiudad && !_avisoCiudadALaVista) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final contexto = _claveCiudad.currentContext;
+        if (mounted && contexto != null) {
+          unawaited(
+            Scrollable.ensureVisible(
+              contexto,
+              duration: Duration.zero,
+              alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+            ),
+          );
+        }
+      });
+    }
+    // Sin cambios que redibujen: solo recuerda si el aviso ya se llevó a la vista.
+    _avisoCiudadALaVista = avisoCiudad;
     final theme = Theme.of(context);
     final motivo = _porQueNo(estado);
     _medida = MedidaDeLaHoja.maybeOf(context);
@@ -320,16 +346,22 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
                 const SizedBox(height: 14),
                 SelectorTipoUbicacion(tipo: estado.tipo, alElegir: _notificador.elegirTipo),
                 const SizedBox(height: 14),
-                _CampoCiudad(estado: estado, alTocar: widget.alElegirCiudad),
-                if (estado.ciudad == null &&
-                    (estado.origenCiudad == OrigenCiudad.sinCiudades ||
-                        estado.origenCiudad == OrigenCiudad.noSePudoLeer)) ...[
-                  const SizedBox(height: 10),
-                  _AvisoCiudad(
-                    sinCiudades: estado.origenCiudad == OrigenCiudad.sinCiudades,
-                    alReintentar: _notificador.reintentarCiudad,
-                  ),
-                ],
+                Column(
+                  key: _claveCiudad,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _CampoCiudad(estado: estado, alTocar: widget.alElegirCiudad),
+                    if (estado.ciudad == null &&
+                        (estado.origenCiudad == OrigenCiudad.sinCiudades ||
+                            estado.origenCiudad == OrigenCiudad.noSePudoLeer)) ...[
+                      const SizedBox(height: 10),
+                      _AvisoCiudad(
+                        sinCiudades: estado.origenCiudad == OrigenCiudad.sinCiudades,
+                        alReintentar: _notificador.reintentarCiudad,
+                      ),
+                    ],
+                  ],
+                ),
                 const SizedBox(height: 14),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,

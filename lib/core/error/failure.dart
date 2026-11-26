@@ -1121,6 +1121,14 @@ final class FailureCuentaNoDisponible extends Failure {
     : super(mensaje: 'No pudimos calcular tu cuenta.', codigo: 'CUENTA_NO_DISPONIBLE');
 }
 
+/// No se pudo armar «Mi alquiler» (HU-CTA-007, vista 38C): la base local no se pudo leer. Es **otra
+/// cosa** que «tu campaña no cobra alquiler»: nadie muestra eso ante esta falla. Se puede reintentar.
+/// El canvas no dibuja el error de 38C; el texto sigue el de 33B·03 («para confirmar», mapa §2).
+final class FailureAlquilerNoDisponible extends Failure {
+  const FailureAlquilerNoDisponible()
+    : super(mensaje: 'No pudimos traer tu alquiler.', codigo: 'ALQUILER_NO_DISPONIBLE');
+}
+
 /// El cobro no se pudo guardar en el teléfono (28·08). No se registró nada: se puede reintentar. El
 /// texto es el del canvas.
 final class FailureCobroNoGuardado extends Failure {
@@ -1379,17 +1387,9 @@ final class FailureCuotasNoDisponibles extends Failure {
       );
 }
 
-/// No hay conexión para traer la deuda con la casa editora (HU-CTA-002, 33B). Lo último que llegó
-/// sigue guardado en el teléfono: la pantalla lo muestra con su hora. Sin nada guardado es el error
-/// de 33B·03.
-final class FailureDeudaSinConexion extends Failure {
-  const FailureDeudaSinConexion()
-    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'DEUDA_CASA_SIN_CONEXION');
-}
-
-/// El servidor no pudo contar la deuda con la casa editora, o contestó algo que la app no entiende
-/// (HU-CTA-002, 33B·03). Es **otra cosa** que «no debés nada»: nadie muestra «$ 0» ante esta falla.
-/// Se puede reintentar. El texto es el del canvas.
+/// El teléfono no pudo leer lo que bajó para contar la deuda con la casa editora (HU-CTA-002, 33B·03):
+/// la base local no se pudo abrir o leer. Es **otra cosa** que «no debés nada»: nadie muestra «$ 0» ante
+/// esta falla. Se puede reintentar. El texto es el del canvas.
 final class FailureDeudaNoDisponible extends Failure {
   const FailureDeudaNoDisponible()
     : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'DEUDA_CASA_NO_DISPONIBLE');
@@ -1499,6 +1499,65 @@ final class FailureTicketCopiaSinSubir extends Failure {
 final class FailureTicketNoEncontrado extends Failure {
   const FailureTicketNoEncontrado()
     : super(mensaje: 'No encontramos ese ticket.', codigo: 'TICKET_NO_ENCONTRADO');
+}
+
+// --- Pedidos a la casa editora (HU-STK-009, vista 37, #387) --------------------------------------
+
+/// El pedido no se pudo guardar en el teléfono (37A·07). No se guardó ni se encoló nada: se puede reintentar
+/// con lo mismo. El canvas dice «Quedó guardado acá», pero eso solo es verdad si la falla es posterior al
+/// guardado: cuando falla la escritura, lo verdadero es que no se envió nada (texto a confirmar, «mapa §2:
+/// texto»).
+final class FailurePedidoNoGuardado extends Failure {
+  const FailurePedidoNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos enviar el pedido. No se envió nada: probá de nuevo.',
+        codigo: 'PEDIDO_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// El pedido no tiene la forma que el servidor acepta (vacío, cantidad que no sirve, producto repetido o que
+/// no se puede pedir). La pantalla no deja llegar hasta acá: es la red de seguridad.
+final class FailurePedidoInvalido extends Failure {
+  const FailurePedidoInvalido()
+    : super(mensaje: 'Sumá al menos un producto para enviar el pedido.', codigo: 'PEDIDO_INVALIDO');
+}
+
+/// El pedido ya no se puede cancelar: no es de la colportora o su coordinador ya lo decidió (decisión
+/// «Cancelar ped»: solo quien lo pidió, solo mientras está por autorizar).
+final class FailurePedidoNoCancelable extends Failure {
+  const FailurePedidoNoCancelable()
+    : super(
+        mensaje: 'Este pedido ya no se puede cancelar: tu coordinador ya lo decidió.',
+        codigo: 'PEDIDO_NO_CANCELABLE',
+      );
+}
+
+/// La cancelación no se pudo guardar en el teléfono: el pedido sigue como estaba.
+final class FailurePedidoNoCancelado extends Failure {
+  const FailurePedidoNoCancelado({this.causa})
+    : super(
+        mensaje: 'No pudimos cancelar el pedido. Sigue por autorizar: probá de nuevo.',
+        codigo: 'PEDIDO_NO_CANCELADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudieron leer los pedidos (37B·06): la base local no se pudo leer. Es otra cosa que «todavía no
+/// pediste nada».
+final class FailurePedidosNoDisponibles extends Failure {
+  const FailurePedidosNoDisponibles()
+    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'PEDIDOS_NO_DISPONIBLES');
 }
 
 // --- Transferencias de materiales (HU-STK-005, vista 40, #512) -----------------------------------

@@ -5,6 +5,8 @@ import 'dart:async';
 import 'package:colportores_mobile/app.dart';
 import 'package:colportores_mobile/core/database/database_providers.dart';
 import 'package:colportores_mobile/core/error/failure.dart';
+import 'package:colportores_mobile/core/notificaciones/fakes/push_remotas_en_memoria.dart';
+import 'package:colportores_mobile/core/notificaciones/notificaciones_providers.dart';
 import 'package:colportores_mobile/core/sync/sync_providers.dart';
 import 'package:colportores_mobile/core/theme/tema_colportaje.dart';
 import 'package:colportores_mobile/features/auth/data/datasources/auth_local_data_source.dart';
@@ -29,6 +31,11 @@ import 'package:colportores_mobile/features/configuracion/presentation/providers
 import 'package:colportores_mobile/features/configuracion/presentation/providers/nombre_cuenta_provider.dart';
 import 'package:colportores_mobile/features/configuracion/presentation/widgets/hoja_cerrar_sesion.dart';
 import 'package:colportores_mobile/features/inicio/presentation/pages/inicio_page.dart';
+import 'package:colportores_mobile/features/notificaciones/presentation/providers/push_remotas_providers.dart';
+import 'package:colportores_mobile/features/respaldo/domain/entities/estado_respaldo_drive.dart';
+import 'package:colportores_mobile/features/respaldo/domain/services/servicio_respaldo.dart';
+import 'package:colportores_mobile/features/respaldo/presentation/providers/respaldo_automatico_providers.dart';
+import 'package:colportores_mobile/features/respaldo/presentation/providers/respaldo_drive_providers.dart';
 import 'package:colportores_mobile/features/tiles/domain/entities/paquete_tiles.dart';
 import 'package:colportores_mobile/features/tiles/presentation/providers/mapas_offline_providers.dart';
 import 'package:colportores_mobile/features/tiles/presentation/providers/tiles_providers.dart';
@@ -39,12 +46,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sync_engine/sync_engine.dart'
-    show JobState, Op, PullDelta, PushBatch, PushResult, SpecRegistry, SyncEngine, SyncSpec;
+    show
+        BackupEntry,
+        BackupService,
+        JobState,
+        Op,
+        PullDelta,
+        PushBatch,
+        PushResult,
+        SpecRegistry,
+        SyncEngine,
+        SyncSpec;
 import 'package:sync_engine/testing.dart'
-    show FakeSyncTransport, InMemoryJobStore, InMemoryLocalStore;
+    show
+        FakeArchive,
+        FakeCrypto,
+        FakeSnapshot,
+        FakeSyncTransport,
+        InMemoryJobStore,
+        InMemoryLocalStore;
 
+import '../helpers/auditoria_push_en_memoria.dart';
+import '../helpers/datos_locales_de_push_en_memoria.dart';
 import '../helpers/db_local_repository_en_memoria.dart';
+import '../helpers/historial_notificaciones_falsos.dart';
 import '../helpers/mapa_descargas_arnes.dart';
+import '../helpers/respaldo_drive_falsos.dart';
 import '../helpers/tiles_falsos.dart';
 
 const _resumenBase = ResumenDatosLocales(
@@ -148,6 +175,48 @@ final class _TransporteQuePierdeLaPrimeraRespuesta extends FakeSyncTransport {
     return resultado;
   }
 }
+
+/// Un Drive remoto cuya subida no termina hasta que el test la suelta: un respaldo «en vuelo».
+final class _ArchivoQueSeTraba extends FakeArchive {
+  _ArchivoQueSeTraba() : super(authorized: true, informaHashRemoto: true);
+
+  final Completer<void> compuerta = Completer<void>();
+
+  /// Cuántas subidas llegaron a la compuerta.
+  int subidas = 0;
+
+  @override
+  Future<BackupEntry> upload({
+    required List<int> payload,
+    required String? parentId,
+    required String watermark,
+    DateTime? exportedAt,
+    String? keyId,
+    String? firma,
+  }) async {
+    subidas++;
+    await compuerta.future;
+    return super.upload(
+      payload: payload,
+      parentId: parentId,
+      watermark: watermark,
+      exportedAt: exportedAt,
+      keyId: keyId,
+      firma: firma,
+    );
+  }
+}
+
+const _pedidoDelPush = '3f2b8c1e-9a4d-4e7b-8c1a-5d6e7f8a9b0c';
+const _eventoDelPush = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
+const _otroEventoDelPush = 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e';
+const _eventoDeLaSesionCerrada = 'c3d4e5f6-a7b8-4c9d-8e0f-2a3b4c5d6e7f';
+
+Map<String, Object?> _pedidoAutorizado(String evento) => {
+  'type': 'pedido_autorizado',
+  'pedido_id': _pedidoDelPush,
+  'event_id': evento,
+};
 
 late AuthRemoteDataSourceEnMemoria _remote;
 late _DatosLocalesFake _datos;
@@ -1144,10 +1213,6 @@ void main() {
       });
     });
 
-    // Los escenarios de backup nocturno y de push entrante de HU-AUTH-006 siguen como marcadores:
-    // dependen de #185 y #187. `testWidgets.skip` es `bool?` (a diferencia de `test.skip`, que
-    // acepta un motivo en texto), así que el motivo va en el comentario de cada uno.
-
     // QA #56 — HU-AUTH-006, «Edge -logout en medio de un sync activo»: el motor de sync real, con
     // un backend en memoria que no contesta hasta que el test lo suelta, y la app armada como en
     // producción (`app.dart` dispara un ciclo al abrir la pantalla principal). El cierre espera al
@@ -1351,21 +1416,135 @@ void main() {
       expect(_login, findsOneWidget);
     });
 
-    // skip: QA #56 — HU-AUTH-006 (casos borde) pide cancelar limpiamente un backup nocturno en
-    // curso al cerrar sesión. Espera #185 (HU-SYNC-005): test real cuando mergee.
-    testWidgets('caso borde: logout en medio de un backup nocturno cancela el backup limpiamente', (
-      tester,
-    ) async {
-      fail('no hay nada que probar: no existe backup nocturno en background en el código');
-    }, skip: true);
+    // QA #56 — HU-AUTH-006, caso borde «Logout en medio de un backup»: el respaldo en Drive que la
+    // app hace con el motor real (#185). No se cancela a mitad (como el ciclo de sync, decisión del
+    // 29/10 en #542, P3): el cierre no lo espera ni se traba por él, y lo que el respaldo haga
+    // después, con la sesión ya cerrada, no tira nada ni marca a la cuenta con un error de Drive.
+    testWidgets(
+      'caso borde: logout en medio de un backup cierra la sesión sin esperarlo y el backup, al '
+      'terminar o fallar, no rompe nada ni marca el Drive',
+      (tester) async {
+        final drive = RespaldoDriveArmado();
+        final archivo = _ArchivoQueSeTraba();
+        final motor = SyncEngine(
+          specs: SpecRegistry([SyncSpec.push('venta')], allEntities: {'venta'}),
+          transport: FakeSyncTransport(),
+          jobs: InMemoryJobStore(),
+          store: InMemoryLocalStore(),
+          backup: BackupService(archive: archivo, crypto: FakeCrypto(), snapshot: FakeSnapshot()),
+        );
+        addTearDown(() async {
+          if (!archivo.compuerta.isCompleted) archivo.compuerta.complete();
+          await motor.dispose();
+        });
+        final container = await _montar(
+          tester,
+          extras: [
+            motorSyncProvider.overrideWithValue(motor),
+            respaldoDriveRepositoryProvider.overrideWithValue(drive.repo),
+          ],
+        );
+        final usuarioId = container.read(sesionProvider).value!.usuarioId;
+        await drive.repo.conectar(usuarioId);
 
-    // skip: QA #56 — HU-AUTH-006 (casos borde) pide descartar un push notification que entra
-    // justo al cerrar sesión. Espera #187 (HU-NOT-003): test real cuando mergee.
+        // El respaldo que pidió la persona queda subiendo: Drive todavía no contestó.
+        final respaldo = container
+            .read(servicioRespaldoProvider)
+            .respaldar(OrigenRespaldo.pedidoPorLaPersona);
+        await tester.pump();
+        expect(archivo.subidas, 1, reason: 'hay un respaldo en vuelo');
+
+        await cerrarSesionConfirmando(tester);
+        await tester.pumpAndSettle();
+
+        expect(container.read(sesionProvider).value, isNull);
+        expect(container.read(cierresDbLocalProvider).pedidos, 1);
+        expect(_login, findsOneWidget, reason: 'el respaldo no frena el cierre');
+        expect(_datos.borrados, isEmpty, reason: 'cerrar sesión nunca borra datos locales');
+
+        // Drive contesta tarde, con la sesión ya cerrada.
+        archivo.compuerta.complete();
+        await tester.pumpAndSettle();
+        final resultado = await respaldo;
+
+        expect(resultado, anyOf(isA<RespaldoHecho>(), isA<RespaldoFallido>()));
+        expect(tester.takeException(), isNull);
+        expect(container.read(sesionProvider).value, isNull);
+        expect(_login, findsOneWidget);
+        expect(
+          (await drive.repo.estado(usuarioId)).fold((_) => null, (e) => e),
+          isA<DriveConectada>(),
+          reason: 'cerrar sesión a mitad de un respaldo no deja a la cuenta con un error de Drive',
+        );
+      },
+    );
+
+    // QA #56 — HU-AUTH-006, caso borde «Logout justo cuando entra un push»: la push ya estaba
+    // atendiéndose cuando se cerró la sesión, y otra llega con la sesión cerrada. Ninguna se avisa
+    // sobre la pantalla de ingreso (el aviso sutil de arriba es de la sesión que se cerró), ni
+    // vuelve a aparecer al entrar de nuevo.
     testWidgets('caso borde: logout justo cuando entra un push notification descarta el push', (
       tester,
     ) async {
-      fail('no hay nada que probar: la app no recibe push notifications todavía');
-    }, skip: true);
+      final push = PushRemotasEnMemoria();
+      final centro = CentroArnes();
+      final puerta = Completer<void>();
+      final aviso = find.byKey(const Key('aviso_push_en_app_abrir'));
+      final container = await _montar(
+        tester,
+        extras: [
+          pushRemotasProvider.overrideWithValue(push),
+          ...centro.overrides,
+          auditoriaPushRepositoryProvider.overrideWithValue(AuditoriaPushEnMemoria()),
+          datosLocalesDePushRepositoryProvider.overrideWithValue(DatosLocalesDePushEnMemoria()),
+        ],
+      );
+
+      // Control: con la sesión abierta, una push se avisa arriba de la pantalla.
+      push.llegaConLaAppAbierta(_pedidoAutorizado(_eventoDelPush));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(aviso, findsOneWidget);
+      await tester.tap(find.byKey(const Key('aviso_push_en_app_cerrar')));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(aviso, findsNothing);
+
+      // Entra otra y todavía se está guardando cuando la persona confirma el cierre.
+      centro.historial.puertaAlRegistrar = puerta;
+      push.llegaConLaAppAbierta(_pedidoAutorizado(_otroEventoDelPush));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(aviso, findsNothing, reason: 'la push todavía se está guardando');
+
+      await cerrarSesionConfirmando(tester);
+      await tester.pumpAndSettle();
+      expect(container.read(sesionProvider).value, isNull);
+      expect(_login, findsOneWidget);
+
+      // Termina de guardarse con la sesión cerrada: no se avisa sobre el ingreso.
+      puerta.complete();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(aviso, findsNothing);
+      expect(find.text('Tu pedido fue autorizado'), findsNothing);
+
+      // Otra llega con la sesión cerrada: nadie la escucha, no se guarda ni se avisa.
+      push.llegaConLaAppAbierta(_pedidoAutorizado(_eventoDeLaSesionCerrada));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(aviso, findsNothing);
+      expect(
+        centro.historial.filas.map((n) => n.id),
+        isNot(contains('push-$_eventoDeLaSesionCerrada')),
+        reason: 'la push de la sesión cerrada se descarta',
+      );
+
+      // Al volver a entrar no reaparece ningún aviso de la sesión anterior.
+      await tester.enterText(find.byKey(const Key('login_email')), 'ana@example.com');
+      await tester.enterText(find.byKey(const Key('login_password')), 'secreto123');
+      await tester.ensureVisible(_login);
+      await tester.tap(_login);
+      await tester.pumpAndSettle();
+      expect(container.read(sesionProvider).value, isNotNull);
+      expect(aviso, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('HU-AUTH-010 — entrada desde Configuración', () {

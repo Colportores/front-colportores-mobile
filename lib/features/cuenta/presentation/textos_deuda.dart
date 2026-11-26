@@ -20,8 +20,16 @@ abstract final class TextosDeuda {
 
   // --- Los que el canvas no dibuja ---
 
-  /// Sin conexión y sin nada guardado (decisión del 04/11, convención «Necesitás conexión para …»).
+  /// Sin conexión y sin nada bajado todavía (decisión del 04/11, convención «Necesitás conexión para …»).
   static const necesitasConexion = 'Necesitás conexión para ver tu deuda con la casa editora.';
+
+  /// Con conexión y sin nada bajado todavía: la primera sincronización está por traer la deuda; decir que
+  /// hace falta conexión sería mentirle (decisión del agente de decisiones, 23/11, mapa §2, #671).
+  static const bajandoTusDatos = 'Estamos bajando tus datos. Probá en unos segundos.';
+
+  /// Lo que dice la deuda cuando el teléfono todavía no bajó nada: según haya conexión o no.
+  static String sinNadaBajado({required bool sinConexion}) =>
+      sinConexion ? necesitasConexion : bajandoTusDatos;
   static const volver = 'Volver';
 
   /// Lo que lee el lector de pantalla mientras se pide (33A·03 lo dibuja sin texto).

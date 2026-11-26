@@ -27,37 +27,42 @@ void main() {
       expect(find.text(r'▼ $ 1.300 contra la semana pasada'), findsOneWidget);
     });
 
-    testWidgets('en V1 no se dibuja nada de lo V2 ni lo que no lleva a ningún lado: de las acciones '
-        'solo «Registrar depósito» (HU-CTA-004, #443) y las de transferencias (#512); ni enlaces, ni '
-        'previews, ni «Próximamente»', (tester) async {
-      await montarCuenta(tester, RepositorioDeCuentaControlable(inicial: resumenDelCanvas));
+    testWidgets(
+      'no se dibuja nada de lo que no lleva a ningún lado: de las acciones, «+ Hacer un pedido» '
+      '(HU-STK-009, #387), «Cargar ticket» y «Registrar depósito» (vista 38 y HU-CTA-004); de los '
+      'enlaces, «Mis pedidos» (#387) y «Mis tickets» (#388); ni '
+      'previews, ni «Próximamente»',
+      (tester) async {
+        await montarCuenta(tester, RepositorioDeCuentaControlable(inicial: resumenDelCanvas));
 
-      for (final texto in [
-        'DEPOSITADO',
-        '+ Hacer un pedido',
-        'Cargar ticket',
-        'Mis pedidos',
-        'Mis tickets',
-        'Alquiler',
-        'Stock y beca',
-        'TAMBIÉN',
-        'Stock',
-        'Beca',
-        'Próximamente',
-      ]) {
-        expect(find.textContaining(texto), findsNothing, reason: texto);
-      }
-      // Lo que se toca: tres tarjetas, la deuda con la casa editora (33B, HU-CTA-002) y las dos que abren
-      // su detalle en «Mi plata» (HU-CTA-003), y «Registrar depósito» (33A·01 ACCIONES, HU-CTA-004);
-      // «Depositado» no se dibuja hasta la primera bajada. Las dos de transferencias de materiales
-      // (HU-STK-005, #512) también son de ACCIONES.
-      expect(find.text('›'), findsNWidgets(3));
-      expect(find.byType(InkWell), findsNWidgets(6));
-      expect(find.text('Registrar depósito'), findsOneWidget);
-      expect(find.text('Pedir transferencia de materiales'), findsOneWidget);
-      expect(find.text('Transferencias'), findsOneWidget);
-      expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
-    });
+        for (final texto in [
+          'DEPOSITADO',
+          'Alquiler',
+          'Stock y beca',
+          'TAMBIÉN',
+          'Stock',
+          'Beca',
+          'Próximamente',
+        ]) {
+          expect(find.textContaining(texto), findsNothing, reason: texto);
+        }
+        // Lo que se toca: tres tarjetas, la deuda con la casa editora (33B, HU-CTA-002) y las dos que abren
+        // su detalle en «Mi plata» (HU-CTA-003), «+ Hacer un pedido», «Cargar ticket» y «Registrar
+        // depósito» (33A·01 ACCIONES: 37A, vista 38 y HU-CTA-004) y las filas «Mis pedidos» (37B,
+        // HU-STK-009) y «Mis tickets» (38B, #388); «Depositado» no se dibuja hasta la primera bajada.
+        expect(find.text('›'), findsNWidgets(4));
+        expect(find.byType(InkWell), findsNWidgets(10));
+        expect(find.text('+ Hacer un pedido'), findsOneWidget);
+        expect(find.text('Cargar ticket'), findsOneWidget);
+        expect(find.text('Registrar depósito'), findsOneWidget);
+        expect(find.text('Mis pedidos'), findsOneWidget);
+        expect(find.text('Mis tickets'), findsOneWidget);
+        // Las dos de transferencias de materiales (HU-STK-005, #512) también son de ACCIONES.
+        expect(find.text('Pedir transferencia de materiales'), findsOneWidget);
+        expect(find.text('Transferencias'), findsOneWidget);
+        expect(find.byKey(const Key('cuenta_deuda')), findsOneWidget);
+      },
+    );
 
     testWidgets('una cifra que subió y una que bajó se leen con su verbo, sin las flechas', (
       tester,

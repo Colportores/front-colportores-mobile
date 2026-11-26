@@ -57,6 +57,14 @@ abstract final class TextosPersonas {
   /// El aviso que sigue a una edición (canvas 32C·04).
   static const cambiosGuardados = 'Cambios guardados en tu teléfono.';
 
+  /// A confirmar (mapa §2: texto/aviso): el canvas no dibuja qué pasa si, después de registrar a la
+  /// persona nueva de «Dar de baja y crear nueva» (R6, #405), la baja de la original no se hizo (se
+  /// cerró la hoja sin confirmar, o falló). La nueva queda registrada; el aviso dice que la original
+  /// sigue en el depto y dónde dar de baja a quien corresponda. Sin género: «sigue en el depto».
+  static String nuevaGuardadaSinLaBaja({required String nueva, required String original}) =>
+      'Guardamos a $nueva, pero la baja de $original no se hizo y sigue en el depto. Podés dar de '
+      'baja a $original desde su ficha.';
+
   /// A confirmar: lo que el canvas 32C no dibuja (cargar a la persona, que ya no esté, que esté en
   /// solo lectura). La causa del solo lectura es la de la ficha (32B·04 y 32B·08).
   static const cargandoPersona = 'Cargando a la persona';

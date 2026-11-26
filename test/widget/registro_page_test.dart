@@ -46,6 +46,7 @@ final class _RemoteQueLanzaAlRegistrar
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) async {
     llamadasRegistrar++;
     await demora?.future;

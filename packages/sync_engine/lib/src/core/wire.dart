@@ -179,12 +179,14 @@ Map<String, Object?> pushResponseToJson(PushResult result) => {
             if (r.message.isNotEmpty) 'message': r.message,
             if (r.constraint.isNotEmpty) 'constraint': r.constraint,
             if (r.dependsOn != null) 'depends_on': r.dependsOn,
+            if (r.mergedInto != null) 'merged_into': r.mergedInto,
           },
       ],
     };
 
 PushResult pushResponseFromJson(Map<String, Object?> json) => PushResult(
       serverTime: _fecha(json['server_time']),
+      serverTimeEsDelServidor: _fechaLegible(json['server_time']),
       results: [
         for (final crudo in (json['results'] as List? ?? const []))
           _resultFromJson(_mapa(crudo, 'result')),
@@ -200,6 +202,7 @@ JobResult _resultFromJson(Map<String, Object?> j) => JobResult(
       message: (j['message'] as String?) ?? '',
       constraint: (j['constraint'] as String?) ?? '',
       dependsOn: j['depends_on'] as String?,
+      mergedInto: j['merged_into'] as String?,
     );
 
 // --- pull -------------------------------------------------------------------
@@ -245,6 +248,7 @@ PullDelta pullResponseFromJson(
 
   return PullDelta(
     serverTime: _fecha(json['server_time']),
+    serverTimeEsDelServidor: _fechaLegible(json['server_time']),
     // Si el servidor no manda uno nuevo, se conserva el que había: inventar uno
     // acá sería adelantar el cursor sin datos.
     watermark: _watermark(json['watermark']) ?? watermarkPrevio ?? '',
@@ -292,13 +296,18 @@ Op _op(Object? valor) => valor is String
     : throw FormatException('op inválida: $valor');
 
 /// Un `outcome` que este cliente no conoce es un contrato desalineado. Tratarlo
-/// como aceptado borraría de la cola un job que nunca subió.
+/// como aceptado borraría de la cola un job que nunca subió. Los que sí conoce
+/// son los del contrato §6.1, `merged` incluido: el servidor ya lo aplicó.
 JobOutcome _outcome(Object? valor) => switch (valor) {
       'accepted' => JobOutcome.accepted,
       'duplicate' => JobOutcome.duplicate,
+      'merged' => JobOutcome.merged,
       'conflict' => JobOutcome.conflict,
       _ => JobOutcome.invalid,
     };
 
 DateTime _fecha(Object? valor) =>
     DateTime.tryParse('$valor')?.toUtc() ?? DateTime.now().toUtc();
+
+/// `false` cuando [_fecha] tuvo que inventar la hora con el reloj del equipo.
+bool _fechaLegible(Object? valor) => DateTime.tryParse('$valor') != null;

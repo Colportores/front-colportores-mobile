@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
 
+/// Cuál de las dos horas de la pantalla es: la del aviso de cuotas (en AVISOS) o la del aviso de las
+/// visitas de mañana (en RECORDATORIOS).
+enum HoraDeAviso { cuotas, visitasDeManana }
+
 /// Los textos de la vista 24, grupo A (permiso de notificaciones, HU-NOT-001).
 ///
 /// Salen del canvas (`24 Notificaciones.dc.html`, 24A·01 a 24A·06) salvo los marcados «propuesta»:
@@ -134,8 +138,13 @@ abstract final class TextosNotificaciones {
   /// Lo que se lee en voz alta de la hora: «09:00, tocá para cambiarla».
   static String horaValorAccesible(String hora) => '$hora, tocá para cambiarla';
 
-  /// 24B·06 cuando lo que no se guardó es la hora de un aviso.
-  static const errorAlGuardarHora = 'No pudimos guardar la hora. Volvió a como estaba.';
+  /// 24B·06 cuando lo que no se guardó es la hora de un aviso: dice cuál (hay dos horas en la
+  /// pantalla, una arriba y otra abajo, y la persona tiene que saber cuál volvió a como estaba).
+  static String errorAlGuardarHora(HoraDeAviso hora) => switch (hora) {
+    HoraDeAviso.cuotas => 'No pudimos guardar la hora del aviso de cuotas. Volvió a como estaba.',
+    HoraDeAviso.visitasDeManana =>
+      'No pudimos guardar la hora del aviso de las visitas de mañana. Volvió a como estaba.',
+  };
 
   /// 24B·06 sin conexión: lo dice y guía (el cambio de los avisos del servidor necesita red).
   static const errorAlGuardarSinConexion =
