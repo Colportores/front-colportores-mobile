@@ -230,6 +230,54 @@ final class CuotasLocalDataSourceDrift {
     return estado.aCerrar.length;
   }
 
+  /// Las citas de cuota de [ventaId] que los cobros vivos explican como cubiertas hoy: `CUMPLIDA` y con
+  /// el día en que se completaron. Es la foto de «antes» de [reabrirLasQueQuedaronSinCubrir]: se saca
+  /// **antes** de anular un cobro. No incluye las que se cerraron de otro modo (los cobros no las
+  /// explican): esas no las toca nadie.
+  ///
+  /// [tambienContando] son cobros ya anulados que se cuentan como si valieran: sirve para reconstruir el
+  /// «antes» cuando la anulación ya está aplicada (el cobro que baja anulado del panel, #769).
+  Future<Set<String>> cubiertasPorLosCobros(
+    String ventaId, {
+    Set<String> tambienContando = const {},
+  }) async {
+    final estado = await _estado(ventaId, tambienContando: tambienContando);
+    return {
+      for (final c in estado.cuotas)
+        if (c.estaCubierta && c.cubiertaEl != null) c.agendaId,
+    };
+  }
+
+  /// Un cobro de [ventaId] dejó de contar (se anuló, HU-COB-006): las cuotas de [cubiertasAntes] que los
+  /// cobros que quedan ya no cubren vuelven a `PROGRAMADA`, con su fecha y su monto, y suben como
+  /// cualquier cambio de cita (decisión «Anular cuota», Cristian 24/11, #769). Así la agenda y el saldo
+  /// dicen lo mismo. Solo reabre las que **este** cambio dejó sin cubrir: una cita cerrada de otro modo
+  /// no se toca. Devuelve cuántas reabrió. Se llama dentro de la transacción de anular, **después** de
+  /// marcar el cobro.
+  Future<int> reabrirLasQueQuedaronSinCubrir(
+    String ventaId, {
+    required Set<String> cubiertasAntes,
+    required DateTime ahora,
+  }) async {
+    if (cubiertasAntes.isEmpty) return 0;
+    final estado = await _estado(ventaId);
+    final aReabrir = [
+      for (final c in estado.cuotas)
+        if (c.estaCubierta && c.cubiertaEl == null && cubiertasAntes.contains(c.agendaId))
+          c.agendaId,
+    ];
+    for (final id in aReabrir) {
+      await _escribir(
+        id,
+        AgendasCompanion(
+          estado: Value(EstadoAgenda.programada.codigo),
+          updatedAt: Value(instanteMs(ahora)),
+        ),
+      );
+    }
+    return aReabrir.length;
+  }
+
   /// Si la cita [agendaId] es la última cuota abierta del plan de su venta (la abierta de mayor
   /// número): esa siempre es lo que falta y no se cancela, se reprograma (decisión del 03/11, #608).
   /// `false` si no es una cuota, si ya está cubierta o si hay otra abierta después. Se llama dentro de
@@ -301,7 +349,10 @@ final class CuotasLocalDataSourceDrift {
     );
   }
 
-  Future<EstadoDeLasCuotas> _estado(String ventaId) async {
+  Future<EstadoDeLasCuotas> _estado(
+    String ventaId, {
+    Set<String> tambienContando = const {},
+  }) async {
     final citas =
         await (_db.select(_db.agendas)..where(
               (a) =>
@@ -316,8 +367,12 @@ final class CuotasLocalDataSourceDrift {
         .customSelect(
           'SELECT c.monto AS monto, c.created_at AS creado, c.fecha AS fecha, c.medio AS medio '
           'FROM cobranza c '
-          'WHERE c.venta_id = ? AND ${CobroValido.sql}',
-          variables: [Variable<String>(ventaId)],
+          'WHERE c.venta_id = ? AND (${CobroValido.sql} OR (c.deleted_at IS NULL AND c.id IN '
+          '(${List.filled(tambienContando.length, '?').join(',')})))',
+          variables: [
+            Variable<String>(ventaId),
+            for (final id in tambienContando) Variable<String>(id),
+          ],
         )
         .get();
     return RepartoDeCuotas.estadoDe(

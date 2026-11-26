@@ -86,9 +86,8 @@ void main() {
     );
 
     test(
-      'dados material, categoría desconocida o sin categoría, sin precio de compra o dado de baja, entonces no se ofrecen',
+      'dados categoría desconocida o sin categoría, sin precio de compra o dado de baja, entonces no se ofrecen',
       () async {
-        await producto('m', 'Material', categoria: 'MATERIAL');
         await producto('n', 'Sin categoría');
         await producto('x', 'Rara', categoria: 'NUEVA');
         await producto('p', 'Sin precio', categoria: 'REVISTAS', precio: null);
@@ -97,6 +96,18 @@ void main() {
         await producto('ok', 'Bueno', categoria: 'REVISTAS');
         final lista = await armado.observarProductos('col-1').first;
         expect(lista.map((p) => p.id), ['ok']);
+      },
+    );
+
+    test(
+      'el material de trabajo se ofrece como «Materiales», con su costo y su stock (#769)',
+      () async {
+        await producto('m', 'Cuaderno de ruta', categoria: 'MATERIAL', precio: 25000);
+        await stock('m', 3);
+        final lista = await armado.observarProductos('col-1').first;
+        expect(lista.map((p) => (p.id, p.categoria)), [('m', CategoriaDelPedido.materiales)]);
+        expect(lista.single.precioDeCompraCentavos, 25000);
+        expect(lista.single.stock, 3);
       },
     );
 

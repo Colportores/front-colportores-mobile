@@ -166,7 +166,8 @@ final class CobranzaLocalDataSourceDrift {
 
   /// Ver [AnulacionDeCobroRepository.anular]. Lanza una [CobroRechazadoException] si no se puede.
   ///
-  /// Una sola transacción (contrato-sync-engine §3): marca el cobro, lo encola con la fila entera, deja el
+  /// Una sola transacción (contrato-sync-engine §3): marca el cobro, lo encola con la fila entera, reabre
+  /// las cuotas del plan que dejan de estar cubiertas (vuelven a `PROGRAMADA` y suben como cita), deja el
   /// evento en el `audit_log` local y recalcula el color de la casa. El saldo no se guarda: sale de
   /// [CobroValido], que ya no cuenta el cobro. Si algo falla, el cobro queda como estaba.
   Future<AnulacionHecha> anular({
@@ -193,6 +194,8 @@ final class CobranzaLocalDataSourceDrift {
       throw const AnulacionFueraDePlazoException();
     }
 
+    // Las cuotas que los cobros cubren hoy, antes de que este deje de contar.
+    final cubiertasAntes = await _cuotas.cubiertasPorLosCobros(venta.id);
     await (_db.update(_db.cobranzas)..where((c) => c.id.equals(cobranzaId))).write(
       CobranzasCompanion(
         anuladoAt: Value(instante),
@@ -218,6 +221,13 @@ final class CobranzaLocalDataSourceDrift {
             creadoEn: instante,
           ),
         );
+    // Las cuotas que ese cobro cubría y ya no están cubiertas vuelven a «Programada» con su fecha y suben
+    // con la anulación: la agenda y el saldo dicen lo mismo (decisión «Anular cuota», #769).
+    await _cuotas.reabrirLasQueQuedaronSinCubrir(
+      venta.id,
+      cubiertasAntes: cubiertasAntes,
+      ahora: instante,
+    );
     await _recalcular(venta.espacioPersonaId, ahora: instante, colportorId: colportorId);
 
     return AnulacionHecha(detalle: await _detalleDe(anulado, venta));
