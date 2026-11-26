@@ -60,8 +60,8 @@ void main() {
     });
 
     test('si no se puede leer queda en error (y no se guarda nada)', () async {
-      final t = _armar()..servidor.fallaAlLeer = const AvisosSinConexionException();
-      await expectLater(_listo(t.c), throwsA(isA<AvisosSinConexionException>()));
+      final t = _armar()..servidor.fallaAlLeer = const AvisosServidorException();
+      await expectLater(_listo(t.c), throwsA(isA<AvisosServidorException>()));
       expect(t.c.read(avisosDelServidorProvider).hasError, isTrue);
       expect(
         await t.c.read(avisosDelServidorProvider.notifier).cambiarPedidos(activado: false),
@@ -188,19 +188,19 @@ void main() {
   });
 
   group('cuando no se puede guardar', () {
-    test('vuelve a como estaba, dice qué se quiso y por qué (sin conexión)', () async {
+    test('vuelve a como estaba y dice qué se quiso', () async {
       final t = _armar();
       await _listo(t.c);
-      t.servidor.fallaAlGuardar = const AvisosSinConexionException();
+      t.servidor.fallaAlGuardar = const AvisosServidorException();
       final n = t.c.read(avisosDelServidorProvider.notifier);
       expect(await n.cambiarCuotas(activado: false), isFalse);
       final estado = t.c.read(avisosDelServidorProvider).value!;
       expect(estado.avisos.cuotas, isTrue);
       expect(estado.falla!.cuotas, isFalse);
-      expect(estado.fallo, FalloDeAvisos.sinConexion);
+      expect(estado.fallo, FalloDeAvisos.servidor);
     });
 
-    test('el servidor que contesta con error es otro fallo', () async {
+    test('con un código de la falla es el mismo fallo', () async {
       final t = _armar();
       await _listo(t.c);
       t.servidor.fallaAlGuardar = const AvisosServidorException(codigo: '23514');
@@ -211,7 +211,7 @@ void main() {
     test('«Reintentar» repite lo pedido (con todo lo que se juntó) y limpia la falla', () async {
       final t = _armar();
       await _listo(t.c);
-      t.servidor.fallaAlGuardar = const AvisosSinConexionException();
+      t.servidor.fallaAlGuardar = const AvisosServidorException();
       final demora = Completer<void>();
       t.servidor.guardadoDemorado = demora;
       final n = t.c.read(avisosDelServidorProvider.notifier);
@@ -244,7 +244,7 @@ void main() {
     test('un nuevo cambio después de la falla la limpia y se guarda', () async {
       final t = _armar();
       await _listo(t.c);
-      t.servidor.fallaAlGuardar = const AvisosSinConexionException();
+      t.servidor.fallaAlGuardar = const AvisosServidorException();
       final n = t.c.read(avisosDelServidorProvider.notifier);
       await n.cambiarTickets(activado: false);
       t.servidor.fallaAlGuardar = null;
@@ -388,7 +388,7 @@ void main() {
     test('sin conexión no se le dice nada a la colportora y queda para la próxima vez', () async {
       final t = _armar();
       await _listo(t.c);
-      t.servidor.fallaAlGuardar = const AvisosSinConexionException();
+      t.servidor.fallaAlGuardar = const AvisosServidorException();
       final n = t.c.read(avisosDelServidorProvider.notifier);
       expect(await n.sincronizarAgenda(activados: false), isFalse);
       final estado = t.c.read(avisosDelServidorProvider).value!;
@@ -404,7 +404,7 @@ void main() {
     test('si junto con la copia se pidió otro cambio y falla, sí se avisa', () async {
       final t = _armar();
       await _listo(t.c);
-      t.servidor.fallaAlGuardar = const AvisosSinConexionException();
+      t.servidor.fallaAlGuardar = const AvisosServidorException();
       final demora = Completer<void>();
       t.servidor.guardadoDemorado = demora;
       final n = t.c.read(avisosDelServidorProvider.notifier);

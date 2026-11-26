@@ -146,15 +146,8 @@ abstract final class TextosNotificaciones {
       'No pudimos guardar la hora del aviso de las visitas de mañana. Volvió a como estaba.',
   };
 
-  /// 24B·06 sin conexión: lo dice y guía (el cambio de los avisos del servidor necesita red).
-  static const errorAlGuardarSinConexion =
-      'Sin conexión: no pudimos guardar el cambio. Volvió a como estaba. Probá de nuevo cuando '
-      'tengas conexión.';
-
   /// No se pudieron leer los avisos del servidor.
   static const errorAlLeerAvisos = 'No pudimos leer tus avisos.';
-  static const errorAlLeerAvisosSinConexion =
-      'Sin conexión: no pudimos leer tus avisos. Probá de nuevo cuando tengas conexión.';
 }
 
 enum TonoAviso { info, advertencia, error }

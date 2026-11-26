@@ -32,7 +32,7 @@ void main() {
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
       expect(fila.read<int>('user_version'), db.schemaVersion);
-      expect(db.schemaVersion, 43);
+      expect(db.schemaVersion, 44);
       expect(AppDatabase.versionEsquema, db.schemaVersion);
     });
 
@@ -104,6 +104,9 @@ void main() {
           'index deposito_ticket_idx',
           'table ticket',
           'table ticket_foto_local',
+          'table preferencia_de_avisos',
+          'table campania_companiero',
+          'index campania_companiero_campania_idx',
           'table sync_meta',
         ]),
       );
@@ -112,7 +115,7 @@ void main() {
     test('dado una DB nueva, cuando abre, loguea DB_CREADA con la versión', () async {
       await db.customSelect('SELECT 1').get();
 
-      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":43}']);
+      expect(salida.lineas, ['[INFO][DB][DB_CREADA] esquema inicial creado — {"version":44}']);
     });
 
     test('dado una DB ya creada, cuando se vuelve a abrir, no loguea nada', () async {
@@ -152,7 +155,7 @@ void main() {
 
       final fila = await db.customSelect('PRAGMA user_version').getSingle();
 
-      expect(fila.read<int>('user_version'), 43);
+      expect(fila.read<int>('user_version'), 44);
       expect(
         await _esquema(db),
         containsAll([
@@ -197,10 +200,13 @@ void main() {
           'index deposito_ticket_idx',
           'table ticket',
           'table ticket_foto_local',
+          'table preferencia_de_avisos',
+          'table campania_companiero',
+          'index campania_companiero_campania_idx',
           'table sync_meta',
         ]),
       );
-      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":43}']);
+      expect(salida.lineas, ['[INFO][DB][MIGRATION] migración ejecutada — {"from":1,"to":44}']);
     });
   });
 }

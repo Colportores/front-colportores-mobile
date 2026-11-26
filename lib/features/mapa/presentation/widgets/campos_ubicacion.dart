@@ -15,6 +15,14 @@ abstract final class TextosCampos {
   static const ciudadObligatoria = 'CIUDAD · OBLIGATORIA';
   static const calle = 'CALLE · OPCIONAL';
   static const numero = 'NÚMERO';
+
+  /// El nombre opcional del lugar («Nombre ubic.» de Cristian, 24/11): hasta 80 caracteres.
+  static const nombre = 'NOMBRE DEL LUGAR · OPCIONAL';
+  static const nombreSugerencia = 'Ej.: Farmacia Italia';
+
+  /// Lo que dice debajo del campo: es el nombre de un lugar, no de una persona (Ley 18.331: no se escriben
+  /// datos de los clientes).
+  static const nombreAviso = 'Es el nombre del lugar. No pongas nombres ni datos de tus clientes.';
   static const delMapa = 'Del mapa';
   static const editado = 'Editado';
   static const cambiar = 'Cambiar';
@@ -396,6 +404,55 @@ class CampoDireccionUbicacion extends StatelessWidget {
             enabledBorder: borde(editado ? ColoresAlta.azul : ColoresAlta.grisBorde),
             focusedBorder: borde(Theme.of(context).colorScheme.primary),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// El campo «Nombre del lugar · opcional» de la ficha de una ubicación (alta y edición): hasta
+/// [Ubicacion.largoMaximoDelNombre] caracteres y, debajo, el aviso de que es el nombre del lugar y no de un
+/// cliente. No lleva insignia («Del mapa» ni «Editado»): lo escribe siempre la persona.
+class CampoNombreUbicacion extends StatelessWidget {
+  const CampoNombreUbicacion({
+    super.key,
+    required this.controlador,
+    required this.alCambiar,
+    required this.accion,
+    this.bloqueado = false,
+    this.claveCampo,
+  });
+
+  final TextEditingController controlador;
+  final ValueChanged<String> alCambiar;
+  final TextInputAction accion;
+
+  /// El campo no recibe teclas (por ejemplo, mientras se guarda): lo que se ve es lo que se guarda.
+  final bool bloqueado;
+
+  /// La clave del `TextField`.
+  final Key? claveCampo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        CampoDireccionUbicacion(
+          etiqueta: TextosCampos.nombre,
+          sugerencia: TextosCampos.nombreSugerencia,
+          campo: const CampoDireccion(),
+          controlador: controlador,
+          alCambiar: alCambiar,
+          limite: Ubicacion.largoMaximoDelNombre,
+          accion: accion,
+          bloqueado: bloqueado,
+          claveCampo: claveCampo,
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          TextosCampos.nombreAviso,
+          style: TextStyle(fontSize: 12, color: ColoresAlta.gris),
         ),
       ],
     );

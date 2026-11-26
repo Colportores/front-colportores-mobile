@@ -50,6 +50,7 @@ import 'generated/schema_v40.dart' as v40;
 import 'generated/schema_v41.dart' as v41;
 import 'generated/schema_v42.dart' as v42;
 import 'generated/schema_v43.dart' as v43;
+import 'generated/schema_v44.dart' as v44;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
@@ -2772,6 +2773,90 @@ void main() {
           );
           final marca = await nuevo.select(nuevo.ubicacionUnida).getSingle();
           expect((marca.ubicacionId, marca.unidaAId), ('ub-1', 'ub-2'));
+        },
+      );
+    },
+  );
+
+  test(
+    'dado lo guardado en la versión 43, cuando migra a la 44, `ubicacion` suma `nombre` vacío, se crean las '
+    'tablas de las preferencias de avisos y de los compañeros vacías y no se encola nada (#769)',
+    () async {
+      // #769 (backend-supabase 0206 a 0208): lo que ya estaba guardado queda como estaba y la cola y los
+      // watermarks no se tocan; las tablas nuevas las llena el pull.
+      const ubicacion = v43.UbicacionData(
+        id: 'ub-1',
+        tipo: 'NEGOCIO',
+        calle: 'Av. Italia',
+        numero: '2810',
+        lat: -34.9,
+        lon: -56.16,
+        ciudadId: 'ciu-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+      const job = v43.SyncQueueData(
+        id: 'q-1',
+        clientOpId: 'op-1',
+        entity: 'ubicacion',
+        op: 'update',
+        payload: '{"id":"ub-1"}',
+        rowPk: 'ub-1',
+        createdAt: 1,
+        state: 'PENDING',
+        code: '',
+        message: '',
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 43,
+        newVersion: 44,
+        createOld: v43.DatabaseAtV43.new,
+        createNew: v44.DatabaseAtV44.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch
+            ..insert(viejo.ubicacion, ubicacion)
+            ..insert(viejo.syncQueue, job);
+        },
+        validateItems: (nuevo) async {
+          final guardada = await nuevo.select(nuevo.ubicacion).getSingle();
+          expect(guardada.id, 'ub-1');
+          expect(guardada.calle, 'Av. Italia');
+          expect(guardada.syncVersion, 4);
+          expect(
+            guardada.nombre,
+            isNull,
+            reason: 'las ubicaciones que ya estaban no tienen nombre',
+          );
+          expect(await nuevo.select(nuevo.preferenciaDeAvisos).get(), isEmpty);
+          expect(await nuevo.select(nuevo.campaniaCompaniero).get(), isEmpty);
+          final jobs = await nuevo.select(nuevo.syncQueue).get();
+          expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+
+          // Las tablas nuevas aceptan lo que baja del servidor.
+          await nuevo.customStatement(
+            "UPDATE ubicacion SET nombre = 'Farmacia Italia' WHERE id = 'ub-1'",
+          );
+          expect((await nuevo.select(nuevo.ubicacion).getSingle()).nombre, 'Farmacia Italia');
+          await nuevo.customStatement(
+            'INSERT INTO preferencia_de_avisos (id, notif_preferences, created_at, updated_at) '
+            "VALUES ('u-1', '{\"tickets\":false}', 1, 1)",
+          );
+          expect(
+            (await nuevo.select(nuevo.preferenciaDeAvisos).getSingle()).notifPreferences,
+            '{"tickets":false}',
+          );
+          await nuevo.customStatement(
+            'INSERT INTO campania_companiero (id, campania_id, usuario_id, nombre, apellido, created_at, '
+            "updated_at) VALUES ('cc-1', 'camp-1', 'u-2', 'Ana', 'Pérez', 1, 1)",
+          );
+          final companiero = await nuevo.select(nuevo.campaniaCompaniero).getSingle();
+          expect(
+            (companiero.nombre, companiero.apellido, companiero.ciudadId),
+            ('Ana', 'Pérez', null),
+          );
         },
       );
     },

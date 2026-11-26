@@ -29,6 +29,7 @@ void main() {
         'tipo',
         'calle',
         'numero',
+        'nombre',
         'lat',
         'lon',
         'ciudad_id',
@@ -49,6 +50,31 @@ void main() {
       expect(json['created_at'], '2026-09-29T13:45:10.123Z');
       expect(json['zona_id'], isNull);
       expect(json['deleted_at'], isNull);
+    });
+
+    test('el nombre opcional del lugar (0206) sube y baja con la fila; sin nombre va en null', () {
+      expect(UbicacionModel.fromEntity(ubicacion).toJson()['nombre'], isNull);
+      final conNombre = UbicacionModel.fromEntity(
+        Ubicacion(
+          id: ubicacion.id,
+          tipo: ubicacion.tipo,
+          calle: ubicacion.calle,
+          numero: ubicacion.numero,
+          nombre: 'Farmacia Italia',
+          lat: ubicacion.lat,
+          lon: ubicacion.lon,
+          ciudadId: ubicacion.ciudadId,
+          auditoria: auditoria,
+        ),
+      );
+
+      final json = conNombre.toJson();
+
+      expect(json['nombre'], 'Farmacia Italia');
+      expect(UbicacionModel.fromJson(json).nombre, 'Farmacia Italia');
+      expect(UbicacionModel.fromJson(json).toEntity(), conNombre.toEntity());
+      // Una fila de antes del servidor (sin la clave) se lee sin nombre.
+      expect(UbicacionModel.fromJson({...json}..remove('nombre')).nombre, isNull);
     });
 
     test('dado el JSON de toJson, cuando se lee con fromJson, vuelve la misma ubicación', () {

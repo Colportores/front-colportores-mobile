@@ -56,6 +56,21 @@ abstract final class FormatoUbicaciones {
     return partes.join(' ');
   }
 
+  /// Cómo se llama una ubicación donde hoy va la dirección sola (la tarjeta de la alternativa, vista 22A):
+  /// su nombre («Farmacia Italia», «Nombre ubic.» de Cristian, 24/11) si lo tiene y, si no, la dirección.
+  static String titulo(Ubicacion u) {
+    final nombre = u.nombre?.trim();
+    return nombre == null || nombre.isEmpty ? direccion(u) : nombre;
+  }
+
+  /// Lo que va debajo del [titulo]: con nombre, «Av. Italia 2810 · Negocio» (la dirección y el tipo); sin
+  /// nombre, solo el tipo, porque la dirección ya es el título.
+  static String detalleDelTitulo(Ubicacion u) {
+    final nombre = u.nombre?.trim();
+    if (nombre == null || nombre.isEmpty) return tipo(u.tipo);
+    return '${direccion(u)} · ${tipo(u.tipo)}';
+  }
+
   /// La dirección que nombran los avisos de una unión: la de la ubicación que se conserva; si no tiene
   /// calle ni número, la de la otra (para quien las ve es el mismo lugar); si ninguna tiene, vacía.
   static String direccionDeLaUnion(Ubicacion conservada, Ubicacion otra) {

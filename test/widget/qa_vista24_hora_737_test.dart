@@ -213,19 +213,6 @@ void main() {
       expect(find.text(textoErrorVarios736), findsOneWidget);
     });
 
-    testWidgets('sin conexión una hora no usa el texto de la hora: dice qué hacer con la red', (
-      tester,
-    ) async {
-      final telefono = await llevarAlEstado736(tester, Estado736.preferencias);
-      telefono.avisos.fallaAlGuardar = const AvisosSinConexionException();
-      await tocar736(tester, horaCuota736);
-      await tester.pumpAndSettle();
-      await elegirHora736(tester, 7, 30);
-      expect(find.text(textoSinConexion736), findsOneWidget);
-      expect(find.textContaining('hora del aviso'), findsNothing);
-      expect(reintentarGuardar736, findsOneWidget);
-    });
-
     testWidgets('«Reintentar» con el servidor de vuelta: guarda la hora y el aviso se va', (
       tester,
     ) async {

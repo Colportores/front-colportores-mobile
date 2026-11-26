@@ -1,99 +1,31 @@
 import 'dart:async';
-import 'dart:io';
 
-import 'package:http/http.dart' as http;
-import 'package:supabase_flutter/supabase_flutter.dart';
-
-import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/avisos_del_servidor.dart';
 import '../../domain/repositories/avisos_del_servidor_repository.dart';
+import '../datasources/preferencias_de_avisos_local_data_source_drift.dart';
 
-/// [AvisosDelServidorRepository] real, con la sesión de `supabase_flutter` (ADR-013, sin BFF;
-/// backend-supabase 0166).
+/// [AvisosDelServidorRepository] sobre la DB local (backend-supabase 0207, #313, «Avisos s/red» de Cristian,
+/// 24/11): lee y guarda `preferencia_de_avisos`, la fila de la persona que viaja por el sync en las dos
+/// direcciones. **No necesita conexión**: guardar es escribir en el teléfono (el cambio sube con la
+/// sincronización) y leer es leer lo último que bajó, así que la pantalla nunca dice «necesitás conexión».
 ///
-/// - Lee `usuario.notif_preferences` de la fila propia (un `select`; la política de lectura deja ver
-///   solo la de quien llama).
-/// - Guarda con `rpc('guardar_mis_preferencias_de_avisos', {p_preferencias: {...}})`, el objeto entero.
-///   El servidor rechaza una forma inválida con `23514`.
-///
-/// Al log va solo el SQLSTATE: nunca las preferencias. Si el servidor no contesta en [tope] se da por
-/// perdido (sin conexión): una conexión a medias no puede dejar la pantalla cargando para siempre ni un
-/// guardado «en curso» sin fin.
-final class AvisosDelServidorSupabase implements AvisosDelServidorRepository {
-  /// [leerFila] y [guardarRpc] son la costura de los tests: lo que contesta el `select` de la fila
-  /// propia y la llamada al RPC.
-  AvisosDelServidorSupabase({
-    required this.leerFila,
-    required this.guardarRpc,
-    this.tope = topeDeLaLlamada,
-    AppLogger? logger,
-  }) : _log = logger ?? AppLogger.instance;
+/// Si la base local no puede leer o guardar, lanza lo que lanzó (la pantalla lo traduce a su aviso de error
+/// con «Reintentar»).
+final class AvisosDelServidorLocal implements AvisosDelServidorRepository {
+  AvisosDelServidorLocal(this._local);
 
-  /// Sobre el cliente de Supabase de la app.
-  factory AvisosDelServidorSupabase.conCliente(SupabaseClient cliente, {AppLogger? logger}) =>
-      AvisosDelServidorSupabase(
-        leerFila: () async {
-          final usuarioId = cliente.auth.currentUser?.id;
-          if (usuarioId == null) {
-            throw const PostgrestException(message: 'sin sesión', code: '42501');
-          }
-          final fila = await cliente
-              .from('usuario')
-              .select('notif_preferences')
-              .eq('id', usuarioId)
-              .maybeSingle();
-          return fila?['notif_preferences'];
-        },
-        guardarRpc: (preferencias) async {
-          await cliente.rpc<Object?>(
-            'guardar_mis_preferencias_de_avisos',
-            params: {'p_preferencias': preferencias},
-          );
-        },
-        logger: logger,
-      );
-
-  /// Cuánto se espera una respuesta del servidor antes de contarla como sin conexión.
-  static const topeDeLaLlamada = Duration(seconds: 20);
-
-  final Future<Object?> Function() leerFila;
-  final Future<void> Function(Map<String, Object?> preferencias) guardarRpc;
-  final AppLogger _log;
-  final Duration tope;
+  final PreferenciasDeAvisosLocalDataSourceDrift _local;
 
   @override
-  Future<AvisosDelServidor> leer() async {
-    final Object? json = await _llamar('AVISOS_LEER', leerFila);
-    return AvisosDelServidor.desdeJson(json);
-  }
+  Future<AvisosDelServidor> leer() async => AvisosDelServidor.desdeJson(await _local.leer());
 
   @override
-  Future<void> guardar(AvisosDelServidor avisos) =>
-      _llamar('AVISOS_GUARDAR', () => guardarRpc(avisos.aJson()));
-
-  Future<T> _llamar<T>(String operacion, Future<T> Function() llamada) async {
-    try {
-      return await llamada().timeout(tope);
-    } on PostgrestException catch (e) {
-      _log.warn(LogModulo.net, operacion, 'el servidor respondió con error', {'code': e.code});
-      throw AvisosServidorException(codigo: e.code);
-    } on AuthException catch (e) {
-      if (e is AuthRetryableFetchException) throw const AvisosSinConexionException();
-      _log.warn(LogModulo.net, operacion, 'la sesión no sirvió para la llamada', {'code': e.code});
-      throw const AvisosServidorException(codigo: '42501');
-    } on Object catch (e) {
-      if (_esFallaDeRed(e)) throw const AvisosSinConexionException();
-      rethrow;
-    }
-  }
-
-  static bool _esFallaDeRed(Object e) =>
-      e is IOException || e is http.ClientException || e is TimeoutException;
+  Future<void> guardar(AvisosDelServidor avisos) => _local.guardar(avisos.aJson());
 }
 
-/// [AvisosDelServidorRepository] en memoria: el default de los tests y de la app sin Supabase
-/// (demo). **No es código de producción**: sin servidor no hay a dónde guardar, solo recuerda lo que
-/// se le dijo mientras la app está abierta.
+/// [AvisosDelServidorRepository] en memoria: el default de los tests y de la app sin base local abierta
+/// (demo). **No es código de producción**: sin base no hay a dónde guardar, solo recuerda lo que se le dijo
+/// mientras la app está abierta.
 class AvisosDelServidorEnMemoria implements AvisosDelServidorRepository {
   AvisosDelServidorEnMemoria({this.avisos = const AvisosDelServidor()});
 

@@ -466,21 +466,21 @@ class _FilaDeUbicacion extends StatelessWidget {
     final distancia = candidata.distanciaMetros == null
         ? null
         : FormatoUbicaciones.distancia(candidata.distanciaMetros!);
-    final direccion = FormatoUbicaciones.direccion(u);
-    final tipo = FormatoUbicaciones.tipo(u.tipo);
+    final titulo = FormatoUbicaciones.titulo(u);
+    final detalle = FormatoUbicaciones.detalleDelTitulo(u);
     return KeyedSubtree(
       key: ClavesAlternativa.fila(u.id),
       child: TarjetaAlternativa(
         glifo: glifoDelTipo(u.tipo),
         rotulo: esActual ? TextosUbicacionAlternativa.actual : null,
-        titulo: direccion,
-        detalle: tipo,
+        titulo: titulo,
+        detalle: detalle,
         detalle2: distancia == null || distancia.isEmpty
             ? null
             : TextosUbicacionAlternativa.aDistancia(distancia),
         etiquetaSemantica: TextosUbicacionAlternativa.semanticaElegirFila(
-          direccion,
-          tipo,
+          titulo,
+          detalle,
           distancia == null || distancia.isEmpty ? null : distancia,
           esActual: esActual,
         ),

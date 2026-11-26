@@ -26,6 +26,7 @@ final class ModificarUbicacionParams extends Equatable {
     this.ciudadId,
     this.calle,
     this.numero,
+    this.nombre,
     this.confirmadas = const {},
     this.justificacionDuplicado,
   });
@@ -51,6 +52,10 @@ final class ModificarUbicacionParams extends Equatable {
   final String? calle;
   final String? numero;
 
+  /// El nombre opcional del lugar («Nombre ubic.»): el que queda guardado, así que quien no lo toca lo pasa
+  /// tal cual lo cargó. En blanco lo borra; hasta [Ubicacion.largoMaximoDelNombre] caracteres.
+  final String? nombre;
+
   /// Las confirmaciones que el colportor ya dio, en respuesta a un
   /// [ModificacionRequiereConfirmacion].
   final Set<ConfirmacionModificacion> confirmadas;
@@ -73,6 +78,7 @@ final class ModificarUbicacionParams extends Equatable {
     ciudadId,
     calle,
     numero,
+    nombre,
     confirmadas,
     justificacionDuplicado,
   ];
@@ -80,7 +86,7 @@ final class ModificarUbicacionParams extends Equatable {
 
 /// HU-UBI-004 — Modificar ubicación.
 ///
-/// Se pueden editar `tipo`, `calle`, `numero`, `coords` y `ciudad_id`; nada más (la auditoría la
+/// Se pueden editar `tipo`, `calle`, `numero`, `nombre`, `coords` y `ciudad_id`; nada más (la auditoría la
 /// lleva el caso de uso). En orden:
 ///
 /// 1. Sin `id` o sin colportor, con coordenadas en `(0, 0)` o fuera de rango, o una justificación
@@ -168,6 +174,15 @@ final class ModificarUbicacionUseCase
     }
     final ciudadId = _texto(params.ciudadId);
     if (ciudadId == null) return const Left(FailureCiudadRequerida());
+    if ((_texto(params.nombre)?.length ?? 0) > Ubicacion.largoMaximoDelNombre) {
+      return const Left(
+        FailureValidacion(
+          campos: {
+            'nombre': 'El nombre admite hasta ${Ubicacion.largoMaximoDelNombre} caracteres.',
+          },
+        ),
+      );
+    }
     final seguirIgual = params.justificacionDuplicado != null;
     if (seguirIgual && _texto(params.justificacionDuplicado) == null) {
       return const Left(
@@ -195,14 +210,17 @@ final class ModificarUbicacionUseCase
   ) async {
     final calle = _texto(params.calle);
     final numero = _texto(params.numero);
+    final nombre = _texto(params.nombre);
     final coordenadas = params.coordenadas;
 
     final cambioPunto = coordenadas != actual.coordenadas;
     final cambioCiudad = ciudadId != actual.ciudadId;
     final cambioDireccion = calle != actual.calle || numero != actual.numero;
     final cambioTipo = params.tipo != actual.tipo;
+    // El nombre no cuenta para los duplicados (no es la dirección ni el punto): solo hace falta guardarlo.
+    final cambioNombre = nombre != actual.nombre;
     final filaCambio = actual.auditoria.updatedAt != instanteMs(params.baseUpdatedAt);
-    if (!cambioPunto && !cambioCiudad && !cambioDireccion && !cambioTipo) {
+    if (!cambioPunto && !cambioCiudad && !cambioDireccion && !cambioTipo && !cambioNombre) {
       return Right(
         filaCambio
             ? UbicacionModificada(ubicacion: actual)
@@ -268,6 +286,7 @@ final class ModificarUbicacionUseCase
       tipo: params.tipo,
       calle: calle,
       numero: numero,
+      nombre: nombre,
       lat: coordenadas.lat,
       lon: coordenadas.lon,
       ciudadId: ciudadId,

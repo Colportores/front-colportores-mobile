@@ -8,7 +8,6 @@ import '../../../../core/notificaciones/permiso_alarmas_exactas.dart';
 import '../../../../core/theme/colores_colportaje.dart';
 import '../../../tiles/domain/services/puertos_descarga.dart';
 import '../../domain/entities/estado_notificaciones.dart';
-import '../../domain/repositories/avisos_del_servidor_repository.dart';
 import '../providers/alarmas_exactas_providers.dart';
 import '../providers/avisos_del_servidor_providers.dart';
 import '../providers/notificaciones_providers.dart';
@@ -310,12 +309,10 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
     _ => const [],
   };
 
-  /// El texto del error al guardar un aviso del servidor (24B·06): sin conexión lo dice y guía; con
-  /// conexión, lo que volvió a como estaba (un interruptor, una hora, o varios cambios).
+  /// El texto del error al guardar un aviso del servidor (24B·06): lo que volvió a como estaba (un
+  /// interruptor, una hora, o varios cambios). Sin señal no hay error: el cambio se guarda en el teléfono y
+  /// sube después («Avisos s/red»).
   static String _textoErrorAvisos(EstadoAvisosDelServidor estado) {
-    if (estado.fallo == FalloDeAvisos.sinConexion) {
-      return TextosNotificaciones.errorAlGuardarSinConexion;
-    }
     final pedido = estado.falla;
     if (pedido == null) return TextosNotificaciones.errorAlGuardar;
     final actual = estado.avisos;
@@ -393,13 +390,11 @@ class _NotificacionesPageState extends ConsumerState<NotificacionesPage> {
           ),
         ),
       ],
-      AsyncError(:final error) => [
+      AsyncError() => [
         titulo,
         AvisoNotificaciones(
           tono: TonoAviso.error,
-          texto: error is AvisosSinConexionException
-              ? TextosNotificaciones.errorAlLeerAvisosSinConexion
-              : TextosNotificaciones.errorAlLeerAvisos,
+          texto: TextosNotificaciones.errorAlLeerAvisos,
           textoKey: const Key('avisos_error_leer'),
           textoAccion: TextosNotificaciones.reintentar,
           accionKey: const Key('avisos_reintentar_leer'),

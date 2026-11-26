@@ -220,6 +220,7 @@ final class UbicacionAlternativaLocalDataSourceDrift
     tipo: UbicacionModel.tipoDesdeCodigo(fila.tipo),
     calle: fila.calle,
     numero: fila.numero,
+    nombre: fila.nombre,
     lat: fila.lat,
     lon: fila.lon,
     ciudadId: fila.ciudadId,

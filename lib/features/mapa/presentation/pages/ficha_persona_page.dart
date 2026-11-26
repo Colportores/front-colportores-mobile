@@ -391,7 +391,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
       _avisar(
         sinConexion
             ? TextosUbicacionAlternativa.guardadoEnElTelefono
-            : TextosUbicacionAlternativa.vinculada(nombre, FormatoUbicaciones.direccion(ubicacion)),
+            : TextosUbicacionAlternativa.vinculada(nombre, FormatoUbicaciones.titulo(ubicacion)),
       );
       return;
     }
@@ -440,7 +440,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
           nombre: nombre,
           titulo: ubicacion == null
               ? TextosUbicacionAlternativa.quitarTituloSinNombre
-              : TextosUbicacionAlternativa.quitarTitulo(FormatoUbicaciones.direccion(ubicacion)),
+              : TextosUbicacionAlternativa.quitarTitulo(FormatoUbicaciones.titulo(ubicacion)),
           cuerpo: TextosUbicacionAlternativa.quitarCuerpo(
             nombre,
             lugar == null

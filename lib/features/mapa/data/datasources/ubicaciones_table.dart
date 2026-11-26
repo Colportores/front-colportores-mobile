@@ -36,6 +36,11 @@ class Ubicaciones extends Table {
 
   TextColumn get numero => text().nullable()();
 
+  /// Nombre opcional del lugar, por ejemplo «Farmacia Italia» (esquema 44; backend-supabase 0206, #313): de 1 a
+  /// 80 caracteres sin espacios en los extremos, o `null`. Nombra un lugar, no a una persona. Sube y baja con
+  /// el sync como el resto de la fila. Una ubicación que ya estaba queda sin nombre.
+  TextColumn get nombre => text().nullable()();
+
   RealColumn get lat => real()();
 
   RealColumn get lon => real()();

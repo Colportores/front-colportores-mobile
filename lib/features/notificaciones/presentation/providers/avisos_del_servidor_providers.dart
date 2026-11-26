@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
-import '../../../../core/config/config_supabase.dart';
+import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../../../core/sync/sync_providers.dart';
+import '../../../auth/presentation/providers/sesion_notifier.dart';
+import '../../data/datasources/preferencias_de_avisos_local_data_source_drift.dart';
 import '../../data/repositories/avisos_del_servidor_repository_impl.dart';
 import '../../domain/entities/avisos_del_servidor.dart';
 import '../../domain/repositories/avisos_del_servidor_repository.dart';
@@ -13,24 +15,29 @@ import 'preferencias_recordatorios_providers.dart';
 
 // Cableado de los avisos del servidor (HU-NOT-004, vista 24 grupo B, sección AVISOS; #516).
 
-/// Dónde viven los avisos que manda el servidor: `usuario.notif_preferences`, con la sesión de la
-/// app. Sin Supabase (tests, demo) no hay servidor: un repositorio en memoria que recuerda lo que se
-/// le dice mientras la app está abierta.
-final avisosDelServidorRepositoryProvider = Provider<AvisosDelServidorRepository>(
-  (ref) => ConfigSupabase.configurada
-      ? AvisosDelServidorSupabase.conCliente(Supabase.instance.client)
-      : AvisosDelServidorEnMemoria(),
-);
+/// Dónde viven los avisos que manda el servidor: `preferencia_de_avisos`, la fila de la persona en la base del
+/// teléfono, que baja y sube con la sincronización (backend-supabase 0207, «Avisos s/red»): cambiarlos no
+/// necesita conexión. Sin base abierta (tests, demo) un repositorio en memoria que recuerda lo que se le dice
+/// mientras la app está abierta.
+final avisosDelServidorRepositoryProvider = Provider<AvisosDelServidorRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return AvisosDelServidorEnMemoria();
+  return AvisosDelServidorLocal(
+    PreferenciasDeAvisosLocalDataSourceDrift(
+      db,
+      encolador: ref.watch(encoladorSyncProvider),
+      // Al momento de leer o guardar, no al armar el repositorio: la sesión puede cambiar sin rearmarlo.
+      usuarioId: () => ref.read(sesionProvider).value?.usuarioId,
+    ),
+  );
+});
 
 /// Sin reintento automático: si no se pueden leer los avisos, la pantalla ofrece «Reintentar».
 Duration? _sinReintentos(int intento, Object error) => null;
 
 /// Por qué no se pudo guardar el último cambio.
 enum FalloDeAvisos {
-  /// No había conexión.
-  sinConexion,
-
-  /// El servidor no pudo guardarlo.
+  /// La base del teléfono no pudo guardarlo (no hay falla de conexión: se guarda en el teléfono).
   servidor,
 }
 
@@ -181,8 +188,6 @@ class AvisosDelServidorNotifier extends AsyncNotifier<EstadoAvisosDelServidor> {
         FalloDeAvisos? fallo;
         try {
           await repositorio.guardar(objetivo);
-        } on AvisosSinConexionException {
-          fallo = FalloDeAvisos.sinConexion;
         } on Object catch (e) {
           fallo = FalloDeAvisos.servidor;
           AppLogger.instance.warn(

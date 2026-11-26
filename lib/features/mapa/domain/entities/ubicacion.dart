@@ -38,6 +38,7 @@ class Ubicacion extends Equatable {
     required this.tipo,
     this.calle,
     this.numero,
+    this.nombre,
     required this.lat,
     required this.lon,
     required this.ciudadId,
@@ -57,6 +58,14 @@ class Ubicacion extends Equatable {
   /// Opcional (R-UB02). Texto: en la práctica aparece "1234 bis" o "S/N".
   final String? numero;
 
+  /// Nombre opcional del lugar, por ejemplo «Farmacia Italia» (backend-supabase 0206, «Nombre ubic.» de Cristian,
+  /// 24/11): de 1 a [largoMaximoDelNombre] caracteres sin espacios en los extremos, o `null`. Nombra un lugar, no
+  /// a una persona: no es para datos de clientes. Sube y baja con el sync como el resto de la fila.
+  final String? nombre;
+
+  /// Cuántos caracteres admite el [nombre] (el `CHECK` de la columna en el servidor).
+  static const largoMaximoDelNombre = 80;
+
   final double lat;
   final double lon;
 
@@ -74,5 +83,16 @@ class Ubicacion extends Equatable {
   bool get estaBorrada => auditoria.estaBorrada;
 
   @override
-  List<Object?> get props => [id, tipo, calle, numero, lat, lon, ciudadId, zonaId, auditoria];
+  List<Object?> get props => [
+    id,
+    tipo,
+    calle,
+    numero,
+    nombre,
+    lat,
+    lon,
+    ciudadId,
+    zonaId,
+    auditoria,
+  ];
 }

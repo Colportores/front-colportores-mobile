@@ -177,28 +177,34 @@ void main() {
       expect(tester.getRect(_registrar), antes);
     });
 
-    testWidgets('a texto 2x la parte de arriba se desplaza y deja llegar a calle y número', (
-      tester,
-    ) async {
-      await _montar(tester, _Artboard.gpsPreciso, escala: 2);
-      final maximo = tester
-          .state<ScrollableState>(
-            find.descendant(of: _desplazable, matching: find.byType(Scrollable)).first,
-          )
-          .position
-          .maxScrollExtent;
-      expect(maximo, greaterThan(0), reason: 'a 2x no entra todo: se desplaza');
+    testWidgets(
+      'a texto 2x la parte de arriba se desplaza y deja llegar a calle, número y nombre del lugar',
+      (tester) async {
+        await _montar(tester, _Artboard.gpsPreciso, escala: 2);
+        final maximo = tester
+            .state<ScrollableState>(
+              find.descendant(of: _desplazable, matching: find.byType(Scrollable)).first,
+            )
+            .position
+            .maxScrollExtent;
+        expect(maximo, greaterThan(0), reason: 'a 2x no entra todo: se desplaza');
 
-      await tester.drag(_desplazable, Offset(0, -maximo));
-      await tester.pump();
-
-      expect(_campoNumero.hitTestable(), findsOneWidget, reason: 'el número se alcanza');
-      expect(_campoCalle.hitTestable(), findsOneWidget);
-      expect(_registrar.hitTestable(), findsOneWidget);
-      final numero = tester.getRect(_campoNumero);
-      final boton = tester.getRect(_registrar);
-      expect(numero.overlaps(boton), isFalse, reason: 'el campo no queda bajo el botón fijo');
-    });
+        // Con el campo «Nombre del lugar» (#769) calle, número y nombre ya no entran juntos a 2x en 360×640:
+        // cada uno se alcanza desplazando y ninguno queda bajo el botón fijo.
+        final nombre = find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Ej.: Farmacia Italia',
+        );
+        for (final campo in [_campoCalle, _campoNumero, nombre]) {
+          await tester.ensureVisible(campo);
+          await tester.pump();
+          expect(campo.hitTestable(), findsOneWidget, reason: 'el campo se alcanza');
+          expect(_registrar.hitTestable(), findsOneWidget);
+          final rect = tester.getRect(campo);
+          final boton = tester.getRect(_registrar);
+          expect(rect.overlaps(boton), isFalse, reason: 'el campo no queda bajo el botón fijo');
+        }
+      },
+    );
 
     testWidgets('con el teclado abierto a texto 2x se puede escribir el número y registrar', (
       tester,

@@ -408,8 +408,8 @@ class SeccionCobranzaAlternativa extends StatelessWidget {
           glifo: '\$',
           destacada: true,
           rotulo: TextosUbicacionAlternativa.seCobraAca,
-          titulo: FormatoUbicaciones.direccion(ubicacion),
-          detalle: FormatoUbicaciones.tipo(ubicacion.tipo),
+          titulo: FormatoUbicaciones.titulo(ubicacion),
+          detalle: FormatoUbicaciones.detalleDelTitulo(ubicacion),
           // Cambiarla es el gesto natural: tocar la tarjeta abre el selector y lo elegido se fija encima.
           alTocar: soloLectura ? null : alElegir,
           derecha: soloLectura
@@ -420,7 +420,7 @@ class SeccionCobranzaAlternativa extends StatelessWidget {
                   color: ColoresAlta.rojo,
                   alTocar: alQuitar,
                   etiquetaSemantica: TextosUbicacionAlternativa.semanticaQuitar(
-                    FormatoUbicaciones.direccion(ubicacion),
+                    FormatoUbicaciones.titulo(ubicacion),
                   ),
                 ),
         ),
@@ -460,8 +460,8 @@ class SeccionCobranzaAlternativa extends StatelessWidget {
           rotulo: TextosUbicacionAlternativa.dadaDeBajaRotulo,
           titulo: ubicacion == null
               ? TextosUbicacionAlternativa.faltanteTitulo
-              : FormatoUbicaciones.direccion(ubicacion),
-          detalle: ubicacion == null ? null : FormatoUbicaciones.tipo(ubicacion.tipo),
+              : FormatoUbicaciones.titulo(ubicacion),
+          detalle: ubicacion == null ? null : FormatoUbicaciones.detalleDelTitulo(ubicacion),
           derecha: soloLectura
               ? null
               : AccionDeTarjeta(
@@ -470,7 +470,7 @@ class SeccionCobranzaAlternativa extends StatelessWidget {
                   color: ColoresAlta.rojo,
                   alTocar: alQuitar,
                   etiquetaSemantica: TextosUbicacionAlternativa.semanticaQuitar(
-                    ubicacion == null ? '' : FormatoUbicaciones.direccion(ubicacion),
+                    ubicacion == null ? '' : FormatoUbicaciones.titulo(ubicacion),
                   ).trim(),
                 ),
         ),
