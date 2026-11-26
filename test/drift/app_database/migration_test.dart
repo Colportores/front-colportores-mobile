@@ -47,6 +47,13 @@ import 'generated/schema_v38.dart' as v38;
 import 'generated/schema_v39.dart' as v39;
 import 'generated/schema_v4.dart' as v4;
 import 'generated/schema_v40.dart' as v40;
+import 'generated/schema_v41.dart' as v41;
+import 'generated/schema_v42.dart' as v42;
+import 'generated/schema_v43.dart' as v43;
+import 'generated/schema_v44.dart' as v44;
+import 'generated/schema_v45.dart' as v45;
+import 'generated/schema_v46.dart' as v46;
+import 'generated/schema_v47.dart' as v47;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
@@ -2506,13 +2513,524 @@ void main() {
       );
     },
   );
+
   test(
-    'dado una campaña, una inscripción de baja y un pago de alquiler guardados en la versión 39, '
-    'cuando migra a la 40, no se pierde nada, nace la réplica de las decisiones del alquiler vacía, '
+    'dado un catálogo guardado en la versión 39, cuando migra a la 40, ningún producto se pierde ni '
+    'cambia, la tabla ya no tiene `tipo` y acepta una fila sin él',
+    () async {
+      // #735 (backend-supabase 0198): `producto.tipo` (NOT NULL) se saca; SQLite recrea la tabla.
+      const libro = v39.ProductoData(
+        id: 'pro-1',
+        nombre: 'El Conflicto de los Siglos',
+        descripcion: 'Edición de bolsillo',
+        tipo: 'LIBRO',
+        esBonificable: 1,
+        esMisionero: 0,
+        precioBaseCompra: 18000,
+        casaEditora: 'ACES',
+        imagenUrl: 'https://cdn.ejemplo.uy/conflicto.jpg',
+        createdAt: 1758700000000,
+        updatedAt: 1758700001000,
+        createdBy: 'adm-1',
+        syncVersion: 3,
+        codigoEditor: 'CS-01',
+        categoria: 'BONIFICABLES',
+      );
+      const baja = v39.ProductoData(
+        id: 'pro-2',
+        nombre: 'Revista dada de baja',
+        tipo: 'REVISTA',
+        esBonificable: 0,
+        esMisionero: 0,
+        createdAt: 1,
+        updatedAt: 2,
+        deletedAt: 3,
+        syncVersion: 7,
+      );
+      const misionero = v39.ProductoData(
+        id: 'pro-3',
+        nombre: 'Misionero',
+        tipo: 'MISIONERO',
+        esBonificable: 0,
+        esMisionero: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 1,
+        categoria: 'MISIONEROS',
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 39,
+        newVersion: 40,
+        createOld: v39.DatabaseAtV39.new,
+        createNew: v40.DatabaseAtV40.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch.insertAll(viejo.producto, [libro, baja, misionero]);
+        },
+        validateItems: (nuevo) async {
+          final productos = {for (final p in await nuevo.select(nuevo.producto).get()) p.id: p};
+          expect(productos.keys, unorderedEquals(['pro-1', 'pro-2', 'pro-3']));
+
+          final l = productos['pro-1']!;
+          expect(l.nombre, 'El Conflicto de los Siglos');
+          expect(l.descripcion, 'Edición de bolsillo');
+          expect(l.esBonificable, 1);
+          expect(l.precioBaseCompra, 18000);
+          expect(l.casaEditora, 'ACES');
+          expect(l.imagenUrl, 'https://cdn.ejemplo.uy/conflicto.jpg');
+          expect(l.createdAt, 1758700000000);
+          expect(l.updatedAt, 1758700001000);
+          expect(l.createdBy, 'adm-1');
+          expect(l.syncVersion, 3);
+          expect(l.codigoEditor, 'CS-01');
+          expect(l.categoria, 'BONIFICABLES');
+
+          // El producto dado de baja y el sin categoría siguen como estaban.
+          expect(productos['pro-2']!.deletedAt, 3);
+          expect(productos['pro-2']!.syncVersion, 7);
+          expect(productos['pro-2']!.categoria, isNull);
+          expect(productos['pro-3']!.esMisionero, 1);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La columna no existe más, y una fila como la que baja el pull ahora entra sin ella.
+          final columnas = await nuevo.customSelect('PRAGMA table_info(producto)').get();
+          expect(columnas.map((c) => c.read<String>('name')), isNot(contains('tipo')));
+          await nuevo.customStatement(
+            'INSERT INTO producto (id, nombre, es_bonificable, es_misionero, created_at, updated_at, '
+            "sync_version, categoria) VALUES ('pro-4', 'Nuevo', 0, 0, 1, 1, 1, 'MATERIAL')",
+          );
+          expect(await nuevo.select(nuevo.producto).get(), hasLength(4));
+        },
+      );
+    },
+  );
+
+  test('dado lo guardado en la versión 40, cuando migra a la 41, se conserva todo, aparecen las cuatro '
+      'réplicas de la deuda vacías y se quita `deuda_casa_cache` (#671)', () async {
+    // #671: la deuda con la casa editora baja con la sincronización. Se crean `cuenta_colportor`,
+    // `cuenta_deuda_historial`, `pedido_casa_editora` y `pedido_item`, vacías (las llena el pull), y se
+    // quita `deuda_casa_cache`, la última respuesta de la RPC. Un depósito, la cola y los watermarks no se
+    // tocan: lo que esperaba subir sigue esperando (convenciones §9).
+    const job = v40.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'deposito',
+      op: 'insert',
+      payload: '{"id":"d-1"}',
+      rowPk: 'd-1',
+      createdAt: 1758700000000,
+      state: 'PENDING',
+      code: '',
+      message: '',
+    );
+    const watermark = v40.SyncWatermarkData(scope: 'mirror', watermark: 'w-1');
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 40,
+      newVersion: 41,
+      createOld: v40.DatabaseAtV40.new,
+      createNew: v41.DatabaseAtV41.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.syncQueue, job)
+          ..insert(viejo.syncWatermark, watermark)
+          ..insertAll(viejo.syncMeta, [
+            const v40.SyncMetaData(clave: 'last_pull_at', valor: '2026-11-20T12:00:00.000Z'),
+            const v40.SyncMetaData(clave: 'last_backup_at', valor: '2026-11-19T12:00:00.000Z'),
+          ]);
+      },
+      validateItems: (nuevo) async {
+        final jobs = await nuevo.select(nuevo.syncQueue).get();
+        expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+        final marcas = await nuevo.select(nuevo.syncWatermark).get();
+        expect(marcas.map((w) => w.toJson()), [watermark.toJson()]);
+
+        // La fecha de la última bajada se borra (las réplicas de la deuda todavía no bajaron: sin esto la
+        // tarjeta diría «$ 0» en vez de «todavía no sé»); lo demás de `sync_meta` queda.
+        final meta = await nuevo.select(nuevo.syncMeta).get();
+        expect(meta.map((f) => f.clave), ['last_backup_at']);
+
+        expect(await nuevo.select(nuevo.cuentaColportor).get(), isEmpty);
+        expect(await nuevo.select(nuevo.cuentaDeudaHistorial).get(), isEmpty);
+        expect(await nuevo.select(nuevo.pedidoCasaEditora).get(), isEmpty);
+        expect(await nuevo.select(nuevo.pedidoItem).get(), isEmpty);
+
+        await nuevo.customStatement(
+          'INSERT INTO cuenta_colportor (id, usuario_id, deuda_total, created_at, updated_at) '
+          "VALUES ('cu-1', 'col-1', -500, 1, 1)",
+        );
+        final cuenta = await nuevo.select(nuevo.cuentaColportor).getSingle();
+        expect(cuenta.deudaTotal, -500, reason: 'la deuda puede quedar a favor');
+        expect(cuenta.syncVersion, 0);
+
+        await nuevo.customStatement(
+          'INSERT INTO pedido_casa_editora (id, colportor_id, fecha_pedido, estado, created_at, updated_at) '
+          "VALUES ('pe-1', 'col-1', 1, 'AUTORIZADO', 1, 1)",
+        );
+        final pedido = await nuevo.select(nuevo.pedidoCasaEditora).getSingle();
+        expect(pedido.montoAutorizado, isNull, reason: 'null = todavía no se decidió');
+        expect(pedido.origen, 'COLPORTOR');
+
+        final tablas =
+            (await nuevo.customSelect("SELECT name FROM sqlite_master WHERE type = 'table'").get())
+                .map((f) => f.read<String>('name'));
+        expect(tablas, isNot(contains('deuda_casa_cache')));
+      },
+    );
+  });
+  test('dado lo guardado en la versión 41, cuando migra a la 42, `campania` suma `limite_deuda` vacío y se '
+      'conserva todo (#387)', () async {
+    // #387: el límite de deuda de la campaña baja con el pull para que el pedido avise sin conexión. La
+    // columna llega vacía (`null` = sin límite): una campaña ya bajada no cambia y el cursor del delta
+    // tampoco; la cola de sync y los watermarks no se tocan (convenciones §9).
+    const campania = v41.CampaniaData(
+      id: 'camp-1',
+      nombre: 'Primavera 2026',
+      fechaInicio: '2026-09-01',
+      fechaFin: '2026-12-15',
+      createdAt: 1758700000000,
+      updatedAt: 1758700000000,
+      syncVersion: 3,
+      alquilerMonto: 150000,
+    );
+    const job = v41.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'pedido_casa_editora',
+      op: 'insert',
+      payload: '{"id":"p-1"}',
+      rowPk: 'p-1',
+      createdAt: 1758700000000,
+      state: 'PENDING',
+      code: '',
+      message: '',
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 41,
+      newVersion: 42,
+      createOld: v41.DatabaseAtV41.new,
+      createNew: v42.DatabaseAtV42.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.campania, campania)
+          ..insert(viejo.syncQueue, job);
+      },
+      validateItems: (nuevo) async {
+        final campanias = await nuevo.select(nuevo.campania).get();
+        expect(campanias, hasLength(1));
+        expect(campanias.single.id, 'camp-1');
+        expect(campanias.single.nombre, 'Primavera 2026');
+        expect(campanias.single.syncVersion, 3);
+        expect(campanias.single.alquilerMonto, 150000);
+        expect(campanias.single.limiteDeuda, isNull, reason: 'null = sin límite hasta que baje');
+        final jobs = await nuevo.select(nuevo.syncQueue).get();
+        expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+
+        await nuevo.customStatement(
+          "UPDATE campania SET limite_deuda = 3000000 WHERE id = 'camp-1'",
+        );
+        expect((await nuevo.select(nuevo.campania).getSingle()).limiteDeuda, 3000000);
+      },
+    );
+  });
+
+  test(
+    'dado ubicaciones guardadas en la versión 42, cuando migra a la 43, no se pierde nada, suma la '
+    'tabla de la marca de unión vacía y no se encola nada (#285)',
+    () async {
+      const ubicacion = v42.UbicacionData(
+        id: 'ub-1',
+        tipo: 'CASA',
+        calle: 'Rivera',
+        numero: '1234',
+        lat: -34.9,
+        lon: -56.16,
+        ciudadId: 'ciu-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 42,
+        newVersion: 43,
+        createOld: v42.DatabaseAtV42.new,
+        createNew: v43.DatabaseAtV43.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) => batch.insert(viejo.ubicacion, ubicacion),
+        validateItems: (nuevo) async {
+          final guardada = await nuevo.select(nuevo.ubicacion).getSingle();
+          expect(guardada.id, 'ub-1');
+          expect(guardada.calle, 'Rivera');
+          expect(guardada.syncVersion, 4);
+          expect(await nuevo.select(nuevo.ubicacionUnida).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La tabla acepta la marca que baja del servidor, una por ubicación.
+          await nuevo.customStatement(
+            "INSERT INTO ubicacion_unida (ubicacion_id, unida_a_id) VALUES ('ub-1', 'ub-2')",
+          );
+          final marca = await nuevo.select(nuevo.ubicacionUnida).getSingle();
+          expect((marca.ubicacionId, marca.unidaAId), ('ub-1', 'ub-2'));
+        },
+      );
+    },
+  );
+
+  test('dado lo guardado en la versión 43, cuando migra a la 44, se conserva todo y las tablas de las '
+      'transferencias quedan vacías y sin nada para subir (#512)', () async {
+    // HU-STK-005 (#512): solo se suman `transferencia_stock` y `transferencia_item`. El stock, la cola y
+    // los watermarks no se tocan: lo que esperaba subir sigue esperando (convenciones §9).
+    const stock = v43.StockData(
+      id: 'st-1',
+      usuarioId: 'col-1',
+      productoId: 'p-1',
+      cantidadDisponible: 6,
+      cantidadReservada: 0,
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 3,
+    );
+    const job = v43.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'venta',
+      op: 'insert',
+      payload: '{"id":"v-1"}',
+      rowPk: 'v-1',
+      createdAt: 1758700000000,
+      state: 'PENDING',
+      code: '',
+      message: '',
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 43,
+      newVersion: 44,
+      createOld: v43.DatabaseAtV43.new,
+      createNew: v44.DatabaseAtV44.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.stock, stock)
+          ..insert(viejo.syncQueue, job);
+      },
+      validateItems: (nuevo) async {
+        final stocks = await nuevo.select(nuevo.stock).get();
+        expect(stocks.map((s) => s.toJson()), [stock.toJson()]);
+        final jobs = await nuevo.select(nuevo.syncQueue).get();
+        expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+        expect(await nuevo.select(nuevo.transferenciaStock).get(), isEmpty);
+        expect(await nuevo.select(nuevo.transferenciaItem).get(), isEmpty);
+
+        const insertar =
+            'INSERT INTO transferencia_stock (id, origen_id, destino_id, created_at, updated_at) VALUES ';
+        await nuevo.customStatement("$insertar('t-1', 'ana', 'juan', 1, 1)");
+        final fila = await nuevo.select(nuevo.transferenciaStock).getSingle();
+        expect(fila.estado, 'PENDIENTE_AUTORIZACION', reason: 'nace por autorizar');
+        expect(fila.solicitanteId, isNull);
+        expect(fila.fechaSolicitud, isNull, reason: 'sin hora del servidor: «En cola»');
+        await expectLater(
+          nuevo.customStatement("$insertar('t-2', 'ana', 'ana', 1, 1)"),
+          throwsA(anything),
+          reason: 'las dos puntas son distintas (CHECK del servidor)',
+        );
+        await expectLater(
+          nuevo.customStatement(
+            'INSERT INTO transferencia_item (id, transferencia_id, producto_id, cantidad, created_at, '
+            "updated_at) VALUES ('l-1', 't-1', 'p-1', 0, 1, 1)",
+          ),
+          throwsA(anything),
+          reason: 'la cantidad es mayor que cero',
+        );
+      },
+    );
+  });
+
+  test(
+    'dado deptos con y sin texto en la columna descripcion en la versión 44, cuando migra a la 45, el '
+    'texto pasa a una nota del depto, la columna se va y nada más cambia (#290)',
+    () async {
+      const base = (ubicacionId: 'ub-1', createdAt: 1000, updatedAt: 2000);
+      v44.EspacioData espacio(String id, {String? descripcion, int? deletedAt, String? numero}) =>
+          v44.EspacioData(
+            id: id,
+            ubicacionId: base.ubicacionId,
+            numeroDepto: numero,
+            piso: '3',
+            descripcion: descripcion,
+            createdAt: base.createdAt,
+            updatedAt: base.updatedAt,
+            createdBy: 'col-1',
+            deletedAt: deletedAt,
+            syncVersion: 5,
+          );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 44,
+        newVersion: 45,
+        createOld: v44.DatabaseAtV44.new,
+        createNew: v45.DatabaseAtV45.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch.insertAll(viejo.espacio, [
+            espacio('e-con', descripcion: '  timbre roto, tocar fuerte ', numero: '3B'),
+            espacio('e-baja', descripcion: 'el perro muerde', deletedAt: 3000, numero: '3C'),
+            espacio('e-blanco', descripcion: '   ', numero: '4A'),
+            espacio('e-vacio', descripcion: '', numero: '4B'),
+            espacio('e-nulo', numero: '5A'),
+          ]);
+          batch.insert(
+            viejo.nota,
+            const v44.NotaData(
+              id: 'n-previa',
+              targetType: 'UBICACION',
+              targetId: 'ub-1',
+              texto: 'ya estaba',
+              createdAt: 1,
+              updatedAt: 1,
+              syncVersion: 0,
+            ),
+          );
+        },
+        validateItems: (nuevo) async {
+          // Cada texto escrito pasó a una nota ESPACIO suya, con su fecha y su autora, sin espacios
+          // alrededor; ni el texto en blanco ni el vacío ni el nulo hicieron una.
+          final notas = await nuevo.select(nuevo.nota).get();
+          final deptos = notas.where((n) => n.targetType == 'ESPACIO').toList()
+            ..sort((a, b) => a.targetId.compareTo(b.targetId));
+          expect(
+            deptos.map((n) => (n.targetId, n.texto)),
+            [('e-baja', 'el perro muerde'), ('e-con', 'timbre roto, tocar fuerte')],
+            reason: 'también el depto dado de baja: nunca se descarta un texto escrito',
+          );
+          for (final n in deptos) {
+            expect((n.createdAt, n.updatedAt, n.createdBy), (1000, 2000, 'col-1'));
+            expect((n.deletedAt, n.categoria, n.syncVersion), (null, null, 0));
+            expect(
+              n.id,
+              matches(
+                RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'),
+              ),
+            );
+          }
+          expect(deptos.first.id, isNot(deptos.last.id));
+          // Lo que ya había no se toca.
+          expect(notas.where((n) => n.id == 'n-previa').single.texto, 'ya estaba');
+          expect(notas, hasLength(3));
+
+          // Los espacios siguen enteros, sin la columna.
+          final espacios = await nuevo.select(nuevo.espacio).get();
+          expect(espacios, hasLength(5));
+          final baja = espacios.singleWhere((e) => e.id == 'e-baja');
+          expect(
+            (baja.numeroDepto, baja.piso, baja.deletedAt, baja.syncVersion),
+            ('3C', '3', 3000, 5),
+          );
+          final columnas = await nuevo.customSelect("PRAGMA table_info('espacio')").get();
+          expect(columnas.map((c) => c.read<String>('name')), isNot(contains('descripcion')));
+          // El índice de `espacio` sobrevive a la recreación y nada se encola.
+          final indices = await nuevo.customSelect("PRAGMA index_list('espacio')").get();
+          expect(indices.map((i) => i.read<String>('name')), contains('espacio_ubicacion_idx'));
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+        },
+      );
+    },
+  );
+  test(
+    'dado lo guardado en la versión 45, cuando migra a la 46, `ubicacion` suma `nombre` vacío, se crean las '
+    'tablas de las preferencias de avisos y de los compañeros vacías y no se encola nada (#769)',
+    () async {
+      // #769 (backend-supabase 0206 a 0208): lo que ya estaba guardado queda como estaba y la cola y los
+      // watermarks no se tocan; las tablas nuevas las llena el pull.
+      const ubicacion = v45.UbicacionData(
+        id: 'ub-1',
+        tipo: 'NEGOCIO',
+        calle: 'Av. Italia',
+        numero: '2810',
+        lat: -34.9,
+        lon: -56.16,
+        ciudadId: 'ciu-1',
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+      const job = v45.SyncQueueData(
+        id: 'q-1',
+        clientOpId: 'op-1',
+        entity: 'ubicacion',
+        op: 'update',
+        payload: '{"id":"ub-1"}',
+        rowPk: 'ub-1',
+        createdAt: 1,
+        state: 'PENDING',
+        code: '',
+        message: '',
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 45,
+        newVersion: 46,
+        createOld: v45.DatabaseAtV45.new,
+        createNew: v46.DatabaseAtV46.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch
+            ..insert(viejo.ubicacion, ubicacion)
+            ..insert(viejo.syncQueue, job);
+        },
+        validateItems: (nuevo) async {
+          final guardada = await nuevo.select(nuevo.ubicacion).getSingle();
+          expect(guardada.id, 'ub-1');
+          expect(guardada.calle, 'Av. Italia');
+          expect(guardada.syncVersion, 4);
+          expect(
+            guardada.nombre,
+            isNull,
+            reason: 'las ubicaciones que ya estaban no tienen nombre',
+          );
+          expect(await nuevo.select(nuevo.preferenciaDeAvisos).get(), isEmpty);
+          expect(await nuevo.select(nuevo.campaniaCompaniero).get(), isEmpty);
+          final jobs = await nuevo.select(nuevo.syncQueue).get();
+          expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+
+          // Las tablas nuevas aceptan lo que baja del servidor.
+          await nuevo.customStatement(
+            "UPDATE ubicacion SET nombre = 'Farmacia Italia' WHERE id = 'ub-1'",
+          );
+          expect((await nuevo.select(nuevo.ubicacion).getSingle()).nombre, 'Farmacia Italia');
+          await nuevo.customStatement(
+            'INSERT INTO preferencia_de_avisos (id, notif_preferences, created_at, updated_at) '
+            "VALUES ('u-1', '{\"tickets\":false}', 1, 1)",
+          );
+          expect(
+            (await nuevo.select(nuevo.preferenciaDeAvisos).getSingle()).notifPreferences,
+            '{"tickets":false}',
+          );
+          await nuevo.customStatement(
+            'INSERT INTO campania_companiero (id, campania_id, usuario_id, nombre, apellido, created_at, '
+            "updated_at) VALUES ('cc-1', 'camp-1', 'u-2', 'Ana', 'Pérez', 1, 1)",
+          );
+          final companiero = await nuevo.select(nuevo.campaniaCompaniero).getSingle();
+          expect(
+            (companiero.nombre, companiero.apellido, companiero.ciudadId),
+            ('Ana', 'Pérez', null),
+          );
+        },
+      );
+    },
+  );
+  test(
+    'dado una campaña, una inscripción de baja y un pago de alquiler guardados en la versión 46, '
+    'cuando migra a la 47, no se pierde nada, nace la réplica de las decisiones del alquiler vacía, '
     'no se encola nada y la tabla acepta una decisión',
     () async {
       // HU-CTA-007 (#740): `alquiler_decision`, de solo bajada.
-      const campania = v39.CampaniaData(
+      const campania = v46.CampaniaData(
         id: 'c-1',
         nombre: 'Otoño 2026',
         fechaInicio: '2026-03-01',
@@ -2521,7 +3039,7 @@ void main() {
         updatedAt: 1,
         syncVersion: 3,
       );
-      const inscripcion = v39.CampaniaColportorData(
+      const inscripcion = v46.CampaniaColportorData(
         id: 'cc-1',
         campaniaId: 'c-1',
         usuarioId: 'col-1',
@@ -2530,7 +3048,7 @@ void main() {
         deletedAt: 8,
         syncVersion: 2,
       );
-      const deposito = v39.DepositoData(
+      const deposito = v46.DepositoData(
         id: 'd-1',
         monto: 500000,
         fecha: 1,
@@ -2544,10 +3062,10 @@ void main() {
       );
 
       await verificador.testWithDataIntegrity(
-        oldVersion: 39,
-        newVersion: 40,
-        createOld: v39.DatabaseAtV39.new,
-        createNew: v40.DatabaseAtV40.new,
+        oldVersion: 46,
+        newVersion: 47,
+        createOld: v46.DatabaseAtV46.new,
+        createNew: v47.DatabaseAtV47.new,
         openTestedDatabase: _abrir,
         createItems: (batch, viejo) {
           batch

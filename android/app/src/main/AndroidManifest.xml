@@ -74,7 +74,8 @@
             </intent-filter>
             <!-- Deep link de los enlaces del correo (verificación de email, HU-AUTH-002, y
                  recuperación de contraseña, HU-AUTH-004/005). Lo captura app_links (viene con
-                 supabase_flutter) y supabase_flutter completa la sesión. La MISMA URL
+                 supabase_flutter) y supabase_flutter completa la sesión (el de recuperación con
+                 ?token_hash= lo canjea la app misma, RegistroEnlacesAuth). La MISMA URL
                  —io.supabase.colportores://login-callback/— tiene que estar en
                  ConfigSupabase.redirectBase y en el dashboard de Supabase:
                  Authentication → URL Configuration → Redirect URLs. -->
@@ -122,6 +123,12 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- url_launcher: abrir una página https en el navegador (términos de uso, #386); sin esto,
+             en Android 11+ el sistema oculta los navegadores a la app. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

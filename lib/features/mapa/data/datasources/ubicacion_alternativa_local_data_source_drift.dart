@@ -57,7 +57,9 @@ final class UbicacionAlternativaLocalDataSourceDrift
       }
       final ubicacion = fila.readTableOrNull(ubicaciones);
       if (ubicacion == null) return UbicacionAlternativaFaltante(altId);
-      if (ubicacion.deletedAt != null) return UbicacionAlternativaDeBaja(altId);
+      if (ubicacion.deletedAt != null) {
+        return UbicacionAlternativaDeBaja(altId, ubicacion: _aUbicacion(ubicacion));
+      }
       return UbicacionAlternativaVigente(_aUbicacion(ubicacion));
     });
   }
@@ -218,6 +220,7 @@ final class UbicacionAlternativaLocalDataSourceDrift
     tipo: UbicacionModel.tipoDesdeCodigo(fila.tipo),
     calle: fila.calle,
     numero: fila.numero,
+    nombre: fila.nombre,
     lat: fila.lat,
     lon: fila.lon,
     ciudadId: fila.ciudadId,

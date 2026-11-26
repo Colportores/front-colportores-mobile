@@ -18,6 +18,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/baja_per
 import 'package:colportores_mobile/features/mapa/presentation/providers/ficha_persona_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/notas_persona_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/ubicacion_alternativa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_ficha_persona.dart';
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -97,13 +98,7 @@ void main() {
         await db
             .into(db.productos)
             .insert(
-              ProductosCompanion.insert(
-                id: id,
-                nombre: nombre,
-                tipo: 'LIBRO',
-                createdAt: t0,
-                updatedAt: t0,
-              ),
+              ProductosCompanion.insert(id: id, nombre: nombre, createdAt: t0, updatedAt: t0),
             );
       }
       if (datos != null) await datos();
@@ -214,6 +209,9 @@ void main() {
           espacioRepositoryProvider.overrideWithValue(mundo.espacios),
           marcadorDeTelefonoProvider.overrideWithValue(mundo.marcador),
           personaRepositoryProvider.overrideWithValue(mundo.personas),
+          ubicacionAlternativaRepositoryProvider.overrideWithValue(
+            UbicacionAlternativaRepositorioFalso(),
+          ),
           relojPersonaProvider.overrideWithValue(() => ahoraFicha),
         ],
         child: MaterialApp(

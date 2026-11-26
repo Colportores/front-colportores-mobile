@@ -24,10 +24,18 @@ part 'drift_local_store.g.dart';
 final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
     with _$DriftLocalStoreMixin
     implements LocalStorePort {
-  /// [_entidades] se pasa como `entidades:` (parámetro nombrado privado, Dart ≥ 3.10).
-  DriftLocalStore(super.attachedDatabase, {required this._entidades});
+  /// [_entidades] se pasa como `entidades:` y [_despuesDeAplicar] como `despuesDeAplicar:`
+  /// (parámetros nombrados privados, Dart ≥ 3.10).
+  DriftLocalStore(super.attachedDatabase, {required this._entidades, this._despuesDeAplicar});
 
   final Set<String> _entidades;
+
+  /// Lo que la app hace con lo que bajó, **después** de que la transacción del delta se confirmó (por
+  /// ejemplo, volver a calcular lo que depende de las filas nuevas). Recibe las filas del delta, tal
+  /// como las entregó el servidor. Corre fuera de la transacción: si falla, el delta ya está aplicado
+  /// y el watermark avanzó, así que quien lo pasa se ocupa de no lanzar (un fallo acá no puede dejar
+  /// al pull trabado). `null` en el teléfono que no lo necesita (la recuperación de un respaldo).
+  final Future<void> Function(Map<String, List<Map<String, Object?>>> filas)? _despuesDeAplicar;
 
   /// Aplica el delta, los avisos de área y el watermark en una sola transacción (§10): si una
   /// fila falla, el watermark no avanza y el próximo pull vuelve a traer lo mismo.
@@ -48,6 +56,23 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
     required String? watermark,
     PullNotices notices = PullNotices.none,
     UnappliedRows? unapplied,
+  }) async {
+    await _aplicar(
+      rows,
+      scope: scope,
+      watermark: watermark,
+      notices: notices,
+      unapplied: unapplied,
+    );
+    if (rows.values.any((filas) => filas.isNotEmpty)) await _despuesDeAplicar?.call(rows);
+  }
+
+  Future<void> _aplicar(
+    Map<String, List<Map<String, Object?>>> rows, {
+    required String scope,
+    required String? watermark,
+    required PullNotices notices,
+    required UnappliedRows? unapplied,
   }) => transaction(() async {
     for (final entidad in notices.areaReset) {
       await _ponerALaEspera(_tabla(entidad), unapplied);
@@ -71,6 +96,7 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
         // `<Never>`: la tabla llega como `TableInfo<Table, Object?>` y Drift verifica en runtime
         // el tipo de su fila; un insertable de `Never` es subtipo de cualquiera.
         await into(tabla).insertOnConflictUpdate(RawValuesInsertable<Never>(_valores(tabla, fila)));
+        if (entidad == 'ubicacion') await _guardarMarcaDeUnion(fila);
       }
       final ids = [
         for (final fila in filas)
@@ -103,6 +129,26 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
       ).insertOnConflictUpdate(SyncWatermarksCompanion.insert(scope: scope, watermark: watermark));
     }
   });
+
+  /// La marca de unión de una `ubicacion` que bajó (HU-UBI-006, «Marca unión» y «Marca local»,
+  /// contrato §2.3): el servidor manda `unida_a_id` junto con la fila (el id de la ubicación a la que
+  /// se unió, o `null`), que **no es una columna de `ubicacion`**, y el teléfono la guarda en su tabla
+  /// aparte `ubicacion_unida`, que nunca sube. Con `null` se borra la marca; si la fila no trae la
+  /// clave (un servidor que todavía no la manda), no se toca.
+  Future<void> _guardarMarcaDeUnion(Map<String, Object?> fila) async {
+    if (!fila.containsKey('unida_a_id')) return;
+    final id = fila['id'];
+    if (id is! String) return;
+    final unidas = attachedDatabase.ubicacionesUnidas;
+    final unidaA = fila['unida_a_id'];
+    if (unidaA is String && unidaA.isNotEmpty) {
+      await into(unidas).insertOnConflictUpdate(
+        UbicacionesUnidasCompanion.insert(ubicacionId: id, unidaAId: unidaA),
+      );
+    } else {
+      await (delete(unidas)..where((u) => u.ubicacionId.equals(id))).go();
+    }
+  }
 
   /// Con un `area_reset` de [tabla]: todo lo que el teléfono tiene de ella pasa a esperar volver a
   /// bajar, menos lo que ya se sabe afuera y lo que tiene escrituras en la cola sin terminar: las de
@@ -173,6 +219,53 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
       }
     });
   }
+
+  /// §2.3, «Venta tarde» (`merged`, contrato §6.1): el servidor juntó el vínculo [de] con el
+  /// vínculo [a] que ya tenía y no guardó el primero. Lo local que nombraba a [de] pasa a [a],
+  /// todo en una transacción y **sin borrar nada**:
+  ///
+  /// - las visitas, las agendas y las ventas que lo nombran (`espacio_persona_id`), ya subidas o no:
+  ///   la venta no baja del servidor (un solo escritor), así que sin esto quedaría colgada de un id
+  ///   que el servidor no tiene;
+  /// - la fila del vínculo misma: pasa a llamarse [a] si el teléfono todavía no tiene un vínculo
+  ///   con ese id. Si ya lo tiene (bajó del servidor), la de [de] queda como está, sin baja local y
+  ///   sin encolar nada (decisión del 25/11, mapa §2: queda en el espacio fundido, que el pull da de
+  ///   baja, y sus hijos ya cuelgan de [a]).
+  ///
+  /// **La cola no se reescribe** (decisión del 25/11, mapa §2): lo encolado que nombra a [de] sale
+  /// como estaba, y el servidor redirige el id viejo (migración 0064, `redirigir_vinculo`). Tampoco
+  /// los jobs del vínculo mismo: el servidor pasa un `update` o un `delete` del id viejo al que quedó
+  /// (contrato §2.3, «Edición tarde»). No encola nada. Idempotente: sin nada que nombre a [de], no
+  /// hace nada. Una entidad sin referencias conocidas tampoco hace nada: el job ya está aplicado en
+  /// el servidor y no se tiene que trabar la cola por esto.
+  @override
+  Future<void> reapuntar(String entity, {required String de, required String a}) async {
+    _tabla(entity);
+    if (de == a) return;
+    if (entity != _vinculo) return;
+    final db = attachedDatabase;
+    await transaction(() async {
+      await (db.update(db.visitas)..where((x) => x.espacioPersonaId.equals(de))).write(
+        VisitasCompanion(espacioPersonaId: Value(a)),
+      );
+      await (db.update(db.agendas)..where((x) => x.espacioPersonaId.equals(de))).write(
+        AgendasCompanion(espacioPersonaId: Value(a)),
+      );
+      await (db.update(db.ventas)..where((x) => x.espacioPersonaId.equals(de))).write(
+        VentasCompanion(espacioPersonaId: Value(a)),
+      );
+      final yaEsta = await (db.select(
+        db.espacioPersonas,
+      )..where((x) => x.id.equals(a))).getSingleOrNull();
+      if (yaEsta == null) {
+        await (db.update(
+          db.espacioPersonas,
+        )..where((x) => x.id.equals(de))).write(EspacioPersonasCompanion(id: Value(a)));
+      }
+    });
+  }
+
+  static const _vinculo = 'espacio_persona';
 
   TableInfo<Table, Object?> _tabla(String entidad) {
     if (!_entidades.contains(entidad)) {

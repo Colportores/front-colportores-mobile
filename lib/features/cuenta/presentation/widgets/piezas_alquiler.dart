@@ -163,7 +163,6 @@ class BloqueDeAlquiler extends StatelessWidget {
   Widget build(BuildContext context) {
     final saldo = alquiler.saldoCentavos;
     final porValidar = alquiler.porValidarCentavos;
-    final deMas = alquiler.pagadoDeMasCentavos;
     return Padding(
       key: Key('alquiler_bloque_$indice'),
       padding: EdgeInsets.fromLTRB(20, conSeparador ? 20 : 0, 20, 0),
@@ -191,12 +190,6 @@ class BloqueDeAlquiler extends StatelessWidget {
             AvisoInformativoAlquiler(
               key: Key('alquiler_por_validar_$indice'),
               texto: TextosAlquiler.porValidar(porValidar),
-            ),
-          if (deMas > 0)
-            AvisoInformativoAlquiler(
-              key: Key('alquiler_de_mas_$indice'),
-              texto: TextosAlquiler.pagadoDeMas(deMas),
-              exito: true,
             ),
           _TeFaltaPagar(indice: indice, centavos: saldo),
           _FilasDeMontos(

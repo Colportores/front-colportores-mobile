@@ -9801,14 +9801,6 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
     requiredDuringInsert: false,
     $customConstraints: 'NULL',
   );
-  late final GeneratedColumn<String> tipo = GeneratedColumn<String>(
-    'tipo',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
   late final GeneratedColumn<int> esBonificable = GeneratedColumn<int>(
     'es_bonificable',
     aliasedName,
@@ -9913,7 +9905,6 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
     id,
     nombre,
     descripcion,
-    tipo,
     esBonificable,
     esMisionero,
     precioBaseCompra,
@@ -9950,10 +9941,6 @@ class Producto extends Table with TableInfo<Producto, ProductoData> {
         DriftSqlType.string,
         data['${effectivePrefix}descripcion'],
       ),
-      tipo: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}tipo'],
-      )!,
       esBonificable: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}es_bonificable'],
@@ -10023,7 +10010,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
   final String id;
   final String nombre;
   final String? descripcion;
-  final String tipo;
   final int esBonificable;
   final int esMisionero;
   final int? precioBaseCompra;
@@ -10040,7 +10026,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     required this.id,
     required this.nombre,
     this.descripcion,
-    required this.tipo,
     required this.esBonificable,
     required this.esMisionero,
     this.precioBaseCompra,
@@ -10062,7 +10047,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     if (!nullToAbsent || descripcion != null) {
       map['descripcion'] = Variable<String>(descripcion);
     }
-    map['tipo'] = Variable<String>(tipo);
     map['es_bonificable'] = Variable<int>(esBonificable);
     map['es_misionero'] = Variable<int>(esMisionero);
     if (!nullToAbsent || precioBaseCompra != null) {
@@ -10099,7 +10083,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       descripcion: descripcion == null && nullToAbsent
           ? const Value.absent()
           : Value(descripcion),
-      tipo: Value(tipo),
       esBonificable: Value(esBonificable),
       esMisionero: Value(esMisionero),
       precioBaseCompra: precioBaseCompra == null && nullToAbsent
@@ -10138,7 +10121,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       id: serializer.fromJson<String>(json['id']),
       nombre: serializer.fromJson<String>(json['nombre']),
       descripcion: serializer.fromJson<String?>(json['descripcion']),
-      tipo: serializer.fromJson<String>(json['tipo']),
       esBonificable: serializer.fromJson<int>(json['esBonificable']),
       esMisionero: serializer.fromJson<int>(json['esMisionero']),
       precioBaseCompra: serializer.fromJson<int?>(json['precioBaseCompra']),
@@ -10160,7 +10142,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       'id': serializer.toJson<String>(id),
       'nombre': serializer.toJson<String>(nombre),
       'descripcion': serializer.toJson<String?>(descripcion),
-      'tipo': serializer.toJson<String>(tipo),
       'esBonificable': serializer.toJson<int>(esBonificable),
       'esMisionero': serializer.toJson<int>(esMisionero),
       'precioBaseCompra': serializer.toJson<int?>(precioBaseCompra),
@@ -10180,7 +10161,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     String? id,
     String? nombre,
     Value<String?> descripcion = const Value.absent(),
-    String? tipo,
     int? esBonificable,
     int? esMisionero,
     Value<int?> precioBaseCompra = const Value.absent(),
@@ -10197,7 +10177,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     id: id ?? this.id,
     nombre: nombre ?? this.nombre,
     descripcion: descripcion.present ? descripcion.value : this.descripcion,
-    tipo: tipo ?? this.tipo,
     esBonificable: esBonificable ?? this.esBonificable,
     esMisionero: esMisionero ?? this.esMisionero,
     precioBaseCompra: precioBaseCompra.present
@@ -10220,7 +10199,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
       descripcion: data.descripcion.present
           ? data.descripcion.value
           : this.descripcion,
-      tipo: data.tipo.present ? data.tipo.value : this.tipo,
       esBonificable: data.esBonificable.present
           ? data.esBonificable.value
           : this.esBonificable,
@@ -10254,7 +10232,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
           ..write('id: $id, ')
           ..write('nombre: $nombre, ')
           ..write('descripcion: $descripcion, ')
-          ..write('tipo: $tipo, ')
           ..write('esBonificable: $esBonificable, ')
           ..write('esMisionero: $esMisionero, ')
           ..write('precioBaseCompra: $precioBaseCompra, ')
@@ -10276,7 +10253,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
     id,
     nombre,
     descripcion,
-    tipo,
     esBonificable,
     esMisionero,
     precioBaseCompra,
@@ -10297,7 +10273,6 @@ class ProductoData extends DataClass implements Insertable<ProductoData> {
           other.id == this.id &&
           other.nombre == this.nombre &&
           other.descripcion == this.descripcion &&
-          other.tipo == this.tipo &&
           other.esBonificable == this.esBonificable &&
           other.esMisionero == this.esMisionero &&
           other.precioBaseCompra == this.precioBaseCompra &&
@@ -10316,7 +10291,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
   final Value<String> id;
   final Value<String> nombre;
   final Value<String?> descripcion;
-  final Value<String> tipo;
   final Value<int> esBonificable;
   final Value<int> esMisionero;
   final Value<int?> precioBaseCompra;
@@ -10334,7 +10308,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     this.id = const Value.absent(),
     this.nombre = const Value.absent(),
     this.descripcion = const Value.absent(),
-    this.tipo = const Value.absent(),
     this.esBonificable = const Value.absent(),
     this.esMisionero = const Value.absent(),
     this.precioBaseCompra = const Value.absent(),
@@ -10353,7 +10326,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     required String id,
     required String nombre,
     this.descripcion = const Value.absent(),
-    required String tipo,
     this.esBonificable = const Value.absent(),
     this.esMisionero = const Value.absent(),
     this.precioBaseCompra = const Value.absent(),
@@ -10369,14 +10341,12 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        nombre = Value(nombre),
-       tipo = Value(tipo),
        createdAt = Value(createdAt),
        updatedAt = Value(updatedAt);
   static Insertable<ProductoData> custom({
     Expression<String>? id,
     Expression<String>? nombre,
     Expression<String>? descripcion,
-    Expression<String>? tipo,
     Expression<int>? esBonificable,
     Expression<int>? esMisionero,
     Expression<int>? precioBaseCompra,
@@ -10395,7 +10365,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
       if (id != null) 'id': id,
       if (nombre != null) 'nombre': nombre,
       if (descripcion != null) 'descripcion': descripcion,
-      if (tipo != null) 'tipo': tipo,
       if (esBonificable != null) 'es_bonificable': esBonificable,
       if (esMisionero != null) 'es_misionero': esMisionero,
       if (precioBaseCompra != null) 'precio_base_compra': precioBaseCompra,
@@ -10416,7 +10385,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     Value<String>? id,
     Value<String>? nombre,
     Value<String?>? descripcion,
-    Value<String>? tipo,
     Value<int>? esBonificable,
     Value<int>? esMisionero,
     Value<int?>? precioBaseCompra,
@@ -10435,7 +10403,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
       id: id ?? this.id,
       nombre: nombre ?? this.nombre,
       descripcion: descripcion ?? this.descripcion,
-      tipo: tipo ?? this.tipo,
       esBonificable: esBonificable ?? this.esBonificable,
       esMisionero: esMisionero ?? this.esMisionero,
       precioBaseCompra: precioBaseCompra ?? this.precioBaseCompra,
@@ -10463,9 +10430,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
     }
     if (descripcion.present) {
       map['descripcion'] = Variable<String>(descripcion.value);
-    }
-    if (tipo.present) {
-      map['tipo'] = Variable<String>(tipo.value);
     }
     if (esBonificable.present) {
       map['es_bonificable'] = Variable<int>(esBonificable.value);
@@ -10515,7 +10479,6 @@ class ProductoCompanion extends UpdateCompanion<ProductoData> {
           ..write('id: $id, ')
           ..write('nombre: $nombre, ')
           ..write('descripcion: $descripcion, ')
-          ..write('tipo: $tipo, ')
           ..write('esBonificable: $esBonificable, ')
           ..write('esMisionero: $esMisionero, ')
           ..write('precioBaseCompra: $precioBaseCompra, ')
@@ -19645,554 +19608,6 @@ class DepositoCompanion extends UpdateCompanion<DepositoData> {
   }
 }
 
-class AlquilerDecision extends Table
-    with TableInfo<AlquilerDecision, AlquilerDecisionData> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  AlquilerDecision(this.attachedDatabase, [this._alias]);
-  late final GeneratedColumn<String> id = GeneratedColumn<String>(
-    'id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> usuarioId = GeneratedColumn<String>(
-    'usuario_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> campaniaId = GeneratedColumn<String>(
-    'campania_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> decision = GeneratedColumn<String>(
-    'decision',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> monto = GeneratedColumn<int>(
-    'monto',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> decididoEn = GeneratedColumn<int>(
-    'decidido_en',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL',
-  );
-  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
-    'created_by',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
-    'deleted_at',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NULL',
-  );
-  late final GeneratedColumn<int> syncVersion = GeneratedColumn<int>(
-    'sync_version',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0',
-    defaultValue: const CustomExpression('0'),
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    usuarioId,
-    campaniaId,
-    decision,
-    monto,
-    decididoEn,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'alquiler_decision';
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  AlquilerDecisionData map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return AlquilerDecisionData(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}id'],
-      )!,
-      usuarioId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}usuario_id'],
-      )!,
-      campaniaId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}campania_id'],
-      )!,
-      decision: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}decision'],
-      )!,
-      monto: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}monto'],
-      )!,
-      decididoEn: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}decidido_en'],
-      )!,
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}created_at'],
-      )!,
-      updatedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}updated_at'],
-      )!,
-      createdBy: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}created_by'],
-      ),
-      deletedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}deleted_at'],
-      ),
-      syncVersion: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}sync_version'],
-      )!,
-    );
-  }
-
-  @override
-  AlquilerDecision createAlias(String alias) {
-    return AlquilerDecision(attachedDatabase, alias);
-  }
-
-  @override
-  List<String> get customConstraints => const ['PRIMARY KEY(id)'];
-  @override
-  bool get dontWriteConstraints => true;
-}
-
-class AlquilerDecisionData extends DataClass
-    implements Insertable<AlquilerDecisionData> {
-  final String id;
-  final String usuarioId;
-  final String campaniaId;
-  final String decision;
-  final int monto;
-  final int decididoEn;
-  final int createdAt;
-  final int updatedAt;
-  final String? createdBy;
-  final int? deletedAt;
-  final int syncVersion;
-  const AlquilerDecisionData({
-    required this.id,
-    required this.usuarioId,
-    required this.campaniaId,
-    required this.decision,
-    required this.monto,
-    required this.decididoEn,
-    required this.createdAt,
-    required this.updatedAt,
-    this.createdBy,
-    this.deletedAt,
-    required this.syncVersion,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<String>(id);
-    map['usuario_id'] = Variable<String>(usuarioId);
-    map['campania_id'] = Variable<String>(campaniaId);
-    map['decision'] = Variable<String>(decision);
-    map['monto'] = Variable<int>(monto);
-    map['decidido_en'] = Variable<int>(decididoEn);
-    map['created_at'] = Variable<int>(createdAt);
-    map['updated_at'] = Variable<int>(updatedAt);
-    if (!nullToAbsent || createdBy != null) {
-      map['created_by'] = Variable<String>(createdBy);
-    }
-    if (!nullToAbsent || deletedAt != null) {
-      map['deleted_at'] = Variable<int>(deletedAt);
-    }
-    map['sync_version'] = Variable<int>(syncVersion);
-    return map;
-  }
-
-  AlquilerDecisionCompanion toCompanion(bool nullToAbsent) {
-    return AlquilerDecisionCompanion(
-      id: Value(id),
-      usuarioId: Value(usuarioId),
-      campaniaId: Value(campaniaId),
-      decision: Value(decision),
-      monto: Value(monto),
-      decididoEn: Value(decididoEn),
-      createdAt: Value(createdAt),
-      updatedAt: Value(updatedAt),
-      createdBy: createdBy == null && nullToAbsent
-          ? const Value.absent()
-          : Value(createdBy),
-      deletedAt: deletedAt == null && nullToAbsent
-          ? const Value.absent()
-          : Value(deletedAt),
-      syncVersion: Value(syncVersion),
-    );
-  }
-
-  factory AlquilerDecisionData.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return AlquilerDecisionData(
-      id: serializer.fromJson<String>(json['id']),
-      usuarioId: serializer.fromJson<String>(json['usuarioId']),
-      campaniaId: serializer.fromJson<String>(json['campaniaId']),
-      decision: serializer.fromJson<String>(json['decision']),
-      monto: serializer.fromJson<int>(json['monto']),
-      decididoEn: serializer.fromJson<int>(json['decididoEn']),
-      createdAt: serializer.fromJson<int>(json['createdAt']),
-      updatedAt: serializer.fromJson<int>(json['updatedAt']),
-      createdBy: serializer.fromJson<String?>(json['createdBy']),
-      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
-      syncVersion: serializer.fromJson<int>(json['syncVersion']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<String>(id),
-      'usuarioId': serializer.toJson<String>(usuarioId),
-      'campaniaId': serializer.toJson<String>(campaniaId),
-      'decision': serializer.toJson<String>(decision),
-      'monto': serializer.toJson<int>(monto),
-      'decididoEn': serializer.toJson<int>(decididoEn),
-      'createdAt': serializer.toJson<int>(createdAt),
-      'updatedAt': serializer.toJson<int>(updatedAt),
-      'createdBy': serializer.toJson<String?>(createdBy),
-      'deletedAt': serializer.toJson<int?>(deletedAt),
-      'syncVersion': serializer.toJson<int>(syncVersion),
-    };
-  }
-
-  AlquilerDecisionData copyWith({
-    String? id,
-    String? usuarioId,
-    String? campaniaId,
-    String? decision,
-    int? monto,
-    int? decididoEn,
-    int? createdAt,
-    int? updatedAt,
-    Value<String?> createdBy = const Value.absent(),
-    Value<int?> deletedAt = const Value.absent(),
-    int? syncVersion,
-  }) => AlquilerDecisionData(
-    id: id ?? this.id,
-    usuarioId: usuarioId ?? this.usuarioId,
-    campaniaId: campaniaId ?? this.campaniaId,
-    decision: decision ?? this.decision,
-    monto: monto ?? this.monto,
-    decididoEn: decididoEn ?? this.decididoEn,
-    createdAt: createdAt ?? this.createdAt,
-    updatedAt: updatedAt ?? this.updatedAt,
-    createdBy: createdBy.present ? createdBy.value : this.createdBy,
-    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
-    syncVersion: syncVersion ?? this.syncVersion,
-  );
-  AlquilerDecisionData copyWithCompanion(AlquilerDecisionCompanion data) {
-    return AlquilerDecisionData(
-      id: data.id.present ? data.id.value : this.id,
-      usuarioId: data.usuarioId.present ? data.usuarioId.value : this.usuarioId,
-      campaniaId: data.campaniaId.present
-          ? data.campaniaId.value
-          : this.campaniaId,
-      decision: data.decision.present ? data.decision.value : this.decision,
-      monto: data.monto.present ? data.monto.value : this.monto,
-      decididoEn: data.decididoEn.present
-          ? data.decididoEn.value
-          : this.decididoEn,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
-      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
-      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
-      syncVersion: data.syncVersion.present
-          ? data.syncVersion.value
-          : this.syncVersion,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('AlquilerDecisionData(')
-          ..write('id: $id, ')
-          ..write('usuarioId: $usuarioId, ')
-          ..write('campaniaId: $campaniaId, ')
-          ..write('decision: $decision, ')
-          ..write('monto: $monto, ')
-          ..write('decididoEn: $decididoEn, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    id,
-    usuarioId,
-    campaniaId,
-    decision,
-    monto,
-    decididoEn,
-    createdAt,
-    updatedAt,
-    createdBy,
-    deletedAt,
-    syncVersion,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is AlquilerDecisionData &&
-          other.id == this.id &&
-          other.usuarioId == this.usuarioId &&
-          other.campaniaId == this.campaniaId &&
-          other.decision == this.decision &&
-          other.monto == this.monto &&
-          other.decididoEn == this.decididoEn &&
-          other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt &&
-          other.createdBy == this.createdBy &&
-          other.deletedAt == this.deletedAt &&
-          other.syncVersion == this.syncVersion);
-}
-
-class AlquilerDecisionCompanion extends UpdateCompanion<AlquilerDecisionData> {
-  final Value<String> id;
-  final Value<String> usuarioId;
-  final Value<String> campaniaId;
-  final Value<String> decision;
-  final Value<int> monto;
-  final Value<int> decididoEn;
-  final Value<int> createdAt;
-  final Value<int> updatedAt;
-  final Value<String?> createdBy;
-  final Value<int?> deletedAt;
-  final Value<int> syncVersion;
-  final Value<int> rowid;
-  const AlquilerDecisionCompanion({
-    this.id = const Value.absent(),
-    this.usuarioId = const Value.absent(),
-    this.campaniaId = const Value.absent(),
-    this.decision = const Value.absent(),
-    this.monto = const Value.absent(),
-    this.decididoEn = const Value.absent(),
-    this.createdAt = const Value.absent(),
-    this.updatedAt = const Value.absent(),
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  });
-  AlquilerDecisionCompanion.insert({
-    required String id,
-    required String usuarioId,
-    required String campaniaId,
-    required String decision,
-    required int monto,
-    required int decididoEn,
-    required int createdAt,
-    required int updatedAt,
-    this.createdBy = const Value.absent(),
-    this.deletedAt = const Value.absent(),
-    this.syncVersion = const Value.absent(),
-    this.rowid = const Value.absent(),
-  }) : id = Value(id),
-       usuarioId = Value(usuarioId),
-       campaniaId = Value(campaniaId),
-       decision = Value(decision),
-       monto = Value(monto),
-       decididoEn = Value(decididoEn),
-       createdAt = Value(createdAt),
-       updatedAt = Value(updatedAt);
-  static Insertable<AlquilerDecisionData> custom({
-    Expression<String>? id,
-    Expression<String>? usuarioId,
-    Expression<String>? campaniaId,
-    Expression<String>? decision,
-    Expression<int>? monto,
-    Expression<int>? decididoEn,
-    Expression<int>? createdAt,
-    Expression<int>? updatedAt,
-    Expression<String>? createdBy,
-    Expression<int>? deletedAt,
-    Expression<int>? syncVersion,
-    Expression<int>? rowid,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (usuarioId != null) 'usuario_id': usuarioId,
-      if (campaniaId != null) 'campania_id': campaniaId,
-      if (decision != null) 'decision': decision,
-      if (monto != null) 'monto': monto,
-      if (decididoEn != null) 'decidido_en': decididoEn,
-      if (createdAt != null) 'created_at': createdAt,
-      if (updatedAt != null) 'updated_at': updatedAt,
-      if (createdBy != null) 'created_by': createdBy,
-      if (deletedAt != null) 'deleted_at': deletedAt,
-      if (syncVersion != null) 'sync_version': syncVersion,
-      if (rowid != null) 'rowid': rowid,
-    });
-  }
-
-  AlquilerDecisionCompanion copyWith({
-    Value<String>? id,
-    Value<String>? usuarioId,
-    Value<String>? campaniaId,
-    Value<String>? decision,
-    Value<int>? monto,
-    Value<int>? decididoEn,
-    Value<int>? createdAt,
-    Value<int>? updatedAt,
-    Value<String?>? createdBy,
-    Value<int?>? deletedAt,
-    Value<int>? syncVersion,
-    Value<int>? rowid,
-  }) {
-    return AlquilerDecisionCompanion(
-      id: id ?? this.id,
-      usuarioId: usuarioId ?? this.usuarioId,
-      campaniaId: campaniaId ?? this.campaniaId,
-      decision: decision ?? this.decision,
-      monto: monto ?? this.monto,
-      decididoEn: decididoEn ?? this.decididoEn,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      createdBy: createdBy ?? this.createdBy,
-      deletedAt: deletedAt ?? this.deletedAt,
-      syncVersion: syncVersion ?? this.syncVersion,
-      rowid: rowid ?? this.rowid,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<String>(id.value);
-    }
-    if (usuarioId.present) {
-      map['usuario_id'] = Variable<String>(usuarioId.value);
-    }
-    if (campaniaId.present) {
-      map['campania_id'] = Variable<String>(campaniaId.value);
-    }
-    if (decision.present) {
-      map['decision'] = Variable<String>(decision.value);
-    }
-    if (monto.present) {
-      map['monto'] = Variable<int>(monto.value);
-    }
-    if (decididoEn.present) {
-      map['decidido_en'] = Variable<int>(decididoEn.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<int>(createdAt.value);
-    }
-    if (updatedAt.present) {
-      map['updated_at'] = Variable<int>(updatedAt.value);
-    }
-    if (createdBy.present) {
-      map['created_by'] = Variable<String>(createdBy.value);
-    }
-    if (deletedAt.present) {
-      map['deleted_at'] = Variable<int>(deletedAt.value);
-    }
-    if (syncVersion.present) {
-      map['sync_version'] = Variable<int>(syncVersion.value);
-    }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('AlquilerDecisionCompanion(')
-          ..write('id: $id, ')
-          ..write('usuarioId: $usuarioId, ')
-          ..write('campaniaId: $campaniaId, ')
-          ..write('decision: $decision, ')
-          ..write('monto: $monto, ')
-          ..write('decididoEn: $decididoEn, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt, ')
-          ..write('createdBy: $createdBy, ')
-          ..write('deletedAt: $deletedAt, ')
-          ..write('syncVersion: $syncVersion, ')
-          ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class Ticket extends Table with TableInfo<Ticket, TicketData> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -22539,7 +21954,6 @@ class DatabaseAtV40 extends GeneratedDatabase {
   late final Entrega entrega = Entrega(this);
   late final Devolucion devolucion = Devolucion(this);
   late final Deposito deposito = Deposito(this);
-  late final AlquilerDecision alquilerDecision = AlquilerDecision(this);
   late final Ticket ticket = Ticket(this);
   late final TicketFotoLocal ticketFotoLocal = TicketFotoLocal(this);
   late final DeudaCasaCache deudaCasaCache = DeudaCasaCache(this);
@@ -22695,10 +22109,6 @@ class DatabaseAtV40 extends GeneratedDatabase {
     'deposito_ticket_idx',
     'CREATE INDEX deposito_ticket_idx ON deposito (ticket_id)',
   );
-  late final Index alquilerDecisionUsuarioCampaniaIdx = Index(
-    'alquiler_decision_usuario_campania_idx',
-    'CREATE INDEX alquiler_decision_usuario_campania_idx ON alquiler_decision (usuario_id, campania_id)',
-  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -22741,7 +22151,6 @@ class DatabaseAtV40 extends GeneratedDatabase {
     entrega,
     devolucion,
     deposito,
-    alquilerDecision,
     ticket,
     ticketFotoLocal,
     deudaCasaCache,
@@ -22784,7 +22193,6 @@ class DatabaseAtV40 extends GeneratedDatabase {
     entregaVentaIdx,
     devolucionVentaIdx,
     depositoTicketIdx,
-    alquilerDecisionUsuarioCampaniaIdx,
   ];
   @override
   int get schemaVersion => 40;

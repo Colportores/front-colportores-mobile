@@ -458,6 +458,8 @@ void main() {
       );
       await tester.pump();
 
+      await tester.ensureVisible(find.byKey(const Key('cuenta_fila_alquiler')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('cuenta_fila_alquiler')));
       await tester.pumpAndSettle();
 

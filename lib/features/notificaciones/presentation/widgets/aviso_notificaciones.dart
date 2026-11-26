@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/colores_colportaje.dart';
 
+/// Cuál de las dos horas de la pantalla es: la del aviso de cuotas (en AVISOS) o la del aviso de las
+/// visitas de mañana (en RECORDATORIOS).
+enum HoraDeAviso { cuotas, visitasDeManana }
+
 /// Los textos de la vista 24, grupo A (permiso de notificaciones, HU-NOT-001).
 ///
 /// Salen del canvas (`24 Notificaciones.dc.html`, 24A·01 a 24A·06) salvo los marcados «propuesta»:
@@ -93,6 +97,12 @@ abstract final class TextosNotificaciones {
   static const errorAlGuardar =
       'No pudimos guardar el cambio. El interruptor volvió a como estaba.';
 
+  /// 24B·06 cuando todavía no bajó la fila de preferencias de la persona (decisión del 26/11, mapa §2, a la
+  /// espera de la respuesta de Cristian a «Avisos antes»): «Reintentar» funciona cuando termine la
+  /// sincronización.
+  static const errorAlGuardarSinBajar =
+      'Todavía no recibimos tus preferencias de avisos. Cuando termine la sincronización, probá de nuevo.';
+
   /// 24B·06 cuando lo que no se guardó es la anticipación, o más de un cambio (decidido el 27/10, mapa
   /// §2: el aviso dice lo que volvió; «Reintentar» repite todo).
   static const errorAlGuardarVarios = 'No pudimos guardar los cambios. Volvieron a como estaban.';
@@ -134,18 +144,16 @@ abstract final class TextosNotificaciones {
   /// Lo que se lee en voz alta de la hora: «09:00, tocá para cambiarla».
   static String horaValorAccesible(String hora) => '$hora, tocá para cambiarla';
 
-  /// 24B·06 cuando lo que no se guardó es la hora de un aviso.
-  static const errorAlGuardarHora = 'No pudimos guardar la hora. Volvió a como estaba.';
-
-  /// 24B·06 sin conexión: lo dice y guía (el cambio de los avisos del servidor necesita red).
-  static const errorAlGuardarSinConexion =
-      'Sin conexión: no pudimos guardar el cambio. Volvió a como estaba. Probá de nuevo cuando '
-      'tengas conexión.';
+  /// 24B·06 cuando lo que no se guardó es la hora de un aviso: dice cuál (hay dos horas en la
+  /// pantalla, una arriba y otra abajo, y la persona tiene que saber cuál volvió a como estaba).
+  static String errorAlGuardarHora(HoraDeAviso hora) => switch (hora) {
+    HoraDeAviso.cuotas => 'No pudimos guardar la hora del aviso de cuotas. Volvió a como estaba.',
+    HoraDeAviso.visitasDeManana =>
+      'No pudimos guardar la hora del aviso de las visitas de mañana. Volvió a como estaba.',
+  };
 
   /// No se pudieron leer los avisos del servidor.
   static const errorAlLeerAvisos = 'No pudimos leer tus avisos.';
-  static const errorAlLeerAvisosSinConexion =
-      'Sin conexión: no pudimos leer tus avisos. Probá de nuevo cuando tengas conexión.';
 }
 
 enum TonoAviso { info, advertencia, error }

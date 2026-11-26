@@ -491,6 +491,11 @@ void main() {
               'message': 'cuelga de un alta en conflicto',
             },
             {'client_op_id': 'f', 'outcome': 'invalid', 'code': 'CG001'},
+            {
+              'client_op_id': 'g',
+              'outcome': 'merged',
+              'merged_into': 'vinculo-de-a',
+            },
           ],
         }),
       );
@@ -516,6 +521,62 @@ void main() {
 
       expect(porId['f']!.outcome, JobOutcome.invalid);
       expect(porId['f']!.code, 'CG001');
+
+      // `merged` (§6.1, «Venta tarde»): el servidor ya lo aplicó, no es `invalid`.
+      expect(porId['g']!.outcome, JobOutcome.merged);
+      expect(porId['g']!.mergedInto, 'vinculo-de-a');
+      expect(porId['g']!.serverRow, isNull);
+      expect(r.settled, containsAll(['a', 'b', 'g']));
+      expect(r.settled, isNot(contains('f')));
+    });
+
+    test('merged y merged_into van y vuelven por el codec', () {
+      const original = JobResult(
+        clientOpId: 'g',
+        outcome: JobOutcome.merged,
+        mergedInto: 'vinculo-de-a',
+      );
+      final ida = pushResponseToJson(
+        PushResult(serverTime: DateTime.utc(2026, 10, 5), results: [original]),
+      );
+      final vuelta = pushResponseFromJson(
+        jsonDecode(jsonEncode(ida)) as Map<String, Object?>,
+      ).results.single;
+
+      expect(ida['results'], [
+        {
+          'client_op_id': 'g',
+          'outcome': 'merged',
+          'merged_into': 'vinculo-de-a',
+        },
+      ]);
+      expect(vuelta.outcome, JobOutcome.merged);
+      expect(vuelta.mergedInto, 'vinculo-de-a');
+    });
+
+    test('merged sin merged_into (servidor que no lo manda) sigue siendo merged',
+        () {
+      final r = pushResponseFromJson({
+        'server_time': '2026-10-05T08:00:00.000Z',
+        'results': [
+          {'client_op_id': 'g', 'outcome': 'merged'},
+        ],
+      }).results.single;
+
+      expect(r.outcome, JobOutcome.merged);
+      expect(r.mergedInto, isNull);
+    });
+
+    test('un outcome desconocido sigue siendo invalid: no se cierra lo que no '
+        'subió', () {
+      final r = pushResponseFromJson({
+        'server_time': '2026-10-05T08:00:00.000Z',
+        'results': [
+          {'client_op_id': 'x', 'outcome': 'fusionado'},
+        ],
+      }).results.single;
+
+      expect(r.outcome, JobOutcome.invalid);
     });
 
     test('constraint y depends_on van y vuelven por el codec', () {
@@ -563,6 +624,50 @@ void main() {
     test('duplicate → DONE', () async {
       final j = await correr({'outcome': 'duplicate'});
       expect(j.state, JobState.done);
+    });
+
+    test('merged → DONE: el servidor ya lo aplicó, no va a la cola de error',
+        () async {
+      final j = await correr({'outcome': 'merged', 'merged_into': 'ubi-0'});
+      expect(j.state, JobState.done);
+    });
+
+    test('merged: sale de la cola, el resto del lote sigue y no se vuelve a '
+        'subir', () async {
+      var subidas = 0;
+      final a = _armarMotor((req) async {
+        if (_pBody(req)['jobs'] is! List) {
+          return _json({'server_time': '2026-10-05T08:00:00.000Z'});
+        }
+        subidas++;
+        return _json({
+          'server_time': '2026-10-05T08:00:00.000Z',
+          'results': [
+            for (final id in _opIds(req))
+              {
+                'client_op_id': id,
+                ...(id == 'op-1'
+                    ? {'outcome': 'merged', 'merged_into': 'ubi-0'}
+                    : {'outcome': 'accepted', 'sync_version': 1}),
+              },
+          ],
+        });
+      });
+      await a.motor.stage('ubicacion', Op.insert, {
+        'id': 'ubi-1',
+      }, clientOpId: 'op-1');
+      await a.motor.stage('ubicacion', Op.insert, {
+        'id': 'ubi-2',
+      }, clientOpId: 'op-2');
+
+      final r = await a.motor.syncNow();
+      await a.motor.syncNow();
+      await a.motor.dispose();
+
+      expect(a.estadoDe('op-1'), JobState.done);
+      expect(a.estadoDe('op-2'), JobState.done);
+      expect(r.invalidated, 0);
+      expect(subidas, 1, reason: 'nada quedó pendiente: el 2.º ciclo no sube');
     });
 
     test('conflict con server_row → LWW y DONE', () async {

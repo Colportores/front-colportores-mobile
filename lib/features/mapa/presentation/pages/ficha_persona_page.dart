@@ -3,30 +3,41 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/conectividad/conectividad_providers.dart';
 import '../../../../core/error/failure.dart';
 import '../../../agenda/domain/entities/tipo_agenda.dart';
 import '../../../agenda/presentation/flujo_agendar_visita.dart';
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
+import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../../../ventas/presentation/widgets/fila_sumar_un_libro.dart';
+import '../../domain/entities/estado_ubicacion_alternativa.dart';
 import '../../domain/entities/ficha_de_persona.dart';
+import '../../domain/entities/ubicacion.dart';
 import '../../domain/services/filtro_de_historial.dart';
 import '../../domain/usecases/ficha_persona_use_cases.dart';
 import '../../domain/usecases/restaurar_espacio_use_case.dart';
+import '../../domain/usecases/ubicacion_alternativa_use_cases.dart';
 import '../formato_espacios.dart';
+import '../formato_ubicaciones.dart';
 import '../providers/baja_persona_providers.dart';
 import '../providers/espacios_providers.dart';
 import '../providers/ficha_persona_providers.dart';
 import '../providers/hoja_casa_providers.dart';
 import '../providers/personas_providers.dart';
+import '../providers/ubicacion_alternativa_providers.dart';
 import '../textos_baja_persona.dart';
 import '../textos_ficha_persona.dart';
 import '../textos_notas.dart';
 import '../textos_personas.dart';
+import '../textos_ubicacion_alternativa.dart';
 import '../widgets/hoja_baja_persona.dart';
+import '../widgets/hoja_quitar_alternativa.dart';
 import '../widgets/piezas_alta.dart';
 import '../widgets/piezas_ficha_persona.dart';
 import '../widgets/piezas_notas.dart';
+import '../widgets/piezas_ubicacion_alternativa.dart';
 import '../widgets/proxima_visita_de_la_ficha.dart';
+import 'elegir_ubicacion_alternativa_page.dart';
 import 'nota_persona_form_page.dart';
 import 'notas_de_persona_page.dart';
 
@@ -53,7 +64,11 @@ import 'notas_de_persona_page.dart';
 ///   sin ventas. Con una de las dos abriéndose, la otra queda apagada.
 /// - La tarjeta de una entrega pendiente del historial ofrece «Entregar» (32B·01): el mismo destino, ya en
 ///   la venta de esa tarjeta. Sin destino o en solo lectura no se ofrece.
-/// - La ubicación alternativa es de la vista 22: no está acá.
+/// - Al final, «COBRANZA» (vista 22A, HU-UBI-013): dónde se le cobra. Sin alternativa ofrece «Elegir»
+///   (22A·01, el selector 22A·02 a 22A·05); con ella dice «SE COBRA ACÁ» con «Quitar» (22A·06, 22A·07);
+///   dada de baja avisa y pide elegir otra (22A·08); si no se pudo guardar, avisa con «Reintentar»
+///   (22A·09). Todo es local: sin conexión funciona igual (22A·10). La persona o el depto de baja
+///   (32B·04 y 32B·08) la ven, pero no la cambian.
 class FichaPersonaPage extends ConsumerStatefulWidget {
   const FichaPersonaPage({
     super.key,
@@ -126,7 +141,17 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
   var _reactivandoPersona = false;
   var _reactivandoDepto = false;
 
+  /// Se está escribiendo la ubicación alternativa (22A·02 → 22A·06): la tarjeta dice «Guardando…».
+  var _guardandoAlternativa = false;
+
+  /// Por qué no se pudo guardar la alternativa (22A·09) y, si tiene sentido repetirlo, cuál era la
+  /// ubicación elegida. Se limpia al guardar, al quitar o al elegir otra.
+  ({String texto, Ubicacion? reintentar, String nombre})? _fallaAlternativa;
+
   ClaveDeFicha get _clave => (personaId: widget.personaId, espacioId: widget.espacioId);
+
+  ClaveAlternativa get _claveAlternativa =>
+      (personaId: widget.personaId, espacioId: widget.espacioId);
 
   void _reintentar() => ref.invalidate(fichaDePersonaProvider(_clave));
 
@@ -196,7 +221,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     if (frenaPorCuentaRestringida(context, ref)) return;
     final editar = ref.read(editarPersonaDesdeLaFichaProvider);
     if (editar == null) return;
-    await editar(widget.personaId);
+    await editar((personaId: widget.personaId, espacioId: widget.espacioId));
   });
 
   /// «Agendar visita» con la casa y la persona ya puestas, del [tipo] que se pida. Al guardar vuelve acá
@@ -302,6 +327,159 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
     if (destino == null || lugar == null) return;
     await destino((ubicacionId: lugar.ubicacion.id, espacioId: widget.espacioId, agendaId: null));
   });
+
+  /// «Elegir» (22A·01) y «Elegir otra» (22A·08): abre el selector y, con la ubicación elegida, la guarda.
+  /// Un solo flujo a la vez: mientras el selector o la escritura siguen, nada más se abre.
+  Future<void> _elegirAlternativa() => _unaAlaVez(() async {
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    final ficha = ref.read(fichaDePersonaProvider(_clave)).asData?.value;
+    if (ficha == null || widget.colportorId.trim().isEmpty) {
+      _avisar(TextosFicha.noPudimosAbrir);
+      return;
+    }
+    // Un aviso viejo taparía el botón de abajo del selector.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    final vigente = switch (ref.read(ubicacionAlternativaProvider(_claveAlternativa)).value) {
+      UbicacionAlternativaVigente(:final ubicacion) => ubicacion.id,
+      _ => null,
+    };
+    final elegida = await ElegirUbicacionAlternativaPage.abrir(
+      context,
+      colportorId: widget.colportorId,
+      espacioId: widget.espacioId,
+      ubicacionActualId: vigente,
+    );
+    if (!mounted || elegida == null) return;
+    await _guardarAlternativa(elegida, FormatoBajaPersona.nombreDePila(ficha.persona));
+  });
+
+  /// «Reintentar» (22A·09): vuelve a guardar la misma ubicación.
+  Future<void> _reintentarAlternativa(Ubicacion ubicacion, String nombre) => _unaAlaVez(() async {
+    if (frenaPorCuentaRestringida(context, ref)) return;
+    await _guardarAlternativa(ubicacion, nombre);
+  });
+
+  /// Escribe la alternativa. Pase lo que pase, «Guardando…» se suelta: si falla, el aviso rojo y la
+  /// tarjeta vuelve a ofrecer «Elegir»; si sale, el aviso de que quedó (o de que quedó en el teléfono,
+  /// sin conexión).
+  Future<void> _guardarAlternativa(Ubicacion ubicacion, String nombre) async {
+    setState(() {
+      _guardandoAlternativa = true;
+      _fallaAlternativa = null;
+    });
+    Failure? falla;
+    var guardada = false;
+    try {
+      final r = await ref.read(establecerUbicacionAlternativaUseCaseProvider)(
+        EstablecerUbicacionAlternativaParams(
+          personaId: widget.personaId,
+          espacioId: widget.espacioId,
+          ubicacionId: ubicacion.id,
+          colportorId: widget.colportorId,
+        ),
+      );
+      r.fold((f) => falla = f, (_) => guardada = true);
+    } on Object catch (causa) {
+      falla = FailureInesperado(causa: causa.runtimeType.toString());
+    } finally {
+      if (mounted) setState(() => _guardandoAlternativa = false);
+    }
+    if (!mounted) return;
+    if (guardada) {
+      final sinConexion = await _sinConexion();
+      if (!mounted) return;
+      _avisar(
+        sinConexion
+            ? TextosUbicacionAlternativa.guardadoEnElTelefono
+            : TextosUbicacionAlternativa.vinculada(nombre, FormatoUbicaciones.titulo(ubicacion)),
+      );
+      return;
+    }
+    // Una validación dice ella misma qué pasó («Esa ubicación ya no está en tu teléfono. Elegí otra.») y
+    // repetir lo mismo no sirve: se vuelve a elegir. Cualquier otra falla es el aviso del canvas.
+    final explicada = switch (falla) {
+      FailureValidacion(:final campos) when campos.isNotEmpty => campos.values.first,
+      _ => null,
+    };
+    setState(
+      () => _fallaAlternativa = (
+        texto: explicada ?? TextosUbicacionAlternativa.noPudimosGuardar,
+        reintentar: explicada == null ? ubicacion : null,
+        nombre: nombre,
+      ),
+    );
+  }
+
+  /// Sin conexión (22A·10): el vínculo igual quedó en el teléfono y sube al volver la red. Si no se
+  /// puede saber, no se afirma nada.
+  Future<bool> _sinConexion() async {
+    try {
+      return await ref.read(monitorConectividadProvider).actual() == TipoConexion.sinConexion;
+    } on Object {
+      return false;
+    }
+  }
+
+  /// «Quitar» (22A·06): la hoja de confirmación (22A·07); al quitarse, la ficha, que lee en vivo, vuelve
+  /// a ofrecer «Elegir».
+  Future<void> _quitarAlternativa(FichaDePersona ficha, EstadoUbicacionAlternativa estado) =>
+      _unaAlaVez(() async {
+        if (frenaPorCuentaRestringida(context, ref)) return;
+        final nombre = FormatoBajaPersona.nombreDePila(ficha.persona);
+        final ubicacion = switch (estado) {
+          UbicacionAlternativaVigente(:final ubicacion) => ubicacion,
+          UbicacionAlternativaDeBaja(:final ubicacion) => ubicacion,
+          _ => null,
+        };
+        final lugar = ficha.lugar;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        final quitada = await mostrarHojaQuitarAlternativa(
+          context,
+          personaId: widget.personaId,
+          espacioId: widget.espacioId,
+          nombre: nombre,
+          titulo: ubicacion == null
+              ? TextosUbicacionAlternativa.quitarTituloSinNombre
+              : TextosUbicacionAlternativa.quitarTitulo(FormatoUbicaciones.titulo(ubicacion)),
+          cuerpo: TextosUbicacionAlternativa.quitarCuerpo(
+            nombre,
+            lugar == null
+                ? null
+                : FormatoPersonas.dondeEstaElEspacio(lugar.espacio, lugar.ubicacion),
+          ),
+        );
+        if (quitada != true || !mounted) return;
+        setState(() => _fallaAlternativa = null);
+        _avisar(TextosUbicacionAlternativa.quitada(nombre));
+      });
+
+  /// «COBRANZA» (22A): dónde se le cobra a la persona, al día.
+  Widget _seccionCobranza(FichaDePersona ficha) {
+    final lectura = ref.watch(ubicacionAlternativaProvider(_claveAlternativa));
+    final falla = _fallaAlternativa;
+    final reintentar = falla?.reintentar;
+    return SeccionCobranzaAlternativa(
+      nombre: FormatoBajaPersona.nombreDePila(ficha.persona),
+      lectura: lectura,
+      soloLectura: ficha.soloLectura,
+      guardando: _guardandoAlternativa,
+      alElegir: _abriendo || _guardandoAlternativa ? null : () => unawaited(_elegirAlternativa()),
+      alQuitar: () {
+        final estado = lectura.value;
+        if (estado == null || _abriendo || _guardandoAlternativa) return;
+        unawaited(_quitarAlternativa(ficha, estado));
+      },
+      alReintentarLectura: () => ref.invalidate(ubicacionAlternativaProvider(_claveAlternativa)),
+      falla: falla == null
+          ? null
+          : FallaAlternativa(
+              texto: falla.texto,
+              reintentar: reintentar == null || _abriendo
+                  ? null
+                  : () => unawaited(_reintentarAlternativa(reintentar, falla.nombre)),
+            ),
+    );
+  }
 
   /// «Reactivar» (32B·04): la persona vuelve a estar activa y la ficha, que lee en vivo, deja de ser de
   /// solo lectura. Si falla, el botón vuelve a quedar tocable y el aviso dice qué hacer.
@@ -428,6 +606,7 @@ class _FichaPersonaPageState extends ConsumerState<FichaPersonaPage> {
         alEntregar: _entregarPendiente,
         alReactivarPersona: () => _reactivarPersona(ficha),
         alReactivarDepto: () => _reactivarDepto(ficha),
+        seccionCobranza: _seccionCobranza(ficha),
         alVerElCobro: verCobro == null ? null : (id) => unawaited(_verElCobro(id)),
       );
     }
@@ -634,8 +813,12 @@ class _CuerpoDeLaFicha extends StatelessWidget {
     required this.alEntregar,
     required this.alReactivarPersona,
     required this.alReactivarDepto,
+    required this.seccionCobranza,
     this.alVerElCobro,
   });
+
+  /// «COBRANZA» (22A): dónde se le cobra, al final de la ficha.
+  final Widget seccionCobranza;
 
   final FichaDePersona ficha;
   final String colportorId;
@@ -855,6 +1038,9 @@ class _CuerpoDeLaFicha extends StatelessWidget {
               ),
             ),
         ],
+        // 22A: la ubicación alternativa va debajo del historial (nota del canvas 32B·01).
+        const SizedBox(height: 18),
+        seccionCobranza,
       ],
     );
   }

@@ -54,6 +54,9 @@ class NotaUbicacionRepositorioFalso implements NotaUbicacionRepository {
 
   List<NotaUbicacion> get notas => List.unmodifiable(_ordenadas());
 
+  /// Suma [nota] a lo que ya hay, sin llamar a `agregar` (no queda en [llamadas]): para sembrar.
+  void agregarSinAvisar(NotaUbicacion nota) => _notas.add(nota);
+
   List<NotaUbicacion> _ordenadas() => [..._notas]
     ..sort((a, b) {
       final porFecha = b.auditoria.createdAt.compareTo(a.auditoria.createdAt);

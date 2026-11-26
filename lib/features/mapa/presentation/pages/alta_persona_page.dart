@@ -15,6 +15,11 @@ import '../widgets/dialogos_modificar.dart';
 import '../widgets/piezas_alta.dart';
 import '../widgets/piezas_persona.dart';
 
+/// Lo que deja un alta: la persona guardada y el vínculo que la une con su espacio (el `espacio_persona`
+/// que el alta crea junto con ella). Quien necesita a la persona en un espacio, como la venta de una
+/// entrevista sin nombre (#669), usa [vinculoId] sin volver a leer el espacio.
+typedef AltaDePersona = ({Persona persona, String vinculoId});
+
 /// "Nueva persona" (HU-UBI-008, vista 32A, artboards A·01 a A·06): el formulario que da de alta a un
 /// cliente en un espacio. Todo se guarda en el teléfono —la persona y su nota no se sincronizan—, así
 /// que no hay estado «sin conexión» ni espera de red.
@@ -28,14 +33,17 @@ import '../widgets/piezas_persona.dart';
 /// - Si guardar falla, el formulario conserva lo escrito, el botón vuelve a habilitarse y pasa a decir
 ///   «Reintentar» (A·06).
 ///
-/// Devuelve la [Persona] guardada (o `null` si se cerró sin guardar), para que quien la abrió avise
-/// «Guardamos a Jorge en este teléfono.» (A·05).
+/// Devuelve la [Persona] guardada con el id de su vínculo ([AltaDePersona]), o `null` si se cerró sin
+/// guardar, para que quien la abrió avise «Guardamos a Jorge en este teléfono.» (A·05).
 class AltaPersonaPage extends ConsumerStatefulWidget {
   const AltaPersonaPage({
     super.key,
     required this.espacioId,
     required this.colportorId,
     this.ayuda,
+    this.nombreInicial,
+    this.apellidoInicial,
+    this.telefonoInicial,
   });
 
   /// El espacio al que se agrega la persona.
@@ -48,15 +56,33 @@ class AltaPersonaPage extends ConsumerStatefulWidget {
   /// una venta). `null` = el alta de siempre, sin línea.
   final String? ayuda;
 
-  /// Abre el alta encima de la pantalla actual. [ayuda] es la línea opcional bajo el título.
-  static Future<Persona?> abrir(
+  /// Lo que el formulario trae ya escrito: el nombre, el apellido y el teléfono que la colportora puso
+  /// en «Editar persona» antes de elegir «Dar de baja y crear nueva» (HU-UBI-010, #405). `null` = el
+  /// campo arranca vacío, como el alta de siempre.
+  final String? nombreInicial;
+  final String? apellidoInicial;
+  final String? telefonoInicial;
+
+  /// Abre el alta encima de la pantalla actual. [ayuda] es la línea opcional bajo el título; los
+  /// `...Inicial` son lo que ya viene escrito.
+  static Future<AltaDePersona?> abrir(
     BuildContext context, {
     required String espacioId,
     required String colportorId,
     String? ayuda,
-  }) => Navigator.of(context).push<Persona>(
+    String? nombreInicial,
+    String? apellidoInicial,
+    String? telefonoInicial,
+  }) => Navigator.of(context).push<AltaDePersona>(
     MaterialPageRoute(
-      builder: (_) => AltaPersonaPage(espacioId: espacioId, colportorId: colportorId, ayuda: ayuda),
+      builder: (_) => AltaPersonaPage(
+        espacioId: espacioId,
+        colportorId: colportorId,
+        ayuda: ayuda,
+        nombreInicial: nombreInicial,
+        apellidoInicial: apellidoInicial,
+        telefonoInicial: telefonoInicial,
+      ),
     ),
   );
 
@@ -133,6 +159,10 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
   @override
   void initState() {
     super.initState();
+    _nombre.text = widget.nombreInicial ?? '';
+    _apellido.text = widget.apellidoInicial ?? '';
+    _telefono.text = widget.telefonoInicial ?? '';
+    _habiaCambios = _hayCambios;
     for (final c in [_nombre, _apellido, _telefono, _nota]) {
       c.addListener(_alCambiarElTexto);
     }
@@ -200,7 +230,7 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
       _falla = null;
     });
     Failure? falla;
-    Persona? guardada;
+    AltaDePersona? guardada;
     try {
       final casoDeUso = ref.read(registrarPersonaUseCaseProvider);
       final ids = _ids ??= casoDeUso.nuevosIds();
@@ -215,7 +245,7 @@ class _AltaPersonaPageState extends ConsumerState<AltaPersonaPage> {
           nota: _nota.text,
         ),
       );
-      resultado.fold((f) => falla = f, (p) => guardada = p);
+      resultado.fold((f) => falla = f, (p) => guardada = (persona: p, vinculoId: ids.vinculo));
     } on Object catch (e) {
       // Nada de `e` al mensaje: puede traer lo escrito (convenciones §7.5).
       falla = FailureInesperado(causa: e.runtimeType.toString());

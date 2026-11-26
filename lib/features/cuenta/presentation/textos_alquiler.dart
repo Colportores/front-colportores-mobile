@@ -68,7 +68,7 @@ abstract final class TextosAlquiler {
 
   /// En la deuda con la casa editora (33B): de dónde sale ese descuento.
   static String descontadoPorAlquiler(int centavos) =>
-      'Incluye ${FormatoCuenta.monto(centavos)} que pagaste de más en el alquiler.';
+      'Ya descontamos ${FormatoCuenta.monto(centavos)} que pagaste de más en el alquiler.';
 
   /// 38C·05 con la hora de lo último que bajó el teléfono (el canvas dice «ayer a las 21:00»).
   static String sinConexion(DateTime? bajadoEn, DateTime ahora) => bajadoEn == null

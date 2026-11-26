@@ -148,10 +148,7 @@ final class TicketLocalDataSourceDrift {
 
   List<TicketConFoto> _aLista(List<TypedResult> filas) => [
     for (final f in filas)
-      (
-        ticket: _aTicket(f.readTable(_db.tickets)),
-        foto: _aFoto(f.readTable(_db.ticketFotosLocales)),
-      ),
+      (ticket: aTicket(f.readTable(_db.tickets)), foto: aFoto(f.readTable(_db.ticketFotosLocales))),
   ];
 
   /// Ver [TicketRepository.observarTicket].
@@ -274,10 +271,10 @@ final class TicketLocalDataSourceDrift {
       _db.ticketFotosLocales,
     )..where((f) => f.ticketId.equals(id))).getSingleOrNull();
     if (f == null) return null;
-    return (ticket: _aTicket(t), foto: _aFoto(f));
+    return (ticket: aTicket(t), foto: aFoto(f));
   }
 
-  static Ticket _aTicket(TicketFila fila) => Ticket(
+  static Ticket aTicket(TicketFila fila) => Ticket(
     id: fila.id,
     tipo: TicketModel.tipoDesdeCodigo(fila.tipo),
     // Un ticket de antes de la migración 0113 puede venir sin monto o sin fecha: se lee igual.
@@ -303,7 +300,7 @@ final class TicketLocalDataSourceDrift {
     ),
   );
 
-  static FotoLocalDeTicket _aFoto(TicketFotoLocalFila fila) => FotoLocalDeTicket(
+  static FotoLocalDeTicket aFoto(TicketFotoLocalFila fila) => FotoLocalDeTicket(
     ticketId: fila.ticketId,
     tipoDeImagen: TipoDeImagen.desdeMime(fila.tipoDeImagen) ?? TipoDeImagen.jpeg,
     bytes: fila.bytes,

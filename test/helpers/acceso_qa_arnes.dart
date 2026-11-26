@@ -71,6 +71,7 @@ final class RemotoQueFalla with RemotoSinSesionDeslizante implements AuthRemoteD
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) async {
     llamadasRegistrar++;
     await demora?.future;
@@ -81,6 +82,7 @@ final class RemotoQueFalla with RemotoSinSesionDeslizante implements AuthRemoteD
       cedula: cedula,
       email: email,
       password: password,
+      terminosVersion: terminosVersion,
     );
   }
 

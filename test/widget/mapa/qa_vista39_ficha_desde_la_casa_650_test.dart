@@ -21,6 +21,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/ficha_pe
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/notas_persona_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/ubicacion_alternativa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/textos_ficha_persona.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_ficha_persona.dart';
@@ -111,6 +112,9 @@ List<Override> _overridesFicha(MundoFicha m) {
     movimientosDeCuentaProvider.overrideWithValue(m.movimientos),
     marcadorDeTelefonoProvider.overrideWithValue(m.marcador),
     personaRepositoryProvider.overrideWithValue(m.personas),
+    ubicacionAlternativaRepositoryProvider.overrideWithValue(
+      UbicacionAlternativaRepositorioFalso(),
+    ),
     relojPersonaProvider.overrideWithValue(() => ahoraFicha),
     generadorIdPersonaProvider.overrideWithValue(() => 'nota-nueva-${++contador}'),
   ];

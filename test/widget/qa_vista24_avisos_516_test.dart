@@ -88,7 +88,7 @@ void main() {
         await tester.pumpAndSettle();
         await elegirHora736(tester, 21, 0);
 
-        expect(find.text(textoErrorHora736), findsOneWidget);
+        expect(find.text(textoErrorHoraAgenda736), findsOneWidget);
         expect(
           tester.widget<Text>(horaAgendaValor736).data,
           '20:00',
@@ -427,7 +427,6 @@ void main() {
         const avisos = AvisosDelServidor(otras: {'secreto': 'x'});
         expect(avisos.toString(), isNot(contains('secreto')), reason: 'stringify apagado');
         expect(const HoraDelAviso(9, 5).toString(), '09:05');
-        expect(const AvisosSinConexionException().toString(), 'AvisosSinConexionException');
         expect(const AvisosServidorException(codigo: '23514').toString(), contains('23514'));
       },
     );

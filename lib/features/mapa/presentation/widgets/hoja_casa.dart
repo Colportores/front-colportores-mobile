@@ -32,6 +32,7 @@ import '../textos_registrar_visita.dart';
 import 'bajas_de_personas.dart';
 import 'deptos_de_la_casa.dart';
 import 'estados_hoja_casa.dart';
+import 'fila_nota_del_depto.dart';
 import 'hoja_con_quien.dart' show mostrarHojaConQuienParaProgramar;
 import 'hoja_depto.dart' show SalidaHojaDepto, VerDeptoElegido, mostrarHojaDepto;
 import 'hoja_ubicacion.dart' show abridorEdicionUbicacionProvider;
@@ -716,7 +717,7 @@ class _HojaCasaState extends ConsumerState<HojaCasa> with BajasDePersonasDelEspa
         espacioId: espacioId,
         colportorId: colportorId,
       );
-      if (nueva != null && mounted) _guardada = TextosPersonas.guardada(nueva.nombre);
+      if (nueva != null && mounted) _guardada = TextosPersonas.guardada(nueva.persona.nombre);
     }, TextosPestanasHojaCasa.noPudimosAbrirAlta);
   }
 
@@ -1062,6 +1063,7 @@ class _Arriba extends ConsumerWidget {
       direccion: FormatoUbicaciones.direccion(item.ubicacion),
       colportorId: colportorId,
       esBaja: item.esBaja,
+      esDepto: agendasDelEspacio != null,
     );
     final nota = contexto.nota;
     return Column(
@@ -1125,7 +1127,8 @@ class _Arriba extends ConsumerWidget {
 /// El depto como una casa (C·10 «Depto: como una casa»): los avisos que correspondan, «Registrar
 /// visita», «PERSONAS» con todas las personas del depto («$ Cobrar» en la que debe, «+ Agregar
 /// persona»), «Sumar un libro» de la que tiene una venta abierta, las visitas agendadas del depto y
-/// «+ Agendar». La nota del depto («NOTA DEL DEPTO» con «Editar») llega con #290.
+/// «+ Agendar». Arriba de las personas, la nota del depto («NOTA DEL DEPTO» con «Editar», o «+ Agregar una
+/// nota»; vista 11, 11N, #290).
 class _ResumenDelDepto extends ConsumerWidget {
   const _ResumenDelDepto({
     required this.item,
@@ -1188,6 +1191,11 @@ class _ResumenDelDepto extends ConsumerWidget {
           AvisoAlta(key: claveFalla, color: ColoresAlta.rojo, glyph: '!', texto: falla!),
         if (alRegistrarVisita != null)
           BotonRegistrarVisita(alPresionar: alRegistrarVisita!, ocupado: ocupado),
+        FilaNotaDelDepto(
+          espacioId: agendasDelEspacio,
+          colportorId: colportorId,
+          soloLectura: item.esBaja,
+        ),
         Semantics(
           header: true,
           child: const Text(

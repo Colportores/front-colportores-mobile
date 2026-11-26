@@ -22,6 +22,7 @@ final class RegistrarUbicacionParams extends Equatable {
     this.ciudadId,
     this.calle,
     this.numero,
+    this.nombre,
     this.confirmaBajaPrecision = false,
     this.justificacionDuplicado,
   });
@@ -40,6 +41,10 @@ final class RegistrarUbicacionParams extends Equatable {
   /// Opcionales (R-UB02). En blanco cuentan como no cargados.
   final String? calle;
   final String? numero;
+
+  /// El nombre opcional del lugar («Farmacia Italia», «Nombre ubic.»): hasta [Ubicacion.largoMaximoDelNombre]
+  /// caracteres. En blanco cuenta como no cargado.
+  final String? nombre;
 
   /// El `id` (UUID v7) de esta alta. Obligatorio: la pantalla lo genera una vez por formulario
   /// ([RegistrarUbicacionUseCase.nuevoId]) y lo repite en cada intento —confirmar la precisión,
@@ -66,6 +71,7 @@ final class RegistrarUbicacionParams extends Equatable {
     ciudadId,
     calle,
     numero,
+    nombre,
     id,
     confirmaBajaPrecision,
     justificacionDuplicado,
@@ -80,7 +86,8 @@ final class RegistrarUbicacionParams extends Equatable {
 /// 2. Sin `ciudad_id`: `Left(FailureCiudadRequerida)` (en el servidor es obligatoria: sin ella el push
 ///    vuelve `invalid`). La pantalla siempre propone una ciudad de la campaña, así que es la red de
 ///    seguridad del dominio.
-/// 3. "Crear igual" con la justificación en blanco: `Left(FailureValidacion)`.
+/// 3. "Crear igual" con la justificación en blanco, o un nombre de más de [Ubicacion.largoMaximoDelNombre]
+///    caracteres: `Left(FailureValidacion)`.
 /// 4. GPS con precisión peor que 50 m y sin confirmar: `Right(AltaConBajaPrecision)`, sin crear
 ///    nada.
 /// 5. Si no, arma la ubicación —`id` UUID v7, `zona_id` = la zona que contiene el punto o `null`
@@ -150,6 +157,16 @@ final class RegistrarUbicacionUseCase
     final ciudadId = _texto(params.ciudadId);
     if (ciudadId == null) return const Left(FailureCiudadRequerida());
 
+    if ((_texto(params.nombre)?.length ?? 0) > Ubicacion.largoMaximoDelNombre) {
+      return const Left(
+        FailureValidacion(
+          campos: {
+            'nombre': 'El nombre admite hasta ${Ubicacion.largoMaximoDelNombre} caracteres.',
+          },
+        ),
+      );
+    }
+
     final crearIgual = params.justificacionDuplicado != null;
     if (crearIgual && _texto(params.justificacionDuplicado) == null) {
       return const Left(
@@ -187,6 +204,7 @@ final class RegistrarUbicacionUseCase
       tipo: params.tipo,
       calle: _texto(params.calle),
       numero: _texto(params.numero),
+      nombre: _texto(params.nombre),
       lat: coordenadas.lat,
       lon: coordenadas.lon,
       ciudadId: ciudadId,

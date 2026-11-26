@@ -675,6 +675,30 @@ final class FailureConservadaDeBaja extends Failure {
       );
 }
 
+/// Al marcar un duplicado, el alta de alguna de las dos está subiendo en este momento (HU-UBI-006,
+/// «Par local»): hasta que el servidor conteste no se sabe cómo se une. No se escribió nada y se
+/// puede reintentar. Texto provisorio (mapa §2: texto/aviso).
+final class FailureAltaSubiendo extends Failure {
+  const FailureAltaSubiendo()
+    : super(
+        mensaje:
+            'Una de las dos ubicaciones se está subiendo ahora. Esperá un momento y probá de nuevo.',
+        codigo: 'UBI_ALTA_SUBIENDO',
+      );
+}
+
+/// Al marcar un duplicado, se pidió conservar la que solo está en el teléfono teniendo la otra en el
+/// servidor (HU-UBI-006, «Par local»): no puede subir mientras la otra esté viva. No se escribió nada;
+/// el par hay que revisarlo de nuevo. Texto provisorio (mapa §2: texto/aviso).
+final class FailureConservadaSoloEnTelefono extends Failure {
+  const FailureConservadaSoloEnTelefono()
+    : super(
+        mensaje:
+            'La ubicación que ibas a conservar todavía no está en el servidor. Revisá el par de nuevo.',
+        codigo: 'UBI_CONSERVADA_SOLO_EN_TELEFONO',
+      );
+}
+
 /// Reactivar una baja choca con la regla de dirección única (D1, HU-UBI-005 «Reactivar choca con otra
 /// casa activa»): ya hay otra ubicación activa con la misma dirección a menos de 100 m y no pueden
 /// quedar las dos. No se escribió nada. [existenteId] es la otra (la más cercana, si hay varias) para
@@ -1387,17 +1411,9 @@ final class FailureCuotasNoDisponibles extends Failure {
       );
 }
 
-/// No hay conexión para traer la deuda con la casa editora (HU-CTA-002, 33B). Lo último que llegó
-/// sigue guardado en el teléfono: la pantalla lo muestra con su hora. Sin nada guardado es el error
-/// de 33B·03.
-final class FailureDeudaSinConexion extends Failure {
-  const FailureDeudaSinConexion()
-    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'DEUDA_CASA_SIN_CONEXION');
-}
-
-/// El servidor no pudo contar la deuda con la casa editora, o contestó algo que la app no entiende
-/// (HU-CTA-002, 33B·03). Es **otra cosa** que «no debés nada»: nadie muestra «$ 0» ante esta falla.
-/// Se puede reintentar. El texto es el del canvas.
+/// El teléfono no pudo leer lo que bajó para contar la deuda con la casa editora (HU-CTA-002, 33B·03):
+/// la base local no se pudo abrir o leer. Es **otra cosa** que «no debés nada»: nadie muestra «$ 0» ante
+/// esta falla. Se puede reintentar. El texto es el del canvas.
 final class FailureDeudaNoDisponible extends Failure {
   const FailureDeudaNoDisponible()
     : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'DEUDA_CASA_NO_DISPONIBLE');
@@ -1507,4 +1523,138 @@ final class FailureTicketCopiaSinSubir extends Failure {
 final class FailureTicketNoEncontrado extends Failure {
   const FailureTicketNoEncontrado()
     : super(mensaje: 'No encontramos ese ticket.', codigo: 'TICKET_NO_ENCONTRADO');
+}
+
+// --- Pedidos a la casa editora (HU-STK-009, vista 37, #387) --------------------------------------
+
+/// El pedido no se pudo guardar en el teléfono (37A·07). No se guardó ni se encoló nada: se puede reintentar
+/// con lo mismo. El canvas dice «Quedó guardado acá», pero eso solo es verdad si la falla es posterior al
+/// guardado: cuando falla la escritura, lo verdadero es que no se envió nada (texto a confirmar, «mapa §2:
+/// texto»).
+final class FailurePedidoNoGuardado extends Failure {
+  const FailurePedidoNoGuardado({this.causa})
+    : super(
+        mensaje: 'No pudimos enviar el pedido. No se envió nada: probá de nuevo.',
+        codigo: 'PEDIDO_NO_GUARDADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// El pedido no tiene la forma que el servidor acepta (vacío, cantidad que no sirve, producto repetido o que
+/// no se puede pedir). La pantalla no deja llegar hasta acá: es la red de seguridad.
+final class FailurePedidoInvalido extends Failure {
+  const FailurePedidoInvalido()
+    : super(mensaje: 'Sumá al menos un producto para enviar el pedido.', codigo: 'PEDIDO_INVALIDO');
+}
+
+/// El pedido ya no se puede cancelar: no es de la colportora o su coordinador ya lo decidió (decisión
+/// «Cancelar ped»: solo quien lo pidió, solo mientras está por autorizar).
+final class FailurePedidoNoCancelable extends Failure {
+  const FailurePedidoNoCancelable()
+    : super(
+        mensaje: 'Este pedido ya no se puede cancelar: tu coordinador ya lo decidió.',
+        codigo: 'PEDIDO_NO_CANCELABLE',
+      );
+}
+
+/// La cancelación no se pudo guardar en el teléfono: el pedido sigue como estaba.
+final class FailurePedidoNoCancelado extends Failure {
+  const FailurePedidoNoCancelado({this.causa})
+    : super(
+        mensaje: 'No pudimos cancelar el pedido. Sigue por autorizar: probá de nuevo.',
+        codigo: 'PEDIDO_NO_CANCELADO',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudieron leer los pedidos (37B·06): la base local no se pudo leer. Es otra cosa que «todavía no
+/// pediste nada».
+final class FailurePedidosNoDisponibles extends Failure {
+  const FailurePedidosNoDisponibles()
+    : super(mensaje: 'No pudimos traer tus pedidos.', codigo: 'PEDIDOS_NO_DISPONIBLES');
+}
+
+// --- Transferencias de materiales (HU-STK-005, vista 40, #512) -----------------------------------
+
+/// La transferencia no se pudo guardar en el teléfono (40A·08). No se guardó ni se encoló nada: se puede
+/// reintentar con lo mismo. El canvas dice «Quedó guardada acá», pero eso solo es verdad si la falla es
+/// posterior al guardado: cuando falla la escritura, lo verdadero es que no se envió nada (texto a
+/// confirmar, «mapa §2: texto»).
+final class FailureTransferenciaNoGuardada extends Failure {
+  const FailureTransferenciaNoGuardada({this.causa})
+    : super(
+        mensaje: 'No pudimos enviar la transferencia. No se envió nada: probá de nuevo.',
+        codigo: 'TRANSFERENCIA_NO_GUARDADA',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// La transferencia no tiene la forma que el servidor acepta (sin materiales, sin compañero, consigo
+/// misma o con una cantidad que no sirve). La pantalla no deja llegar hasta acá: es la red de seguridad.
+final class FailureTransferenciaInvalida extends Failure {
+  const FailureTransferenciaInvalida()
+    : super(
+        mensaje: 'Elegí a quién se lo pedís y sumá al menos un material.',
+        codigo: 'TRANSFERENCIA_INVALIDA',
+      );
+}
+
+/// La transferencia ya no se puede cancelar: no es del colportor o su coordinadora ya la decidió
+/// (decisión «Cancelar tr.»: solo quien la pidió, solo mientras está por autorizar).
+final class FailureTransferenciaNoCancelable extends Failure {
+  const FailureTransferenciaNoCancelable()
+    : super(
+        mensaje: 'Esta transferencia ya no se puede cancelar: tu coordinadora ya la decidió.',
+        codigo: 'TRANSFERENCIA_NO_CANCELABLE',
+      );
+}
+
+/// La cancelación no se pudo guardar en el teléfono: la transferencia sigue como estaba.
+final class FailureTransferenciaNoCancelada extends Failure {
+  const FailureTransferenciaNoCancelada({this.causa})
+    : super(
+        mensaje: 'No pudimos cancelar la transferencia. Sigue por autorizar: probá de nuevo.',
+        codigo: 'TRANSFERENCIA_NO_CANCELADA',
+      );
+
+  /// El tipo de la excepción, para el log; nunca su texto.
+  final String? causa;
+
+  @override
+  List<Object?> get props => [...super.props, causa];
+}
+
+/// No se pudieron leer las transferencias (40B·10): la base local no se pudo leer. Es otra cosa que
+/// «todavía no hay transferencias».
+final class FailureTransferenciasNoDisponibles extends Failure {
+  const FailureTransferenciasNoDisponibles()
+    : super(
+        mensaje: 'No pudimos traer tus transferencias.',
+        codigo: 'TRANSFERENCIAS_NO_DISPONIBLES',
+      );
+}
+
+/// No se pudo traer a los colportores de la campaña (40A·02): el servidor no la dio o no hay conexión.
+/// El canvas no dibuja este caso (texto a confirmar, «mapa §2: texto»).
+final class FailureCompanierosNoDisponibles extends Failure {
+  const FailureCompanierosNoDisponibles()
+    : super(
+        mensaje: 'No pudimos traer a los colportores de tu campaña. Probá de nuevo con conexión.',
+        codigo: 'COMPANIEROS_NO_DISPONIBLES',
+      );
 }

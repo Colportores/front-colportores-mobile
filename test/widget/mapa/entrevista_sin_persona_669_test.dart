@@ -315,6 +315,32 @@ void main() {
     });
 
     testWidgets(
+      'la venta sigue con el vínculo que el alta creó, sin leer el espacio: si esa lectura fallara, no '
+      'se pide el nombre de nuevo ni se duplica a la persona (#671)',
+      (tester) async {
+        await _hastaR06(tester, a);
+        await a.tocarKey(tester, ClavesEntrevista.registrarVenta);
+        await _escribirNombre(tester, 'Lucía');
+        // La lectura de las personas del espacio no anda: la venta no la necesita.
+        _personas(a, tester).fallaAlObservar = true;
+
+        await _guardarPersona(tester, a);
+
+        expect(_ventaPagina, findsOneWidget);
+        expect(_alta, findsNothing);
+        expect(find.text('Lucía'), findsOneWidget);
+        expect(find.text(TextosEntrevista.ventaNoGuardada('Lucía')), findsNothing);
+        await a.armarLaVenta(tester);
+        await a.registrarSinFecha(tester);
+
+        final alta = _personas(a, tester).recibidas.single;
+        expect(a.montaje.agenda.recibidas.single.visita.espacioPersonaId, alta.vinculo.id);
+        expect(a.entorno.ventas.recibidas.single.venta.espacioPersonaId, alta.vinculo.id);
+        expect(_personas(a, tester).recibidas, hasLength(1), reason: 'una sola persona');
+      },
+    );
+
+    testWidgets(
       'si la venta no se completa tras el alta, la entrevista sigue con la persona y no se vuelve a pedir',
       (tester) async {
         await _hastaR06(tester, a);

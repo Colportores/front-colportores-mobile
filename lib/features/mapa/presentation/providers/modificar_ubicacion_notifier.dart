@@ -76,6 +76,7 @@ final class ModificarUbicacionState extends Equatable {
     this.ciudadNombre,
     this.calle = '',
     this.numero = '',
+    this.nombre = '',
     this.punto,
     this.modo = ModoEdicion.datos,
     this.puntoMover,
@@ -114,6 +115,9 @@ final class ModificarUbicacionState extends Equatable {
   final String? ciudadNombre;
   final String calle;
   final String numero;
+
+  /// El nombre opcional del lugar («Nombre ubic.»); en blanco = sin nombre.
+  final String nombre;
   final Coordenadas? punto;
 
   final ModoEdicion modo;
@@ -153,10 +157,16 @@ final class ModificarUbicacionState extends Equatable {
   bool get ciudadCambiada => original != null && ciudadId != original!.ciudadId;
   bool get calleCambiada => original != null && _t(calle) != _t(original!.calle);
   bool get numeroCambiado => original != null && _t(numero) != _t(original!.numero);
+  bool get nombreCambiado => original != null && _t(nombre) != _t(original!.nombre);
   bool get puntoCambiado => original != null && punto != original!.coordenadas;
 
   bool get hayCambios =>
-      tipoCambiado || ciudadCambiada || calleCambiada || numeroCambiado || puntoCambiado;
+      tipoCambiado ||
+      ciudadCambiada ||
+      calleCambiada ||
+      numeroCambiado ||
+      nombreCambiado ||
+      puntoCambiado;
 
   /// Cuántos metros se corrió el punto respecto de la ubicación guardada (lo que mide el aviso de
   /// más de 100 m), o `null` si todavía no hay punto.
@@ -214,6 +224,7 @@ final class ModificarUbicacionState extends Equatable {
     if (ciudadCambiada) 'la ciudad',
     if (calleCambiada) 'la calle',
     if (numeroCambiado) 'el número',
+    if (nombreCambiado) 'el nombre',
     if (puntoCambiado) 'la posición',
   ];
 
@@ -232,6 +243,7 @@ final class ModificarUbicacionState extends Equatable {
     bool borrarCiudadNombre = false,
     String? calle,
     String? numero,
+    String? nombre,
     Coordenadas? punto,
     ModoEdicion? modo,
     Coordenadas? puntoMover,
@@ -255,6 +267,7 @@ final class ModificarUbicacionState extends Equatable {
     ciudadNombre: borrarCiudadNombre ? null : (ciudadNombre ?? this.ciudadNombre),
     calle: calle ?? this.calle,
     numero: numero ?? this.numero,
+    nombre: nombre ?? this.nombre,
     punto: punto ?? this.punto,
     modo: modo ?? this.modo,
     puntoMover: puntoMover ?? this.puntoMover,
@@ -277,6 +290,7 @@ final class ModificarUbicacionState extends Equatable {
     ciudadNombre,
     calle,
     numero,
+    nombre,
     punto,
     modo,
     puntoMover,
@@ -435,6 +449,7 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
         ciudadNombre: nombre,
         calle: ubicacion.calle ?? '',
         numero: ubicacion.numero ?? '',
+        nombre: ubicacion.nombre ?? '',
         punto: ubicacion.coordenadas,
         movimientosCamara: state.movimientosCamara + 1,
       );
@@ -550,6 +565,11 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
   void editarNumero(String texto) {
     if (!_editable) return;
     state = state.copyWith(numero: texto, borrarFalla: !state.desactualizada);
+  }
+
+  void editarNombre(String texto) {
+    if (!_editable) return;
+    state = state.copyWith(nombre: texto, borrarFalla: !state.desactualizada);
   }
 
   /// «Cambiar»: la ciudad la elige el colportor de la lista de su campaña.
@@ -742,6 +762,7 @@ final class ModificarUbicacionNotifier extends Notifier<ModificarUbicacionState>
           ciudadId: state.ciudadId,
           calle: state.calle,
           numero: state.numero,
+          nombre: state.nombre,
           confirmadas: confirmadas,
           justificacionDuplicado: justificacion,
         ),

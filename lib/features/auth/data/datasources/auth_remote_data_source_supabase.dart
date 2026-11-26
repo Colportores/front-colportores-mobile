@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io' show IOException;
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/config/config_supabase.dart';
@@ -86,12 +88,20 @@ final class AuthRemoteDataSourceSupabase
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) async {
     final respuesta = await _traduciendo(
       () => _auth.signUp(
         email: email,
         password: password,
-        data: {'nombre': nombre, 'apellido': apellido, 'cedula': cedula},
+        // `terminos_version`: la versión de los Términos que aceptó; el trigger del alta la guarda
+        // con la hora del servidor (backend-supabase#109, migración 0065).
+        data: {
+          'nombre': nombre,
+          'apellido': apellido,
+          'cedula': cedula,
+          'terminos_version': terminosVersion,
+        },
         // Enlace de verificación → vuelve a la app por el deep link (declarado en el manifest),
         // no al Site URL (localhost:3000 por default). Path propio `/verificado` (issue #84) para
         // poder distinguir, del lado de la app, esta confirmación de un login/registro normal.
@@ -230,12 +240,48 @@ final class AuthRemoteDataSourceSupabase
 
   // --- Recuperación de contraseña (HU-AUTH-005) ---
 
-  /// El evento `passwordRecovery` que `supabase_flutter` emite al canjear un enlace de recuperación
-  /// es un enlace válido. Un error del canje es un enlace vencido, pero solo si el deep link era de
-  /// recuperación y nadie tomó ya su resultado ([RegistroEnlacesAuth.tomarRecuperacionEnCanje]):
-  /// así un error posterior (un refresco de token que falla) no se confunde con el enlace.
+  /// Resultado de cada enlace de recuperación que llega, por sus dos caminos:
+  /// - `?code=` (el enlace viejo, hasta que la plantilla nueva esté en todos los proyectos): lo canjea
+  ///   `supabase_flutter` solo. El evento `passwordRecovery` es un enlace válido; un error del canje
+  ///   es un enlace vencido, pero solo si el deep link era de recuperación y nadie tomó ya su
+  ///   resultado ([RegistroEnlacesAuth.tomarRecuperacionEnCanje]): así un error posterior (un
+  ///   refresco de token que falla) no se confunde con el enlace.
+  /// - `?token_hash=<código>&type=recovery` (la plantilla nueva, backend-supabase#313): lo canjea
+  ///   esta clase con `verifyOTP` ([_canjearCodigo]). Si sirve, gotrue emite el mismo evento
+  ///   `passwordRecovery` (un solo aviso por enlace, el de arriba); si no, lo avisa [_canjearCodigo].
   @override
-  Stream<EnlaceRecuperacion> get enlacesRecuperacion => _auth.onAuthStateChange.transform(
+  Stream<EnlaceRecuperacion> get enlacesRecuperacion {
+    late final StreamController<EnlaceRecuperacion> controller;
+    StreamSubscription<EnlaceRecuperacion>? delEstado;
+    void Function()? desenganchar;
+    controller = StreamController<EnlaceRecuperacion>.broadcast(
+      onListen: () {
+        delEstado = _enlacesDelCanjeAutomatico().listen(controller.add);
+        desenganchar = _registro.recibirCodigos((codigo) {
+          // En fila: un segundo enlace (otro pedido sin cerrar la app) espera a que termine el
+          // primero, así sus resultados llegan en el orden en que se tocaron los enlaces.
+          _turnoDeCanje = _turnoDeCanje.then((_) async {
+            final resultado = await _canjearCodigo(codigo);
+            if (resultado != null && !controller.isClosed) controller.add(resultado);
+          });
+        });
+      },
+      onCancel: () async {
+        desenganchar?.call();
+        await delEstado?.cancel();
+      },
+    );
+    return controller.stream;
+  }
+
+  /// Cola de los canjes de código en curso (cada uno termina siempre: no lanza y tiene tope de tiempo).
+  Future<void> _turnoDeCanje = Future<void>.value();
+
+  /// Tope de un canje: sin él, un servidor que no contesta dejaría trabado el turno de los enlaces
+  /// siguientes.
+  static const Duration _topeDeCanje = Duration(seconds: 30);
+
+  Stream<EnlaceRecuperacion> _enlacesDelCanjeAutomatico() => _auth.onAuthStateChange.transform(
     StreamTransformer<AuthState, EnlaceRecuperacion>.fromHandlers(
       handleData: (estado, sink) {
         if (estado.event == AuthChangeEvent.passwordRecovery) {
@@ -266,6 +312,54 @@ final class AuthRemoteDataSourceSupabase
       },
     ),
   );
+
+  /// Canjea el código de un solo uso del enlace de recuperación. Devuelve `null` si sirvió (el
+  /// aviso lo da el evento `passwordRecovery` que emite gotrue), y si no, qué pasó: sin red o
+  /// servidor caído → [EnlaceRecuperacion.sinConexion] (el servidor no lo vio: el enlace sigue
+  /// sirviendo); cualquier otro rechazo, un código vacío o una respuesta sin sesión →
+  /// [EnlaceRecuperacion.vencido] (vencido, ya usado o inválido: una sola pantalla, 02/10). Nunca
+  /// lanza, y nunca loguea el código.
+  Future<EnlaceRecuperacion?> _canjearCodigo(String codigo) async {
+    try {
+      if (codigo.isEmpty) return _codigoVencido('vacío');
+      final respuesta = await _auth
+          .verifyOTP(type: OtpType.recovery, tokenHash: codigo)
+          .timeout(_topeDeCanje);
+      if (respuesta.session == null) return _codigoVencido('sin sesión');
+      return null;
+    } on AuthRetryableFetchException {
+      return _codigoSinRed();
+    } on AuthException catch (e) {
+      return _codigoVencido(e.statusCode ?? e.code ?? 'sin código');
+    } on Object catch (e) {
+      // `IOException` y `http.ClientException` suben tal cual si gotrue no las envolvió.
+      if (e is IOException || e is http.ClientException || e is TimeoutException) {
+        return _codigoSinRed();
+      }
+      return _codigoVencido('inesperado');
+    }
+  }
+
+  EnlaceRecuperacion _codigoSinRed() {
+    _registro.tomarRecuperacionEnCanje();
+    _log.warn(
+      LogModulo.auth,
+      'RECUPERACION_CODIGO_SIN_RED',
+      'no se pudo canjear el código de recuperación: sin red',
+    );
+    return EnlaceRecuperacion.sinConexion;
+  }
+
+  EnlaceRecuperacion _codigoVencido(String motivo) {
+    _registro.tomarRecuperacionEnCanje();
+    _log.warn(
+      LogModulo.auth,
+      'RECUPERACION_CODIGO_VENCIDO',
+      'el código de recuperación no sirvió',
+      {'motivo': motivo},
+    );
+    return EnlaceRecuperacion.vencido;
+  }
 
   @override
   String? get usuarioDeLaRecuperacion => _auth.currentUser?.id;

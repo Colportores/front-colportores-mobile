@@ -17,7 +17,6 @@ const _producto = {
   'id': 'pro-1',
   'nombre': 'El Conflicto de los Siglos',
   'descripcion': 'Edición de bolsillo',
-  'tipo': 'LIBRO',
   'categoria': 'BONIFICABLES',
   'es_bonificable': true,
   'es_misionero': false,
@@ -145,7 +144,6 @@ void main() {
       expect(p.id, 'pro-1');
       expect(p.nombre, 'El Conflicto de los Siglos');
       expect(p.descripcion, 'Edición de bolsillo');
-      expect(p.tipo, 'LIBRO');
       expect(p.categoria, 'BONIFICABLES');
       expect(p.esBonificable, isTrue);
       expect(p.esMisionero, isFalse);
@@ -184,6 +182,27 @@ void main() {
         p.createdBy,
         p.codigoEditor,
       ], everyElement(isNull));
+    });
+
+    test('producto: un servidor que todavía manda `tipo` (backend-supabase 0198) igual se aplica, '
+        'y también lo actualiza', () async {
+      // Hasta que el backend quite la clave derivada del pull, la fila trae `tipo`: la tabla local
+      // ya no tiene la columna y la ignora (solo guarda las suyas), tanto en el alta como al actualizar.
+      final conTipo = {..._producto, 'tipo': 'LIBRO'};
+
+      await aplicar({
+        'producto': [conTipo],
+      });
+      await aplicar({
+        'producto': [
+          {...conTipo, 'nombre': 'Otro nombre', 'sync_version': 4},
+        ],
+      }, w: 'w2');
+
+      final p = await db.select(db.productos).getSingle();
+      expect(p.nombre, 'Otro nombre');
+      expect(p.categoria, 'BONIFICABLES');
+      expect(p.syncVersion, 4);
     });
 
     test(

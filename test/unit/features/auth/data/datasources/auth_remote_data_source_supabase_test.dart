@@ -424,15 +424,22 @@ void main() {
       cedula: '12345678',
       email: 'ana@example.com',
       password: 'secreto123',
+      terminosVersion: 'v1',
     );
 
     test('dado un email nuevo, cuando registra, manda el perfil y el emailRedirectTo propio de '
-        'verificación (issue #84), y devuelve la sesión', () async {
+        'verificación (issue #84) y la versión de los términos aceptada (#386), y devuelve la '
+        'sesión', () async {
       when(
         () => auth.signUp(
           email: 'ana@example.com',
           password: 'secreto123',
-          data: {'nombre': 'Ana', 'apellido': 'Pérez', 'cedula': '12345678'},
+          data: {
+            'nombre': 'Ana',
+            'apellido': 'Pérez',
+            'cedula': '12345678',
+            'terminos_version': 'v1',
+          },
           emailRedirectTo: ConfigSupabase.redirectVerificacionEmail,
         ),
       ).thenAnswer((_) async => respuestaCon(sesion: sesionSupabase()));
@@ -443,6 +450,7 @@ void main() {
         cedula: '12345678',
         email: 'ana@example.com',
         password: 'secreto123',
+        terminosVersion: 'v1',
       );
 
       expect(sesion?.usuarioId, usuarioId);
@@ -830,6 +838,7 @@ void main() {
           cedula: '12345678',
           email: 'lucia@gmial.com',
           password: 'secreto123',
+          terminosVersion: 'v1',
         ),
         throwsA(isA<EmailInvalidoException>()),
       );

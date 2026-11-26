@@ -6,12 +6,14 @@ import 'package:equatable/equatable.dart';
 import '../../../../core/error/failure.dart';
 import '../../../../core/usecases/use_case.dart';
 import '../entities/duplicado_ubicacion.dart';
+import '../entities/estado_alta_ubicacion.dart';
 import '../entities/estado_casa.dart';
 import '../entities/resultado_union_duplicados.dart';
 import '../entities/ubicacion.dart';
 import '../entities/ubicacion_con_resumen.dart';
 import '../repositories/pares_duplicados_repository.dart';
 import '../repositories/ubicacion_repository.dart';
+import '../services/consultor_alta_ubicacion.dart';
 import '../services/criterio_duplicado_ubicacion.dart';
 
 /// Parámetros de [ConsultarParesDuplicadosUseCase].
@@ -88,6 +90,8 @@ final class ParaRevisar extends Equatable {
     required this.espaciosB,
     this.estadoA,
     this.estadoB,
+    this.altaA = EstadoAltaUbicacion.enServidor,
+    this.altaB = EstadoAltaUbicacion.enServidor,
     this.rechazoDeUnion,
   });
 
@@ -101,12 +105,45 @@ final class ParaRevisar extends Equatable {
   final EstadoCasa? estadoA;
   final EstadoCasa? estadoB;
 
+  /// Dónde está el alta de `par.a` y de `par.b` respecto del servidor (HU-UBI-006, «Par local»).
+  final EstadoAltaUbicacion altaA;
+  final EstadoAltaUbicacion altaB;
+
+  /// Si alguna de las dos no está en el servidor: la unión se hace en el teléfono y no se encola
+  /// ninguna operación (contrato del motor, §6.2).
+  bool get esParLocal =>
+      altaA != EstadoAltaUbicacion.enServidor || altaB != EstadoAltaUbicacion.enServidor;
+
+  /// Si se puede elegir `par.a` como la que se conserva. **No se ofrece conservar la que solo está en
+  /// el teléfono si la otra está en el servidor**: no podría subir mientras la otra esté viva (D1).
+  /// Con las dos fuera del servidor, cualquiera de las dos.
+  bool get sePuedeConservarA => !_soloEnTelefono(altaA) || _soloEnTelefono(altaB);
+
+  /// Lo mismo para `par.b`.
+  bool get sePuedeConservarB => !_soloEnTelefono(altaB) || _soloEnTelefono(altaA);
+
+  /// Si el alta de `par.a` / `par.b` está viajando al servidor en este momento (`IN_FLIGHT`): no se
+  /// sabe si va a quedar en el servidor, así que no se la llama «solo en el teléfono».
+  bool get subiendoA => altaA == EstadoAltaUbicacion.subiendo;
+  bool get subiendoB => altaB == EstadoAltaUbicacion.subiendo;
+
+  static bool _soloEnTelefono(EstadoAltaUbicacion alta) => alta != EstadoAltaUbicacion.enServidor;
+
   /// Si la última unión de este par la rechazó el servidor y se deshizo en el teléfono, el código del
   /// rechazo (`UB003`…; vacío si no vino ninguno): la tarjeta lo avisa (#679). `null` si no.
   final String? rechazoDeUnion;
 
   @override
-  List<Object?> get props => [par, espaciosA, espaciosB, estadoA, estadoB, rechazoDeUnion];
+  List<Object?> get props => [
+    par,
+    espaciosA,
+    espaciosB,
+    estadoA,
+    estadoB,
+    altaA,
+    altaB,
+    rechazoDeUnion,
+  ];
 }
 
 /// HU-UBI-006 — los pares de la vista 10, **reactivos**: se vuelven a emitir con cada alta, baja,
@@ -123,12 +160,17 @@ final class ObservarParesDuplicadosUseCase implements StreamUseCase<List<ParaRev
   ObservarParesDuplicadosUseCase(
     this._ubicaciones,
     this._pares, {
+    this._altas,
     DateTime Function()? ahora,
     this._criterio = const CriterioDuplicadoUbicacion(),
   }) : _ahora = ahora ?? DateTime.now;
 
   final UbicacionRepository _ubicaciones;
   final ParesDuplicadosRepository _pares;
+
+  /// Dónde está el alta de cada ubicación (HU-UBI-006, «Par local»). Sin él, todas se tratan como
+  /// del servidor.
+  final ConsultorAltaUbicacion? _altas;
   final DateTime Function() _ahora;
   final CriterioDuplicadoUbicacion _criterio;
 
@@ -140,9 +182,12 @@ final class ObservarParesDuplicadosUseCase implements StreamUseCase<List<ParaRev
     late final StreamController<List<ParaRevisar>> salida;
     StreamSubscription<List<UbicacionConResumen>>? lista;
     StreamSubscription<Map<String, ParDecidido>>? decisiones;
-    StreamSubscription<Map<String, String>>? rechazos;
+    StreamSubscription<Map<String, EstadoAltaUbicacion>>? altas;
     List<UbicacionConResumen>? ultimaLista;
     Map<String, ParDecidido>? ultimasDecisiones;
+    // Sin consultor, o hasta que conteste, todas están en el servidor.
+    var ultimasAltas = const <String, EstadoAltaUbicacion>{};
+    StreamSubscription<Map<String, String>>? rechazos;
     var ultimosRechazos = const <String, String>{};
 
     void emitir() {
@@ -164,6 +209,8 @@ final class ObservarParesDuplicadosUseCase implements StreamUseCase<List<ParaRev
             espaciosB: porId[par.b.id]?.cantidadEspacios ?? 0,
             estadoA: porId[par.a.id]?.estado,
             estadoB: porId[par.b.id]?.estado,
+            altaA: ultimasAltas[par.a.id] ?? EstadoAltaUbicacion.enServidor,
+            altaB: ultimasAltas[par.b.id] ?? EstadoAltaUbicacion.enServidor,
             rechazoDeUnion: ultimosRechazos[par.clave],
           ),
       ]);
@@ -179,6 +226,12 @@ final class ObservarParesDuplicadosUseCase implements StreamUseCase<List<ParaRev
           ultimasDecisiones = decididos;
           emitir();
         }, onError: salida.addError);
+        // Un error al leer la cola no tumba la lista: sin saberlo, todas se tratan como del servidor
+        // y la unión comprueba el alta de verdad dentro de su transacción.
+        altas = _altas?.observarSinConfirmar().listen((porId) {
+          ultimasAltas = porId;
+          emitir();
+        }, onError: (Object _) {});
         rechazos = _pares.observarUnionesRechazadas().listen(
           (porPar) {
             ultimosRechazos = porPar;
@@ -191,6 +244,7 @@ final class ObservarParesDuplicadosUseCase implements StreamUseCase<List<ParaRev
       onCancel: () async {
         await lista?.cancel();
         await decisiones?.cancel();
+        await altas?.cancel();
         await rechazos?.cancel();
       },
     );

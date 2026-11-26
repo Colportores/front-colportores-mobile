@@ -49,12 +49,20 @@ AlquilerDeCampania campaniaCon({
 }) =>
     AlquilerDeCampania(campaniaId: id, campania: nombre, montoCentavos: monto * 100, pagos: pagos);
 
-/// El alquiler del colportor con las campañas dadas (y las de baja, #740).
+/// El alquiler del colportor con las campañas dadas (y las de baja, #740). [trasladado] (en pesos) es lo que el
+/// servidor dice que pasó a la deuda con la casa editora (`cuenta_colportor.alquiler_trasladado`, #753): el
+/// teléfono no lo deduce de los pagos.
 AlquilerDelColportor alquilerCon(
   List<AlquilerDeCampania> campanias, {
   DateTime? bajadoEn,
+  int trasladado = 0,
   List<AlquilerDeBaja> bajas = const [],
-}) => AlquilerDelColportor(campanias: campanias, bajas: bajas, bajadoEn: bajadoEn);
+}) => AlquilerDelColportor(
+  campanias: campanias,
+  bajas: bajas,
+  bajadoEn: bajadoEn,
+  trasladadoCentavos: trasladado * 100,
+);
 
 /// Una decisión del coordinador sobre lo pagado de una baja; el monto va en pesos.
 DecisionDeAlquiler decisionDe(DestinoDeLoPagado destino, int pesos, {DateTime? en}) =>

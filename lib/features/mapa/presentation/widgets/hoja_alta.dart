@@ -117,6 +117,7 @@ class HojaAlta extends ConsumerStatefulWidget {
 class _HojaAltaState extends ConsumerState<HojaAlta> {
   final _calle = TextEditingController();
   final _numero = TextEditingController();
+  final _nombre = TextEditingController();
 
   /// El aviso de falla: cuando aparece se lleva a la vista, arriba del botón fijo.
   final _claveFalla = GlobalKey();
@@ -151,6 +152,7 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
   void dispose() {
     _calle.dispose();
     _numero.dispose();
+    _nombre.dispose();
     super.dispose();
   }
 
@@ -163,6 +165,9 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
     });
     ref.listen(proveedor.select((s) => s.numero), (_, n) {
       if (n.texto != _numero.text) _numero.text = n.texto;
+    });
+    ref.listen(proveedor.select((s) => s.nombre), (_, n) {
+      if (n != _nombre.text) _nombre.text = n;
     });
     ref.listen(proveedor.select((s) => s.falla), (anterior, nueva) {
       if (nueva == null || nueva == anterior) return;
@@ -387,7 +392,7 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
                         controlador: _numero,
                         alCambiar: _notificador.editarNumero,
                         limite: 20,
-                        accion: TextInputAction.done,
+                        accion: TextInputAction.next,
                         claveCampo: _claveCampo,
                       ),
                     ),
@@ -401,6 +406,12 @@ class _HojaAltaState extends ConsumerState<HojaAlta> {
                     alUsarNumero: _notificador.usarNumeroDelMapa,
                   ),
                 ],
+                const SizedBox(height: 14),
+                CampoNombreUbicacion(
+                  controlador: _nombre,
+                  alCambiar: _notificador.editarNombre,
+                  accion: TextInputAction.done,
+                ),
                 if (estado.falla != null) ...[
                   const SizedBox(height: 14),
                   AvisoAlta(

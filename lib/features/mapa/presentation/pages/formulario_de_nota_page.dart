@@ -15,8 +15,9 @@ import '../widgets/piezas_alta.dart';
 import '../widgets/piezas_notas.dart';
 import '../widgets/piezas_persona.dart';
 
-/// Lo que devuelve el formulario de una nota: la nota guardada y si era nueva o una edición.
-typedef NotaGuardadaDe<T extends NotaDeTexto> = ({T nota, bool esNueva});
+/// Lo que devuelve el formulario de una nota: la nota guardada y si era nueva o una edición; con
+/// [borrada], la nota que se borró desde el formulario (11N·04), que quien lo abrió puede restaurar.
+typedef NotaGuardadaDe<T extends NotaDeTexto> = ({T nota, bool esNueva, bool borrada});
 
 /// Guarda lo que se escribió: una nota nueva con el [id] dado (el mismo en cada intento) o la edición
 /// de la que se abrió. El formulario no sabe de quién es la nota: lo sabe quien lo abre.
@@ -46,6 +47,7 @@ class FormularioDeNotaPage<T extends NotaDeTexto> extends ConsumerStatefulWidget
     required this.guardar,
     required this.camposDelMotivo,
     this.nota,
+    this.borrar,
   });
 
   /// UUID del usuario con la sesión iniciada: el aviso de privacidad guarda su preferencia por cuenta.
@@ -56,6 +58,10 @@ class FormularioDeNotaPage<T extends NotaDeTexto> extends ConsumerStatefulWidget
 
   /// Lo que hace «Guardar nota».
   final GuardarNota<T> guardar;
+
+  /// Lo que hace «Borrar nota» (11N·04): el mismo borrado de siempre (baja restaurable 90 días). Solo se
+  /// ofrece al editar una nota y si quien abre el formulario lo pasa.
+  final Future<Either<Failure, T>> Function(WidgetRef ref, String id)? borrar;
 
   /// Los campos de un `FailureValidacion` cuyo mensaje explica por qué no se pudo guardar (la persona
   /// o el lugar en solo lectura, la nota que ya no está): ese mensaje guía; si no, el de la vista.
@@ -81,6 +87,9 @@ class _FormularioDeNotaPageState<T extends NotaDeTexto>
 
   /// El id de la nota nueva, creado con el primer intento y repetido en los siguientes.
   String? _id;
+
+  /// Falló el último «Borrar nota»: el aviso dice qué hacer; el texto sigue en el campo.
+  var _fallaAlBorrar = false;
 
   bool get _esEdicion => widget.nota != null;
 
@@ -175,12 +184,45 @@ class _FormularioDeNotaPageState<T extends NotaDeTexto>
     if (!mounted) return;
     final exito = guardada;
     if (exito != null) {
-      Navigator.of(context).pop<NotaGuardadaDe<T>>((nota: exito, esNueva: !_esEdicion));
+      Navigator.of(
+        context,
+      ).pop<NotaGuardadaDe<T>>((nota: exito, esNueva: !_esEdicion, borrada: false));
       return;
     }
     setState(() {
       _enviando = false;
       _falla = falla;
+    });
+  }
+
+  /// «Borrar nota» (11N·04): borra la nota que se edita sin pedir confirmación, porque se puede restaurar
+  /// («Deshacer» y «Ver borradas», 90 días). Comparte la bandera `_enviando` con «Guardar»: un doble toque, o
+  /// guardar y borrar a la vez, no corren dos acciones. Si falla, todo vuelve a habilitarse con el aviso.
+  Future<void> _borrar() async {
+    final original = widget.nota;
+    final borrar = widget.borrar;
+    if (_enviando || original == null || borrar == null) return;
+    setState(() {
+      _enviando = true;
+      _falla = null;
+      _fallaAlBorrar = false;
+    });
+    T? borrada;
+    try {
+      (await borrar(ref, original.id)).fold((_) {}, (n) => borrada = n);
+    } on Object {
+      // Nada de la excepción al aviso: puede traer lo escrito (convenciones §7.5).
+      borrada = null;
+    }
+    if (!mounted) return;
+    final exito = borrada;
+    if (exito != null) {
+      Navigator.of(context).pop<NotaGuardadaDe<T>>((nota: exito, esNueva: false, borrada: true));
+      return;
+    }
+    setState(() {
+      _enviando = false;
+      _fallaAlBorrar = true;
     });
   }
 
@@ -234,8 +276,12 @@ class _FormularioDeNotaPageState<T extends NotaDeTexto>
                         texto: TextosNotas.privacidad,
                       ),
                       const SizedBox(height: 16),
-                      if (conFalla) ...[
-                        AvisoAlta(color: ColoresAlta.rojo, glyph: '!', texto: _textoFalla),
+                      if (conFalla || _fallaAlBorrar) ...[
+                        AvisoAlta(
+                          color: ColoresAlta.rojo,
+                          glyph: '!',
+                          texto: conFalla ? _textoFalla : TextosNotas.noPudimosBorrar,
+                        ),
                         const SizedBox(height: 12),
                       ],
                       _CampoNota(
@@ -271,6 +317,21 @@ class _FormularioDeNotaPageState<T extends NotaDeTexto>
                       enviando: _enviando,
                       alTocar: _guardar,
                     ),
+                    if (_esEdicion && widget.borrar != null)
+                      TextButton(
+                        key: ClavesNotas.borrarDelFormulario,
+                        onPressed: _enviando ? null : _borrar,
+                        style: TextButton.styleFrom(
+                          foregroundColor: ColoresAlta.rojo,
+                          minimumSize: const Size.fromHeight(48),
+                          textStyle: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        child: const Text(TextosNotas.borrarNota),
+                      ),
                   ],
                 ),
               ),

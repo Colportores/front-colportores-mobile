@@ -24,8 +24,9 @@ import '../widgets/piezas_cuenta.dart';
 /// - **Con deuda** (38C·01): «TE FALTA PAGAR», monto, pagado, pagos y «Cargar pago de alquiler».
 /// - **Con un pago por validar** (38C·02): el aviso dice cuánto y que no baja hasta que lo valide el
 ///   coordinador.
-/// - **Pagado** (38C·03): la cifra en verde y sin botón. Si se pagó de más, dice que el excedente bajó
-///   la deuda con la casa editora (decisión «Alquiler fav», 28/10).
+/// - **Pagado** (38C·03): la cifra en verde y sin botón. Si se pagó de más, un aviso arriba dice que el
+///   excedente bajó la deuda con la casa editora (decisión «Alquiler fav», 28/10); la cifra la trae el
+///   servidor (`alquiler_trasladado`, un total de todas las campañas) y el teléfono no la calcula.
 /// - **La campaña no cobra** (38C·04): si el monto se quita mientras la pantalla está abierta.
 /// - **Sin conexión** (38C·05), **cargando** y **error** con «Reintentar» (el canvas no los dibuja).
 ///
@@ -90,6 +91,19 @@ class _AlquilerPageState extends ConsumerState<AlquilerPage> {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: AvisoSinConexionCuenta(
                 texto: TextosAlquiler.sinConexion(alquiler.bajadoEn, ahora),
+              ),
+            ),
+          ),
+        // Lo pagado de más lo dice el servidor (`alquiler_trasladado`): es un total de todas las
+        // campañas, así que el aviso va una vez, arriba, y no dentro de un bloque (#753).
+        if (alquiler.hayTraslado)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: AvisoInformativoAlquiler(
+                key: const Key('alquiler_de_mas'),
+                texto: TextosAlquiler.pagadoDeMas(alquiler.trasladadoCentavos),
+                exito: true,
               ),
             ),
           ),

@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
-import '../../../../core/config/config_supabase.dart';
+import '../../../../core/database/database_providers.dart';
 import '../../../../core/logging/app_logger.dart';
+import '../../../../core/sync/sync_providers.dart';
+import '../../../auth/presentation/providers/sesion_notifier.dart';
+import '../../data/datasources/preferencias_de_avisos_local_data_source_drift.dart';
 import '../../data/repositories/avisos_del_servidor_repository_impl.dart';
 import '../../domain/entities/avisos_del_servidor.dart';
 import '../../domain/repositories/avisos_del_servidor_repository.dart';
@@ -13,25 +15,34 @@ import 'preferencias_recordatorios_providers.dart';
 
 // Cableado de los avisos del servidor (HU-NOT-004, vista 24 grupo B, sección AVISOS; #516).
 
-/// Dónde viven los avisos que manda el servidor: `usuario.notif_preferences`, con la sesión de la
-/// app. Sin Supabase (tests, demo) no hay servidor: un repositorio en memoria que recuerda lo que se
-/// le dice mientras la app está abierta.
-final avisosDelServidorRepositoryProvider = Provider<AvisosDelServidorRepository>(
-  (ref) => ConfigSupabase.configurada
-      ? AvisosDelServidorSupabase.conCliente(Supabase.instance.client)
-      : AvisosDelServidorEnMemoria(),
-);
+/// Dónde viven los avisos que manda el servidor: `preferencia_de_avisos`, la fila de la persona en la base del
+/// teléfono, que baja y sube con la sincronización (backend-supabase 0207, «Avisos s/red»): cambiarlos no
+/// necesita conexión. Sin base abierta (tests, demo) un repositorio en memoria que recuerda lo que se le dice
+/// mientras la app está abierta.
+final avisosDelServidorRepositoryProvider = Provider<AvisosDelServidorRepository>((ref) {
+  final db = ref.watch(dbLocalProvider);
+  if (db == null) return AvisosDelServidorEnMemoria();
+  return AvisosDelServidorLocal(
+    PreferenciasDeAvisosLocalDataSourceDrift(
+      db,
+      encolador: ref.watch(encoladorSyncProvider),
+      // Al momento de leer o guardar, no al armar el repositorio: la sesión puede cambiar sin rearmarlo.
+      usuarioId: () => ref.read(sesionProvider).value?.usuarioId,
+    ),
+  );
+});
 
 /// Sin reintento automático: si no se pueden leer los avisos, la pantalla ofrece «Reintentar».
 Duration? _sinReintentos(int intento, Object error) => null;
 
 /// Por qué no se pudo guardar el último cambio.
 enum FalloDeAvisos {
-  /// No había conexión.
-  sinConexion,
-
-  /// El servidor no pudo guardarlo.
+  /// La base del teléfono no pudo guardarlo (no hay falla de conexión: se guarda en el teléfono).
   servidor,
+
+  /// Todavía no bajó la fila de preferencias de la persona (el teléfono no terminó su primera sincronización):
+  /// «Reintentar» va a funcionar cuando termine (24B·06, texto propio; QA de #773).
+  sinBajar,
 }
 
 /// Lo que ve la sección AVISOS.
@@ -82,6 +93,14 @@ class AvisosDelServidorNotifier extends AsyncNotifier<EstadoAvisosDelServidor> {
   /// El guardado en curso (si lo hay): un cambio nuevo lo comparte.
   Future<bool>? _enCurso;
 
+  /// Un guardado falló: lo leído al abrir pudo quedar viejo (la fila pudo bajar en el medio, o ser la de
+  /// «sin fila» con los valores de siempre). Antes del próximo guardado se vuelve a leer y se aplica solo lo
+  /// que la persona cambió, sin pisar lo demás.
+  bool _lecturaVieja = false;
+
+  /// Lo guardado cuando falló el último guardado: la base de lo que pidió la persona (para «Reintentar»).
+  AvisosDelServidor? _baseDeLaFalla;
+
   @override
   Future<EstadoAvisosDelServidor> build() async {
     final leidos = await ref.read(avisosDelServidorRepositoryProvider).leer();
@@ -118,6 +137,33 @@ class AvisosDelServidorNotifier extends AsyncNotifier<EstadoAvisosDelServidor> {
 
   Future<bool> cambiarHoraAgenda(HoraDelAviso hora) => _pedir((a) => a.copyWith(horaAgenda: hora));
 
+  /// Prende o apaga «Recordatorios de agenda» en el teléfono y le dice al servidor cómo quedó.
+  ///
+  /// La copia del servidor se corrige desde acá y no desde la pantalla: si la persona sale mientras el
+  /// teléfono todavía guarda, el notificador se mantiene vivo hasta terminar y el servidor no queda con
+  /// una copia vieja (y mandando «Mañana tenés visitas» con los recordatorios apagados). En silencio:
+  /// no hay aviso nuevo, porque la persona no tiene nada que hacer. Sin haber leído el servidor no
+  /// hay copia que corregir: al leerlo, [build] la alinea.
+  Future<void> cambiarRecordatoriosDeAgenda({required bool activados}) async {
+    final vivo = ref.keepAlive();
+    try {
+      // Se arranca antes de cualquier espera: así el guardado ya empezó mientras la pantalla estaba.
+      final guardado = ref
+          .read(preferenciasRecordatoriosProvider.notifier)
+          .cambiarActivados(activados: activados);
+      await guardado;
+      if (state.value == null) return;
+      // Lo que quedó de verdad en el teléfono (otro cambio pudo volver a prender mientras tanto, o el
+      // guardado pudo fallar): el teléfono manda.
+      final local = await ref.read(preferenciasRecordatoriosRepositoryProvider).leer();
+      await sincronizarAgenda(activados: local.activados);
+    } on Object {
+      // Sin leer el teléfono no hay nada que alinear: se verá la próxima vez que se abra la pantalla.
+    } finally {
+      vivo.close();
+    }
+  }
+
   /// Le dice al servidor cómo quedó «Recordatorios de agenda» en el teléfono. En silencio: si no se
   /// puede, queda para la próxima vez (ver el comentario de la clase). Sin haber leído el servidor no
   /// hace nada.
@@ -128,7 +174,10 @@ class AvisosDelServidorNotifier extends AsyncNotifier<EstadoAvisosDelServidor> {
   Future<bool> reintentar() {
     final intento = state.value?.falla;
     if (intento == null) return Future.value(false);
-    return _pedir((_) => intento);
+    // Solo lo que la persona había cambiado, sobre lo que haya ahora: el objeto entero de entonces pudo
+    // armarse sobre una lectura vieja.
+    final base = _baseDeLaFalla ?? _guardados;
+    return _pedir((actuales) => intento.cambiosSobre(base: base, sobre: actuales));
   }
 
   Future<bool> _pedir(AvisosDelServidor Function(AvisosDelServidor) cambio) {
@@ -149,15 +198,25 @@ class AvisosDelServidorNotifier extends AsyncNotifier<EstadoAvisosDelServidor> {
     var guardo = false;
     try {
       while (ref.mounted && _deseados != _guardados) {
-        final objetivo = _deseados;
+        final base = _guardados;
+        final pedido0 = _deseados;
+        var objetivo = pedido0;
         final repositorio = ref.read(avisosDelServidorRepositoryProvider);
         FalloDeAvisos? fallo;
         try {
-          await repositorio.guardar(objetivo);
-        } on AvisosSinConexionException {
-          fallo = FalloDeAvisos.sinConexion;
+          if (_lecturaVieja) {
+            // Nunca se guarda sobre una lectura que pudo quedar vieja: se vuelve a leer y se aplica solo lo
+            // que la persona cambió.
+            final actuales = await repositorio.leer();
+            _lecturaVieja = false;
+            objetivo = objetivo.cambiosSobre(base: base, sobre: actuales);
+            _guardados = actuales;
+          }
+          if (objetivo != _guardados) await repositorio.guardar(objetivo);
         } on Object catch (e) {
-          fallo = FalloDeAvisos.servidor;
+          fallo = e is PreferenciasSinBajarException
+              ? FalloDeAvisos.sinBajar
+              : FalloDeAvisos.servidor;
           AppLogger.instance.warn(
             LogModulo.push,
             'AVISOS_GUARDAR',
@@ -168,12 +227,20 @@ class AvisosDelServidorNotifier extends AsyncNotifier<EstadoAvisosDelServidor> {
         if (!ref.mounted) return false;
         if (fallo == null) {
           _guardados = objetivo;
+          // Lo que la persona cambió mientras tanto se conserva; lo demás pasa a lo que se guardó.
+          final deseados = _deseados.cambiosSobre(base: pedido0, sobre: objetivo);
+          _deseados = deseados;
+          if (state.value?.avisos != deseados) {
+            state = AsyncData(EstadoAvisosDelServidor(avisos: deseados));
+          }
           guardo = true;
           continue;
         }
         // «Reintentar» repite lo último que se pidió (con todos los cambios que se juntaron mientras
         // tanto), no solo el que estaba guardándose.
         final pedido = _deseados;
+        _baseDeLaFalla = base;
+        _lecturaVieja = true;
         _deseados = _guardados;
         // Si lo único que no se guardó es la copia de «Recordatorios de agenda», no hay nada que decir.
         final soloLaCopiaDeAgenda = pedido == _guardados.copyWith(agenda: pedido.agenda);

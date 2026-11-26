@@ -152,7 +152,7 @@ class _PersonasDelEspacioPageState extends ConsumerState<PersonasDelEspacioPage>
           SnackBar(
             behavior: SnackBarBehavior.floating,
             backgroundColor: const Color(0xFF0E1A2B),
-            content: Text(TextosPersonas.guardada(guardada.nombre)),
+            content: Text(TextosPersonas.guardada(guardada.persona.nombre)),
           ),
         );
     } finally {

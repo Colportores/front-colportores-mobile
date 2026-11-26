@@ -67,6 +67,7 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
   Completer<void>? puertaAlMarcar;
   Completer<void>? puertaAlMarcarTodas;
   Completer<void>? puertaAlBorrar;
+  Completer<void>? puertaAlRegistrar;
 
   /// La primera emisión de `observar` espera a esta puerta (para ver «cargando»).
   Completer<void>? puertaAlObservar;
@@ -116,6 +117,8 @@ final class HistorialEnMemoria implements HistorialNotificacionesRepository {
     Notificacion notificacion, {
     required DateTime ahora,
   }) async {
+    final puerta = puertaAlRegistrar;
+    if (puerta != null) await puerta.future;
     final prefijo = prefijoQueFallaAlRegistrar;
     if (prefijo != null && notificacion.id.startsWith(prefijo)) {
       return const Left(FailureInesperado());

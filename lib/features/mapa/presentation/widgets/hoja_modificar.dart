@@ -155,6 +155,7 @@ class HojaModificarDatos extends ConsumerStatefulWidget {
 class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
   late final TextEditingController _calle;
   late final TextEditingController _numero;
+  late final TextEditingController _nombre;
 
   /// El aviso de falla: cuando aparece se lleva a la vista, arriba del botón fijo.
   final _claveFalla = GlobalKey();
@@ -181,6 +182,7 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
     final estado = ref.read(modificarUbicacionProvider(widget.parametros));
     _calle = TextEditingController(text: estado.calle);
     _numero = TextEditingController(text: estado.numero);
+    _nombre = TextEditingController(text: estado.nombre);
     // Al volver de «Mover el punto» la hoja se arma de nuevo con el aviso de tipo (bloqueo por
     // espacios o depto sin número) ya en pantalla: `ref.listen` solo ve cambios, no lo que ya estaba.
     // Se lo lleva a la vista, arriba del botón fijo, y no queda abajo del borde.
@@ -238,6 +240,7 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
   void dispose() {
     _calle.dispose();
     _numero.dispose();
+    _nombre.dispose();
     super.dispose();
   }
 
@@ -269,6 +272,9 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
     });
     ref.listen(proveedor.select((s) => s.numero), (_, n) {
       if (n != _numero.text) _numero.text = n;
+    });
+    ref.listen(proveedor.select((s) => s.nombre), (_, n) {
+      if (n != _nombre.text) _nombre.text = n;
     });
     ref.listen(proveedor.select((s) => s.falla), (anterior, nueva) {
       if (nueva == null || nueva == anterior) return;
@@ -388,12 +394,19 @@ class _HojaModificarDatosState extends ConsumerState<HojaModificarDatos> {
                         controlador: _numero,
                         alCambiar: _notificador.editarNumero,
                         limite: 20,
-                        accion: TextInputAction.done,
+                        accion: TextInputAction.next,
                         bloqueado: estado.guardando,
                         claveCampo: _claveCampo,
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 14),
+                CampoNombreUbicacion(
+                  controlador: _nombre,
+                  alCambiar: _notificador.editarNombre,
+                  accion: TextInputAction.done,
+                  bloqueado: estado.guardando,
                 ),
                 if (mostrarFalla) ...[
                   const SizedBox(height: 14),

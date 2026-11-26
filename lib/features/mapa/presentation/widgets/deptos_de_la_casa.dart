@@ -27,6 +27,9 @@ abstract final class ClavesDeptosDeLaCasa {
 
   /// La fila del depto [espacioId].
   static Key fila(String espacioId) => Key('hoja_casa_depto_$espacioId');
+
+  /// El principio de la nota más nueva en la fila del depto [espacioId] (11N·06).
+  static Key nota(String espacioId) => Key('hoja_casa_depto_nota_$espacioId');
 }
 
 /// En qué paso está la lista de deptos de la hoja.
@@ -253,10 +256,16 @@ class FilaDeptoDeLaCasa extends StatelessWidget {
     final titulo = TextosEspacios.depto(espacio);
     final sinNumero = espacio.sinNumero;
     final estado = resumen?.estado;
+    final nota = resumen?.notaMasNueva?.trim();
+    final conNota = nota != null && nota.isNotEmpty;
     return Semantics(
       button: true,
       enabled: alTocar != null,
-      label: detalle.isEmpty ? titulo : '$titulo. $detalle',
+      label: [
+        titulo,
+        if (detalle.isNotEmpty) detalle,
+        if (conNota) TextosDeptosDeLaCasa.notaDelDeptoParaElLector(nota),
+      ].join('. '),
       onTap: alTocar,
       excludeSemantics: true,
       child: Material(
@@ -298,6 +307,20 @@ class FilaDeptoDeLaCasa extends StatelessWidget {
                         if (detalle.isNotEmpty)
                           Text(
                             detalle,
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 13,
+                              height: 1.35,
+                              color: ColoresLista.grisTexto,
+                            ),
+                          ),
+                        // El principio de la nota más nueva (11N·06): una línea, cortada con «…».
+                        if (conNota)
+                          Text(
+                            '${TextosDeptosDeLaCasa.lapizDeLaNota} $nota',
+                            key: ClavesDeptosDeLaCasa.nota(espacio.id),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontFamily: 'Inter',
                               fontSize: 13,

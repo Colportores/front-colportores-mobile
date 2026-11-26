@@ -138,6 +138,9 @@ void main() {
       (tester) async {
         await _cuenta(tester, RepositorioDeAlquilerControlable(inicial: alquilerDelCanvas));
 
+        // Con las dos acciones de transferencias (HU-STK-005, #512) la línea queda debajo del borde.
+        await tester.ensureVisible(find.byKey(const Key('cuenta_fila_alquiler')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('cuenta_fila_alquiler')));
         await tester.tap(find.byKey(const Key('cuenta_fila_alquiler')), warnIfMissed: false);
         await tester.pumpAndSettle();
@@ -149,6 +152,8 @@ void main() {
         expect(find.byType(AlquilerPage), findsNothing);
         expect(find.byKey(const Key('cuenta_pestana')), findsOneWidget);
 
+        await tester.ensureVisible(find.byKey(const Key('cuenta_fila_alquiler')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('cuenta_fila_alquiler')));
         await tester.pumpAndSettle();
         expect(find.byType(AlquilerPage), findsOneWidget);
@@ -209,17 +214,19 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('dado que pagué \$ 500 de más del alquiler, la deuda lo dice', (tester) async {
+    testWidgets('dado que el servidor trasladó \$ 500 de más del alquiler, la deuda lo dice', (
+      tester,
+    ) async {
       await montarDeudaConAlquiler(
         tester,
         RepositorioDeAlquilerControlable(
           inicial: alquilerCon([
             campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
-          ]),
+          ], trasladado: 500),
         ),
       );
 
-      expect(find.text(r'Incluye $ 500 que pagaste de más en el alquiler.'), findsOneWidget);
+      expect(find.text(r'Ya descontamos $ 500 que pagaste de más en el alquiler.'), findsOneWidget);
     });
 
     testWidgets('sin alquiler pagado de más, o sin alquiler, la deuda no dice nada', (
@@ -230,6 +237,34 @@ void main() {
         RepositorioDeAlquilerControlable(inicial: alquilerDelCanvas),
       );
       expect(find.byKey(const Key('deuda_nota_alquiler')), findsNothing);
+    });
+
+    testWidgets('sin traslado del servidor la deuda no dice nada aunque los pagos pasen el monto', (
+      tester,
+    ) async {
+      await montarDeudaConAlquiler(
+        tester,
+        RepositorioDeAlquilerControlable(
+          inicial: alquilerCon([
+            campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
+          ]),
+        ),
+      );
+
+      expect(find.byKey(const Key('deuda_nota_alquiler')), findsNothing);
+    });
+
+    testWidgets('quien se dio de baja y ya no tiene campañas igual ve el traslado en la deuda', (
+      tester,
+    ) async {
+      await montarDeudaConAlquiler(
+        tester,
+        RepositorioDeAlquilerControlable(
+          inicial: const AlquilerDelColportor(campanias: [], trasladadoCentavos: 50000),
+        ),
+      );
+
+      expect(find.text(r'Ya descontamos $ 500 que pagaste de más en el alquiler.'), findsOneWidget);
     });
 
     testWidgets('si el alquiler no se puede leer, la deuda se ve igual, sin la nota', (
@@ -250,7 +285,7 @@ void main() {
       alquiler.emitir(
         alquilerCon([
           campaniaCon(monto: 2500, pagos: [pagoDe(3000)]),
-        ]),
+        ], trasladado: 500),
       );
       await tester.pumpAndSettle();
 

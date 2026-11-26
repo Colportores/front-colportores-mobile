@@ -120,6 +120,7 @@ final class AuthRepositoryImpl implements AuthRepository {
     required String cedula,
     required String email,
     required String password,
+    required String terminosVersion,
   }) async {
     try {
       final sesion = await _remote.registrar(
@@ -128,6 +129,7 @@ final class AuthRepositoryImpl implements AuthRepository {
         cedula: cedula,
         email: email,
         password: password,
+        terminosVersion: terminosVersion,
       );
       if (sesion == null) {
         _log.info(LogModulo.auth, 'REGISTRO_PENDIENTE', 'registro OK, falta verificar el email');

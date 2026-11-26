@@ -42,13 +42,11 @@ final atras736 = find.byKey(const Key('notificaciones_atras'));
 final pagina736 = find.byKey(const Key('notificaciones_pagina'));
 
 const textoError736 = 'No pudimos guardar el cambio. El interruptor volvió a como estaba.';
-const textoErrorHora736 = 'No pudimos guardar la hora. Volvió a como estaba.';
+const textoErrorHoraCuotas736 =
+    'No pudimos guardar la hora del aviso de cuotas. Volvió a como estaba.';
+const textoErrorHoraAgenda736 =
+    'No pudimos guardar la hora del aviso de las visitas de mañana. Volvió a como estaba.';
 const textoErrorVarios736 = 'No pudimos guardar los cambios. Volvieron a como estaban.';
-const textoSinConexion736 =
-    'Sin conexión: no pudimos guardar el cambio. Volvió a como estaba. Probá de nuevo cuando '
-    'tengas conexión.';
-const textoLeerSinConexion736 =
-    'Sin conexión: no pudimos leer tus avisos. Probá de nuevo cuando tengas conexión.';
 
 Telefono activado736() => Telefono(estado: EstadoSistemaNotificaciones.activadas);
 
@@ -79,11 +77,9 @@ enum Estado736 {
   permisoApagado('24B·04 permiso del teléfono apagado'),
   cargando('24B·05 cargando'),
   errorGuardar('24B·06 error al guardar (un interruptor)'),
-  errorGuardarSinConexion('24B·06 sin conexión al guardar'),
   errorGuardarHora('24B·06 error al guardar una hora'),
   errorGuardarVarios('24B·06 error al guardar varios cambios'),
   errorLeer('error al leer los avisos'),
-  errorLeerSinConexion('sin conexión al leer los avisos'),
   todoApagado('todos los avisos apagados'),
   horasLimite('horas 00:00 y 23:59');
 
@@ -112,8 +108,6 @@ Future<Telefono> llevarAlEstado736(
       telefono.avisos.lecturaDemorada = Completer<void>();
     case Estado736.errorLeer:
       telefono.avisos.fallaAlLeer = const AvisosServidorException();
-    case Estado736.errorLeerSinConexion:
-      telefono.avisos.fallaAlLeer = const AvisosSinConexionException();
     case Estado736.todoApagado:
       telefono.preferencias.preferencias = const PreferenciasRecordatorios(activados: false);
       telefono.avisos.avisos = const AvisosDelServidor(
@@ -143,10 +137,6 @@ Future<Telefono> llevarAlEstado736(
     case Estado736.errorGuardar:
       telefono.avisos.fallaAlGuardar = const AvisosServidorException();
       await tocar736(tester, pedidos736);
-      await tester.pumpAndSettle();
-    case Estado736.errorGuardarSinConexion:
-      telefono.avisos.fallaAlGuardar = const AvisosSinConexionException();
-      await tocar736(tester, cuotas736);
       await tester.pumpAndSettle();
     case Estado736.errorGuardarHora:
       telefono.avisos.fallaAlGuardar = const AvisosServidorException();

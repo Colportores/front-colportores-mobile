@@ -1424,7 +1424,21 @@ class SyncEngine {
             switch (r.outcome) {
               case JobOutcome.accepted:
               case JobOutcome.duplicate:
+              case JobOutcome.merged:
                 final job = jobPorId[id]!;
+                // §2.3, «Venta tarde»: el servidor juntó la fila con la que ya estaba. Lo local
+                // que la nombraba pasa a nombrar a la que quedó, **antes** de cerrar el job: si
+                // reapuntar falla, el job vuelve a PENDING y el reintento da `merged` otra vez
+                // (idempotente); cerrado primero, una venta quedaría nombrando un vínculo que el
+                // servidor no tiene. Sin `merged_into` (un servidor que no lo manda) no hay a
+                // quién reapuntar.
+                if (r.outcome == JobOutcome.merged) {
+                  final de = job.rowPk;
+                  final a = r.mergedInto;
+                  if (de != null && a != null && de != a) {
+                    await _store.reapuntar(job.entity, de: de, a: a);
+                  }
+                }
                 // También la de un `delete`: la baja de esta app es lógica (`deleted_at`), la
                 // fila sigue en el teléfono y, si se reactiva, su próximo `update` tiene que
                 // salir con la versión que dejó la baja. Si la fila ya no está (baja física),

@@ -8,7 +8,17 @@ import '../../../depositos/presentation/pages/registrar_deposito_page.dart';
 import '../../../depositos/presentation/providers/depositos_providers.dart'
     show ticketsDeDepositoRechazadosProvider, ticketsDeDepositoSinSubirProvider;
 import '../../../depositos/presentation/widgets/aviso_tickets_sin_subir.dart';
+import '../../../pedidos/presentation/pages/mis_pedidos_page.dart';
+import '../../../pedidos/presentation/pages/pedir_pedido_page.dart';
+import '../../../pedidos/presentation/textos_pedidos.dart';
+import '../../../pedidos/presentation/widgets/enlace_a_mis_pedidos.dart';
+import '../../../tickets/presentation/pages/historial_de_tickets_page.dart';
+import '../../../tickets/presentation/providers/tickets_providers.dart'
+    show historialDeTicketsProvider;
 import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
+import '../../../transferencias/presentation/pages/pedir_transferencia_page.dart';
+import '../../../transferencias/presentation/pages/transferencias_page.dart';
+import '../../../transferencias/presentation/textos_transferencias.dart';
 import '../../domain/entities/resumen_de_cuenta.dart';
 import '../providers/cuenta_providers.dart';
 import '../providers/deuda_casa_providers.dart';
@@ -32,9 +42,11 @@ import 'mi_plata_page.dart';
 /// Son cuatro tarjetas: la deuda con la casa editora, Depositado, En mano y Por cobrar. «Depositado» suma
 /// solo lo que el coordinador validó y baja del servidor por el pull: mientras el teléfono no bajó nada
 /// no se dibuja (ni un cero), y sin conexión un aviso dice de cuándo es (33A·02). La deuda la cuenta el
-/// servidor (HU-CTA-002): se muestra lo último que llegó y su toque abre el detalle por pedido (33B).
+/// teléfono con lo que bajó con la sincronización (HU-CTA-002, #671): se muestra con la hora de esa bajada y
+/// su toque abre el detalle por pedido (33B).
 /// Las tres cifras se tocan y abren su detalle en «Mi plata» (HU-CTA-003, 33C). Debajo, «ACCIONES» con
-/// «Registrar depósito» (HU-CTA-004, vista 33 D).
+/// «+ Hacer un pedido» (HU-STK-009, 37A), «Cargar ticket» y «Registrar depósito» (HU-CTA-004, vistas 38 A
+/// y 33 D) y las filas «Mis pedidos» (37B) y «Mis tickets» (HU-COB-009, vista 38B).
 class CuentaPage extends ConsumerStatefulWidget {
   const CuentaPage({super.key, required this.colportorId, this.activa = true});
 
@@ -79,6 +91,19 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
     }
   }
 
+  /// Ya se está abriendo «Mis tickets».
+  var _abriendoTickets = false;
+
+  Future<void> _abrirMisTickets() async {
+    if (_abriendoTickets) return;
+    _abriendoTickets = true;
+    try {
+      await HistorialDeTicketsPage.abrir(context, colportorId: widget.colportorId);
+    } finally {
+      _abriendoTickets = false;
+    }
+  }
+
   /// Ya se está abriendo «Mi alquiler».
   var _abriendoAlquiler = false;
 
@@ -89,6 +114,48 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       await AlquilerPage.abrir(context, colportorId: widget.colportorId);
     } finally {
       _abriendoAlquiler = false;
+    }
+  }
+
+  /// Ya se está abriendo «Nuevo pedido» o «Mis pedidos».
+  var _abriendoPedido = false;
+
+  Future<void> _abrirPedido(Future<void> Function() abrir) async {
+    if (_abriendoPedido) return;
+    _abriendoPedido = true;
+    try {
+      await abrir();
+    } finally {
+      _abriendoPedido = false;
+    }
+  }
+
+  /// Ya se está abriendo una pantalla de las transferencias de materiales (vista 40).
+  var _abriendoTransferencia = false;
+
+  /// «Pedir transferencia de materiales» (HU-STK-005, 40A): al terminar con «Ver transferencias» abre la
+  /// lista (40B·01).
+  Future<void> _pedirTransferencia() async {
+    if (_abriendoTransferencia) return;
+    _abriendoTransferencia = true;
+    try {
+      final verLista = await PedirTransferenciaPage.abrir(context, colportorId: widget.colportorId);
+      if (verLista == true && mounted) {
+        await TransferenciasPage.abrir(context, colportorId: widget.colportorId);
+      }
+    } finally {
+      _abriendoTransferencia = false;
+    }
+  }
+
+  /// «Transferencias» (40B·01): lo que pedí, lo que me piden y lo que armó mi coordinadora.
+  Future<void> _verTransferencias() async {
+    if (_abriendoTransferencia) return;
+    _abriendoTransferencia = true;
+    try {
+      await TransferenciasPage.abrir(context, colportorId: widget.colportorId);
+    } finally {
+      _abriendoTransferencia = false;
     }
   }
 
@@ -103,7 +170,7 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.activa) {
           ref.invalidate(resumenDeCuentaProvider(widget.colportorId));
-          // La deuda se vuelve a pedir al servidor; la última que llegó sigue a la vista mientras tanto.
+          // La deuda se vuelve a leer de lo que bajó; la última lectura sigue a la vista mientras tanto.
           unawaited(ref.read(deudaConLaCasaProvider(widget.colportorId).notifier).actualizar());
         }
       });
@@ -128,7 +195,7 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       final datos = resumen.requireValue;
       final depositadoAl = datos.depositadoAl;
       final sinConexion = ref.watch(conexionProvider).value == TipoConexion.sinConexion;
-      // La deuda guardada: su hora entra en el aviso, y si no se pudo actualizar se avisa.
+      // La deuda: la hora de la última sincronización entra en el aviso, y si no se pudo leer de nuevo se avisa.
       final deudaLeidaEn = ref.watch(
         deudaConLaCasaProvider(widget.colportorId).select((e) => e.lectura?.leidaEn),
       );
@@ -185,6 +252,26 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                     ),
                 AccionesDeCuenta(
                   acciones: [
+                    // El orden de 33A·01: «+ Hacer un pedido», «Cargar ticket», «Registrar depósito».
+                    AccionDeCuenta(
+                      texto: TextosPedidos.hacerUnPedido,
+                      clave: const Key('cuenta_hacer_un_pedido'),
+                      alTocar: () => unawaited(
+                        _abrirPedido(
+                          () => PedirPedidoPage.abrir(context, colportorId: widget.colportorId),
+                        ),
+                      ),
+                    ),
+                    // «Cargar ticket» (vista 38): el mismo formulario que «Registrar depósito» (desde
+                    // «Paso ticket» el ticket y el depósito se cargan juntos).
+                    AccionDeCuenta(
+                      texto: TextosCuenta.cargarTicket,
+                      clave: const Key('cuenta_cargar_ticket'),
+                      alTocar: () => unawaited(_registrarDeposito()),
+                      apagadaPorque: datos.enMano.totalCentavos > 0
+                          ? null
+                          : TextosCuenta.sinPlataParaDepositar,
+                    ),
                     AccionDeCuenta(
                       texto: TextosCuenta.registrarDeposito,
                       clave: const Key('cuenta_registrar_deposito'),
@@ -194,7 +281,36 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
                           ? null
                           : TextosCuenta.sinPlataParaDepositar,
                     ),
+                    // Transferencias de materiales entre colportores (HU-STK-005, vista 40).
+                    AccionDeCuenta(
+                      texto: TextosTransferencias.accionPedir,
+                      clave: const Key('cuenta_pedir_transferencia'),
+                      alTocar: () => unawaited(_pedirTransferencia()),
+                    ),
+                    AccionDeCuenta(
+                      texto: TextosTransferencias.accionVer,
+                      clave: const Key('cuenta_ver_transferencias'),
+                      alTocar: () => unawaited(_verTransferencias()),
+                    ),
                   ],
+                ),
+                // «Mis pedidos · N por autorizar ›» (33A·01, HU-STK-009).
+                EnlaceAMisPedidos(
+                  colportorId: widget.colportorId,
+                  alAbrir: () => unawaited(
+                    _abrirPedido(
+                      () => MisPedidosPage.abrir(context, colportorId: widget.colportorId),
+                    ),
+                  ),
+                ),
+                // 33A·01: la puerta de «Mis tickets» (vista 38B), con cuántos esperan validación.
+                FilaDeEnlaceDeCuenta(
+                  key: const Key('cuenta_mis_tickets'),
+                  texto: TextosCuenta.misTickets,
+                  valor: _ticketsPorValidar(
+                    ref.watch(historialDeTicketsProvider).value?.porValidar,
+                  ),
+                  alTocar: () => unawaited(_abrirMisTickets()),
                 ),
                 // La línea de enlaces (33A·01): sin alquiler en ninguna campaña no hay línea (HU-CTA-007).
                 if (ref.watch(alquilerDelColportorProvider(widget.colportorId)).asData?.value
@@ -220,6 +336,10 @@ class _CuentaPageState extends ConsumerState<CuentaPage> {
       ],
     );
   }
+
+  /// «1 por validar»; sin tickets esperando (o sin saberlo) no se dice nada.
+  static String? _ticketsPorValidar(int? cuantos) =>
+      cuantos == null || cuantos == 0 ? null : TextosCuenta.ticketsPorValidar(cuantos);
 
   /// La cifra de cada tarjeta; `null` = no se dibuja («Depositado» antes de la primera bajada).
   static CifraDeCuenta? _cifraDe(TipoDeCifra tipo, ResumenDeCuenta datos) => switch (tipo) {

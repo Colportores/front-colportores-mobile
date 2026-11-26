@@ -1,8 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/conectividad/conectividad_providers.dart';
+import '../../../tiles/domain/services/puertos_descarga.dart' show TipoConexion;
 import '../providers/cuenta_providers.dart' show alquilerDelColportorProvider, relojCuentaProvider;
 import '../providers/deuda_casa_providers.dart';
 import '../textos_alquiler.dart';
@@ -14,11 +14,12 @@ import '../widgets/piezas_deuda.dart';
 /// que todavía tienen saldo con lo que valió cada uno y lo que ya se pagó. Se abre al tocar la tarjeta
 /// «Deuda con la casa editora» de Mi Cuenta.
 ///
-/// La cuenta la hace el servidor; el teléfono muestra lo último que llegó y pide de nuevo al abrir.
-/// Estados: con deuda (33B·01), sin deuda (33B·02), error con «Reintentar» (33B·03), cargando (un
-/// bloque gris por parte, como 33A·03) y sin conexión (lo último que llegó con su hora, como 33A·02).
-/// Si se pagó de más, el total dice «A favor $ X».
-class DeudaCasaPage extends ConsumerStatefulWidget {
+/// La deuda baja con la sincronización y el teléfono la cuenta con lo que bajó (decisión de Cristian,
+/// 05/11, #671): al abrir no pide nada al servidor. Estados: con deuda (33B·01), sin deuda (33B·02),
+/// error con «Reintentar» (33B·03), cargando (un bloque gris por parte, como 33A·03) y sin conexión (lo
+/// último que se sincronizó con su hora, como 33A·02). Si todavía no se sincronizó nunca no hay nada que
+/// mostrar y dice que hace falta conexión. Si se pagó de más, el total dice «A favor $ X».
+class DeudaCasaPage extends ConsumerWidget {
   const DeudaCasaPage({super.key, required this.colportorId});
 
   /// UUID del colportor con la sesión iniciada: la deuda es «mi deuda».
@@ -30,57 +31,48 @@ class DeudaCasaPage extends ConsumerStatefulWidget {
   ).push<void>(MaterialPageRoute(builder: (_) => DeudaCasaPage(colportorId: colportorId)));
 
   @override
-  ConsumerState<DeudaCasaPage> createState() => _DeudaCasaPageState();
-}
-
-class _DeudaCasaPageState extends ConsumerState<DeudaCasaPage> {
-  @override
-  void initState() {
-    super.initState();
-    // Al abrirla se vuelve a pedir: la tarjeta de Mi Cuenta pudo leer hace rato. Después del primer
-    // cuadro: tocar un provider durante `initState` marca a quien lo mira en plena construcción.
-    // Si ya hay un pedido en curso no suma otro.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        unawaited(ref.read(deudaConLaCasaProvider(widget.colportorId).notifier).actualizar());
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final provider = deudaConLaCasaProvider(widget.colportorId);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final provider = deudaConLaCasaProvider(colportorId);
     final estado = ref.watch(provider);
     final lectura = estado.lectura;
+    final sinRed = ref.watch(conexionProvider).value == TipoConexion.sinConexion;
 
     final List<Widget> cuerpo;
     if (lectura == null && estado.fallo == null) {
-      // Cargando, también al tocar «Reintentar»: mientras vuelve a pedir no queda el error a la vista
+      // Cargando, también al tocar «Reintentar»: mientras vuelve a leer no queda el error a la vista
       // ni se puede tocar dos veces.
       cuerpo = const [SliverToBoxAdapter(child: EsqueletoDeuda())];
     } else if (lectura == null) {
       cuerpo = [
         SliverToBoxAdapter(
-          child: BannerErrorCuenta(
-            // Sin conexión y sin nada guardado: lo que falta es la red, no el servidor.
-            texto: estado.fallo == FalloDeLaDeuda.sinConexion
-                ? TextosDeuda.necesitasConexion
-                : TextosDeuda.errorTraer,
-            alReintentar: () => ref.read(provider.notifier).actualizar(),
-          ),
+          child: estado.fallo == FalloDeLaDeuda.sinConexion
+              // Todavía no se sincronizó nunca: sin red, hace falta conexión; con red, los datos están por
+              // bajar (decisión del 23/11, #671). No es un error: aviso neutro de 33A·02 con «Reintentar»
+              // (decisión del 23/11 sobre el QA, P2); el rojo queda para el error de verdad.
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                  child: AvisoSinConexionCuenta(
+                    texto: TextosDeuda.sinNadaBajado(sinConexion: sinRed),
+                    alReintentar: () => ref.read(provider.notifier).actualizar(),
+                  ),
+                )
+              : BannerErrorCuenta(
+                  texto: TextosDeuda.errorTraer,
+                  alReintentar: () => ref.read(provider.notifier).actualizar(),
+                ),
         ),
       ];
     } else {
       final deuda = lectura.deuda;
       final fallo = estado.fallo;
       cuerpo = [
-        if (fallo == FalloDeLaDeuda.sinConexion)
+        if (sinRed)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: AvisoSinConexionCuenta(
                 texto: FormatoDeuda.avisoDeLoGuardado(
-                  fallo!,
+                  FalloDeLaDeuda.sinConexion,
                   lectura.leidaEn,
                   ref.read(relojCuentaProvider)(),
                 ),
@@ -88,7 +80,8 @@ class _DeudaCasaPageState extends ConsumerState<DeudaCasaPage> {
             ),
           )
         else if (fallo == FalloDeLaDeuda.noDisponible)
-          // «No pudimos actualizarla…» se puede reintentar (decisión del 04/11, mapa §2).
+          // «No pudimos actualizarla…» se puede reintentar (decisión del 04/11, mapa §2): la lectura
+          // nueva falló y lo último que se leyó sigue a la vista.
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -121,11 +114,7 @@ class _DeudaCasaPageState extends ConsumerState<DeudaCasaPage> {
           const SliverToBoxAdapter(child: NotaDeLaDeuda(texto: TextosDeuda.saldosNoDanElTotal)),
         // Lo pagado de más del alquiler bajó esta deuda (decisión «Alquiler fav», 28/10, HU-CTA-007): la
         // pantalla dice de dónde viene ese descuento.
-        if (ref
-                .watch(alquilerDelColportorProvider(widget.colportorId))
-                .asData
-                ?.value
-                .pagadoDeMasCentavos
+        if (ref.watch(alquilerDelColportorProvider(colportorId)).asData?.value.trasladadoCentavos
             case final deMas? when deMas > 0)
           SliverToBoxAdapter(
             child: NotaDeLaDeuda(

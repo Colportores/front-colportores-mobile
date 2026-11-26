@@ -99,6 +99,7 @@ final class PersonasParaVenderDrift implements LectorDePersonasParaVender {
     tipo: UbicacionModel.tipoDesdeCodigo(f.tipo),
     calle: f.calle,
     numero: f.numero,
+    nombre: f.nombre,
     lat: f.lat,
     lon: f.lon,
     ciudadId: f.ciudadId,
