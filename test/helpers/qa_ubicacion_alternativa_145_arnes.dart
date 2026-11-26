@@ -111,6 +111,20 @@ final estados145 = <String, Preparar145>{
     await enLaFicha145(t, mundo145(), tam, esc);
     await tocarEnLaFicha145(t, find.byKey(ClavesAlternativa.sinAlternativa));
   },
+  'selector desde la vigente (Actual)': (t, tam, esc) async {
+    await enLaFicha145(t, mundo145(estado: UbicacionAlternativaVigente(italia145)), tam, esc);
+    await tocarEnLaFicha145(t, find.byKey(ClavesAlternativa.vigente));
+    // La lista es perezosa: con texto grande la fila vigente puede quedar bajo el pliegue.
+    await t.scrollUntilVisible(
+      find.byKey(ClavesAlternativa.fila('ub-2')),
+      200,
+      scrollable: find
+          .descendant(of: find.byKey(ClavesAlternativa.selector), matching: find.byType(Scrollable))
+          .first,
+    );
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('Actual'), findsOneWidget);
+  },
   '22A·03 selector cargando': (t, tam, esc) async {
     final m = mundo145()..alternativas.sinLecturaDeCandidatas();
     await enLaFicha145(t, m, tam, esc);
