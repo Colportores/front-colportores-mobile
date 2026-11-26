@@ -17,6 +17,7 @@ abstract final class ClavesNotas {
   static const hojaOpciones = Key('notas_hoja_opciones');
   static const botonEditar = Key('notas_opcion_editar');
   static const botonBorrar = Key('notas_opcion_borrar');
+  static const borrarDelFormulario = Key('notas_formulario_borrar');
   static const campo = Key('notas_campo');
   static const seBorraEl = Key('notas_se_borra_el');
 }

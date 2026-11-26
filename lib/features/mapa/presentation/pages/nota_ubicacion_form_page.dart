@@ -109,6 +109,7 @@ class NotaDeptoFormPage extends StatelessWidget {
       colportorId: colportorId,
       nota: original,
       camposDelMotivo: const ['espacio', 'ubicacion', 'nota'],
+      borrar: (ref, id) => ref.read(borrarNotaDeptoUseCaseProvider)(id),
       guardar: (ref, texto, id) => original != null
           ? ref.read(editarNotaDeptoUseCaseProvider)(
               EditarNotaUbicacionParams(notaId: original.id, texto: texto),

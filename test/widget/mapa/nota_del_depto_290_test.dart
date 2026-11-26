@@ -298,6 +298,143 @@ void main() {
     });
   });
 
+  group('11N·04 «Borrar nota» en el formulario de editar (decisión §2 de P2)', () {
+    Finder borrar() => find.byKey(ClavesNotas.borrarDelFormulario);
+
+    Future<void> abrirEdicion(WidgetTester tester) async {
+      await tester.tap(find.byKey(ClavesNotaDelDepto.editar));
+      await asentarLugar(tester);
+    }
+
+    testWidgets('dado el formulario de una nota nueva, no ofrece «Borrar nota»', (tester) async {
+      await _montarFila(tester);
+      await tester.tap(find.text('+ Agregar una nota'));
+      await asentarLugar(tester);
+
+      expect(borrar(), findsNothing);
+    });
+
+    testWidgets(
+      'dado el formulario de editar, «Borrar nota» borra (baja restaurable), cierra y la hoja '
+      'ofrece «Deshacer»; al deshacer la nota vuelve',
+      (tester) async {
+        final repo = _repoCon([('a', 'timbre roto')]);
+        await _montarFila(tester, repo: repo);
+        await abrirEdicion(tester);
+        expect(find.text('Borrar nota'), findsOneWidget);
+
+        await tester.tap(borrar());
+        await asentarLugar(tester);
+
+        expect(find.text('Guardar nota'), findsNothing, reason: 'el formulario se cerró');
+        expect(repo.notas.single.estaBorrada, isTrue, reason: 'soft delete: la nota sigue');
+        expect(find.text('+ Agregar una nota'), findsOneWidget);
+        expect(find.text('Nota borrada.'), findsOneWidget);
+
+        await tester.tap(find.text('Deshacer'));
+        await asentarLugar(tester);
+        expect(find.text('Nota restaurada.'), findsOneWidget);
+        expect(repo.notas.single.estaBorrada, isFalse);
+        expect(find.text('timbre roto'), findsOneWidget);
+      },
+    );
+
+    testWidgets('dado un doble toque en «Borrar nota», borra una sola vez', (tester) async {
+      final compuerta = Completer<void>();
+      final repo = _repoCon([('a', 'timbre roto')])..compuertas['borrar'] = compuerta;
+      await _montarFila(tester, repo: repo);
+      await abrirEdicion(tester);
+
+      await tester.tap(borrar());
+      await tester.pump();
+      await tester.tap(borrar(), warnIfMissed: false);
+      await tester.pump();
+      compuerta.complete();
+      await asentarLugar(tester);
+
+      expect(repo.cuantas('borrar'), 1);
+    });
+
+    testWidgets(
+      'dado que borrar falla, el formulario sigue con el texto, dice qué hacer y todo vuelve a '
+      'habilitarse; al reintentar borra',
+      (tester) async {
+        final repo = _repoCon([('a', 'timbre roto')])
+          ..resultados['borrar'] = [const FailureInesperado(causa: 'x')];
+        await _montarFila(tester, repo: repo);
+        await abrirEdicion(tester);
+
+        await tester.tap(borrar());
+        await asentarLugar(tester);
+
+        expect(find.text('No pudimos borrar la nota. Probá de nuevo.'), findsOneWidget);
+        expect(find.text('Guardar nota'), findsOneWidget);
+        expect(repo.notas.single.estaBorrada, isFalse);
+        expect(
+          tester.widget<TextField>(find.byKey(ClavesNotas.campo)).controller!.text,
+          'timbre roto',
+        );
+        await tester.tap(borrar());
+        await asentarLugar(tester);
+        expect(repo.notas.single.estaBorrada, isTrue);
+      },
+    );
+
+    testWidgets('dado que deshacer falla, el aviso manda a «Ver borradas» y reintenta', (
+      tester,
+    ) async {
+      final repo = _repoCon([('a', 'timbre roto')])
+        ..resultados['restaurar'] = [const FailureInesperado(causa: 'x')];
+      await _montarFila(tester, repo: repo);
+      await abrirEdicion(tester);
+      await tester.tap(borrar());
+      await asentarLugar(tester);
+
+      await tester.tap(find.text('Deshacer'));
+      await asentarLugar(tester);
+      expect(find.textContaining('No pudimos deshacer el borrado'), findsOneWidget);
+      await tester.tap(find.text('Reintentar'));
+      await asentarLugar(tester);
+      expect(repo.notas.single.estaBorrada, isFalse);
+    });
+
+    testWidgets(
+      'desde la pestaña Notas: borrar en el formulario muestra «Nota borrada.» con «Deshacer»',
+      (tester) async {
+        final repo = _repoCon([('a', 'la nota')]);
+        await _montarPestana(tester, repo: repo);
+        await tester.tap(find.byKey(ClavesNotasDelLugar.nota('a')));
+        await asentarLugar(tester);
+        await tester.tap(find.byKey(ClavesNotas.botonEditar));
+        await asentarLugar(tester);
+
+        await tester.tap(borrar());
+        await asentarLugar(tester);
+
+        expect(find.text('Nota borrada.'), findsOneWidget);
+        expect(find.text('Ver borradas (1)'), findsOneWidget);
+        await tester.tap(find.byKey(ClavesNotasDelLugar.deshacer));
+        await asentarLugar(tester);
+        expect(find.text('la nota'), findsOneWidget);
+      },
+    );
+
+    testWidgets('dado un depto, 320 dp y texto 2x, «Borrar nota» no desborda y mide 48 dp', (
+      tester,
+    ) async {
+      await _montarFila(
+        tester,
+        repo: _repoCon([('a', 'timbre roto')]),
+        escala: 2,
+        tamano: const Size(320, 640),
+      );
+      await abrirEdicion(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(borrar()).height, greaterThanOrEqualTo(48));
+    });
+  });
+
   group('11N·05 nota larga', () {
     final larga =
         'Portero de 8 a 12. Después de las 12 tocar el 3B desde la calle; el timbre suena bajo, '

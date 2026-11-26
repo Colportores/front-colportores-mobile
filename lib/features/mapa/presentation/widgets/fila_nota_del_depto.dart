@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../auth/presentation/widgets/aviso_modulo_bloqueado.dart';
 import '../../domain/entities/nota_ubicacion.dart';
+import '../../domain/usecases/notas_ubicacion_use_cases.dart' show RestaurarNotaUbicacionUseCase;
 import '../formato_hoja_casa.dart' show TextosDeptosDeLaCasa;
 import '../pages/nota_ubicacion_form_page.dart';
 import '../providers/notas_ubicacion_providers.dart';
 import '../textos_notas.dart';
 import 'piezas_alta.dart' show AvisoAlta, ColoresAlta, EnlaceAlta;
 import 'piezas_lista_ubicaciones.dart' show ColoresLista;
+import 'piezas_notas.dart' show mostrarAvisoDeNota;
 
 /// Las claves con que los tests (y el QA) encuentran lo que dibuja la fila de la nota del depto.
 abstract final class ClavesNotaDelDepto {
@@ -62,8 +66,12 @@ class _FilaNotaDelDeptoState extends ConsumerState<FilaNotaDelDepto> {
     if (_abriendo || colportorId == null) return;
     if (frenaPorCuentaRestringida(context, ref)) return;
     _abriendo = true;
+    // La hoja puede cerrarse mientras el formulario está abierto: el aviso usa lo leído antes.
+    final mensajero = ScaffoldMessenger.of(context);
+    final mediaQuery = MediaQuery.of(context);
+    NotaDelLugarGuardada? salida;
     try {
-      await NotaDeptoFormPage.abrir(
+      salida = await NotaDeptoFormPage.abrir(
         context,
         espacioId: widget.espacioId,
         colportorId: colportorId,
@@ -72,6 +80,41 @@ class _FilaNotaDelDeptoState extends ConsumerState<FilaNotaDelDepto> {
     } finally {
       _abriendo = false;
     }
+    // «Borrar nota» del formulario (11N·04): se borró, pero se puede restaurar (90 días en «Ver borradas»).
+    if (salida != null && salida.borrada) {
+      final id = salida.nota.id;
+      final restaurar = ref.read(restaurarNotaDeptoUseCaseProvider);
+      mostrarAvisoDeNota(
+        mensajero,
+        mediaQuery: mediaQuery,
+        texto: TextosNotas.borrada,
+        etiquetaAccion: TextosNotas.deshacer,
+        alAccion: () => unawaited(_deshacer(restaurar, id, mensajero, mediaQuery)),
+      );
+    }
+  }
+
+  /// «Deshacer» el borrado: restaura la nota; si falla, el aviso dice dónde la encuentra.
+  Future<void> _deshacer(
+    RestaurarNotaUbicacionUseCase restaurar,
+    String id,
+    ScaffoldMessengerState mensajero,
+    MediaQueryData mediaQuery,
+  ) async {
+    var salioBien = false;
+    try {
+      salioBien = (await restaurar(id)).isRight();
+    } on Object {
+      // Nada de la excepción al aviso: puede traer lo escrito (convenciones §7.5).
+      salioBien = false;
+    }
+    mostrarAvisoDeNota(
+      mensajero,
+      mediaQuery: mediaQuery,
+      texto: salioBien ? TextosNotas.restaurada : TextosNotas.noPudimosDeshacer,
+      etiquetaAccion: salioBien ? null : TextosNotas.reintentar,
+      alAccion: salioBien ? null : () => unawaited(_deshacer(restaurar, id, mensajero, mediaQuery)),
+    );
   }
 
   @override

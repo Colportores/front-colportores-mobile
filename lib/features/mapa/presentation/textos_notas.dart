@@ -17,6 +17,9 @@ abstract final class TextosNotas {
   static const noPudimosGuardar = 'No pudimos guardar la nota. El texto sigue acá.';
   static const editar = 'Editar';
   static const borrar = 'Borrar';
+
+  /// 11N·04: el botón del formulario de editar la nota de un depto.
+  static const borrarNota = 'Borrar nota';
   static const cerrar = 'Cerrar';
   static const volver = 'Volver';
   static const borrada = 'Nota borrada.';

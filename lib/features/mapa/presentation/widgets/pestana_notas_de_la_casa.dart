@@ -176,9 +176,23 @@ class _PestanaNotasDeLaCasaState extends ConsumerState<PestanaNotasDeLaCasa> {
     }
   }
 
-  void _avisarGuardada(NotaDelLugarGuardada guardada) => _avisar(
-    _AvisoDeNotas.exito(guardada.esNueva ? TextosNotas.guardada : TextosNotas.cambiosGuardados),
-  );
+  void _avisarGuardada(NotaDelLugarGuardada guardada) {
+    if (guardada.borrada) {
+      // «Borrar nota» del formulario de un depto (11N·04): el mismo aviso que borrar desde el menú.
+      final id = guardada.nota.id;
+      _avisar(
+        _AvisoDeNotas.exito(
+          TextosNotas.borrada,
+          etiquetaAccion: TextosNotas.deshacer,
+          alAccion: () => _deshacer(id),
+        ),
+      );
+      return;
+    }
+    _avisar(
+      _AvisoDeNotas.exito(guardada.esNueva ? TextosNotas.guardada : TextosNotas.cambiosGuardados),
+    );
+  }
 
   Future<void> _abrirOpciones(NotaUbicacion nota, DateTime ahora) async {
     if (_abriendo) return;
