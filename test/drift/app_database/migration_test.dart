@@ -51,6 +51,7 @@ import 'generated/schema_v41.dart' as v41;
 import 'generated/schema_v42.dart' as v42;
 import 'generated/schema_v43.dart' as v43;
 import 'generated/schema_v44.dart' as v44;
+import 'generated/schema_v45.dart' as v45;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
@@ -2843,6 +2844,72 @@ void main() {
           ),
           throwsA(anything),
           reason: 'la cantidad es mayor que cero',
+        );
+      },
+    );
+  });
+
+  test('dado lo guardado en la versión 44, cuando migra a la 45, se conserva todo, la jornada con su '
+      'acompañante de antes y las dos tablas del acompañamiento quedan vacías y sin nada para subir '
+      '(#146)', () async {
+    // HU-JOR-003 (#146): solo se suman `campania_coordinador` y `jornada_acompaniante`. La jornada (con
+    // su `acompaniante_id`, que el servidor ya pasó a su tabla), la cola y los watermarks no se tocan: lo
+    // que esperaba subir sigue esperando (convenciones §9).
+    const jornada = v44.JornadaData(
+      id: 'jor-1',
+      colportorId: 'col-1',
+      inicio: 1758700000000,
+      acompanianteId: 'u-marta',
+      totalVisitas: 0,
+      totalVentas: 0,
+      createdAt: 1,
+      updatedAt: 1,
+      syncVersion: 2,
+    );
+    const job = v44.SyncQueueData(
+      id: 'q-1',
+      clientOpId: 'op-1',
+      entity: 'jornada',
+      op: 'insert',
+      payload: '{"id":"jor-1"}',
+      rowPk: 'jor-1',
+      createdAt: 1758700000000,
+      state: 'PENDING',
+      code: '',
+      message: '',
+    );
+
+    await verificador.testWithDataIntegrity(
+      oldVersion: 44,
+      newVersion: 45,
+      createOld: v44.DatabaseAtV44.new,
+      createNew: v45.DatabaseAtV45.new,
+      openTestedDatabase: _abrir,
+      createItems: (batch, viejo) {
+        batch
+          ..insert(viejo.jornada, jornada)
+          ..insert(viejo.syncQueue, job);
+      },
+      validateItems: (nuevo) async {
+        final jornadas = await nuevo.select(nuevo.jornada).get();
+        expect(jornadas.map((j) => j.toJson()), [jornada.toJson()]);
+        final jobs = await nuevo.select(nuevo.syncQueue).get();
+        expect(jobs.map((q) => q.toJson()), [job.toJson()]);
+        expect(await nuevo.select(nuevo.campaniaCoordinador).get(), isEmpty);
+        expect(await nuevo.select(nuevo.jornadaAcompaniante).get(), isEmpty);
+
+        await nuevo.customStatement(
+          'INSERT INTO campania_coordinador (id, campania_id, usuario_id, nombre, apellido, created_at, '
+          "updated_at) VALUES ('c-1', 'cam-1', 'u-marta', 'Marta', 'Pérez', 1, 1)",
+        );
+        await nuevo.customStatement(
+          'INSERT INTO jornada_acompaniante (id, jornada_id, acompaniante_id, created_at, updated_at) '
+          "VALUES ('ja-1', 'jor-1', 'u-marta', 1, 1)",
+        );
+        expect(await nuevo.select(nuevo.campaniaCoordinador).get(), hasLength(1));
+        expect(
+          (await nuevo.select(nuevo.jornadaAcompaniante).getSingle()).acompanianteId,
+          'u-marta',
         );
       },
     );

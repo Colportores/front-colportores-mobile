@@ -407,6 +407,10 @@ class InMemoryLocalStore implements LocalStorePort {
     }
     for (final MapEntry(key: entidad, value: ids)
         in notices.outOfArea.entries) {
+      // La lista completa de hoy: lo que ya no figura vuelve a contar.
+      if (entidadesConAvisoCompleto.contains(entidad)) {
+        fueraDelArea[entidad]?.retainAll(ids);
+      }
       (fueraDelArea[entidad] ??= {}).addAll(ids);
     }
     if (notices.complete) {

@@ -16,6 +16,8 @@ import '../../features/cobranzas/data/datasources/cobranzas_table.dart';
 import '../../features/cuenta/data/datasources/cuenta_colportor_table.dart';
 import '../../features/cuenta/data/datasources/cuenta_deuda_historial_table.dart';
 import '../../features/depositos/data/datasources/depositos_table.dart';
+import '../../features/jornada/data/datasources/campania_coordinadores_table.dart';
+import '../../features/jornada/data/datasources/jornada_acompaniantes_table.dart';
 import '../../features/jornada/data/datasources/jornadas_table.dart';
 import '../../features/mapa/data/datasources/audit_log_table.dart';
 import '../../features/mapa/data/datasources/campanias_ciudad_table.dart';
@@ -117,6 +119,8 @@ part 'app_database.g.dart';
     UnionesLocales,
     SyncFueraDelArea,
     UbicacionesUnidas,
+    CampaniaCoordinadores,
+    JornadaAcompaniantes,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -221,10 +225,13 @@ class AppDatabase extends _$AppDatabase {
   /// - 44: `transferencia_stock` y `transferencia_item`, las transferencias de materiales entre colportores
   ///   que el teléfono pide y cancela, y que baja a las dos puntas (backend-supabase 0139 y 0148,
   ///   HU-STK-005, #512).
+  /// - 45: `campania_coordinador`, los coordinadores de la campaña que baja el pull (solo lectura), y
+  ///   `jornada_acompaniante`, quién acompañó cada jornada, una fila por acompañante, que sube con ella
+  ///   (backend-supabase 0176 y 0178, «Dos acomp.» y «Lista acomp.» de Cristian; HU-JOR-003, #146).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 44;
+  static const int versionEsquema = 45;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -628,6 +635,15 @@ class AppDatabase extends _$AppDatabase {
       await m.createIndex(esquema.transferenciaStockDestinoIdx);
       await m.createTable(esquema.transferenciaItem);
       await m.createIndex(esquema.transferenciaItemTransferenciaIdx);
+    },
+    // Solo crea las dos tablas, vacías: la lista de coordinadores la llena el pull y los acompañantes los
+    // anota la colportora desde ahora. Lo que ya estaba (`jornada.acompaniante_id`) no se toca ni se
+    // encola: el servidor ya pasó esos acompañantes a su tabla (0176).
+    from44To45: (m, esquema) async {
+      await m.createTable(esquema.campaniaCoordinador);
+      await m.createIndex(esquema.campaniaCoordinadorCampaniaIdx);
+      await m.createTable(esquema.jornadaAcompaniante);
+      await m.createIndex(esquema.jornadaAcompanianteJornadaIdx);
     },
   );
 }

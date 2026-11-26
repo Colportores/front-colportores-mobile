@@ -111,6 +111,12 @@ final class DriftLocalStore extends DatabaseAccessor<AppDatabase>
     }
     for (final MapEntry(key: entidad, value: ids) in notices.outOfArea.entries) {
       _tabla(entidad);
+      // La lista completa de hoy (contrato §2.1, 0200): lo que ya no figura vuelve a contar.
+      if (entidadesConAvisoCompleto.contains(entidad)) {
+        await (delete(
+          syncFueraDelArea,
+        )..where((f) => f.entidad.equals(entidad) & f.filaId.isNotIn(ids))).go();
+      }
       for (final id in ids) {
         await into(syncFueraDelArea).insertOnConflictUpdate(
           SyncFueraDelAreaCompanion.insert(entidad: entidad, filaId: id, confirmada: true),

@@ -177,6 +177,10 @@ void main() {
       case 'finalizando':
         ds.demoraFinalizar = Completer<void>();
         await _tocarSinEsperar(tester, 'jornada_finalizar');
+        // Con el acompañamiento en «Hoy» el botón queda más abajo que el pliegue de 360×640: para tocarlo la
+        // pantalla se desplazó; se vuelve arriba para medir lo que se ve al abrirla (#146).
+        Scrollable.of(tester.element(find.byKey(const Key('jornada_estado')))).position.jumpTo(0);
+        await tester.pump();
       case 'error al guardar el fin':
         ds.errorAlFinalizar = StateError('disco lleno');
         await _tocar(tester, 'jornada_finalizar');

@@ -20,6 +20,7 @@ import '../widgets/con_espera.dart';
 import '../widgets/fila_hora_jornada.dart';
 import '../widgets/fin_de_jornada.dart';
 import '../widgets/hoja_hora_inicio.dart';
+import '../widgets/seccion_acompaniamiento.dart';
 
 /// Texto literal del criterio de aceptación "Bloqueo - jornada ya activa" (HU-JOR-001).
 const textoBloqueoJornadaActiva = 'Tenés una jornada en curso. Cerrala antes de iniciar otra.';
@@ -232,6 +233,12 @@ class _JornadaPageState extends ConsumerState<JornadaPage> with FinDeJornada<Jor
             ),
           ),
         ],
+        // «¿Te acompañó alguien?» (vistas 20 y 21, HU-JOR-003): el interruptor sigue disponible hasta
+        // cerrar, así que se lo ve también con el aviso de error del fin. La tendencia contra la jornada
+        // anterior no va acá: ningún artboard la pone en «Hoy» y se ve en el cierre (21J·03; decisión del
+        // 26/11 sobre la pantalla «Finalizar jornada» de 21J).
+        const SizedBox(height: 14),
+        SeccionAcompaniamiento(colportorId: widget.sesion.usuarioId, jornada: jornada),
       ],
     );
   }
