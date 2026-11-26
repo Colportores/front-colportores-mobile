@@ -77,8 +77,12 @@ PullDelta _pagina(
   return (
     motor: SyncEngine(
       specs: SpecRegistry(
-        [SyncSpec.push('ubicacion', alsoPull: true), SyncSpec.pull('zona')],
-        allEntities: {'ubicacion', 'zona'},
+        [
+          SyncSpec.push('ubicacion', alsoPull: true),
+          SyncSpec.pull('zona'),
+          SyncSpec.pull('campania_coordinador'),
+        ],
+        allEntities: {'ubicacion', 'zona', 'campania_coordinador'},
       ),
       transport: t,
       jobs: cola,
@@ -404,6 +408,65 @@ void main() {
           [1],
           reason: 'el pull no pisa el color que no subió');
       await motor.dispose();
+    });
+  });
+
+  group('el aviso completo de campania_coordinador (0200, #146)', () {
+    test('lo que ya no figura vuelve a contar, aunque su fila no haya cambiado', () async {
+      final t = _Guion([
+        _pagina('w1', rows: {
+          'campania_coordinador': [_ubi('c1'), _ubi('c2')],
+        }),
+        _pagina('w2', outOfArea: {
+          'campania_coordinador': ['c1', 'c2'],
+        }),
+        _pagina('w3', outOfArea: {
+          'campania_coordinador': ['c2'],
+        }),
+      ]);
+      final (:motor, :store, cola: _) = _armar(t);
+
+      await motor.syncNow();
+      await motor.syncNow();
+      expect(store.fueraDelArea['campania_coordinador'], {'c1', 'c2'});
+
+      await motor.syncNow();
+      expect(store.fueraDelArea['campania_coordinador'], {'c2'});
+    });
+
+    test('la clave vacía desmarca a todos y sin la clave no cambia nada', () async {
+      final t = _Guion([
+        _pagina('w1', outOfArea: {
+          'campania_coordinador': ['c1'],
+        }),
+        _pagina('w2'),
+        _pagina('w3', outOfArea: {'campania_coordinador': []}),
+      ]);
+      final (:motor, :store, cola: _) = _armar(t);
+
+      await motor.syncNow();
+      await motor.syncNow();
+      expect(store.fueraDelArea['campania_coordinador'], {'c1'});
+
+      await motor.syncNow();
+      expect(store.fueraDelArea['campania_coordinador'], isEmpty);
+    });
+
+    test('el aviso de las ubicaciones sigue siendo incremental', () async {
+      final t = _Guion([
+        _pagina('w1', outOfArea: {
+          'ubicacion': ['u1'],
+        }),
+        _pagina('w2', outOfArea: {
+          'ubicacion': ['u2'],
+        }),
+      ]);
+      final (:motor, :store, cola: _) = _armar(t);
+
+      await motor.syncNow();
+      await motor.syncNow();
+
+      expect(store.fueraDelArea['ubicacion'], {'u1', 'u2'});
     });
   });
 

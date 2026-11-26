@@ -344,6 +344,15 @@ class PullDelta {
   final Set<String> areaReset;
 }
 
+/// Las entidades cuyo `out_of_area` es **la lista completa de hoy** y no solo lo que salió desde el
+/// último pull (contrato §2.1, backend 0200, backend-supabase#249): el servidor manda la clave en cada
+/// pull, también vacía, con todas las filas que hoy no cuentan. Lo que figura se marca (sin borrar nada)
+/// y lo que **ya no figura** se desmarca: es el coordinador que recupera el rol y vuelve a la lista
+/// «¿Quién te acompaña?» aunque su fila no haya cambiado. Con las demás entidades (las ubicaciones)
+/// el aviso es incremental y una marca solo se levanta cuando la fila vuelve a bajar. Sin la clave, no
+/// cambia nada.
+const entidadesConAvisoCompleto = {'campania_coordinador'};
+
 /// Lo que acompaña a las filas de una página del pull, para que el store lleve
 /// la cuenta de qué quedó fuera del área (§2.1).
 class PullNotices {

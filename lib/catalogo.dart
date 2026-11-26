@@ -15,6 +15,10 @@ const tablasDelMotor = {'sync_queue', 'sync_watermark', 'sync_meta', 'sync_fuera
 final specsDeLaApp = <SyncSpec>[
   // push: lo que escribe el colportor. `critical` sube al instante (§5.2).
   SyncSpec.push('jornada', critical: true),
+  // Quién acompañó cada jornada, una fila por acompañante (HU-JOR-003, #146; backend-supabase 0176): sube
+  // después de su jornada, sin `alsoPull` (un solo escritor). Origen, nota y quién la cargó los pone el
+  // servidor y el push los descarta.
+  SyncSpec.push('jornada_acompaniante'),
   // Bidireccionales (§2.1, I2, #181): baja toda la ciudad de su zona (sin zona, todas las de la
   // campaña), más lo que registró él. Lo que sale del área se marca en `sync_fuera_del_area`, no se
   // borra, y el pull no pisa una fila con escrituras que todavía no subieron.
@@ -135,6 +139,12 @@ final specsDeLaApp = <SyncSpec>[
   // Cristian, 05/11). Sin `realtime`: baja en el ciclo.
   SyncSpec.pull('cuenta_colportor'),
   SyncSpec.pull('cuenta_deuda_historial'),
+
+  // pull: los coordinadores de las campañas de la colportora (HU-JOR-003, #146; backend-supabase 0178): de
+  // ahí sale la lista de «¿Quién te acompaña?», que baja con la sincronización y se usa sin conexión (decisión
+  // de Cristian, 05/11, «Lista s/red»). El que deja de contar llega en `out_of_area` (0200, contrato §2.1) y
+  // se marca sin borrar. Sin `realtime`: baja en el ciclo.
+  SyncSpec.pull('campania_coordinador'),
 
   // local: jamás sale del teléfono por sync (Ley 18.331). Solo el backup E2E.
   SyncSpec.local('audit_log'),
