@@ -15,6 +15,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/baja_per
 import 'package:colportores_mobile/features/mapa/presentation/providers/ficha_persona_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/notas_persona_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/ubicacion_alternativa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/piezas_ficha_persona.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -367,6 +368,9 @@ Future<void> montarFichaConRepo563(
         movimientosDeCuentaProvider.overrideWithValue(mundo.movimientos),
         marcadorDeTelefonoProvider.overrideWithValue(mundo.marcador),
         personaRepositoryProvider.overrideWithValue(mundo.personas),
+        ubicacionAlternativaRepositoryProvider.overrideWithValue(
+          UbicacionAlternativaRepositorioFalso(),
+        ),
         relojPersonaProvider.overrideWithValue(() => ahoraFicha),
       ],
       child: MaterialApp(

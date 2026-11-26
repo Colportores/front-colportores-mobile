@@ -659,6 +659,15 @@ void runLocalStoreContract(
       await store.applyDelta(const {}, scope: 'replica', watermark: 'w-2');
       expect(await store.watermarkOf('replica'), 'w-2');
     });
+
+    test('reapuntar sobre lo que no existe no falla, ni la segunda vez', () async {
+      // §2.3, «Venta tarde»: el motor lo llama con cada `merged`. Si el
+      // teléfono no tiene nada que nombre a la fila vieja (ya se reapuntó en un
+      // intento anterior, o nunca existió), no es un error: un throw acá
+      // dejaría el alta sin cerrar para siempre.
+      await store.reapuntar(fila.entidad, de: 'fila-que-no-esta', a: 'fila-otra');
+      await store.reapuntar(fila.entidad, de: 'fila-que-no-esta', a: 'fila-otra');
+    });
   });
 }
 

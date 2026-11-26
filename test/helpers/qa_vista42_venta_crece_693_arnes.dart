@@ -19,6 +19,7 @@ import 'package:colportores_mobile/features/mapa/presentation/providers/ficha_pe
 import 'package:colportores_mobile/features/mapa/presentation/providers/hoja_casa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/notas_persona_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/providers/personas_providers.dart';
+import 'package:colportores_mobile/features/mapa/presentation/providers/ubicacion_alternativa_providers.dart';
 import 'package:colportores_mobile/features/mapa/presentation/widgets/hoja_casa.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/nueva_venta.dart';
 import 'package:colportores_mobile/features/ventas/domain/entities/venta_abierta.dart';
@@ -36,6 +37,7 @@ import '../widget/mapa/ficha_persona_arnes.dart'
 import 'agendar_visita_arnes.dart' show AgendaRepositorioQueAgenda;
 import 'hoja_casa_falsos.dart';
 import 'lista_ubicaciones_falsos.dart' show ahoraLista;
+import 'ubicacion_alternativa_falsos.dart';
 import 'venta_falsos.dart';
 
 export 'venta_falsos.dart';
@@ -299,6 +301,9 @@ Future<MundoFicha> montarFicha693(
         movimientosDeCuentaProvider.overrideWithValue(m.movimientos),
         marcadorDeTelefonoProvider.overrideWithValue(m.marcador),
         personaRepositoryProvider.overrideWithValue(m.personas),
+        ubicacionAlternativaRepositoryProvider.overrideWithValue(
+          UbicacionAlternativaRepositorioFalso(),
+        ),
         restaurarEspacioUseCaseProvider.overrideWithValue(RestaurarEspacioUseCase(m.espacios)),
         relojPersonaProvider.overrideWithValue(() => ahoraFicha),
         generadorIdPersonaProvider.overrideWithValue(() => 'nota-nueva-${++contador}'),
