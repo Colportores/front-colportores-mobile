@@ -231,6 +231,9 @@ final class AlquilerDelColportor extends Equatable {
   /// Lo que falta pagar entre todas las campañas.
   int get saldoCentavos => campanias.fold<int>(0, (suma, c) => suma + c.saldoCentavos);
 
+  /// Lo que espera la decisión del coordinador, sumado entre todas las campañas de baja.
+  int get porDecidirCentavos => bajas.fold<int>(0, (suma, b) => suma + b.porDecidirCentavos);
+
   /// Lo que falta pagar y todavía espera validación, entre todas las campañas.
   int get porValidarCentavos => campanias.fold<int>(0, (suma, c) => suma + c.porValidarCentavos);
 

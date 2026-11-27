@@ -75,10 +75,16 @@ abstract final class TextosAlquiler {
       ? 'Sin conexión. Todavía no bajamos los datos de tu alquiler: conectate para verlos.'
       : 'Sin conexión. Es lo que sabíamos ${FormatoAlquiler.cuando(bajadoEn, ahora)}.';
 
-  /// La fila de Mi Cuenta: lo que falta pagar entre todas las campañas, o que está al día.
-  static String resumenDeLaFila(AlquilerDelColportor alquiler) => alquiler.saldoCentavos > 0
-      ? '${FormatoCuenta.monto(alquiler.saldoCentavos)} por pagar'
-      : 'Al día';
+  /// La fila de Mi Cuenta: lo que falta pagar entre todas las campañas, o que está al día, y si hay plata
+  /// de una baja esperando la decisión del coordinador, «· $ X por decidir» (decisiones del 23/11 y 26/11
+  /// sobre #740: no se le esconde nada a quien se dio de baja, también con saldo en otra campaña).
+  static String resumenDeLaFila(AlquilerDelColportor alquiler) {
+    final base = alquiler.saldoCentavos > 0
+        ? '${FormatoCuenta.monto(alquiler.saldoCentavos)} por pagar'
+        : 'Al día';
+    final porDecidir = alquiler.porDecidirCentavos;
+    return porDecidir > 0 ? '$base · ${FormatoCuenta.monto(porDecidir)} por decidir' : base;
+  }
 
   // --- Los estados de un pago ---
   static const tagPorValidar = 'Por validar';

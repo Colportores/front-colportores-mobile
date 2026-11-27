@@ -426,8 +426,8 @@ void main() {
 
   group('la línea «Alquiler» de Mi Cuenta con solo una baja', () {
     testWidgets(
-      'aparece (si no, la persona no llega a ver qué decidió su coordinador) y dice «Al día»: '
-      'no debe nada',
+      'aparece (si no, la persona no llega a ver qué decidió su coordinador) y dice «Al día · \$ 5.000 '
+      'por decidir»: no debe nada, pero su plata espera la decisión (decisión 23/11)',
       (tester) async {
         await montarCuenta(
           tester,
@@ -442,7 +442,7 @@ void main() {
         expect(find.byKey(const Key('cuenta_fila_alquiler')), findsOneWidget);
         expect(
           tester.widget<Text>(find.byKey(const Key('cuenta_fila_alquiler_valor'))).data,
-          'Al día',
+          r'Al día · $ 5.000 por decidir',
         );
       },
     );

@@ -2,8 +2,7 @@
 // a 360×640 y 412×915, texto al 100 % y al 200 %, sin texto cortado ni palabras partidas, más los casos
 // que los tests del implementador no tocan (decisiones sin pagos, tres decisiones iguales, el pago que se
 // valida con la pantalla abierta, reentrar, la línea de Mi Cuenta). Las capturas salen con
-// `--dart-define=QA_CAPTURAS=true` a `.dart_tool/qa_capturas/` (fuera del repo). Los hallazgos que siguen
-// sin arreglar corren con `--dart-define=QA_HALLAZGOS=true`.
+// `--dart-define=QA_CAPTURAS=true` a `.dart_tool/qa_capturas/` (fuera del repo).
 import 'package:colportores_mobile/features/cuenta/domain/entities/alquiler.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/pages/alquiler_page.dart';
 import 'package:colportores_mobile/features/cuenta/presentation/textos_alquiler.dart';
@@ -420,17 +419,15 @@ void main() {
       expect(texto, 'Al día');
     });
 
-    testWidgets(
-      'QA #740: DECISIÓN 23/11 (P1): con algo por decidir dice «Al día · \$ 5.000 por decidir»',
-      (tester) async {
-        final texto = await fila(tester, alquilerDeBajaPorDecidir);
-        expect(texto, r'Al día · $ 5.000 por decidir');
-      },
-      skip: !conHallazgos743,
-    );
+    testWidgets('DECISIÓN 23/11 (P1): con algo por decidir dice «Al día · \$ 5.000 por decidir»', (
+      tester,
+    ) async {
+      final texto = await fila(tester, alquilerDeBajaPorDecidir);
+      expect(texto, r'Al día · $ 5.000 por decidir');
+    });
 
     test(
-      'QA #740: DECISIÓN 23/11 (P1): TextosAlquiler.resumenDeLaFila suma «por decidir» cuando lo hay',
+      'DECISIÓN 23/11 (P1): TextosAlquiler.resumenDeLaFila suma «por decidir» cuando lo hay',
       () {
         expect(
           TextosAlquiler.resumenDeLaFila(alquilerDeBajaPorDecidir),
@@ -448,22 +445,81 @@ void main() {
           'Al día',
         );
       },
-      skip: !conHallazgos743,
+    );
+
+    testWidgets('DECISIÓN 23/11 (P1): el lector de pantalla lee la fila con lo por decidir', (
+      tester,
+    ) async {
+      final semantica = tester.ensureSemantics();
+      await fila(tester, alquilerDeBajaPorDecidir);
+      expect(
+        find.bySemanticsLabel(RegExp(r'Alquiler, Al día · \$ 5\.000 por decidir')),
+        findsOneWidget,
+      );
+      semantica.dispose();
+    });
+
+    final conSaldoYPorDecidir = _conBajas(
+      [
+        bajaCon(pagos: [pagoDe(5000)]),
+      ],
+      vigentes: [
+        campaniaCon(pagos: [pagoDe(6000)]),
+      ],
     );
 
     testWidgets(
-      'QA #740: DECISIÓN 23/11 (P1): el lector de pantalla lee la fila con lo por decidir',
+      'DECISIÓN 26/11 (P1): con saldo en una vigente y plata por decidir en una baja dice las dos',
       (tester) async {
-        final semantica = tester.ensureSemantics();
-        await fila(tester, alquilerDeBajaPorDecidir);
-        expect(
-          find.bySemanticsLabel(RegExp(r'Alquiler, Al día · \$ 5\.000 por decidir')),
-          findsOneWidget,
-        );
-        semantica.dispose();
+        final texto = await fila(tester, conSaldoYPorDecidir);
+        expect(texto, r'$ 12.500 por pagar · $ 5.000 por decidir');
       },
-      skip: !conHallazgos743,
     );
+
+    test('DECISIÓN 26/11 (P1): el texto con 0, 1 y dos bajas por decidir y una ya decidida', () {
+      expect(TextosAlquiler.resumenDeLaFila(_conBajas(const [])), 'Al día');
+      expect(
+        TextosAlquiler.resumenDeLaFila(conSaldoYPorDecidir),
+        r'$ 12.500 por pagar · $ 5.000 por decidir',
+      );
+      final dosPorDecidir = _conBajas([
+        bajaCon(id: 'b-1', pagos: [pagoDe(5000)]),
+        bajaCon(id: 'b-2', nombre: 'Verano 2026', pagos: [pagoDe(3000)]),
+      ]);
+      expect(TextosAlquiler.resumenDeLaFila(dosPorDecidir), r'Al día · $ 8.000 por decidir');
+      final unaDecididaYOtraNo = _conBajas([
+        bajaCon(
+          id: 'b-1',
+          pagos: [pagoDe(5000)],
+          decisiones: [decisionDe(DestinoDeLoPagado.seLoQuedaElCoordinador, 5000)],
+        ),
+        bajaCon(id: 'b-2', nombre: 'Verano 2026', pagos: [pagoDe(3000)]),
+      ]);
+      expect(TextosAlquiler.resumenDeLaFila(unaDecididaYOtraNo), r'Al día · $ 3.000 por decidir');
+      expect(
+        FormatoAlquiler.filaHablada(conSaldoYPorDecidir),
+        r'Alquiler, $ 12.500 por pagar · $ 5.000 por decidir',
+      );
+    });
+
+    testWidgets('con saldo y por decidir, a 360×640 y texto 2,0 la fila se parte sin cortarse', (
+      tester,
+    ) async {
+      await cargarFuentes743(tester);
+      await montarCuenta(
+        tester,
+        RepositorioDeCuentaControlable(inicial: resumenDelCanvas),
+        tamano: const Size(360, 640),
+        escala: 2.0,
+        overrides: overridesDeAlquiler(
+          RepositorioDeAlquilerControlable(inicial: conSaldoYPorDecidir),
+        ),
+      );
+      await tester.pump();
+      final falla = tester.takeException();
+      expect(falla, isNull, reason: falla is FlutterError ? falla.toStringDeep() : '$falla');
+      sinTextoCortado743(tester);
+    });
 
     for (final tam in const {'360x640': Size(360, 640), '412x915': Size(412, 915)}.entries) {
       for (final escala in [1.0, 2.0]) {
