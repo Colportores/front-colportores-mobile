@@ -5,8 +5,8 @@ import '../../../../datos/drift_sync_meta.dart';
 import '../../../depositos/data/models/deposito_model.dart';
 import '../../domain/entities/alquiler.dart';
 
-/// Arma «Mi alquiler» (HU-CTA-007) con las réplicas locales `campania`, `campania_colportor` y
-/// `deposito`: sin red.
+/// Arma «Mi alquiler» (HU-CTA-007) con las réplicas locales `campania`, `campania_colportor`, `deposito` y
+/// `alquiler_decision`: sin red.
 ///
 /// - **Campañas**: las que el colportor tiene con inscripción vigente (sin baja: quien se da de baja
 ///   deja de deber el alquiler, decisión «Alq. de baja», 27/10) y que cobran alquiler (`alquiler_monto`
@@ -16,6 +16,11 @@ import '../../domain/entities/alquiler.dart';
 ///   sin validar, su ticket `RECHAZADO`: el depósito de banco u oficina se rechaza con su ticket)
 ///   «rechazado» (ante la duda no se acredita, como [TotalesDeDepositosDrift]), un `validado_en`
 ///   «validado» y sin ninguna «por validar».
+/// - **Campañas de la baja** (#740): las que tienen su inscripción con `deleted_at` y ninguna vigente
+///   (si volvió, es una campaña como cualquiera) y donde hay algo que decir: un pago de alquiler o una
+///   decisión vigente del coordinador. No tienen saldo (quien se da de baja deja de deber el alquiler) ni
+///   importa si la campaña cobraba: lo pagado lo decide el coordinador. Las decisiones deshechas
+///   (`deleted_at`) no cuentan.
 /// - **Pagado de más**: no queda «a favor»: es lo que bajó la deuda con la casa editora (decisión del
 ///   28/10, «Alquiler fav»). Lo dice el servidor (`cuenta_colportor.alquiler_trasladado`, 0152, el total
 ///   de todas las campañas): el teléfono no lo calcula.
@@ -29,6 +34,7 @@ final class AlquilerLocalDataSourceDrift {
     _db.campaniasColportor,
     _db.cuentasColportor,
     _db.depositos,
+    _db.alquilerDecisiones,
     _db.tickets,
     _db.syncMetas,
   };
@@ -55,6 +61,7 @@ final class AlquilerLocalDataSourceDrift {
         .get();
     final pagos = await _pagosPorCampania();
     return AlquilerDelColportor(
+      bajas: await _bajas(colportorId, pagos),
       campanias: [
         for (final f in campanias)
           AlquilerDeCampania(
@@ -77,6 +84,64 @@ final class AlquilerLocalDataSourceDrift {
     )..where((c) => c.usuarioId.equals(colportorId) & c.deletedAt.isNull())).getSingleOrNull();
     final centavos = cuenta?.alquilerTrasladado ?? 0;
     return centavos > 0 ? centavos : 0;
+  }
+
+  /// Las campañas de las que se dio de baja con algo que decir, la más nueva primero.
+  Future<List<AlquilerDeBaja>> _bajas(
+    String colportorId,
+    Map<String, List<PagoDeAlquiler>> pagos,
+  ) async {
+    final campanias = await _db
+        .customSelect(
+          'SELECT c.id AS id, c.nombre AS nombre FROM campania c WHERE c.deleted_at IS NULL '
+          'AND EXISTS (SELECT 1 FROM campania_colportor b WHERE b.campania_id = c.id '
+          'AND b.usuario_id = ? AND b.deleted_at IS NOT NULL) '
+          'AND NOT EXISTS (SELECT 1 FROM campania_colportor v WHERE v.campania_id = c.id '
+          'AND v.usuario_id = ? AND v.deleted_at IS NULL) '
+          'ORDER BY c.fecha_inicio DESC, c.id',
+          variables: [Variable<String>(colportorId), Variable<String>(colportorId)],
+          readsFrom: _tablas,
+        )
+        .get();
+    if (campanias.isEmpty) return const [];
+    final decisiones = await _decisionesPorCampania(colportorId);
+    return [
+      for (final f in campanias)
+        if ((pagos[f.read<String>('id')] ?? const []).isNotEmpty ||
+            (decisiones[f.read<String>('id')] ?? const []).isNotEmpty)
+          AlquilerDeBaja(
+            campaniaId: f.read<String>('id'),
+            campania: f.read<String>('nombre'),
+            pagos: pagos[f.read<String>('id')] ?? const [],
+            decisiones: decisiones[f.read<String>('id')] ?? const [],
+          ),
+    ];
+  }
+
+  /// Las decisiones vigentes del coordinador de cada campaña, la más nueva primero. Una con un destino
+  /// que esta versión de la app no conoce se ignora: no se inventa lo que nadie decidió.
+  Future<Map<String, List<DecisionDeAlquiler>>> _decisionesPorCampania(String colportorId) async {
+    final filas = await _db
+        .customSelect(
+          'SELECT campania_id, decision, monto, created_at FROM alquiler_decision '
+          'WHERE usuario_id = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC',
+          variables: [Variable<String>(colportorId)],
+          readsFrom: _tablas,
+        )
+        .get();
+    final porCampania = <String, List<DecisionDeAlquiler>>{};
+    for (final f in filas) {
+      final destino = DestinoDeLoPagado.desdeCodigo(f.read<String>('decision'));
+      if (destino == null) continue;
+      (porCampania[f.read<String>('campania_id')] ??= []).add(
+        DecisionDeAlquiler(
+          destino: destino,
+          montoCentavos: f.read<int>('monto'),
+          decididaEn: DateTime.fromMillisecondsSinceEpoch(f.read<int>('created_at'), isUtc: true),
+        ),
+      );
+    }
+    return porCampania;
   }
 
   /// Los pagos de alquiler de cada campaña, el más nuevo primero.

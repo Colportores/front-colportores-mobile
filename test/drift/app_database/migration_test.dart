@@ -53,6 +53,7 @@ import 'generated/schema_v43.dart' as v43;
 import 'generated/schema_v44.dart' as v44;
 import 'generated/schema_v45.dart' as v45;
 import 'generated/schema_v46.dart' as v46;
+import 'generated/schema_v47.dart' as v47;
 import 'generated/schema_v5.dart' as v5;
 import 'generated/schema_v6.dart' as v6;
 import 'generated/schema_v7.dart' as v7;
@@ -3019,6 +3020,85 @@ void main() {
             (companiero.nombre, companiero.apellido, companiero.ciudadId),
             ('Ana', 'Pérez', null),
           );
+        },
+      );
+    },
+  );
+  test(
+    'dado una campaña, una inscripción de baja y un pago de alquiler guardados en la versión 46, '
+    'cuando migra a la 47, no se pierde nada, nace la réplica de las decisiones del alquiler vacía, '
+    'no se encola nada y la tabla acepta una decisión',
+    () async {
+      // HU-CTA-007 (#740): `alquiler_decision`, de solo bajada.
+      const campania = v46.CampaniaData(
+        id: 'c-1',
+        nombre: 'Otoño 2026',
+        fechaInicio: '2026-03-01',
+        alquilerMonto: 250000,
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 3,
+      );
+      const inscripcion = v46.CampaniaColportorData(
+        id: 'cc-1',
+        campaniaId: 'c-1',
+        usuarioId: 'col-1',
+        createdAt: 1,
+        updatedAt: 1,
+        deletedAt: 8,
+        syncVersion: 2,
+      );
+      const deposito = v46.DepositoData(
+        id: 'd-1',
+        monto: 500000,
+        fecha: 1,
+        destino: 'RETIRO_COORDINADOR',
+        concepto: 'ALQUILER',
+        campaniaId: 'c-1',
+        validadoEn: 5,
+        createdAt: 1,
+        updatedAt: 1,
+        syncVersion: 4,
+      );
+
+      await verificador.testWithDataIntegrity(
+        oldVersion: 46,
+        newVersion: 47,
+        createOld: v46.DatabaseAtV46.new,
+        createNew: v47.DatabaseAtV47.new,
+        openTestedDatabase: _abrir,
+        createItems: (batch, viejo) {
+          batch
+            ..insert(viejo.campania, campania)
+            ..insert(viejo.campaniaColportor, inscripcion)
+            ..insert(viejo.deposito, deposito);
+        },
+        validateItems: (nuevo) async {
+          expect((await nuevo.select(nuevo.campania).getSingle()).alquilerMonto, 250000);
+          final inscripciones = await nuevo.select(nuevo.campaniaColportor).get();
+          expect(inscripciones.single.deletedAt, 8);
+          expect((await nuevo.select(nuevo.deposito).getSingle()).monto, 500000);
+          expect(await nuevo.select(nuevo.alquilerDecision).get(), isEmpty);
+          expect(await nuevo.select(nuevo.syncQueue).get(), isEmpty);
+
+          // La tabla acepta una decisión como baja del servidor y el índice del dueño existe.
+          await nuevo.customStatement(
+            'INSERT INTO alquiler_decision (id, usuario_id, campania_id, decision, monto, '
+            "decidido_en, created_at, updated_at) VALUES ('ad-1', 'col-1', 'c-1', "
+            "'A_CUENTA_PROXIMO_DEPOSITO', 500000, 7, 7, 7)",
+          );
+          final decision = await nuevo.select(nuevo.alquilerDecision).getSingle();
+          expect(decision.decision, 'A_CUENTA_PROXIMO_DEPOSITO');
+          expect(decision.monto, 500000);
+          expect(decision.deletedAt, isNull);
+          expect(decision.syncVersion, 0);
+          final indices = await nuevo
+              .customSelect(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'alquiler_decision' "
+                "AND name = 'alquiler_decision_usuario_campania_idx'",
+              )
+              .get();
+          expect(indices, hasLength(1));
         },
       );
     },

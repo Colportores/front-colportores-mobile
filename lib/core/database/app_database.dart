@@ -13,6 +13,7 @@ import '../../features/catalogo/data/datasources/precios_por_ciudad_table.dart';
 import '../../features/catalogo/data/datasources/producto_colecciones_table.dart';
 import '../../features/catalogo/data/datasources/productos_table.dart';
 import '../../features/cobranzas/data/datasources/cobranzas_table.dart';
+import '../../features/cuenta/data/datasources/alquiler_decisiones_table.dart';
 import '../../features/cuenta/data/datasources/cuenta_colportor_table.dart';
 import '../../features/cuenta/data/datasources/cuenta_deuda_historial_table.dart';
 import '../../features/depositos/data/datasources/depositos_table.dart';
@@ -122,6 +123,7 @@ part 'app_database.g.dart';
     UbicacionesUnidas,
     PreferenciasDeAvisos,
     CampaniaCompanieros,
+    AlquilerDecisiones,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -233,10 +235,13 @@ class AppDatabase extends _$AppDatabase {
   ///   nombre opcional del lugar («Nombre ubic.»); `preferencia_de_avisos`, las preferencias de avisos de la
   ///   persona, una fila que sube y baja con el sync para cambiarlas sin señal («Avisos s/red»); y
   ///   `campania_companiero`, los nombres de los compañeros de campaña, de solo bajada («Nombres camp.»).
+  /// - 47: `alquiler_decision`, la réplica de solo bajada de lo que decidió el coordinador con lo pagado de
+  ///   alquiler por quien se dio de baja: de ahí sale la campaña de la baja en «Mi alquiler»
+  ///   (backend-supabase 0201, HU-CTA-007, #740).
   ///
   /// Al subirla: `dart run drift_dev make-migrations` congela la versión nueva en `drift_schemas/`,
   /// regenera `app_database.steps.dart` y los tests de `test/drift/` (convenciones §9).
-  static const int versionEsquema = 46;
+  static const int versionEsquema = 47;
 
   /// Versión del esquema (`PRAGMA user_version`). HU-AUTH-009 la lee para validar que la DB abrió
   /// bien; `DatabaseHelper.abrir` hace esa comprobación.
@@ -669,6 +674,13 @@ class AppDatabase extends _$AppDatabase {
       await m.createTable(esquema.preferenciaDeAvisos);
       await m.createTable(esquema.campaniaCompaniero);
       await m.createIndex(esquema.campaniaCompanieroCampaniaIdx);
+    },
+    // Solo crea la réplica de las decisiones del alquiler, vacía (la llena el pull, entera la primera vez:
+    // la entidad no tiene marca): nada de lo guardado cambia ni se encola al migrar. Hasta que baje, la
+    // campaña de una baja se lee «por decidir» solo si hay algo pagado, que es lo que se sabía.
+    from46To47: (m, esquema) async {
+      await m.createTable(esquema.alquilerDecision);
+      await m.createIndex(esquema.alquilerDecisionUsuarioCampaniaIdx);
     },
   );
 }

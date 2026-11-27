@@ -233,6 +233,81 @@ class BloqueDeAlquiler extends StatelessWidget {
   }
 }
 
+/// El alquiler de UNA campaña de la que el colportor se dio de baja (#740): sin «TE FALTA PAGAR» ni
+/// botón (ya no debe nada), con lo que quedó por decidir o lo que decidió el coordinador, y los pagos.
+///
+/// Cada decisión vigente va en su aviso, la más nueva primero, con de cuánto fue y cuándo; lo pagado
+/// después de la última decisión vuelve a «por decidir» y va arriba de todo.
+class BloqueDeAlquilerDeBaja extends StatelessWidget {
+  const BloqueDeAlquilerDeBaja({
+    super.key,
+    required this.baja,
+    required this.ahora,
+    required this.indice,
+    this.conSeparador = false,
+  });
+
+  final AlquilerDeBaja baja;
+  final DateTime ahora;
+
+  /// La posición del bloque entre las campañas de baja: parte de las claves.
+  final int indice;
+
+  /// Una línea antes del bloque.
+  final bool conSeparador;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      key: Key('alquiler_baja_$indice'),
+      padding: EdgeInsets.fromLTRB(20, conSeparador ? 20 : 0, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 8,
+        children: [
+          if (conSeparador) const Divider(height: 1, color: ColoresCuenta.borde),
+          Semantics(
+            header: true,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 6, top: 4),
+              child: Text(
+                TextosAlquiler.subtituloDeBaja(baja.campania),
+                key: Key('alquiler_baja_subtitulo_$indice'),
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13.5,
+                  color: ColoresCuenta.gris,
+                ),
+              ),
+            ),
+          ),
+          if (baja.hayPorDecidir)
+            AvisoInformativoAlquiler(
+              key: Key('alquiler_baja_por_decidir_$indice'),
+              texto: TextosAlquiler.porDecidirDeLaBaja,
+              detalle: TextosAlquiler.detalleDeLoPorDecidir(baja.porDecidirCentavos),
+            ),
+          for (var i = 0; i < baja.decisiones.length; i++)
+            AvisoInformativoAlquiler(
+              key: Key('alquiler_baja_decision_${indice}_$i'),
+              texto: TextosAlquiler.decisionDelCoordinador(baja.decisiones[i].destino),
+              detalle: TextosAlquiler.detalleDeLaDecision(baja.decisiones[i]),
+            ),
+          if (baja.pagos.isNotEmpty) ...[
+            const _RotuloDePagos(),
+            for (var i = 0; i < baja.pagos.length; i++)
+              TarjetaDePagoDeAlquiler(
+                key: Key('alquiler_baja_pago_${indice}_$i'),
+                pago: baja.pagos[i],
+                ahora: ahora,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// «TE FALTA PAGAR» y la cifra: en verde cuando ya no falta nada (38C·03).
 class _TeFaltaPagar extends StatelessWidget {
   const _TeFaltaPagar({required this.indice, required this.centavos});
@@ -489,12 +564,19 @@ class TarjetaDePagoDeAlquiler extends StatelessWidget {
 }
 
 /// Un aviso que informa sin frenar (38C·02: «Tenés $ 6.000 por validar…»): fondo azul claro, o verde si
-/// es una buena noticia (lo pagado de más bajó la deuda con la casa editora).
+/// es una buena noticia (lo pagado de más bajó la deuda con la casa editora). [detalle] va debajo, más
+/// chico y en gris (de cuánto y cuándo, en la campaña de una baja).
 class AvisoInformativoAlquiler extends StatelessWidget {
-  const AvisoInformativoAlquiler({super.key, required this.texto, this.exito = false});
+  const AvisoInformativoAlquiler({
+    super.key,
+    required this.texto,
+    this.exito = false,
+    this.detalle,
+  });
 
   final String texto;
   final bool exito;
+  final String? detalle;
 
   @override
   Widget build(BuildContext context) {
@@ -533,9 +615,24 @@ class AvisoInformativoAlquiler extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: Text(
-                texto,
-                style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, height: 1.45),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 2,
+                children: [
+                  Text(
+                    texto,
+                    style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, height: 1.45),
+                  ),
+                  if (detalle != null)
+                    Text(
+                      detalle!,
+                      style: const TextStyle(
+                        fontFamily: 'JetBrainsMono',
+                        fontSize: 11.5,
+                        color: ColoresCuenta.gris,
+                      ),
+                    ),
+                ],
               ),
             ),
           ],

@@ -30,6 +30,9 @@ import '../widgets/piezas_cuenta.dart';
 /// - **La campaña no cobra** (38C·04): si el monto se quita mientras la pantalla está abierta.
 /// - **Sin conexión** (38C·05), **cargando** y **error** con «Reintentar» (el canvas no los dibuja).
 ///
+/// Si se dio de baja de una campaña en la que pagó alquiler, esa campaña va después de las demás sin
+/// saldo ni botón: dice lo que pagó y si lo pagado queda por decidir o qué decidió el coordinador (#740).
+///
 /// Si el colportor está en dos campañas, cada una tiene su propio bloque, con su saldo y su botón (el
 /// alquiler se lleva por campaña: decisión «Alq. campaña», 25/10).
 class AlquilerPage extends ConsumerStatefulWidget {
@@ -108,14 +111,23 @@ class _AlquilerPageState extends ConsumerState<AlquilerPage> {
           const SliverToBoxAdapter(child: SinAlquiler())
         else
           SliverList.builder(
-            itemCount: alquiler.campanias.length,
-            itemBuilder: (_, i) => BloqueDeAlquiler(
-              indice: i,
-              alquiler: alquiler.campanias[i],
-              ahora: ahora,
-              conSeparador: i > 0,
-              alCargarPago: _abriendo ? null : () => unawaited(_cargarPago(alquiler.campanias[i])),
-            ),
+            itemCount: alquiler.campanias.length + alquiler.bajas.length,
+            itemBuilder: (_, i) => i < alquiler.campanias.length
+                ? BloqueDeAlquiler(
+                    indice: i,
+                    alquiler: alquiler.campanias[i],
+                    ahora: ahora,
+                    conSeparador: i > 0,
+                    alCargarPago: _abriendo
+                        ? null
+                        : () => unawaited(_cargarPago(alquiler.campanias[i])),
+                  )
+                : BloqueDeAlquilerDeBaja(
+                    indice: i - alquiler.campanias.length,
+                    baja: alquiler.bajas[i - alquiler.campanias.length],
+                    ahora: ahora,
+                    conSeparador: i > 0,
+                  ),
           ),
       ];
     } else if (estado.isLoading) {
